@@ -1,0 +1,1001 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opencourse:theme:1.0",
+  "title": "OpenCourse theme v1",
+  "description": "theme.json at the root of a theme archive. A theme changes how the app looks, never what it does. The app reads leniently - a bad field is dropped with a note - but an author's editor should be told everything, so this schema is strict.",
+  "type": "object",
+  "required": [
+    "format",
+    "id",
+    "name",
+    "appearance",
+    "palette"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 64,
+      "description": "Portable id. Importing a theme with an id that is already installed offers to replace it."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "version": {
+      "type": "string",
+      "maxLength": 32
+    },
+    "author": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 400
+    },
+    "appearance": {
+      "enum": [
+        "dark",
+        "light"
+      ],
+      "description": "Which way the window, native controls, code highlighting and derived colours lean."
+    },
+    "preview": {
+      "$ref": "#/$defs/imagePath",
+      "description": "Shown on the theme's card in Settings."
+    },
+    "palette": {
+      "type": "object",
+      "required": [
+        "background",
+        "text",
+        "accent"
+      ],
+      "additionalProperties": false,
+      "description": "Seeds. Every colour token is derived from these unless `tokens` sets it.",
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "muted": {
+          "$ref": "#/$defs/color"
+        },
+        "success": {
+          "$ref": "#/$defs/color"
+        },
+        "danger": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "description": "Exact values for colour tokens, overriding what the palette derives.",
+      "additionalProperties": false,
+      "properties": {
+        "fg": {
+          "$ref": "#/$defs/color"
+        },
+        "muted": {
+          "$ref": "#/$defs/color"
+        },
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "card": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "accent-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "selected": {
+          "$ref": "#/$defs/paint"
+        },
+        "selected-edge": {
+          "$ref": "#/$defs/color"
+        },
+        "check-accent": {
+          "$ref": "#/$defs/color"
+        },
+        "ok": {
+          "$ref": "#/$defs/color"
+        },
+        "err": {
+          "$ref": "#/$defs/color"
+        },
+        "err-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "chip-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "chip-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "ok-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "ok-border": {
+          "$ref": "#/$defs/color"
+        },
+        "err-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "err-border": {
+          "$ref": "#/$defs/color"
+        },
+        "accent-ring": {
+          "$ref": "#/$defs/color"
+        },
+        "code-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "bubble": {
+          "$ref": "#/$defs/color"
+        },
+        "bubble-border": {
+          "$ref": "#/$defs/color"
+        },
+        "composer-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "scrollbar": {
+          "$ref": "#/$defs/color"
+        },
+        "scrollbar-hover": {
+          "$ref": "#/$defs/color"
+        },
+        "chrome": {
+          "$ref": "#/$defs/color"
+        },
+        "glass": {
+          "$ref": "#/$defs/color"
+        },
+        "popover": {
+          "$ref": "#/$defs/color"
+        },
+        "overlay": {
+          "$ref": "#/$defs/color"
+        },
+        "shadow": {
+          "$ref": "#/$defs/color"
+        },
+        "hover-ring": {
+          "$ref": "#/$defs/color"
+        },
+        "editor-active-line": {
+          "$ref": "#/$defs/color"
+        },
+        "terminal-selection": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    },
+    "reducedTransparency": {
+      "type": "object",
+      "description": "Colours used when macOS asks for reduced transparency or more contrast. Translucent surfaces are otherwise composited over the window colour.",
+      "additionalProperties": false,
+      "properties": {
+        "fg": {
+          "$ref": "#/$defs/color"
+        },
+        "muted": {
+          "$ref": "#/$defs/color"
+        },
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "card": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "accent-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "selected": {
+          "$ref": "#/$defs/paint"
+        },
+        "selected-edge": {
+          "$ref": "#/$defs/color"
+        },
+        "check-accent": {
+          "$ref": "#/$defs/color"
+        },
+        "ok": {
+          "$ref": "#/$defs/color"
+        },
+        "err": {
+          "$ref": "#/$defs/color"
+        },
+        "err-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "chip-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "chip-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "ok-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "ok-border": {
+          "$ref": "#/$defs/color"
+        },
+        "err-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "err-border": {
+          "$ref": "#/$defs/color"
+        },
+        "accent-ring": {
+          "$ref": "#/$defs/color"
+        },
+        "code-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "bubble": {
+          "$ref": "#/$defs/color"
+        },
+        "bubble-border": {
+          "$ref": "#/$defs/color"
+        },
+        "composer-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "scrollbar": {
+          "$ref": "#/$defs/color"
+        },
+        "scrollbar-hover": {
+          "$ref": "#/$defs/color"
+        },
+        "chrome": {
+          "$ref": "#/$defs/color"
+        },
+        "glass": {
+          "$ref": "#/$defs/color"
+        },
+        "popover": {
+          "$ref": "#/$defs/color"
+        },
+        "overlay": {
+          "$ref": "#/$defs/color"
+        },
+        "shadow": {
+          "$ref": "#/$defs/color"
+        },
+        "hover-ring": {
+          "$ref": "#/$defs/color"
+        },
+        "editor-active-line": {
+          "$ref": "#/$defs/color"
+        },
+        "terminal-selection": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    },
+    "increasedContrast": {
+      "type": "object",
+      "description": "Colours used when macOS asks for more contrast. border, muted and selected-edge are otherwise derived.",
+      "additionalProperties": false,
+      "properties": {
+        "fg": {
+          "$ref": "#/$defs/color"
+        },
+        "muted": {
+          "$ref": "#/$defs/color"
+        },
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "card": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "accent-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "selected": {
+          "$ref": "#/$defs/paint"
+        },
+        "selected-edge": {
+          "$ref": "#/$defs/color"
+        },
+        "check-accent": {
+          "$ref": "#/$defs/color"
+        },
+        "ok": {
+          "$ref": "#/$defs/color"
+        },
+        "err": {
+          "$ref": "#/$defs/color"
+        },
+        "err-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "chip-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "chip-fg": {
+          "$ref": "#/$defs/color"
+        },
+        "ok-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "ok-border": {
+          "$ref": "#/$defs/color"
+        },
+        "err-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "err-border": {
+          "$ref": "#/$defs/color"
+        },
+        "accent-ring": {
+          "$ref": "#/$defs/color"
+        },
+        "code-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "bubble": {
+          "$ref": "#/$defs/color"
+        },
+        "bubble-border": {
+          "$ref": "#/$defs/color"
+        },
+        "composer-bg": {
+          "$ref": "#/$defs/color"
+        },
+        "scrollbar": {
+          "$ref": "#/$defs/color"
+        },
+        "scrollbar-hover": {
+          "$ref": "#/$defs/color"
+        },
+        "chrome": {
+          "$ref": "#/$defs/color"
+        },
+        "glass": {
+          "$ref": "#/$defs/color"
+        },
+        "popover": {
+          "$ref": "#/$defs/color"
+        },
+        "overlay": {
+          "$ref": "#/$defs/color"
+        },
+        "shadow": {
+          "$ref": "#/$defs/color"
+        },
+        "hover-ring": {
+          "$ref": "#/$defs/color"
+        },
+        "editor-active-line": {
+          "$ref": "#/$defs/color"
+        },
+        "terminal-selection": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "enum": [
+            "vibrancy",
+            "solid",
+            "image"
+          ],
+          "default": "vibrancy",
+          "description": "vibrancy: macOS glass shows through. solid: the window colour. image: a picture behind everything."
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "image": {
+          "type": "object",
+          "required": [
+            "src"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "src": {
+              "$ref": "#/$defs/imagePath"
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain",
+                "tile",
+                "stretch"
+              ],
+              "default": "cover"
+            },
+            "position": {
+              "enum": [
+                "center",
+                "top",
+                "bottom",
+                "left",
+                "right",
+                "top left",
+                "top right",
+                "bottom left",
+                "bottom right"
+              ],
+              "default": "center"
+            },
+            "scale": {
+              "type": "number",
+              "minimum": 0.25,
+              "maximum": 4,
+              "default": 1,
+              "description": "For fit: tile - the picture's own size times this."
+            },
+            "tint": {
+              "$ref": "#/$defs/color",
+              "description": "Painted over the picture (under the grain). A translucent tint keeps text readable."
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40,
+              "description": "Blur radius in px."
+            },
+            "dim": {
+              "$ref": "#/$defs/unit",
+              "description": "How far the picture fades toward the window colour."
+            }
+          }
+        }
+      }
+    },
+    "grain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/grainAmount",
+          "description": "Opacity of the noise; 0.12 is the app's own, 0 turns it off."
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 3,
+          "default": 1,
+          "description": "Larger is coarser."
+        },
+        "texture": {
+          "$ref": "#/$defs/imagePath",
+          "description": "A picture to tile instead of the generated noise."
+        }
+      }
+    },
+    "surfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "titlebar": {
+          "type": "object",
+          "description": "The bar at the top of the window.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            },
+            "grain": {
+              "$ref": "#/$defs/grainAmount"
+            },
+            "image": {
+              "$ref": "#/$defs/picture"
+            }
+          }
+        },
+        "sidebar": {
+          "type": "object",
+          "description": "A course's chapter list.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            },
+            "grain": {
+              "$ref": "#/$defs/grainAmount"
+            },
+            "image": {
+              "$ref": "#/$defs/picture"
+            }
+          }
+        },
+        "list": {
+          "type": "object",
+          "description": "The Library, Coach and user lists.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            },
+            "grain": {
+              "$ref": "#/$defs/grainAmount"
+            },
+            "image": {
+              "$ref": "#/$defs/picture"
+            }
+          }
+        },
+        "sidechat": {
+          "type": "object",
+          "description": "The side chat panel.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            },
+            "grain": {
+              "$ref": "#/$defs/grainAmount"
+            },
+            "image": {
+              "$ref": "#/$defs/picture"
+            }
+          }
+        },
+        "popover": {
+          "type": "object",
+          "description": "Menus and the search panel. Colour, grain and blur; no picture.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            },
+            "grain": {
+              "$ref": "#/$defs/grainAmount"
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40,
+              "description": "Backdrop blur behind menus, in px."
+            }
+          }
+        },
+        "reading": {
+          "type": "object",
+          "description": "The lesson, settings and exercise brief. Always opaque; colour and grain, no picture.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            },
+            "grain": {
+              "$ref": "#/$defs/grainAmount"
+            }
+          }
+        },
+        "code": {
+          "type": "object",
+          "description": "Code blocks, the editor and the terminal. Always opaque.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            }
+          }
+        },
+        "card": {
+          "type": "object",
+          "description": "Cards, panels and quiz blocks.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            }
+          }
+        },
+        "chip": {
+          "type": "object",
+          "description": "Tags, chips and hover states.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            }
+          }
+        },
+        "bubble": {
+          "type": "object",
+          "description": "Your messages in the side chat.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            }
+          }
+        },
+        "composer": {
+          "type": "object",
+          "description": "The side chat's message box.",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "opacity": {
+              "$ref": "#/$defs/unit"
+            }
+          }
+        }
+      }
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "faces": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "required": [
+              "family",
+              "src"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "family": {
+                "$ref": "#/$defs/family"
+              },
+              "src": {
+                "type": "string",
+                "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$))[^\\\\]+\\.(?:woff2|woff|ttf|otf)$",
+                "description": "A font file in the archive."
+              },
+              "weight": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^(?:normal|bold|\\d{1,4} \\d{1,4})$"
+                  }
+                ],
+                "description": "400, or a variable font's range \"100 900\"."
+              },
+              "style": {
+                "enum": [
+                  "normal",
+                  "italic"
+                ]
+              }
+            }
+          }
+        },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/family"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/family"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                }
+              ]
+            },
+            "size": {
+              "type": "number",
+              "minimum": 12,
+              "maximum": 18
+            },
+            "lineHeight": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 2.2
+            }
+          }
+        },
+        "reading": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/family"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/family"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                }
+              ]
+            },
+            "size": {
+              "type": "number",
+              "minimum": 13,
+              "maximum": 22
+            },
+            "lineHeight": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 2.2
+            }
+          }
+        },
+        "heading": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/family"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/family"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                }
+              ]
+            },
+            "weight": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 900
+            },
+            "letterSpacing": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.3
+            }
+          }
+        },
+        "code": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/family"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/family"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                }
+              ]
+            },
+            "size": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 18,
+              "description": "The editor's size in px; code elsewhere scales with it."
+            }
+          }
+        },
+        "brand": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/family"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/family"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                }
+              ]
+            },
+            "weight": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 900
+            },
+            "letterSpacing": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.3
+            }
+          }
+        }
+      }
+    },
+    "logo": {
+      "type": "object",
+      "required": [
+        "mark"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mark": {
+          "$ref": "#/$defs/imagePath",
+          "description": "Replaces the mark beside the OpenCourse wordmark. Square; SVG or at least 64px."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\\([^()]*\\)|hsla?\\([^()]*\\)|transparent|black|white)$"
+    },
+    "paint": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/color"
+        },
+        {
+          "type": "object",
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/color"
+            },
+            "to": {
+              "$ref": "#/$defs/color"
+            }
+          }
+        }
+      ]
+    },
+    "unit": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "grainAmount": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.4
+    },
+    "family": {
+      "type": "string",
+      "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9 _.-]{0,63}|-apple-system)$"
+    },
+    "imagePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$))[^\\\\]+\\.(?:png|jpe?g|webp|gif|svg)$",
+      "description": "A picture in the archive, relative to theme.json."
+    },
+    "picture": {
+      "type": "object",
+      "required": [
+        "src"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "src": {
+          "$ref": "#/$defs/imagePath"
+        },
+        "fit": {
+          "enum": [
+            "cover",
+            "contain",
+            "tile",
+            "stretch"
+          ],
+          "default": "cover"
+        },
+        "position": {
+          "enum": [
+            "center",
+            "top",
+            "bottom",
+            "left",
+            "right",
+            "top left",
+            "top right",
+            "bottom left",
+            "bottom right"
+          ],
+          "default": "center"
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4,
+          "default": 1,
+          "description": "For fit: tile - the picture's own size times this."
+        },
+        "tint": {
+          "$ref": "#/$defs/color",
+          "description": "Painted over the picture (under the grain). A translucent tint keeps text readable."
+        }
+      }
+    }
+  }
+}

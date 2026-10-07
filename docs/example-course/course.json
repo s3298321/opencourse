@@ -1,0 +1,362 @@
+{
+  "schema_version": "1.5",
+  "slug": "opencourse-example",
+  "title": "The OpenCourse example course",
+  "version": "0.1.0",
+  "description": "A minimal course that exercises every block type. Import it, open Edit course, and use it as a template for your own courses.",
+  "author": "OpenCourse team",
+  "difficulty": "beginner",
+  "estimated_hours": 1,
+  "subject": "Programming",
+  "runtime": {
+    "language": "python",
+    "version": ">=3.11"
+  },
+  "prerequisites": [
+    "A Python 3.11+ interpreter on your PATH.",
+    "The Xcode Command Line Tools, for the two C exercises - run `xcode-select --install`."
+  ],
+  "tags": [
+    "example",
+    "python"
+  ],
+  "cover_image": "assets/cover.svg",
+  "modules": [
+    {
+      "slug": "basics",
+      "title": "Basics",
+      "lessons": [
+        {
+          "slug": "hello-python",
+          "title": "Hello, Python",
+          "estimated_minutes": 15,
+          "objectives": [
+            "Run a Python program from the terminal.",
+            "Recognise every block type a OpenCourse lesson can contain."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "content": "# Hello, Python\n\nWelcome. Python is a **high-level, interpreted** programming language. This course will teach you the fundamentals.\n\n- Readable syntax\n- Dynamic typing\n- Large standard library",
+              "slug": "hello-python"
+            },
+            {
+              "type": "image",
+              "src": "assets/img/diagram-1.svg",
+              "alt": "Conceptual diagram",
+              "caption": "Figure 1 \u2014 the Python runtime at a glance.",
+              "slug": "conceptual-diagram"
+            },
+            {
+              "type": "visualization",
+              "src": "assets/viz/counter/index.html",
+              "title": "Click-counter visualization",
+              "height": 220,
+              "slug": "click-counter-visualization"
+            },
+            {
+              "type": "markdown",
+              "content": "## Key takeaways\n\n- A lesson is a list of typed blocks, rendered in order.\n- End the theory with a `## Key takeaways` block, before the first quiz.\n- The editor preserves local identities when you rename or move elements, so learner progress survives edits. Importing a ZIP creates a new course.",
+              "slug": "key-takeaways"
+            },
+            {
+              "type": "quiz",
+              "id": "q-hello-1",
+              "kind": "single",
+              "question": "Python is\u2026",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "A compiled language with no runtime.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "An interpreted language with a runtime.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "A markup language.",
+                  "correct": false
+                }
+              ],
+              "explanation": "CPython compiles source to bytecode, then the CPython VM interprets that bytecode.",
+              "slug": "q-hello-1"
+            },
+            {
+              "type": "quiz",
+              "id": "q-hello-2",
+              "kind": "text",
+              "question": "Which built-in prints to standard output?",
+              "answers": [
+                "print",
+                "print()"
+              ],
+              "explanation": "`print(*objects)` writes to `sys.stdout`.",
+              "slug": "q-hello-2"
+            },
+            {
+              "type": "exercise",
+              "id": "ex-hello-1",
+              "title": "Hello, world",
+              "prompt": "Write a Python program that prints the string `Hello, world` on a single line.",
+              "starter_code": "def greeting() -> str:\n    \"\"\"Return the string to print.\"\"\"\n    # your code here\n    ...\n\n\nif __name__ == \"__main__\":\n    print(greeting())\n",
+              "solution": "def greeting() -> str:\n    \"\"\"Return the string to print.\"\"\"\n    return \"Hello, world\"\n\n\nif __name__ == \"__main__\":\n    print(greeting())\n",
+              "tests": "\"\"\"Checks for ex-hello-1. Run with: pytest -q\"\"\"\nimport exercise\n\n\ndef test_greeting_text():\n    assert exercise.greeting() == \"Hello, world\"\n",
+              "test_command": "pytest -q",
+              "verification_instructions": "Run `pytest -q` in the exercise folder, then `python exercise.py` to see the output.",
+              "hints": [
+                "`return` the string - the `print` at the bottom is already written for you."
+              ],
+              "slug": "ex-hello-1"
+            }
+          ],
+          "flashcards": [
+            {
+              "id": "python-level",
+              "question": "Is Python a high-level or low-level language?",
+              "answer": "Python is a **high-level** language with readable syntax."
+            },
+            {
+              "id": "runtime-pipeline",
+              "question": "What executes a Python program?",
+              "answer": "The **Python interpreter/runtime** executes it.",
+              "image": {
+                "src": "assets/img/diagram-1.svg",
+                "alt": "Conceptual diagram of the Python runtime"
+              }
+            }
+          ]
+        },
+        {
+          "slug": "variables",
+          "title": "Variables and types",
+          "estimated_minutes": 10,
+          "objectives": [
+            "Assign variables without declaring them."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "content": "## Variables\n\nYou don't declare variables in Python \u2014 you just assign to them.\n\n```python\nname = \"Ada\"\nage = 36\n```",
+              "slug": "variables"
+            },
+            {
+              "type": "quiz",
+              "id": "q-vars-1",
+              "kind": "multiple",
+              "question": "Which of these are built-in Python types?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "list",
+                  "correct": true
+                },
+                {
+                  "id": "b",
+                  "text": "array",
+                  "correct": false
+                },
+                {
+                  "id": "c",
+                  "text": "dict",
+                  "correct": true
+                },
+                {
+                  "id": "d",
+                  "text": "hashmap",
+                  "correct": false
+                }
+              ],
+              "explanation": "`list` and `dict` are builtins. `array` lives in the `array` module, and Python's hash map *is* `dict`.",
+              "slug": "q-vars-1"
+            }
+          ]
+        },
+        {
+          "slug": "runnable-exercises",
+          "title": "Runnable exercises in any language",
+          "objectives": [
+            "Choose between a test file and an expected-output contract.",
+            "Point one exercise at a different language from the rest of its course.",
+            "Ship a header alongside the learner's file with `extra_files`."
+          ],
+          "estimated_minutes": 10,
+          "blocks": [
+            {
+              "type": "markdown",
+              "content": "# Runnable exercises in any language\n\nA course is not obliged to be about programming, and an `exercise` block is not obliged to be in the course's main language. This lesson is the same course as the Python lessons before it, but its two exercises are C, declared per-exercise with `runtime`.\n\n## Two ways to say what \"correct\" means\n\n**A test file.** The course ships `tests`, which becomes a checking program that calls the functions the learner wrote. Almost every exercise should be this shape: it can check edge cases, it can explain what went wrong, and it survives the learner reorganising their code.\n\n**An expected-output contract.** The course states `expected_output` and the app compares the program's stdout against it. This is the shape you need when the learner's whole program *is* the answer \u2014 the very first lesson of a C course cannot use a test file, because the learner has not yet written a function to test.\n\nBoth end the same way: a non-zero exit code means the exercise is not done yet. That is the whole grading contract, and it is why no language needs special treatment.",
+              "slug": "runnable-exercises-in-any-language"
+            },
+            {
+              "type": "markdown",
+              "content": "## Key takeaways\n\n- `runtime` sits on the course *and* on any exercise; the exercise wins.\n- `tests` and `expected_output` are alternatives \u2014 `tests` wins if you write both.\n- C needs no environment: the compiler from the Command Line Tools is the environment, and `assert.h` comes with libc.\n- `extra_files` are rewritten every time the exercise is opened, so a learner cannot break them permanently. The file they edit is never overwritten.",
+              "slug": "key-takeaways"
+            },
+            {
+              "type": "quiz",
+              "id": "q-runnable-1",
+              "kind": "single",
+              "question": "A C exercise ships both `tests` and `expected_output`. Which one decides the verdict?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "`expected_output`, because it is more specific.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "`tests`, and the output is streamed but never compared.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "Both \u2014 the exercise passes only if each agrees.",
+                  "correct": false
+                },
+                {
+                  "id": "d",
+                  "text": "Neither; the manifest is rejected as ambiguous.",
+                  "correct": false
+                }
+              ],
+              "explanation": "`tests` wins. With a test `main()` in play, whatever the program prints is that test's own reporting, so comparing it against a fixed string would be meaningless.",
+              "slug": "q-runnable-1"
+            },
+            {
+              "type": "exercise",
+              "id": "ex-c-hello-1",
+              "title": "A whole program, checked by its output",
+              "prompt": "Print `Hello from C` on a line of its own, and nothing else. This exercise has no test file: the app compiles your program, runs it, and compares what it printed.",
+              "runtime": {
+                "language": "c",
+                "version": ">=c17",
+                "flags": [
+                  "-Wall",
+                  "-Wextra",
+                  "-Werror"
+                ]
+              },
+              "starter_code": "#include <stdio.h>\n\nint main(void) {\n  /* your code here */\n  return 0;\n}\n",
+              "solution": "#include <stdio.h>\n\nint main(void) {\n  puts(\"Hello from C\");\n  return 0;\n}\n",
+              "expected_output": "Hello from C\n",
+              "verification_instructions": "The checks show a `compile` step and a `run` step. Both must be clean, and the output must match exactly one line: `Hello from C`.",
+              "hints": [
+                "`puts` adds the newline for you; `printf` does not."
+              ],
+              "slug": "ex-c-hello-1"
+            },
+            {
+              "type": "exercise",
+              "id": "ex-c-triple-1",
+              "title": "A function, checked by a test file",
+              "prompt": "Implement `triple` so that it returns three times its argument. The course provides `exercise.h` with the declaration and `test_exercise.c` with the checks, so your file only needs the function itself.",
+              "runtime": {
+                "language": "c",
+                "version": ">=c17",
+                "flags": [
+                  "-Wall",
+                  "-Wextra",
+                  "-Werror"
+                ]
+              },
+              "extra_files": [
+                {
+                  "path": "exercise.h",
+                  "content": "#ifndef EXERCISE_H\n#define EXERCISE_H\n\n/* Returns three times n. */\nint triple(int n);\n\n#endif\n"
+                }
+              ],
+              "starter_code": "#include \"exercise.h\"\n\nint triple(int n) {\n  return n;\n}\n",
+              "solution": "#include \"exercise.h\"\n\nint triple(int n) {\n  return n * 3;\n}\n",
+              "tests": "#include <assert.h>\n#include <stdio.h>\n\n#include \"exercise.h\"\n\nint main(void) {\n  assert(triple(0) == 0);\n  assert(triple(1) == 3);\n  assert(triple(-2) == -6);\n  assert(triple(100) == 300);\n  puts(\"4 checks passed\");\n  return 0;\n}\n",
+              "verification_instructions": "All four assertions must hold and the build must be warning-free. A failing assertion names the line it was on.",
+              "hints": [
+                "Your file must not define `main` \u2014 `test_exercise.c` already has one, and two would fail to link.",
+                "`#include \"exercise.h\"` keeps the declaration and your definition in agreement; the compiler will tell you if they drift."
+              ],
+              "slug": "ex-c-triple-1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "project",
+      "slug": "build-a-course-project",
+      "title": "Build a course outline",
+      "project": {
+        "definition": "Create a short outline for a course on a subject you know. Apply the lesson structure you have explored in this example course. Work in your project folder using your preferred editor, then ask the project assistant for feedback.",
+        "objectives": [
+          "Turn learning objectives into a concrete deliverable.",
+          "Explain how a course structure helps learners practice."
+        ],
+        "estimated_minutes": 45,
+        "requirements": [
+          {
+            "id": "learning-goals",
+            "description": "Define the audience and at least three learning objectives."
+          },
+          {
+            "id": "lesson-sequence",
+            "description": "Propose three lessons ordered so each builds on the preceding material."
+          }
+        ],
+        "deliverables": [
+          {
+            "id": "outline",
+            "title": "Course outline",
+            "description": "Write the audience, learning objectives, and lesson sequence in OUTLINE.md.",
+            "paths": [
+              "OUTLINE.md"
+            ],
+            "acceptance_criteria": [
+              "The audience and prerequisites are explicit.",
+              "Each learning objective has a corresponding lesson or practice activity.",
+              "The three lessons form a coherent progression."
+            ]
+          },
+          {
+            "id": "rationale",
+            "title": "Design rationale",
+            "description": "Explain the teaching choices in README.md.",
+            "paths": [
+              "README.md"
+            ],
+            "acceptance_criteria": [
+              "Explain the lesson ordering and how learners will practice."
+            ]
+          }
+        ],
+        "starter_files": [
+          {
+            "path": "OUTLINE.md",
+            "content": "# Course outline\n\n## Audience and prerequisites\n\n## Learning objectives\n\n## Lesson sequence\n"
+          },
+          {
+            "path": "README.md",
+            "content": "# Design rationale\n\nExplain your teaching choices here.\n"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "wrap-up",
+      "title": "Reflection",
+      "lessons": [
+        {
+          "slug": "reflection",
+          "title": "Reflection",
+          "estimated_minutes": 5,
+          "blocks": [
+            {
+              "type": "markdown",
+              "content": "# Reflect on your project\n\nWhat did you learn from turning the course material into a concrete deliverable? Write down one improvement you would make next.\n\n## Key takeaways\n\nPractice makes the ideas concrete. Feedback helps you choose the next improvement.",
+              "slug": "reflect-on-your-project"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

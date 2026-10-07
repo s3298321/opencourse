@@ -1,0 +1,100 @@
+{
+  "$schema": "urn:opencourse:theme:1.0",
+  "format": 1,
+  "id": "opencourse-default",
+  "name": "OpenCourse",
+  "version": "1.0.0",
+  "author": "OpenCourse",
+  "description": "The app's own look, written out as a theme: neutral charcoal surfaces, silver controls and lightly grained glass over the window. Copy it to start your own.",
+  "appearance": "dark",
+
+  "palette": {
+    "background": "#18181b",
+    "text": "#dedee3",
+    "accent": "#e4e4e8",
+    "muted": "#a5a5af",
+    "success": "#78bd91",
+    "danger": "#ee9292"
+  },
+
+  "tokens": {
+    "fg": "#dedee3",
+    "muted": "#a5a5af",
+    "bg": "#18181b",
+    "card": "#202024",
+    "accent": "#e4e4e8",
+    "accent-fg": "#202024",
+    "border": "#393940",
+    "selected": { "from": "#38383f", "to": "#2c2c32" },
+    "selected-edge": "rgba(222, 222, 227, 0.10)",
+    "check-accent": "#565660",
+    "ok": "#78bd91",
+    "err": "#ee9292",
+    "err-fg": "#ffffff",
+    "chip-bg": "#2b2b30",
+    "chip-fg": "#c5c5cd",
+    "ok-bg": "#13231a",
+    "ok-border": "#2b4b35",
+    "err-bg": "#2b1719",
+    "err-border": "#563036",
+    "accent-ring": "rgba(196, 196, 205, 0.15)",
+    "code-bg": "#1d1d21",
+    "bubble": "#2e2e34",
+    "bubble-border": "#42424a",
+    "composer-bg": "#28282d",
+    "scrollbar": "rgba(222, 222, 227, 0.18)",
+    "scrollbar-hover": "rgba(222, 222, 227, 0.36)",
+    "chrome": "rgba(0, 0, 0, 0.52)",
+    "glass": "rgba(0, 0, 0, 0.25)",
+    "popover": "rgba(36, 36, 41, 0.94)",
+    "overlay": "rgba(0, 0, 0, 0.35)",
+    "shadow": "#000000",
+    "hover-ring": "rgba(238, 238, 239, 0.12)",
+    "editor-active-line": "rgba(255, 255, 255, 0.04)",
+    "terminal-selection": "rgba(196, 196, 205, 0.18)"
+  },
+
+  "reducedTransparency": {
+    "chrome": "#1c1c20",
+    "glass": "#18181b",
+    "popover": "#242429"
+  },
+
+  "increasedContrast": {
+    "border": "#74747c",
+    "muted": "#c5c5cd",
+    "selected-edge": "rgba(222, 222, 227, 0.55)"
+  },
+
+  "window": {
+    "material": "vibrancy",
+    "color": "#18181b"
+  },
+
+  "grain": {
+    "amount": 0.12,
+    "scale": 1
+  },
+
+  "surfaces": {
+    "titlebar": { "grain": 0 },
+    "sidebar": { "grain": 0.12 },
+    "list": { "grain": 0.12 },
+    "sidechat": { "grain": 0.12 },
+    "popover": { "grain": 0.12, "blur": 20 },
+    "reading": { "grain": 0 }
+  },
+
+  "fonts": {
+    "faces": [],
+    "ui": { "size": 15, "lineHeight": 1.55 },
+    "reading": { "size": 15 },
+    "heading": { "weight": 700 },
+    "code": { "size": 12.5 },
+    "brand": { "weight": 600, "letterSpacing": -0.025 }
+  },
+
+  "logo": {
+    "mark": "images/mark.png"
+  }
+}

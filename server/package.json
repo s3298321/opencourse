@@ -1,0 +1,36 @@
+{
+  "name": "opencourse-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCourse server: hosts and versions courses, authenticates accounts, serves a web catalog",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.12.0 || >=24.0.0"
+  },
+  "scripts": {
+    "dev": "OPENCOURSE_SERVER_DEV=${OPENCOURSE_SERVER_DEV:-1} tsx watch src/index.ts",
+    "build": "node build.mjs",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "admin": "tsx src/admin.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "fastify": "^5.6.0",
+    "markdown-it": "^15.0.1",
+    "nodemailer": "^10.0.15",
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.20.0",
+    "@types/nodemailer": "^7.0.1",
+    "@types/yauzl": "^3.4.0",
+    "esbuild": "^0.25.10",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

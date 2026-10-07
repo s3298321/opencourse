@@ -1,0 +1,76 @@
+{
+  "$schema": "urn:opencourse:theme:1.0",
+  "format": 1,
+  "id": "paper-and-ink",
+  "name": "Paper & Ink",
+  "version": "1.0.0",
+  "author": "OpenCourse",
+  "description": "Warm paper on a soft-focus desk, ink-dark text, a rust accent and a dot-matrix wordmark. Uses every part of the theme format.",
+  "appearance": "light",
+  "preview": "images/preview.png",
+
+  "palette": {
+    "background": "#f6f1e7",
+    "text": "#2b2620",
+    "accent": "#9c4a1a",
+    "muted": "#6b6256",
+    "success": "#3f7d4e",
+    "danger": "#b23a2e"
+  },
+
+  "tokens": {
+    "accent-fg": "#fbf8f2",
+    "border": "#ddd3c2",
+    "chip-bg": "#ece4d6",
+    "selected": { "from": "#e6dccb", "to": "#ded2be" },
+    "shadow": "#3a2a14"
+  },
+
+  "reducedTransparency": {
+    "chrome": "#eee7da",
+    "glass": "#f1eadf"
+  },
+
+  "window": {
+    "material": "image",
+    "color": "#e9e1d2",
+    "image": { "src": "images/desk.jpg", "fit": "cover", "position": "center", "blur": 6, "dim": 0.15 }
+  },
+
+  "grain": {
+    "amount": 0.12,
+    "scale": 1,
+    "texture": "images/paper-grain.png"
+  },
+
+  "surfaces": {
+    "titlebar": { "color": "#f6f1e7", "opacity": 0.72, "grain": 0.12 },
+    "sidebar": {
+      "color": "rgba(240, 233, 220, 0.82)",
+      "image": { "src": "images/linen.png", "fit": "tile", "scale": 0.75, "tint": "rgba(246, 241, 231, 0.55)" }
+    },
+    "list": { "color": "rgba(246, 241, 231, 0.55)" },
+    "sidechat": { "color": "rgba(240, 233, 220, 0.86)" },
+    "popover": { "color": "rgba(250, 247, 241, 0.95)", "blur": 16 },
+    "reading": { "color": "#f8f4ec", "grain": 0.06 },
+    "code": { "color": "#efe8da" },
+    "card": { "color": "#fbf8f2" },
+    "bubble": { "color": "#efe6d6" },
+    "composer": { "color": "#fbf8f2" }
+  },
+
+  "fonts": {
+    "faces": [
+      { "family": "Ledger Dots", "src": "fonts/ledger-dots.ttf", "weight": 400, "style": "normal" }
+    ],
+    "ui": { "family": ["Avenir Next", "Helvetica Neue"], "size": 14.5 },
+    "reading": { "family": ["Charter", "Iowan Old Style", "Georgia", "serif"], "size": 17, "lineHeight": 1.65 },
+    "heading": { "family": ["Charter", "Georgia", "serif"], "weight": 700, "letterSpacing": -0.01 },
+    "code": { "family": ["Menlo"], "size": 12.5 },
+    "brand": { "family": ["Ledger Dots"], "weight": 400, "letterSpacing": 0.02 }
+  },
+
+  "logo": {
+    "mark": "images/mark.svg"
+  }
+}

@@ -1,0 +1,27 @@
+# app build output
+node_modules/
+out/
+dist/
+
+# exercise venvs and scratch
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+.DS_Store
+
+# generated: importable course archives, and the format bundle the app ships
+content-zip/
+app/resources/spec/
+content
+CLAUDE.md
+.claude
+
+# a development server's database, archives and secret
+server/data/
+
+# local themes and their importable archives
+themes/
+themes-zip/

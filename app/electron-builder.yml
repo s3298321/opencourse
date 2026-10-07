@@ -1,0 +1,49 @@
+appId: dev.opencourse.app
+productName: OpenCourse
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**
+  - package.json
+# The app ships no courses: the library is whatever the user imported. What does
+# ship is the format bundle, so an author can get the spec, the schema and a
+# working example out of the app itself.
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/spec
+    to: spec
+    filter: ['**/*']
+# node-pty is a native addon: pty.node cannot be dlopen'd from inside the asar,
+# and spawn-helper has to stay an executable file on disk or every pty.fork()
+# dies with "posix_spawnp failed".
+asarUnpack:
+  - '**/node_modules/node-pty/**'
+# node-pty is the only native dep and it is a Node-API addon shipping its own
+# prebuilt binaries, which load in Electron unchanged. Rebuilding it from
+# source would need a full node-gyp toolchain on every build machine for no
+# gain - and fails here.
+npmRebuild: false
+mac:
+  icon: resources/icon.icns
+  category: public.app-category.education
+  target:
+    - dmg
+  darkModeSupport: true
+  # Unsigned local build: notarization and signing are a separate, manual step.
+  identity: null
+  # The dev Electron binary carries its own NSMicrophoneUsageDescription, so
+  # `npm run dev` prompts correctly whether or not this is here. The packaged
+  # app has its own bundle id and its own Info.plist, and without this line it
+  # dies at the microphone prompt - a trap only a packaged build can catch.
+  extendInfo:
+    NSMicrophoneUsageDescription: >-
+      OpenCourse uses the microphone only while a coaching session is running, so
+      your coach can hear you.
+  # Replaces electron-builder's template, which has no audio-input entitlement.
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+dmg:
+  icon: resources/icon.icns
+  title: OpenCourse ${version}

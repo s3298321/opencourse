@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!--
+      Naming an entitlements file REPLACES electron-builder's template, so the
+      three keys it would have set have to be repeated here. See
+      node_modules/app-builder-lib/templates/entitlements.mac.plist.
+    -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!--
+      The coach listens. Without this a hardened, signed build gets no
+      microphone at all - and because `identity: null` means the ad-hoc local
+      build does not enforce entitlements, its absence would only show up on
+      the first real signing run, months later, with no clue why.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

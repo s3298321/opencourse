@@ -1,0 +1,790 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opencourse:course:1.5",
+  "title": "OpenCourse course manifest v1.5",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "slug",
+    "title",
+    "modules"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "1.0",
+        "1.1",
+        "1.2",
+        "1.3",
+        "1.4",
+        "1.5"
+      ]
+    },
+    "slug": {
+      "$ref": "#/$defs/slug"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "$ref": "#/$defs/courseVersion"
+    },
+    "uid": {
+      "$ref": "#/$defs/uid"
+    },
+    "description": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "difficulty": {
+      "enum": [
+        "beginner",
+        "intermediate",
+        "advanced"
+      ]
+    },
+    "estimated_hours": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "python_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cover_image": {
+      "$ref": "#/$defs/assetPath"
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/module"
+      }
+    }
+  },
+  "$defs": {
+    "courseVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$",
+      "description": "The course's own version, MAJOR.MINOR.PATCH. Required from schema 1.5. A server only accepts a version higher than any it has published for the course."
+    },
+    "uid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Server identity (UUID v4). Present on every element of an archive served by an OpenCourse server, so progress follows elements across versions. Ignored, and replaced, when an archive is imported as a local course; never written by Export ZIP."
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "enum": [
+            "python",
+            "c",
+            "llvm-ir"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "description": "How the exercises in scope are built and run. `packages` and `flags` are interpreted by the language: pip requirements and nothing for Python, -l libraries and compiler flags for C and LLVM IR."
+    },
+    "extraFilePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
+      "not": {
+        "pattern": "\\.[cC][oO][mM][mM][aA][nN][dD]$"
+      },
+      "description": "Relative to the exercise directory. Every segment must start with a letter or digit, which rules out '..', absolute paths and dotfiles."
+    },
+    "extraFile": {
+      "type": "object",
+      "required": [
+        "path",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/extraFilePath"
+        },
+        "content": {
+          "type": "string"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "assetPath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "(^/)|(^[a-zA-Z]:)|(\\.\\.)|(^~)"
+      },
+      "description": "Relative to the course root. No absolute paths, no '..' segments."
+    },
+    "lesson": {
+      "type": "object",
+      "required": [
+        "slug",
+        "title",
+        "blocks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "objectives": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "estimated_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        },
+        "flashcards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flashcard"
+          }
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "block": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/blockMarkdown"
+        },
+        {
+          "$ref": "#/$defs/blockImage"
+        },
+        {
+          "$ref": "#/$defs/blockVideo"
+        },
+        {
+          "$ref": "#/$defs/blockVisualization"
+        },
+        {
+          "$ref": "#/$defs/blockQuiz"
+        },
+        {
+          "$ref": "#/$defs/blockExercise"
+        }
+      ]
+    },
+    "blockMarkdown": {
+      "type": "object",
+      "required": [
+        "type",
+        "slug",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "markdown"
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "content": {
+          "type": "string"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "blockImage": {
+      "type": "object",
+      "required": [
+        "type",
+        "slug",
+        "src"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "image"
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "src": {
+          "$ref": "#/$defs/assetPath"
+        },
+        "alt": {
+          "type": "string"
+        },
+        "caption": {
+          "type": "string"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "blockVideo": {
+      "type": "object",
+      "required": [
+        "type",
+        "slug",
+        "src"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "video"
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "src": {
+          "$ref": "#/$defs/assetPath"
+        },
+        "poster": {
+          "$ref": "#/$defs/assetPath"
+        },
+        "caption": {
+          "type": "string"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "blockVisualization": {
+      "type": "object",
+      "required": [
+        "type",
+        "slug",
+        "src"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "visualization"
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "src": {
+          "$ref": "#/$defs/assetPath"
+        },
+        "title": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 2000
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "blockQuiz": {
+      "type": "object",
+      "required": [
+        "type",
+        "slug",
+        "id",
+        "kind",
+        "question"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "quiz"
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "single",
+            "multiple",
+            "text"
+          ]
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/quizOption"
+          }
+        },
+        "answers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "explanation": {
+          "type": "string"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "single",
+                  "multiple"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "options"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "text"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "answers"
+            ]
+          }
+        }
+      ]
+    },
+    "quizOption": {
+      "type": "object",
+      "required": [
+        "id",
+        "text",
+        "correct"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "correct": {
+          "type": "boolean"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "blockExercise": {
+      "type": "object",
+      "required": [
+        "type",
+        "slug",
+        "id",
+        "title",
+        "prompt",
+        "verification_instructions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "exercise"
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "starter_code": {
+          "type": "string"
+        },
+        "solution": {
+          "type": "string"
+        },
+        "tests": {
+          "type": "string"
+        },
+        "test_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extra_files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/extraFile"
+          }
+        },
+        "expected_output": {
+          "type": "string"
+        },
+        "stdin": {
+          "type": "string"
+        },
+        "match": {
+          "enum": [
+            "exact",
+            "trimmed",
+            "lines"
+          ]
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verification_instructions": {
+          "type": "string"
+        },
+        "hints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "lessonModule": {
+      "type": "object",
+      "required": [
+        "slug",
+        "title",
+        "lessons"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lessons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/lesson"
+          }
+        },
+        "type": {
+          "const": "lessons"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "module": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/lessonModule"
+        },
+        {
+          "$ref": "#/$defs/projectModule"
+        }
+      ]
+    },
+    "projectModule": {
+      "type": "object",
+      "required": [
+        "type",
+        "slug",
+        "title",
+        "project"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "project"
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "project": {
+          "$ref": "#/$defs/projectDefinition"
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "projectDefinition": {
+      "type": "object",
+      "required": [
+        "definition",
+        "requirements",
+        "deliverables"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "objectives": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "estimated_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "requirements": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "description"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/slug"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "uid": {
+                "$ref": "#/$defs/uid"
+              }
+            }
+          }
+        },
+        "deliverables": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title",
+              "description",
+              "acceptance_criteria"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/slug"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "paths": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                  "$ref": "#/$defs/extraFilePath"
+                }
+              },
+              "acceptance_criteria": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                }
+              },
+              "uid": {
+                "$ref": "#/$defs/uid"
+              }
+            }
+          }
+        },
+        "starter_files": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/extraFile"
+          }
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    },
+    "flashcard": {
+      "type": "object",
+      "required": [
+        "id",
+        "question",
+        "answer"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "question": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "answer": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "image": {
+          "type": "object",
+          "required": [
+            "src"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "src": {
+              "$ref": "#/$defs/assetPath"
+            },
+            "alt": {
+              "type": "string"
+            }
+          }
+        },
+        "uid": {
+          "$ref": "#/$defs/uid"
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "schema_version": {
+        "const": "1.5"
+      }
+    },
+    "required": [
+      "schema_version"
+    ]
+  },
+  "then": {
+    "required": [
+      "version"
+    ]
+  }
+}

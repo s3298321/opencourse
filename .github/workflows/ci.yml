@@ -28,8 +28,14 @@ jobs:
         with:
           node-version-file: app/.nvmrc
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: |
+            app/package-lock.json
+            server/package-lock.json
       - run: npm ci
+      # tests/server-live.test.ts imports the server itself, so the app's
+      # typecheck follows it into server/src and needs Fastify's types.
+      - run: npm ci
+        working-directory: server
       - run: npm run typecheck
       - run: npm run build:resources
       - run: npm test

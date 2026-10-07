@@ -72,6 +72,18 @@ jobs:
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # electron-builder uploads the DMG and its blockmap in parallel, and when
+      # the release does not exist yet each upload creates one: v0.1.0 came
+      # out as two drafts. Made here first, it is found and shared.
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")"
+          if [ -z "$existing" ]; then
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "${GITHUB_REF_NAME#v}" --notes ""
+          fi
+
       - name: Build and upload to a draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

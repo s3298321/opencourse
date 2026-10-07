@@ -4,7 +4,7 @@
   "description": "OpenCourse \u2014 courses on any subject, on the desktop, with runnable exercises",
   "main": "./out/main/index.js",
   "author": "OpenCourse",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "node": "^22.12.0 || >=24.0.0"
   },

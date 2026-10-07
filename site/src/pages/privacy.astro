@@ -1,0 +1,44 @@
+---
+// DRAFT: plain-language summary of what the code does. Have it reviewed before
+// launch, and keep it true when the app, the server or the hosting changes.
+import Base from '../layouts/Base.astro'
+import { SITE, catalogHost } from '../site.config'
+const updated = 'October 7, 2026'
+---
+<Base title="Privacy" description="What OpenCourse, opencourse.dev and the public catalog do with your data - in plain language.">
+  <article class="oc-wrap legal oc-prose">
+    <span class="oc-eyebrow">Last updated {updated}</span>
+    <h1>Privacy</h1>
+    <p>OpenCourse is built so that your learning stays yours. This page says, plainly, what each part of the project stores and sends.</p>
+
+    <h2>The OpenCourse app</h2>
+    <ul>
+      <li><strong>Everything stays on your Mac.</strong> Courses, progress, flashcard reviews, Coach notes, chats and settings are files and a database in your user folder. There is no OpenCourse account and no cloud copy.</li>
+      <li><strong>No analytics.</strong> The app reports nothing about how you use it to anyone.</li>
+      <li><strong>AI features talk to OpenAI, with your key.</strong> When you use the side chat or Coach, the lesson's text (never its quiz answers or exercise solutions), your question and, for Coach, your voice go to OpenAI under your own API key or ChatGPT subscription. OpenAI's terms and privacy policy apply to that. The key is stored in your Mac's keychain and sent only to OpenAI.</li>
+      <li><strong>Web search, when you turn it on,</strong> is run by OpenAI. To show where an answer came from, the app may fetch the small icons of the cited websites.</li>
+      <li><strong>Catalog servers you connect to</strong> receive what is needed to sign in, add, update and publish courses (see below for {catalogHost}).</li>
+    </ul>
+
+    <h2>This website, {SITE.url.replace(/^https?:\/\//, '')}</h2>
+    <ul>
+      <li>No cookies, no analytics, no third-party scripts, fonts or trackers. Your browser loads files from this site only.</li>
+      <li>The hosting provider keeps standard request logs (address, time, page, browser) for security and to keep the site running. They are not used to profile anyone.</li>
+      <li>The download button fetches the app from GitHub Releases, so GitHub sees that request.</li>
+    </ul>
+
+    <h2>The public catalog, {catalogHost}</h2>
+    <ul>
+      <li><strong>Browsing</strong> needs no account and sets no cookie.</li>
+      <li><strong>An account</strong> stores your email address, your username and a salted hash of your password - never the password itself. Your email is used only to send you sign-in codes and security notices.</li>
+      <li><strong>Signing in</strong> stores a session for each device you use (its browser or app name and when it was last used), which you can see and end in Settings. The web catalog uses a single, strictly necessary session cookie.</li>
+      <li><strong>Publishing</strong> stores the courses you publish and makes them public under your username. <strong>Adding a course</strong> is counted, so a course can show how many people learn with it; the count is never shown per person.</li>
+      <li><strong>Moderation and security</strong> actions are written to an audit log. The server's request logs (address, time, page) are kept for up to 30 days, for security and to limit abuse.</li>
+      <li><strong>Deleting your account</strong> in Settings removes it and every course you published, at once.</li>
+    </ul>
+    <p>Self-hosted catalog servers are run by their own operators, who decide their own policies.</p>
+
+    <h2>Questions</h2>
+    <p>Open an issue on <a href={SITE.issuesUrl} rel="noopener noreferrer">GitHub</a>, or write to the maintainers from there.</p>
+  </article>
+</Base>

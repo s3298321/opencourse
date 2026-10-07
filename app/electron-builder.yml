@@ -1,5 +1,6 @@
 appId: dev.opencourse.app
 productName: OpenCourse
+copyright: Copyright © 2026 Sergei K. and OpenCourse contributors
 directories:
   buildResources: resources
   output: dist
@@ -28,10 +29,14 @@ npmRebuild: false
 mac:
   icon: resources/icon.icns
   category: public.app-category.education
+  # Apple silicon only.
   target:
-    - dmg
+    - target: dmg
+      arch: [arm64]
   darkModeSupport: true
-  # Unsigned local build: notarization and signing are a separate, manual step.
+  # Unsigned by default. The release workflow (.github/workflows/release.yml)
+  # overrides this with the Developer ID and turns on notarization when the
+  # signing secrets exist; a local `npm run dmg` stays unsigned.
   identity: null
   # The dev Electron binary carries its own NSMicrophoneUsageDescription, so
   # `npm run dev` prompts correctly whether or not this is here. The packaged
@@ -47,3 +52,14 @@ mac:
 dmg:
   icon: resources/icon.icns
   title: OpenCourse ${version}
+  # No version in the name, on purpose: opencourse.dev links to
+  # releases/latest/download/OpenCourse-mac-arm64.dmg, which GitHub resolves to
+  # the newest release's file only while the name stays the same.
+  artifactName: OpenCourse-mac-${arch}.${ext}
+# `electron-builder --publish always` (the release workflow) uploads to a draft
+# release for the tag; a maintainer reviews the notes and publishes it.
+publish:
+  - provider: github
+    owner: s3298321
+    repo: opencourse
+    releaseType: draft

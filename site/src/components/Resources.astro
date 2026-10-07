@@ -1,0 +1,12 @@
+---
+import Icon from './Icon.astro'
+
+interface Props { items: { label: string; href: string; note: string }[]; class?: string }
+const { items, class: className } = Astro.props
+---
+<aside class:list={['resources', className]} aria-label="Downloads">
+  <h2>Downloads</h2>
+  <ul>
+    {items.map((r) => <li><a href={r.href} download><Icon name="download" size={15} /><span><code>{r.label}</code><small>{r.note}</small></span></a></li>)}
+  </ul>
+</aside>

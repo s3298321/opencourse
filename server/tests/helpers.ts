@@ -19,6 +19,8 @@ export async function testServer(overrides: Partial<ServerConfig> = {}): Promise
   const config: ServerConfig = {
     port: 0, host: '127.0.0.1', dataDir: join(dir, 'data'), name: 'Test server', description: 'A server for tests.',
     publicUrl: 'http://127.0.0.1:8787', smtpUrl: null, mailFrom: 'test@localhost', registration: 'open', dev: false, trustProxy: false,
+    // The web app's source template: the markers the shell fills are the ones the build keeps.
+    appUrl: 'https://opencourse.dev/download', webDir: join(__dirname, '..', 'web'),
     ...overrides
   }
   const outbox = new Outbox(false)

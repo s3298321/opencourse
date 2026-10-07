@@ -1,0 +1,7 @@
+# TLS for the catalog, by Let's Encrypt, and everything handed to the server.
+# Caddy replaces any X-Forwarded-For a client sends, so the server's rate
+# limits see the real address (OPENCOURSE_TRUST_PROXY=1).
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy server:8787
+}

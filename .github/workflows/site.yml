@@ -1,0 +1,85 @@
+# opencourse.dev. Rebuilt when the site, the design layer or the docs change,
+# when a release is published (the download button's version and notes), and
+# once a day (the star count). The deploy job runs only once the AWS hosting
+# exists - when the repository variables below are set. The hosting is built by
+# the separate, private opencourse-infra repository, whose
+# github_repository_variables output holds all four:
+#   SITE_BUCKET, SITE_DISTRIBUTION_ID, AWS_SITE_ROLE_ARN, AWS_REGION
+name: Website
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - site/**
+      - design/**
+      - docs/**
+      - app/src/core/course-schema.json
+      - app/src/core/theme/theme-schema.json
+      - .github/workflows/site.yml
+  release:
+    types: [published]
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLIC_CATALOG_URL: ${{ vars.CATALOG_URL || 'https://catalog.opencourse.dev' }}
+      - run: npm run check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/dist
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: vars.SITE_BUCKET != ''
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: dist
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_SITE_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Upload, assets before pages
+        env:
+          BUCKET: ${{ vars.SITE_BUCKET }}
+        run: |
+          # Hashed by Astro: cached forever. Everything else: revalidated, held by CloudFront for 5 minutes.
+          aws s3 sync dist "s3://$BUCKET" --delete --exclude "*" --include "_astro/*" \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync dist "s3://$BUCKET" --delete --exclude "_astro/*" \
+            --cache-control "public, max-age=0, s-maxage=300, must-revalidate"
+      - name: Invalidate CloudFront
+        run: aws cloudfront create-invalidation --distribution-id "${{ vars.SITE_DISTRIBUTION_ID }}" --paths "/*"

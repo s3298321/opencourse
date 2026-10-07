@@ -1,7 +1,8 @@
 /**
- * The catalog as queries. A course is listed when it has a current version and
- * its owner has not unpublished it; everything a stranger can see goes through
- * `listed` below, so an unpublished course cannot leak through a side door.
+ * The catalog as queries. A course is listed when it has a current version, its
+ * owner has not unpublished it and no moderator has removed it; everything a
+ * stranger can see goes through `LISTED` and `isListed` below, so an unlisted
+ * course cannot leak through a side door.
  */
 import type { Account, CatalogCourse, CatalogPage, CatalogSort, CatalogTag, CourseOverview, CourseStatus, ManagedCourse, VersionEntry, VersionStatus } from '@core/catalog/api'
 import { compareVersions } from '@core/catalog/semver'
@@ -9,7 +10,7 @@ import type { Db } from '../db'
 import { searchFields, type StoredOverview } from './overview'
 
 export const PAGE_SIZE = 24
-const LISTED = 'c.unlisted_at IS NULL AND c.current_version IS NOT NULL'
+const LISTED = 'c.unlisted_at IS NULL AND c.moderated_at IS NULL AND c.current_version IS NOT NULL'
 
 interface CourseRow {
   id: string
@@ -19,11 +20,16 @@ interface CourseRow {
   max_version: string
   updated_at: string
   unlisted_at: string | null
+  moderated_at: string | null
+  moderation_reason: string
   overview: string | null
   downloads: number
 }
 
-const SELECT_COURSE = `SELECT c.id, c.owner_id, a.username AS publisher, c.current_version, c.max_version, c.updated_at, c.unlisted_at, v.overview,
+/** Shown to anyone: published, not unpublished by its owner, not removed by a moderator. */
+const isListed = (row: CourseRow): boolean => row.unlisted_at === null && row.moderated_at === null && row.current_version !== null
+
+const SELECT_COURSE = `SELECT c.id, c.owner_id, a.username AS publisher, c.current_version, c.max_version, c.updated_at, c.unlisted_at, c.moderated_at, c.moderation_reason, v.overview,
   (SELECT COUNT(DISTINCT q.account_id) FROM acquisitions q WHERE q.course_id = c.id AND q.kind = 'add') AS downloads
   FROM courses c JOIN accounts a ON a.id = c.owner_id
   LEFT JOIN course_versions v ON v.course_id = c.id AND v.version = c.current_version`
@@ -75,6 +81,12 @@ export function catalogPage(d: Db, options: { q?: string; tags?: string[]; sort?
   return { courses: rows.map(card), total, page, pageSize: PAGE_SIZE }
 }
 
+/** Every listed course, for the sitemap. */
+export function listedCourses(d: Db): { id: string; updatedAt: string }[] {
+  return (d.prepare(`SELECT c.id, c.updated_at FROM courses c WHERE ${LISTED} ORDER BY c.updated_at DESC LIMIT 50000`).all() as { id: string; updated_at: string }[])
+    .map((row) => ({ id: row.id, updatedAt: row.updated_at }))
+}
+
 export function tagCounts(d: Db): CatalogTag[] {
   return (d.prepare(`SELECT t.tag, COUNT(*) AS count FROM course_tags t JOIN courses c ON c.id = t.course_id
     WHERE ${LISTED} GROUP BY t.tag ORDER BY count DESC, t.tag LIMIT 60`).all() as { tag: string; count: number }[])
@@ -90,7 +102,7 @@ export function visibleCourse(d: Db, id: string, viewer: Account | null): Course
   const row = courseRow(d, id)
   if (!row) return null
   if (row.owner_id === viewer?.id) return row.current_version ? row : null
-  return row.unlisted_at === null && row.current_version ? row : null
+  return isListed(row) ? row : null
 }
 
 interface VersionRow { version: string; published_at: string; release_note: string; deleted_at: string | null; downloads: number }
@@ -115,7 +127,7 @@ export function courseOverview(d: Db, id: string, viewer: Account | null): Cours
     ...card(row),
     prerequisites: o.prerequisites ?? [], outline: o.outline ?? [], totalMinutes: o.totalMinutes ?? 0,
     quizCount: o.quizCount ?? 0, exerciseCount: o.exerciseCount ?? 0, flashcardCount: o.flashcardCount ?? 0,
-    versions: versionEntries(d, row, owner), ownedByYou: owner, listed: row.unlisted_at === null
+    versions: versionEntries(d, row, owner), ownedByYou: owner, listed: isListed(row)
   }
 }
 
@@ -124,8 +136,8 @@ export function courseStatuses(d: Db, ids: string[], viewer: Account | null): Co
   for (const id of ids.slice(0, 500)) {
     const row = courseRow(d, id)
     if (!row) continue
-    const visible = row.owner_id === viewer?.id || row.unlisted_at === null
-    out.push({ id, currentVersion: visible ? row.current_version : null, listed: row.unlisted_at === null && row.current_version !== null })
+    const visible = row.owner_id === viewer?.id || isListed(row)
+    out.push({ id, currentVersion: visible ? row.current_version : null, listed: isListed(row) })
   }
   return out
 }
@@ -137,7 +149,9 @@ export function managedCourse(d: Db, id: string, owner: Account): ManagedCourse 
   const o = JSON.parse(row.overview ?? latest.overview) as StoredOverview
   return {
     id, title: o.title, slug: o.slug, currentVersion: row.current_version, maxVersion: row.max_version,
-    listed: row.unlisted_at === null && row.current_version !== null, downloads: Number(row.downloads), versions: versionEntries(d, row, true)
+    listed: isListed(row), downloads: Number(row.downloads), versions: versionEntries(d, row, true),
+    moderation: row.moderated_at ? { at: row.moderated_at, reason: row.moderation_reason } : null,
+    updatedAt: row.updated_at, hasCover: Boolean(o.hasCover) && row.current_version !== null
   }
 }
 
@@ -151,7 +165,7 @@ export function refreshListing(d: Db, id: string): void {
   d.prepare('DELETE FROM course_tags WHERE course_id = ?').run(id)
   d.prepare('DELETE FROM course_search WHERE course_id = ?').run(id)
   const row = courseRow(d, id)
-  if (!row || row.unlisted_at !== null || !row.current_version || !row.overview) return
+  if (!row || !isListed(row) || !row.overview) return
   const overview = JSON.parse(row.overview) as StoredOverview
   for (const tag of new Set(overview.tags.map((t) => t.toLowerCase()))) d.prepare('INSERT INTO course_tags(course_id, tag) VALUES (?, ?)').run(id, tag)
   const f = searchFields(overview, row.publisher)

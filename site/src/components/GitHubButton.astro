@@ -1,0 +1,13 @@
+---
+import Icon from './Icon.astro'
+import { SITE } from '../site.config'
+import { compactNumber, generated } from '../lib/data'
+
+interface Props { label?: string; class?: string }
+const { label = 'Star', class: className } = Astro.props
+const stars = generated.repo?.stars
+---
+<a class:list={['github-button', className]} href={SITE.repoUrl} rel="noopener noreferrer" aria-label={stars !== undefined ? `${label} on GitHub, ${stars} stars` : `${label} on GitHub`}>
+  <span class="github-button-main"><Icon name="github" size={16} /><span>{label}</span></span>
+  {stars !== undefined && <span class="github-button-count" data-count={stars}>{compactNumber(stars)}</span>}
+</a>

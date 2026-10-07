@@ -1,0 +1,24 @@
+---
+import Docs from '../../layouts/Docs.astro'
+import Icon from '../../components/Icon.astro'
+import { loadDocs, type Doc } from '../../lib/docs'
+
+export function getStaticPaths() {
+  const docs = loadDocs()
+  return docs.map((doc, i) => ({ params: { slug: doc.slug }, props: { doc, prev: docs[i - 1] ?? null, next: docs[i + 1] ?? null } }))
+}
+
+interface Props { doc: Doc; prev: Doc | null; next: Doc | null }
+const { doc, prev, next } = Astro.props
+---
+<Docs title={doc.navTitle} description={doc.description} current={doc.slug} headings={doc.headings}>
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/docs">Docs</a><Icon name="chevron-right" size={14} /><span>{doc.group}</span></nav>
+  <article class="oc-prose doc" data-pagefind-body set:html={doc.html} />
+  <footer class="doc-foot">
+    <a class="edit-link" href={doc.editUrl} rel="noopener noreferrer"><Icon name="pen-line" size={15} />Edit this page on GitHub</a>
+    <div class="doc-pager">
+      {prev ? <a class="oc-card pager-card" href={`/docs/${prev.slug}`}><small>Previous</small><span><Icon name="chevron-left" size={15} />{prev.navTitle}</span></a> : <span />}
+      {next && <a class="oc-card pager-card next" href={`/docs/${next.slug}`}><small>Next</small><span>{next.navTitle}<Icon name="chevron-right" size={15} /></span></a>}
+    </div>
+  </footer>
+</Docs>

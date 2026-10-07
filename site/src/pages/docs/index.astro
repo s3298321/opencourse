@@ -1,0 +1,38 @@
+---
+import Docs from '../../layouts/Docs.astro'
+import Icon from '../../components/Icon.astro'
+import { DOC_RESOURCES, docGroups } from '../../lib/docs'
+import { SITE } from '../../site.config'
+
+const icons: Record<string, 'graduation-cap' | 'file-text' | 'palette' | 'server' | 'globe'> = {
+  'getting-started': 'graduation-cap', 'course-format': 'file-text', 'theme-format': 'palette', 'server-api': 'globe', 'self-hosting': 'server'
+}
+const resources = Object.values(DOC_RESOURCES).flat()
+---
+<Docs title="Documentation" description="Everything about OpenCourse: getting started, the course and theme formats, the server API and hosting your own catalog.">
+  <header class="docs-hero oc-enter">
+    <span class="oc-eyebrow">Documentation</span>
+    <h1>Learn, write and host with OpenCourse</h1>
+    <p>These pages are the repository's own <a href={`${SITE.repoUrl}/tree/master/docs`} rel="noopener noreferrer"><code>docs/</code></a>, published on every change - so they always describe the code as it is.</p>
+  </header>
+  {docGroups().map((group) => (
+    <section class="docs-index-group">
+      <h2>{group.title}</h2>
+      <div class="docs-cards oc-stagger">
+        {group.docs.map((doc) => (
+          <a class="doc-card oc-card oc-glow" data-glow href={`/docs/${doc.slug}`}>
+            <span class="bento-icon"><Icon name={icons[doc.slug] ?? 'file-text'} /></span>
+            <strong>{doc.navTitle}</strong>
+            <span class="muted">{doc.description}</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  ))}
+  <section class="docs-index-group">
+    <h2>Downloads</h2>
+    <ul class="download-list">
+      {resources.map((r) => <li><a class="oc-card" href={r.href} download><Icon name="download" size={16} /><code>{r.label}</code><span class="muted">{r.note}</span></a></li>)}
+    </ul>
+  </section>
+</Docs>

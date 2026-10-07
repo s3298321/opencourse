@@ -1,0 +1,108 @@
+/* OpenCourse on the web: the app's own look, for the catalog server's web app
+   and for opencourse.dev.
+
+   The first group of tokens is the app's default palette, copied from
+   app/src/renderer/styles.css :root under the same names. app/tests/web-design.test.ts
+   fails if any of them drifts from the app's value, so change a shared token
+   there first and here in the same commit. Tokens that exist only on the web
+   have names the app does not use.
+
+   The web is dark only, like the app without a theme. */
+:root {
+  /* ----- shared with the app ----- */
+  --fg: #dedee3;
+  --muted: #a5a5af;
+  --bg: #18181b;
+  --card: #202024;
+  --raised: #28282d;
+  --accent: #e4e4e8;
+  --accent-fg: #202024;
+  --border: #393940;
+  --selected: linear-gradient(160deg, #38383f 0%, #2c2c32 100%);
+  --selected-edge: rgba(222, 222, 227, 0.10);
+  --ok: #78bd91;
+  --err: #ee9292;
+  --chip-bg: #2b2b30;
+  --chip-fg: #c5c5cd;
+  --ok-bg: #13231a;
+  --ok-border: #2b4b35;
+  --err-bg: #2b1719;
+  --err-border: #563036;
+  --accent-ring: rgba(196, 196, 205, 0.15);
+  --code-bg: #1d1d21;
+  --scrollbar: rgba(222, 222, 227, 0.18);
+  --scrollbar-hover: rgba(222, 222, 227, 0.36);
+  --chrome: rgba(0, 0, 0, 0.52);
+  --glass: rgba(0, 0, 0, 0.25);
+  --popover: rgba(36, 36, 41, 0.94);
+  --err-fg: #fff;
+  --overlay: rgba(0, 0, 0, 0.35);
+  --shadow-rgb: 0 0 0;
+  --hover-ring: rgba(238, 238, 239, 0.12);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --ui-size: 15px;
+  --ui-line-height: 1.55;
+  --heading-weight: 700;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
+  --brand-weight: 600;
+  --brand-letter-spacing: -0.025em;
+
+  /* ----- the web's own ----- */
+  /* The app's stack, with Inter (self-hosted by each site) standing in for SF
+     where there is no SF: a Mac sees exactly the app's type. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter Variable", "Segoe UI", Roboto, sans-serif;
+  --surface: #1c1c20;
+  --header-bg: rgba(24, 24, 27, 0.72);
+  --line: rgba(222, 222, 227, 0.08);
+  --line-strong: rgba(222, 222, 227, 0.16);
+  --sheen: rgba(238, 238, 242, 0.09);
+  /* The mark's stars: brushed silver, lit from above. */
+  --silver: linear-gradient(180deg, #ffffff 0%, #e6e6ea 38%, #a9a9b3 100%);
+  --silver-edge: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04));
+  --aurora-a: rgba(176, 184, 214, 0.13);
+  --aurora-b: rgba(214, 214, 224, 0.08);
+  --aurora-c: rgba(120, 132, 170, 0.10);
+  --grain: url('./assets/grain.svg');
+  --grain-size: 160px 160px;
+  --sparkle: url('./assets/sparkle.svg');
+  --chevron: url('./assets/chevron.svg');
+
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 3px rgb(var(--shadow-rgb) / 0.2);
+  --shadow-md: 0 6px 20px rgb(var(--shadow-rgb) / 0.25);
+  --shadow-lg: 0 12px 40px rgb(var(--shadow-rgb) / 0.35);
+  --shadow-xl: 0 18px 48px rgb(var(--shadow-rgb) / 0.28), 0 40px 120px rgb(var(--shadow-rgb) / 0.35);
+
+  --dur-fast: 140ms;
+  --dur: 200ms;
+  --dur-slow: 380ms;
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: clamp(1.6rem, 1.2rem + 1.4vw, 2.1rem);
+  --text-3xl: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  --text-display: clamp(2.5rem, 1.5rem + 4.6vw, 4.75rem);
+
+  --content: 1180px;
+  --gutter: clamp(16px, 4vw, 32px);
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --chrome: #1c1c20; --glass: #18181b; --popover: #242429; --header-bg: #1c1c20; --grain: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --border: #74747c; --muted: #c5c5cd; --selected-edge: rgba(222, 222, 227, 0.55); --line: rgba(222, 222, 227, 0.4); --line-strong: rgba(222, 222, 227, 0.6); }
+}

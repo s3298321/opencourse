@@ -6,6 +6,10 @@ them — runnable, auto-graded coding exercises. When you want to share courses,
 connect to an **OpenCourse server** (`server/`): browse its catalog, add courses
 and keep them updated, and publish your own.
 
+Download it from **[opencourse.dev](https://opencourse.dev)**, which also hosts
+these docs; the public catalog is **[catalog.opencourse.dev](https://catalog.opencourse.dev)**.
+Free and open source under the [MIT License](LICENSE).
+
 And two ways to ask. **Side chat** opens beside the lesson you are reading:
 highlight a paragraph, ask what it means, ask for it a different way. **Coach**
 is the other one — learn something by talking about it, a spoken conversation
@@ -35,9 +39,15 @@ app/src/core/toolchains/    one descriptor per language; nothing else names one
 app/src/core/coach/         the pure half of Coach: prompt, tools, event reducer
 app/src/core/sidechat/      the pure half of side chat: lesson context, thread rules
 app/src/core/catalog/       server courses: identity, versions, the API contract
-server/                     the OpenCourse server: accounts, catalog, publishing, web catalog
+server/                     the OpenCourse server: accounts, catalog, publishing, and its web app
+server/web/                 the server's web app (React): catalog, accounts, my courses, admin
+site/                       opencourse.dev (Astro, static): the app, the download, these docs
+design/                     the web's design layer: the app's tokens, shared by site and web app
+docs/getting-started.md     the user's guide, from download to publishing
+docs/self-hosting.md        running a catalog server: Docker, mail, admin, backups
 docs/course-format.md       the course format, v1.5
 docs/server-api.md          the server API, v1
+.github/workflows/          CI, app releases, the website, the server image
 docs/example-course/        a minimal course exercising every block type
 app/src/core/theme/         themes: the format, its compiler and its contrast audit
 docs/theme-format.md        the theme format, v1
@@ -66,7 +76,7 @@ Other things you can run from `app/`:
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run smoke` | Boots the app on a throwaway profile and drives the real renderer through 146 checks, including simulated subscription streaming and project tools; writes a report to `/tmp/opencourse-smoke.json` |
 | `npm run shots` | Screenshots the app's own screens into `/tmp/opencourse-shots` (uses `capturePage`, so no screen-recording permission) |
-| `npm run dmg` | Unsigned `.dmg` into `app/dist/` (signing and notarization are a separate, manual step) |
+| `npm run dmg` | Unsigned `OpenCourse-mac-arm64.dmg` into `app/dist/`. Releases are built by CI, signed when it has the credentials (see [Releasing](#releasing)) |
 
 ```bash
 npm run check:exercises   # every solution must pass, every starter must fail
@@ -359,7 +369,40 @@ and gives each person an account. In the app:
   the course.
 
 Run one locally with `cd server && npm install && npm run dev`, then connect to
-`http://localhost:8787`. Sign-up codes appear in that terminal.
+`http://localhost:8787`. Sign-up codes appear in that terminal. The same command
+serves the server's web app at <http://localhost:5173>: the catalog, accounts,
+**My courses** (rollback, unlist and delete versions from a browser) and, for an
+administrator, moderation. `npm run seed` fills it with courses to look at, and
+[`docs/self-hosting.md`](docs/self-hosting.md) covers running one for real.
+
+## The website
+
+`site/` is opencourse.dev: an Astro site, built to static files. Its docs are
+this repository's `docs/`, its download button is GitHub's permalink to the
+newest release's DMG, and its star count and version come from GitHub's API at
+build time - a visitor's browser loads nothing from anywhere else.
+
+```bash
+cd site
+npm install
+npm run dev          # http://localhost:4321
+npm run build        # dist/, plus the Pagefind index for the docs search
+npm run check        # astro check, then every link, anchor and download in dist/
+```
+
+## Releasing
+
+1. Raise `version` in `app/package.json` and commit.
+2. Tag it: `git tag v0.2.0 && git push origin v0.2.0`.
+3. `.github/workflows/release.yml` builds `OpenCourse-mac-arm64.dmg` on macOS
+   and uploads it to a **draft** release - signed and notarized when the
+   repository has the Apple secrets the workflow lists, unsigned (and marked so
+   on the release) otherwise.
+4. Write the notes and publish the draft. opencourse.dev rebuilds itself with
+   the new version.
+
+The catalog server is released the same way with a `server-v<version>` tag,
+which publishes `ghcr.io/s3298321/opencourse-server`.
 
 ## macOS, `~/Documents`, and Electron
 
@@ -431,9 +474,11 @@ The current course-format version is 1.5; imports from 1.0–1.4 remain supporte
 The generated constellation master and its prompt are in
 `app/resources/branding/`. `npm run build:icons` (from `app/`, on macOS)
 recreates `resources/icon.png`, `resources/icon.icns`, and the renderer mark
-using `sips` and `iconutil`. The app bundle and DMG use the ICNS; the renderer,
-About panel, and development Dock use PNG exports. Generated assets are
-checked in, so ordinary builds do not require image generation.
+using `sips` and `iconutil`, and the web's sizes in `design/assets/brand/`
+(`node scripts/build-icons.mjs web` redoes only those). The app bundle and DMG
+use the ICNS; the renderer, About panel, and development Dock use PNG exports,
+and the website and the server's web app use the `design/` copies. Generated
+assets are checked in, so ordinary builds do not require image generation.
 
 To smoke-test a packaged app with a disposable profile, set `OPENCOURSE_SMOKE=1`
 and `OPENCOURSE_SMOKE_CONTENT` to the checkout's absolute `content/` path before
@@ -454,3 +499,8 @@ FSRS schedules the next review at a 90% retention target and the overview shows
 when to return, plus estimated recall. Ratings persist immediately in the
 current user's local database and never change lesson completion. Course ZIPs
 include card content and images, but exclude learner schedules and history.
+
+## License
+
+[MIT](LICENSE). The example theme's pictures and font are free to use, change
+and share, as `docs/example-theme/README.md` says.

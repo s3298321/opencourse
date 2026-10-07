@@ -13,6 +13,7 @@ import { validateManifest } from '@core/schema'
 import { CURRENT_SCHEMA_VERSION } from '@core/course-document'
 import { getToolchain, outputMatch, resolveRuntime, TOOLCHAIN_IDS } from '@core/toolchains'
 import type { CourseManifest, ExerciseBlock } from '@core/types'
+import { skipWithoutContent } from './helpers/content'
 
 const REPO = join(__dirname, '..', '..')
 
@@ -162,7 +163,7 @@ describe.each([
     projects: ['data-audit-project', 'experiment-decision-project', 'churn-handoff-project'] },
   { slug: 'operating-systems-and-c', language: 'c', lessons: 30, quizzes: 60, exercises: 21,
     projects: ['stream-counter', 'file-copy', 'small-launcher'] }
-])('content/$slug', ({ slug, language, lessons, quizzes, exercises, projects }) => {
+].filter(({ slug }) => !skipWithoutContent(slug)))('content/$slug', ({ slug, language, lessons, quizzes, exercises, projects }) => {
   const dir = join(REPO, 'content', slug)
   const manifest = JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
   const course = buildCourse(manifest, dir)
@@ -217,10 +218,11 @@ describe.each(COURSE_DIRS.filter((dir) => dir.startsWith(join(REPO, 'content')))
   })
 })
 
-describe('content/intro-to-llvm', () => {
+const skipLlvm = skipWithoutContent('intro-to-llvm')
+describe.skipIf(skipLlvm)('content/intro-to-llvm', () => {
   const dir = join(REPO, 'content', 'intro-to-llvm')
-  const manifest = JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
-  const course = buildCourse(manifest, dir)
+  const manifest = skipLlvm ? (undefined as never) : JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
+  const course = skipLlvm ? (undefined as never) : buildCourse(manifest, dir)
 
   const exercises = (): ExerciseBlock[] =>
     course.modules.flatMap((m) => (m.lessons ?? []).flatMap((l) => l.blocks.filter((b) => b.type === 'exercise')))

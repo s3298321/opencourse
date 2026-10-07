@@ -1,0 +1,313 @@
+---
+import { Picture } from 'astro:assets'
+import Base from '../layouts/Base.astro'
+import Icon from '../components/Icon.astro'
+import Sparkles from '../components/Sparkles.astro'
+import DownloadButton from '../components/DownloadButton.astro'
+import GitHubButton from '../components/GitHubButton.astro'
+import WindowFrame from '../components/WindowFrame.astro'
+import { SITE, catalogHost } from '../site.config'
+import { compactNumber, generated, release } from '../lib/data'
+import sidechat from '../assets/screens/07-sidechat-ask-answer.png'
+import viz from '../assets/screens/11-viz.png'
+import quiz from '../assets/screens/12-quiz.png'
+import workbench from '../assets/screens/17-workbench-pass.png'
+
+const subjects = ['Data science', 'Operating systems', 'French for travel', 'LLVM and compilers', 'Statistics', 'Music theory', 'Python', 'Organic chemistry', 'Photography', 'Linear algebra', 'C programming', 'World history', 'Machine learning', 'Public speaking', 'SQL', 'Philosophy of mind']
+const featured = generated.featured.length >= 3 ? generated.featured.slice(0, 6) : []
+const faq = [
+  { q: 'Is OpenCourse free?', a: `Yes. The app is free and open source under the MIT License, and so is the catalog server. The AI features - side chat and Coach - use your own OpenAI account, through an API key or a ChatGPT subscription, so you pay OpenAI for what you use and nothing else.` },
+  { q: 'Which Macs does it run on?', a: `Macs with Apple silicon, on ${SITE.minimumMacOS} or later.` },
+  { q: 'Do I need an account?', a: `No. OpenCourse works entirely on your Mac. An account is only for a catalog server, such as ${catalogHost}, and only if you want to add courses from it or publish your own.` },
+  { q: 'Where do courses come from?', a: `Three places: a catalog server you connect to, a course archive (.zip) someone sends you, or the editor built into the app, where you write your own. The format is documented and open, so any tool can produce one.` },
+  { q: 'Is it only for programming?', a: 'No - a course can be about anything. Lessons, pictures, interactive visualizations, quizzes and flashcards work for any subject. Programming courses additionally get exercises that run and grade your code, in Python, C or LLVM IR.' },
+  { q: 'What happens to my data?', a: 'Your courses, progress, notes and chats stay on your Mac. The app sends nothing anywhere unless you use an AI feature (which talks to OpenAI with your key) or a catalog server you chose. There are no analytics.' },
+  { q: 'Can I run my own catalog?', a: 'Yes. The catalog server is part of the same open-source project: run it with Docker on any machine, for a class, a team or a community. The documentation explains how.' }
+]
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'OpenCourse',
+  applicationCategory: 'EducationalApplication',
+  operatingSystem: `macOS (${SITE.minimumMacOS} or later)`,
+  description: SITE.description,
+  url: SITE.url,
+  license: 'https://opensource.org/licenses/MIT',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  ...(release ? { softwareVersion: release.version, downloadUrl: SITE.downloadUrl } : {})
+}
+---
+<Base active="features" jsonLd={jsonLd}>
+  <!-- ============ hero ============ -->
+  <section class="hero">
+    <div class="oc-aurora" aria-hidden="true"></div>
+    <Sparkles count={10} class="hero-sparkles" />
+    <div class="oc-wrap hero-inner">
+      <div class="hero-copy oc-stagger">
+        <a class="hero-eyebrow" href={SITE.repoUrl} rel="noopener noreferrer"><span class="oc-sparkle"></span>Free and open source · for Mac<Icon name="arrow-right" size={14} /></a>
+        <h1 class="hero-title"><span class="oc-silver-text">Courses that</span> <span class="oc-silver-text">teach back.</span></h1>
+        <p class="hero-lede">OpenCourse is a Mac app for courses on any subject: readable lessons, live visualizations, quizzes and flashcards, exercises that grade themselves - and a tutor that has read the lesson with you.</p>
+        <div class="hero-actions">
+          <DownloadButton />
+          <a class="oc-btn xl secondary" href={SITE.catalogUrl}>Browse the catalog<Icon name="arrow-right" size={18} /></a>
+        </div>
+        <ul class="hero-trust">
+          <li><Icon name="check" size={15} />MIT licensed</li>
+          <li><Icon name="check" size={15} />No account needed</li>
+          <li><Icon name="check" size={15} />Your progress stays on your Mac</li>
+        </ul>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-glow" aria-hidden="true"></div>
+        <WindowFrame src={sidechat} alt="A lesson about Python's asyncio in OpenCourse, with the side chat open beside it: the learner highlighted a sentence, asked about it, and the answer cites two pages from docs.python.org." eager class="hero-window" />
+        <div class="float-chip chip-pass oc-float" aria-hidden="true"><Icon name="circle-check" size={16} /><span><strong>3 passed</strong> in 1.53s</span></div>
+        <div class="float-chip chip-quiz oc-float" aria-hidden="true"><span class="chip-dot"></span><span>Quiz · <strong>4 of 5</strong></span></div>
+        <div class="float-chip chip-cite oc-float" aria-hidden="true"><span class="cite-n">1</span><span>docs.python.org</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ any subject ============ -->
+  <section class="subjects" aria-label="Any subject">
+    <p class="subjects-label oc-eyebrow">One app, any subject</p>
+    <div class="marquee">
+      <ul class="marquee-track">
+        {subjects.map((s) => <li><span class="oc-sparkle"></span>{s}</li>)}
+      </ul>
+      <ul class="marquee-track" aria-hidden="true">
+        {subjects.map((s) => <li><span class="oc-sparkle"></span>{s}</li>)}
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ features ============ -->
+  <section id="features" class="section">
+    <div class="oc-wrap">
+      <header class="section-head oc-reveal">
+        <span class="oc-eyebrow">What is inside</span>
+        <h2>Everything a good course needs,<br /> in one quiet window.</h2>
+        <p>Not a video player and not a chatbot: a place to read, try, check and ask - at your own pace, offline, for as long as it takes.</p>
+      </header>
+      <div class="bento">
+        <article class="bento-card bento-lessons oc-card oc-glow oc-reveal" data-glow>
+          <div class="bento-text">
+            <span class="bento-icon"><Icon name="book-open" /></span>
+            <h3>Lessons that move</h3>
+            <p>Markdown that reads like a good book, pictures, and interactive visualizations you can step through, right inside the lesson.</p>
+          </div>
+          <div class="bento-shot"><Picture src={viz} alt="A visualization stepping through the life of a coroutine, inside a lesson." formats={['avif', 'webp']} fallbackFormat="webp" widths={[480, 800, 1200]} sizes="(max-width: 900px) 100vw, 600px" /></div>
+        </article>
+        <article class="bento-card oc-card oc-glow oc-reveal" data-glow>
+          <span class="bento-icon"><Icon name="code-xml" /></span>
+          <h3>Exercises that grade themselves</h3>
+          <p>A real editor and terminal. Your code runs against the course's checks - Python, C or LLVM IR - on your own machine.</p>
+          <div class="mock-term" aria-hidden="true">
+            <span class="mock-line muted">$ run checks</span>
+            <span class="mock-line"><span class="ok">✓</span> results come back in order</span>
+            <span class="mock-line"><span class="ok">✓</span> finishes under 1.2 s</span>
+            <span class="mock-line"><span class="ok">✓</span> no task left running</span>
+            <span class="mock-line ok-strong">3 passed in 1.53s</span>
+          </div>
+        </article>
+        <article class="bento-card oc-card oc-glow oc-reveal" data-glow>
+          <span class="bento-icon"><Icon name="message-square-text" /></span>
+          <h3>Ask about this</h3>
+          <p>Highlight any passage and ask. The side chat knows the lesson you are on - and never the quiz answers.</p>
+          <div class="mock-chat" aria-hidden="true">
+            <div class="mock-quote">only the blocking call is handed to a worker</div>
+            <div class="mock-bubble">Why doesn't the loop block here?</div>
+            <div class="mock-answer">Because <code>to_thread</code> runs it elsewhere and <code>await</code> hands the result back.<sup>1</sup></div>
+          </div>
+        </article>
+        <article class="bento-card oc-card oc-glow oc-reveal" data-glow>
+          <span class="bento-icon"><Icon name="mic" /></span>
+          <h3>Coach, out loud</h3>
+          <p>A spoken conversation with a coach for whatever you want to get better at. It keeps notes, so the next session picks up where this one stopped.</p>
+          <div class="mock-voice" aria-hidden="true">
+            <div class="wave">{Array.from({ length: 28 }, () => <span />)}</div>
+            <p><strong>You</strong> euh… le chien?</p>
+            <p class="muted"><strong>Coach</strong> exactement. Et « cat » ?</p>
+          </div>
+        </article>
+        <article class="bento-card oc-card oc-glow oc-reveal" data-glow>
+          <span class="bento-icon"><Icon name="layers" /></span>
+          <h3>Flashcards that come back</h3>
+          <p>Cards come back just before you would forget them. Review what is due in a minute a day.</p>
+          <div class="mock-cards" aria-hidden="true">
+            <div class="mock-card back"></div>
+            <div class="mock-card"><span class="muted">What does SSA stand for?</span><span class="mock-rate"><i>Again</i><i>Hard</i><i class="on">Good</i><i>Easy</i></span></div>
+          </div>
+        </article>
+        <article class="bento-card oc-card oc-glow oc-reveal" data-glow>
+          <span class="bento-icon"><Icon name="palette" /></span>
+          <h3>Make it yours</h3>
+          <p>Themes change colours, fonts and pictures, never what the app does. Install one, or make your own.</p>
+          <div class="mock-swatches" aria-hidden="true"><span class="sw sw1"></span><span class="sw sw2"></span><span class="sw sw3"></span><span class="sw sw4"></span><span class="sw sw5"></span></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ deep dives ============ -->
+  <section class="section dives">
+    <div class="oc-wrap">
+      <article class="dive oc-reveal">
+        <div class="dive-text">
+          <span class="oc-eyebrow">Practice</span>
+          <h2>Real code, real compilers, instant feedback.</h2>
+          <p>Programming exercises open in a workbench with an editor, a terminal and the course's own checks. Run them as often as you like; when they pass, the exercise is done.</p>
+          <ul class="ticks">
+            <li><Icon name="check" size={16} />Python in a virtual environment per course</li>
+            <li><Icon name="check" size={16} />C with Apple's own compiler, from the Command Line Tools</li>
+            <li><Icon name="check" size={16} />LLVM IR, verified the way a compiler would</li>
+          </ul>
+        </div>
+        <WindowFrame src={workbench} alt="The exercise workbench: the brief on the left, Python code in the editor, and all three checks passing in the terminal." />
+      </article>
+      <article class="dive reverse oc-reveal">
+        <div class="dive-text">
+          <span class="oc-eyebrow">Check yourself</span>
+          <h2>Know what you know - and what you do not yet.</h2>
+          <p>Quizzes explain every answer, right or wrong. Objectives and key takeaways frame each lesson, and your progress follows you through every update of a course.</p>
+          <ul class="ticks">
+            <li><Icon name="check" size={16} />Single and multiple choice, with explanations</li>
+            <li><Icon name="check" size={16} />Flashcards with spaced review</li>
+            <li><Icon name="check" size={16} />Projects that span several lessons</li>
+          </ul>
+        </div>
+        <WindowFrame src={quiz} alt="A lesson's key takeaways followed by a quiz; a wrong answer is explained in place." />
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ author and share ============ -->
+  <section class="section share">
+    <div class="oc-wrap">
+      <header class="section-head oc-reveal">
+        <span class="oc-eyebrow">Teach</span>
+        <h2>Write a course. Share it with everyone.</h2>
+        <p>The same app that plays courses writes them, and catalog servers carry them to learners - with versions, updates and rollbacks.</p>
+      </header>
+      <div class="share-grid oc-stagger">
+        <article class="oc-panel oc-edge share-card">
+          <span class="bento-icon"><Icon name="pen-line" /></span>
+          <h3>Author in the app</h3>
+          <p>Modules, lessons, quizzes, exercises and flashcards in a real editor that saves nothing until you say so. Or write the open, documented format by hand.</p>
+          <a class="more-link" href="/docs/course-format">The course format<Icon name="arrow-right" size={15} /></a>
+        </article>
+        <article class="oc-panel oc-edge share-card">
+          <span class="bento-icon"><Icon name="cloud-upload" /></span>
+          <h3>Publish to a catalog</h3>
+          <p>Publish from the editor to {catalogHost}. Learners add your course in one click, and every new version reaches them as an update that keeps their progress.</p>
+          <a class="more-link" href={SITE.catalogUrl}>Visit the catalog<Icon name="arrow-up-right" size={15} /></a>
+        </article>
+        <article class="oc-panel oc-edge share-card">
+          <span class="bento-icon"><Icon name="server" /></span>
+          <h3>Host your own</h3>
+          <p>A class, a company, a community: run your own catalog server from the same open-source repository, with accounts, moderation and an admin console.</p>
+          <a class="more-link" href="/docs/self-hosting">Self-hosting guide<Icon name="arrow-right" size={15} /></a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  {featured.length > 0 && (
+    <section class="section featured">
+      <div class="oc-wrap">
+        <header class="section-head row oc-reveal">
+          <div>
+            <span class="oc-eyebrow">From the catalog</span>
+            <h2>Popular right now</h2>
+          </div>
+          <a class="oc-btn secondary" href={SITE.catalogUrl}>All courses<Icon name="arrow-up-right" size={16} /></a>
+        </header>
+        <ul class="featured-grid oc-stagger">
+          {featured.map((course) => (
+            <li>
+              <a class="featured-card oc-card oc-glow" data-glow href={`${SITE.catalogUrl}/courses/${encodeURIComponent(course.id)}`}>
+                <div class="featured-cover">{course.cover ? <img src={course.cover} alt="" loading="lazy" /> : <span class="oc-sparkle" />}</div>
+                <div class="featured-body">
+                  <h3>{course.title}</h3>
+                  <p class="muted">{[course.subject, `${course.lessonCount} lessons`].filter(Boolean).join(' · ')}</p>
+                  <p class="featured-meta"><Icon name="users" size={14} />{compactNumber(course.downloads)}<span>by {course.publisher}</span></p>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  )}
+
+  <!-- ============ privacy ============ -->
+  <section class="section privacy">
+    <div class="oc-wrap privacy-inner oc-reveal">
+      <div class="privacy-art" aria-hidden="true">
+        <img src="/brand/mark-256.png" alt="" width="128" height="128" />
+        <span class="privacy-ring"></span><span class="privacy-ring two"></span>
+      </div>
+      <div class="privacy-text">
+        <span class="oc-eyebrow">Local-first</span>
+        <h2>Your Mac. Your data.</h2>
+        <div class="privacy-points">
+          <p><Icon name="hard-drive" size={18} /><span><strong>Everything stays on your Mac.</strong> Courses, progress, notes and chats live in your user folder - no account, no cloud, works offline.</span></p>
+          <p><Icon name="key-round" size={18} /><span><strong>Your key, in your keychain.</strong> AI features use your own OpenAI account; the key is sealed by macOS and only ever sent to OpenAI.</span></p>
+          <p><Icon name="shield-check" size={18} /><span><strong>No analytics. None.</strong> The app does not phone home, and neither does this website.</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ open source ============ -->
+  <section class="section open">
+    <div class="oc-wrap">
+      <div class="open-card oc-panel oc-edge oc-glow oc-reveal" data-glow>
+        <div class="open-text">
+          <span class="oc-eyebrow">Open source</span>
+          <h2>Built in the open.</h2>
+          <p>The app, the catalog server, the formats and this website are one MIT-licensed repository. Read it, fork it, improve it - or just star it to follow along.</p>
+          <div class="open-actions">
+            <GitHubButton label="Star on GitHub" class="lg" />
+            <a class="oc-btn secondary" href={SITE.repoUrl} rel="noopener noreferrer"><Icon name="code-xml" size={16} />Read the code</a>
+          </div>
+        </div>
+        <dl class="open-stats">
+          <div><dt>Stars</dt><dd data-count={generated.repo?.stars ?? 0}>{generated.repo ? compactNumber(generated.repo.stars) : '–'}</dd></div>
+          <div><dt>License</dt><dd>MIT</dd></div>
+          <div><dt>Platform</dt><dd>macOS</dd></div>
+          <div><dt>Price</dt><dd>Free</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ faq ============ -->
+  <section class="section faq">
+    <div class="oc-wrap faq-inner">
+      <header class="section-head oc-reveal">
+        <span class="oc-eyebrow">Questions</span>
+        <h2>Good to know</h2>
+      </header>
+      <div class="faq-list oc-reveal">
+        {faq.map((item, i) => (
+          <details class="faq-item" open={i === 0}>
+            <summary>{item.q}<Icon name="chevron-down" size={18} /></summary>
+            <p>{item.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ final call ============ -->
+  <section class="final">
+    <div class="oc-aurora" aria-hidden="true"></div>
+    <Sparkles count={10} class="final-sparkles" />
+    <div class="oc-wrap final-inner oc-reveal">
+      <img class="final-mark" src="/brand/mark-256.png" alt="" width="96" height="96" />
+      <h2 class="oc-silver-text">Learn something properly.</h2>
+      <p>Free for Mac. Open source. Yours.</p>
+      <DownloadButton />
+    </div>
+  </section>
+</Base>

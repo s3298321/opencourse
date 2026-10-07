@@ -1,0 +1,130 @@
+---
+/**
+ * Every page of opencourse.dev: the head (title, previews, structured data),
+ * the glass header, the page, the footer. Styles are files and the one script
+ * is a bundled module, so the site runs under a CSP with no 'unsafe-inline'.
+ */
+import '@fontsource-variable/inter/wght.css'
+import '@design/tokens.css'
+import '@design/base.css'
+import '@design/motion.css'
+import '../styles/site.css'
+import Brand from '../components/Brand.astro'
+import GitHubButton from '../components/GitHubButton.astro'
+import Icon from '../components/Icon.astro'
+import { SITE } from '../site.config'
+import { release } from '../lib/data'
+
+interface Props {
+  title?: string
+  description?: string
+  /** The nav item that is this page. */
+  active?: 'features' | 'docs' | 'download'
+  /** Structured data for search engines, as a plain object. */
+  jsonLd?: Record<string, unknown>
+  noindex?: boolean
+}
+const { title, description = SITE.description, active, jsonLd, noindex = false } = Astro.props
+const fullTitle = title ? `${title} · OpenCourse` : 'OpenCourse: courses that teach back'
+const canonical = new URL(Astro.url.pathname.replace(/\/$/, '') || '/', SITE.url).toString()
+const image = new URL('/og.png', SITE.url).toString()
+const year = new Date().getFullYear()
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#18181b" />
+  <title>{fullTitle}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonical} />
+  {noindex && <meta name="robots" content="noindex" />}
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="sitemap" href="/sitemap-index.xml" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="OpenCourse" />
+  <meta property="og:title" content={fullTitle} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={canonical} />
+  <meta property="og:image" content={image} />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  {jsonLd && <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />}
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header oc-glass">
+    <div class="oc-wrap header-row">
+      <Brand />
+      <nav class="header-nav" aria-label="Main">
+        <a href="/#features" aria-current={active === 'features' ? 'page' : undefined}>Features</a>
+        <a href="/docs" aria-current={active === 'docs' ? 'page' : undefined}>Docs</a>
+        <a href={SITE.catalogUrl}>Catalog<Icon name="arrow-up-right" size={13} /></a>
+        <a href="/download" aria-current={active === 'download' ? 'page' : undefined}>Download</a>
+      </nav>
+      <div class="header-end">
+        <GitHubButton class="header-github" />
+        <a class="oc-btn sm header-cta" href={release ? SITE.downloadUrl : '/download'} data-download>
+          <Icon name="download" size={15} />Download
+        </a>
+        <button type="button" class="menu-toggle" aria-label="Menu" aria-expanded="false" aria-controls="mobile-nav" data-menu-toggle>
+          <Icon name="menu" size={20} class="menu-open" /><Icon name="x" size={20} class="menu-close" />
+        </button>
+      </div>
+    </div>
+    <nav id="mobile-nav" class="mobile-nav" aria-label="Main" data-menu hidden>
+      <a href="/#features">Features</a>
+      <a href="/docs">Documentation</a>
+      <a href={SITE.catalogUrl}>Course catalog</a>
+      <a href="/download">Download</a>
+      <a href={SITE.repoUrl} rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <slot />
+  </main>
+
+  <footer class="site-footer">
+    <div class="oc-wrap footer-grid">
+      <div class="footer-brand">
+        <Brand />
+        <p>Courses on any subject, on your Mac. Free and open source.</p>
+        <GitHubButton label="Star" />
+      </div>
+      <nav aria-label="Product">
+        <h2>Product</h2>
+        <a href="/download">Download</a>
+        <a href="/#features">Features</a>
+        <a href={SITE.catalogUrl}>Course catalog</a>
+        <a href={SITE.releasesUrl} rel="noopener noreferrer">Releases</a>
+      </nav>
+      <nav aria-label="Documentation">
+        <h2>Documentation</h2>
+        <a href="/docs/getting-started">Getting started</a>
+        <a href="/docs/course-format">Course format</a>
+        <a href="/docs/theme-format">Theme format</a>
+        <a href="/docs/self-hosting">Host a catalog</a>
+      </nav>
+      <nav aria-label="Project">
+        <h2>Project</h2>
+        <a href={SITE.repoUrl} rel="noopener noreferrer">Source code</a>
+        <a href={SITE.issuesUrl} rel="noopener noreferrer">Report an issue</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </nav>
+    </div>
+    <div class="oc-wrap footer-legal">
+      <span>© {year} OpenCourse contributors · <a href={`${SITE.repoUrl}/blob/master/LICENSE`} rel="noopener noreferrer">MIT License</a></span>
+      <span>Made for learners, on a Mac.</span>
+    </div>
+  </footer>
+  <script>
+    import '../scripts/site'
+  </script>
+</body>
+</html>

@@ -103,35 +103,8 @@ describe('the catalog', () => {
   })
 })
 
-describe('the web catalog', () => {
-  it('renders the catalog and a course as documents that can run nothing', async () => {
-    const author = await signUp(server, 'webauthor')
-    const hostile = { ...richCourse(), title: '<script>alert("t")</script> Course', description: 'Hello <img src=x onerror=alert(1)> [link](javascript:alert(1)) **bold**', tags: ['<b>tag</b>'] }
-    const { courseId, local } = localCourse(hostile)
-    await publish(server, author.token, courseId, local, '0.1.0', { note: 'Line one\n<script>x</script>' })
-
-    const home = await get('/')
-    expect(home.statusCode).toBe(200)
-    expect(home.headers['content-security-policy']).toContain("default-src 'none'")
-    expect(home.headers['content-security-policy']).not.toContain('script-src')
-    expect(home.body).not.toMatch(/<script/i)
-    expect(home.body).toContain('&lt;script&gt;alert(&quot;t&quot;)&lt;/script&gt; Course')
-
-    const page = await get(`/courses/${courseId}`)
-    expect(page.statusCode).toBe(200)
-    expect(page.body).not.toMatch(/<script|<img src=x|href="javascript:/i)
-    expect(page.body).toContain('&lt;img src=x onerror=alert(1)&gt;')
-    expect(page.body).toContain('<strong>bold</strong>')
-    expect(page.body).toContain('Line one<br>&lt;script&gt;x&lt;/script&gt;')
-    for (const secret of ['SECRET', 'Exactly once']) expect(page.body).not.toContain(secret)
-
-    const search = await get('/?q=course&tag=%3Cb%3Etag%3C%2Fb%3E')
-    expect(search.body).toContain('1 course')
-    expect((await get(`/courses/${randomUUID()}`)).statusCode).toBe(404)
-    expect((await get('/static/style.css')).headers['content-type']).toContain('text/css')
-  })
-
-  it('has no development outbox unless it is a development server', async () => {
+describe('the development outbox', () => {
+  it('exists only on a development server', async () => {
     expect((await get('/dev/outbox')).statusCode).toBe(404)
     await server.close()
     server = await testServer({ dev: true })

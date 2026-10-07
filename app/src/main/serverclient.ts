@@ -12,7 +12,7 @@
  *    route, status, time - never an email, a code, a password or a token;
  *  - a download is streamed to a file under a byte cap.
  */
-import { net } from 'electron'
+import { app, net } from 'electron'
 import { createWriteStream, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { API_PREFIX } from '../core/catalog/api'
@@ -23,6 +23,8 @@ import { log } from './log'
 const logger = log.child('servers')
 const JSON_LIMIT = 5 * 1024 * 1024
 const TIMEOUT_MS = 30_000
+/** How a server's session list names this app: "OpenCourse/0.2.0 (macOS)". */
+const userAgent = (): string => `OpenCourse/${typeof app?.getVersion === 'function' ? app.getVersion() : 'dev'} (macOS)`
 
 export class ServerError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly errors: string[] = [], readonly extra: Record<string, unknown> = {}) {
@@ -51,7 +53,7 @@ export interface CallOptions {
 async function send(base: string, path: string, options: CallOptions): Promise<Response> {
   const started = Date.now()
   const host = new URL(base).host
-  const headers: Record<string, string> = { accept: 'application/json', ...options.headers }
+  const headers: Record<string, string> = { accept: 'application/json', 'user-agent': userAgent(), ...options.headers }
   if (options.token) headers['authorization'] = `Bearer ${options.token}`
   let body = options.body
   if (options.json !== undefined) { headers['content-type'] = 'application/json'; body = JSON.stringify(options.json) }

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { detectIndentUnit } from '@core/indent'
 import { getToolchain } from '@core/toolchains'
+import { skipWithoutContent } from './helpers/content'
 
 describe('detectIndentUnit', () => {
   it('reads four spaces off a C body', () => {
@@ -37,7 +38,7 @@ describe('detectIndentUnit', () => {
     expect(detectIndentUnit('{\n    a;\n    b;\n\tc;\n}\n')).toBe('    ')
   })
 
-  it('reads every starter in content/ as the toolchain default', () => {
+  it.skipIf(skipWithoutContent('intro-to-c', 'python-asyncio'))('reads every starter in content/ as the toolchain default', () => {
     // The fallback and the files agree today; if a course ever changes style,
     // the editor follows the file, and this says so.
     for (const slug of ['intro-to-c', 'python-asyncio']) {

@@ -1,0 +1,18 @@
+# Only server/Dockerfile builds from the repository root; it needs server/,
+# design/, app/src/core and app/src/main/unzip.ts. Keep everything heavy out.
+**/node_modules
+**/dist
+**/.astro
+**/.cache
+**/.DS_Store
+.git
+.venv
+content
+content-zip
+themes
+themes-zip
+server/data
+site
+app/resources
+app/out
+app/tests

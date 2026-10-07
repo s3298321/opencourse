@@ -21,6 +21,9 @@ CLAUDE.md
 
 # a development server's database, archives and secret
 server/data/
+# Playwright's leftovers from `npm run e2e`
+server/test-results/
+server/playwright-report/
 
 # local themes and their importable archives
 themes/

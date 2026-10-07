@@ -1,0 +1,21 @@
+---
+/**
+ * The Mac download. With a published release it is GitHub's permalink to the
+ * newest DMG, which starts the download without showing GitHub at all; before
+ * the first release it leads to the download page, which says what to do instead.
+ */
+import Icon from './Icon.astro'
+import { SITE } from '../site.config'
+import { megabytes, release } from '../lib/data'
+
+interface Props { size?: 'lg' | 'xl'; meta?: boolean; class?: string }
+const { size = 'xl', meta = true, class: className } = Astro.props
+---
+<div class:list={['download', className]}>
+  {release
+    ? <a class={`oc-btn ${size} shine download-button`} href={SITE.downloadUrl} data-download><Icon name="download" size={19} />Download for Mac</a>
+    : <a class={`oc-btn ${size} shine download-button`} href="/download"><Icon name="download" size={19} />Get OpenCourse</a>}
+  {meta && (release
+    ? <span class="download-meta">Apple silicon · v{release.version} · {megabytes(release.asset!.size)}</span>
+    : <span class="download-meta">First release coming soon · build it from source today</span>)}
+</div>

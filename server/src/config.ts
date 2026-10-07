@@ -4,7 +4,10 @@
  * public deployment sets OPENCOURSE_SERVER_PUBLIC_URL and SMTP, and runs behind
  * a TLS proxy (README.md) - the app refuses plain HTTP to anything but loopback.
  */
-import { resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { DEFAULT_APP_URL } from '../shared/pages'
 
 export interface ServerConfig {
   port: number
@@ -21,6 +24,16 @@ export interface ServerConfig {
   dev: boolean
   /** Honour X-Forwarded-For for rate limits; set when behind a proxy. */
   trustProxy: boolean
+  /** Where "Get the app" points. */
+  appUrl: string
+  /** The built web app (dist/web); null when there is none, as in a fresh checkout's `npm run dev`. */
+  webDir: string | null
+}
+
+/** dist/web beside the bundle, or the build in dist/ when running from src/ with tsx. */
+function defaultWebDir(): string | null {
+  const here = dirname(fileURLToPath(import.meta.url))
+  return [join(here, 'web'), join(here, '..', 'dist', 'web')].find((dir) => existsSync(join(dir, 'index.html'))) ?? null
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -40,6 +53,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     mailFrom: env['OPENCOURSE_MAIL_FROM'] ?? 'OpenCourse <no-reply@localhost>',
     registration,
     dev: env['OPENCOURSE_SERVER_DEV'] === '1',
-    trustProxy: env['OPENCOURSE_TRUST_PROXY'] === '1'
+    trustProxy: env['OPENCOURSE_TRUST_PROXY'] === '1',
+    appUrl: env['OPENCOURSE_SERVER_APP_URL'] || DEFAULT_APP_URL,
+    webDir: env['OPENCOURSE_SERVER_WEB_DIR'] ? resolve(env['OPENCOURSE_SERVER_WEB_DIR']) : defaultWebDir()
   }
 }

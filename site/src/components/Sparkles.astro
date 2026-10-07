@@ -1,0 +1,12 @@
+---
+/**
+ * The mark's four-point stars, scattered and twinkling. Purely decorative;
+ * positions come from the stylesheet by position, so no element carries an
+ * inline style the CSP would refuse.
+ */
+interface Props { count?: number; class?: string }
+const { count = 8, class: className } = Astro.props
+---
+<div class:list={['sparkles', className]} aria-hidden="true">
+  {Array.from({ length: count }, () => <span class="oc-sparkle oc-twinkle" />)}
+</div>

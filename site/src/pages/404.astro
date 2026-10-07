@@ -1,0 +1,20 @@
+---
+import Base from '../layouts/Base.astro'
+import Icon from '../components/Icon.astro'
+import Sparkles from '../components/Sparkles.astro'
+---
+<Base title="Not found" noindex>
+  <section class="not-found">
+    <div class="oc-aurora" aria-hidden="true"></div>
+    <Sparkles count={8} class="hero-sparkles" />
+    <div class="oc-wrap not-found-inner oc-stagger">
+      <span class="oc-eyebrow">404</span>
+      <h1 class="oc-silver-text">Nothing lives here.</h1>
+      <p>The page moved, or the link is mistyped.</p>
+      <div class="hero-actions">
+        <a class="oc-btn lg" href="/"><Icon name="arrow-right" size={17} />Home</a>
+        <a class="oc-btn lg secondary" href="/docs">Documentation</a>
+      </div>
+    </div>
+  </section>
+</Base>

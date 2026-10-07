@@ -1,0 +1,43 @@
+# An OpenCourse catalog server with automatic HTTPS, on one machine.
+#
+#   cp .env.example .env     # then edit it
+#   docker compose up -d
+#   docker compose exec server node dist/admin.js grant-admin <your-username>
+#
+# Caddy gets a certificate for $DOMAIN from Let's Encrypt; point the domain's
+# DNS at this machine and open ports 80 and 443 first. See docs/self-hosting.md.
+services:
+  server:
+    image: ghcr.io/s3298321/opencourse-server:${OPENCOURSE_VERSION:-latest}
+    # To build from this checkout instead:
+    # build: { context: ../.., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      OPENCOURSE_SERVER_PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
+      OPENCOURSE_TRUST_PROXY: "1"
+    volumes:
+      - data:/data
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

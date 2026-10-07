@@ -1,0 +1,46 @@
+---
+/** The documentation's frame: sections on the left, the page, "On this page" on the right. */
+import Base from './Base.astro'
+import Icon from '../components/Icon.astro'
+import Resources from '../components/Resources.astro'
+import { DOC_RESOURCES, docGroups, type Heading } from '../lib/docs'
+
+interface Props { title: string; description?: string; current?: string; headings?: Heading[] }
+const { title, description, current, headings = [] } = Astro.props
+const resources = current ? DOC_RESOURCES[current] ?? [] : []
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3)
+---
+<Base title={title} description={description} active="docs">
+  <div class="oc-wrap docs">
+    <aside class="docs-nav" aria-label="Documentation">
+      <button type="button" class="docs-search" data-search-open><Icon name="search" size={15} /><span>Search the docs</span><kbd class="oc-kbd">⌘K</kbd></button>
+      {docGroups().map((group) => (
+        <div class="docs-group">
+          <h2>{group.title}</h2>
+          <ul>
+            {group.docs.map((doc) => <li><a href={`/docs/${doc.slug}`} aria-current={doc.slug === current ? 'page' : undefined}>{doc.navTitle}</a></li>)}
+          </ul>
+        </div>
+      ))}
+    </aside>
+    <div class="docs-main">
+      {resources.length > 0 && <Resources items={resources} class="resources-inline" />}
+      <slot />
+    </div>
+    {(toc.length > 0 || resources.length > 0) && (
+      <div class="docs-side">
+        {resources.length > 0 && <Resources items={resources} />}
+        {toc.length > 0 && (
+          <nav class="docs-toc" aria-label="On this page" data-toc>
+            <h2>On this page</h2>
+            <ul>{toc.map((h) => <li class={`depth-${h.depth}`}><a href={`#${h.id}`}>{h.text}</a></li>)}</ul>
+          </nav>
+        )}
+      </div>
+    )}
+  </div>
+  <dialog class="search-dialog oc-popover" data-search aria-label="Search the docs">
+    <div class="search-field"><Icon name="search" size={18} /><input type="search" placeholder="Search the docs…" aria-label="Search the docs" /><kbd class="oc-kbd">esc</kbd></div>
+    <div class="search-results" data-search-results aria-live="polite"></div>
+  </dialog>
+</Base>

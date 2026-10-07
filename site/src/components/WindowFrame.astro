@@ -1,0 +1,19 @@
+---
+/**
+ * A screenshot dressed as a Mac window: traffic lights, a hairline and a deep
+ * shadow. The picture is optimised by Astro into modern formats and sizes.
+ * The source is the app's own 2x capture (`npm run shots`, 2480px wide),
+ * flattened onto #141414 because the app's glass is transparent in a capture.
+ * The largest size is that width: a hero 1140px wide on a Retina screen wants
+ * 2280 pixels, and anything smaller is upscaled into blur.
+ */
+import { Picture } from 'astro:assets'
+import type { ImageMetadata } from 'astro'
+
+interface Props { src: ImageMetadata; alt: string; class?: string; eager?: boolean; widths?: number[] }
+const { src, alt, class: className, eager = false, widths = [640, 960, 1280, 1600, 2048, 2480] } = Astro.props
+---
+<figure class:list={['window', className]}>
+  <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+  <Picture src={src} alt={alt} formats={['avif', 'webp']} fallbackFormat="webp" widths={widths} sizes="(max-width: 900px) 100vw, 1100px" loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} class="window-shot" />
+</figure>

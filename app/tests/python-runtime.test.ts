@@ -16,9 +16,10 @@ const enabled = Boolean(process.env['OPENCOURSE_TEST_PYTHON'])
 const tc = pythonToolchain
 const floor = tc.parseFloor('>=3.11')
 
-const manifest = JSON.parse(
+// Read only when the test is asked for: an opt-in test must not fail a plain `npm test`.
+const manifest = (enabled ? JSON.parse(
   readFileSync(join(__dirname, '../../content/python-asyncio/course.json'), 'utf8')
-) as { modules: { lessons: { blocks: ExerciseBlock[] }[] }[] }
+) : { modules: [] }) as { modules: { lessons: { blocks: ExerciseBlock[] }[] }[] }
 
 function exerciseById(id: string): ExerciseBlock {
   for (const mod of manifest.modules) {
@@ -42,7 +43,8 @@ afterAll(() => {
 })
 
 describe.skipIf(!enabled)('python runtime', () => {
-  const exercise = exerciseById('ex-tasks-1')
+  // The body of a skipped describe still runs while tests are collected.
+  const exercise = enabled ? exerciseById('ex-tasks-1') : (undefined as never)
   const runtime = { language: 'python', version: '>=3.11', packages: [], flags: [] }
   const deps = (): string => depsFor(runtime, tc.provision?.baseDeps ?? [])
   const envOptions = (): Parameters<typeof ensureCourseEnv>[0] => ({

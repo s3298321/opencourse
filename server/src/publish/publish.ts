@@ -30,11 +30,11 @@ const MAX_COVER_BYTES = 5 * 1024 * 1024
 const archiveFile = (dataDir: string, courseId: string, version: string): string => join(dataDir, 'archives', courseId, `${version}.${randomUUID()}.zip`)
 const coverFile = (dataDir: string, courseId: string, version: string, ext: string): string => join(dataDir, 'covers', courseId, `${version}.${randomUUID()}${ext}`)
 
-interface CourseRecord { id: string; owner_id: string; current_version: string | null; max_version: string; unlisted_at: string | null }
+interface CourseRecord { id: string; owner_id: string; current_version: string | null; max_version: string; unlisted_at: string | null; moderated_at: string | null; moderation_reason: string }
 
 function ownCourse(d: Db, courseId: string, account: Account): CourseRecord {
   if (!UID.test(courseId)) throw notFound()
-  const row = d.prepare('SELECT id, owner_id, current_version, max_version, unlisted_at FROM courses WHERE id = ?').get(courseId) as CourseRecord | undefined
+  const row = d.prepare('SELECT id, owner_id, current_version, max_version, unlisted_at, moderated_at, moderation_reason FROM courses WHERE id = ?').get(courseId) as CourseRecord | undefined
   if (!row) throw notFound()
   if (row.owner_id !== account.id) throw forbidden('not_owner', 'Only the account that published this course can change it.')
   return row
@@ -95,6 +95,8 @@ export async function publishVersion(d: Db, dataDir: string, account: Account, c
           if (owner.kind !== element.kind) throw badRequest('invalid_archive', 'The course was refused.', { errors: [`${element.kind} ${element.uid}: an element cannot change type; give it a new identity`] })
           if (element.kind === 'flashcard' && owner.parent !== element.parent) throw badRequest('invalid_archive', 'The course was refused.', { errors: [`flashcard ${element.uid}: flashcards are bound to their lesson`] })
         }
+        // Publishing lists the course again if its owner had unpublished it - but
+        // never undoes a moderator, whose removal is moderated_at, not unlisted_at.
         if (row) {
           d.prepare('UPDATE courses SET slug = ?, current_version = ?, max_version = ?, updated_at = ?, unlisted_at = NULL WHERE id = ?').run(manifest.slug, version, version, at, courseId)
         } else {
@@ -149,9 +151,16 @@ export function unpublishCourse(d: Db, account: Account, courseId: string): void
 
 export function relistCourse(d: Db, account: Account, courseId: string): void {
   const course = ownCourse(d, courseId, account)
+  if (course.moderated_at) throw forbidden('moderated', `A moderator removed this course from the catalog${course.moderation_reason ? `: ${course.moderation_reason}` : '.'} Only a moderator can list it again.`)
   if (!course.current_version) throw conflict('no_version', 'Publish a version before listing this course again.')
   tx(d, () => {
     d.prepare('UPDATE courses SET unlisted_at = NULL, updated_at = ? WHERE id = ?').run(nowIso(), courseId)
     refreshListing(d, courseId)
   })
+}
+
+/** Removes a course and everything stored for it: rows, archives and covers. */
+export function removeCourseFiles(dataDir: string, courseId: string): void {
+  if (!UID.test(courseId)) return
+  for (const dir of ['archives', 'covers']) rmSync(join(dataDir, dir, courseId), { recursive: true, force: true })
 }

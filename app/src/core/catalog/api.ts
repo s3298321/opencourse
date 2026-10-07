@@ -60,11 +60,74 @@ export interface ServerInfo {
   name: string
   description: string
   registration: 'open' | 'closed'
+  /** The server's own version; absent on servers older than the web app. */
+  version?: string
 }
 
 export interface Account { id: string; username: string; email: string }
 export interface AuthResult { token: string; account: Account }
 export interface ApiErrorBody { error: { code: string; message: string } }
+
+/* --- the web app's account pages (docs/server-api.md, "Your account") ------ */
+
+export type AccountRole = 'member' | 'admin'
+export type SessionKind = 'app' | 'web'
+/** A sign-in made by the web app: the token went into an HttpOnly cookie, not this body. */
+export interface WebAuthResult { account: AccountDetails }
+export interface AccountDetails extends Account { role: AccountRole; createdAt: string }
+export interface SessionInfo {
+  id: string
+  kind: SessionKind
+  userAgent: string
+  createdAt: string
+  lastUsedAt: string
+  /** The session this request was made with. */
+  current: boolean
+}
+
+/* --- moderation and the admin console (docs/server-api.md, "Administration") */
+
+export interface Moderation { at: string; reason: string }
+export interface AdminStats {
+  accounts: number
+  disabledAccounts: number
+  admins: number
+  courses: number
+  listedCourses: number
+  moderatedCourses: number
+  versions: number
+  /** Distinct accounts that added a course in the last 30 days. */
+  downloads30d: number
+  /** Archives and covers on disk. */
+  storageBytes: number
+}
+export interface AdminAccount extends AccountDetails {
+  disabledAt: string | null
+  courseCount: number
+  lastSeenAt: string | null
+}
+export interface AdminCourse {
+  id: string
+  title: string
+  publisher: string
+  currentVersion: string | null
+  listed: boolean
+  unlistedAt: string | null
+  moderation: Moderation | null
+  downloads: number
+  updatedAt: string
+}
+export interface AuditEntry {
+  id: number
+  at: string
+  actor: string
+  action: string
+  targetKind: string
+  targetId: string
+  targetName: string
+  detail: string
+}
+export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
 
 /** One catalog card. Everything a list needs, nothing a learner should not see. */
 export interface CatalogCourse {
@@ -138,4 +201,9 @@ export interface ManagedCourse {
   listed: boolean
   downloads: number
   versions: VersionEntry[]
+  /** Set when a moderator removed the course from the catalog; only a moderator can restore it. */
+  moderation?: Moderation | null
+  /** When the course was last published or changed. Absent on servers older than the web app. */
+  updatedAt?: string
+  hasCover?: boolean
 }

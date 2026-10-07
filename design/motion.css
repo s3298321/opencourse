@@ -1,0 +1,82 @@
+/* Motion for OpenCourse on the web. The vocabulary is the app's: the same
+   easing, the same short fades and rises (surface-fade, surface-enter, chat-pop
+   in styles.css), plus the few things only a web page does - a staggered
+   entrance, the sparkles' twinkle, the aurora's drift. Every animation stops
+   under prefers-reduced-motion, as in the app. */
+
+@keyframes oc-fade { from { opacity: 0; } }
+@keyframes oc-rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes oc-rise-sm { from { opacity: 0; transform: translateY(4px); } }
+@keyframes oc-pop { from { opacity: 0; transform: scale(0.96); } }
+@keyframes oc-dialog { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
+@keyframes oc-toast { from { opacity: 0; transform: translateY(16px) scale(0.98); } }
+/* Size and brightness only. It used to turn 45 degrees at its peak, and a
+   four-point star on its corner reads as a square with whiskers. */
+@keyframes oc-twinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes oc-aurora {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(3%, 2%, 0) scale(1.06); }
+  100% { transform: translate3d(-3%, -1%, 0) scale(1.02); }
+}
+@keyframes oc-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes oc-shine { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
+@keyframes oc-spin-star { 0% { transform: rotate(0) scale(0.85); } 50% { transform: rotate(90deg) scale(1); } 100% { transform: rotate(180deg) scale(0.85); } }
+@keyframes oc-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes oc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.oc-enter { animation: oc-rise 520ms var(--ease) both; }
+.oc-enter-sm { animation: oc-rise-sm 220ms var(--ease) both; }
+.oc-fade-in { animation: oc-fade 260ms var(--ease) both; }
+
+/* A list whose children rise one after another. Delays come from position, not
+   from inline styles, so a strict style-src never has to allow an attribute. */
+.oc-stagger > * { animation: oc-rise 560ms var(--ease) both; }
+.oc-stagger > :nth-child(2) { animation-delay: 45ms; }
+.oc-stagger > :nth-child(3) { animation-delay: 90ms; }
+.oc-stagger > :nth-child(4) { animation-delay: 135ms; }
+.oc-stagger > :nth-child(5) { animation-delay: 180ms; }
+.oc-stagger > :nth-child(6) { animation-delay: 225ms; }
+.oc-stagger > :nth-child(7) { animation-delay: 270ms; }
+.oc-stagger > :nth-child(8) { animation-delay: 315ms; }
+.oc-stagger > :nth-child(9) { animation-delay: 360ms; }
+.oc-stagger > :nth-child(10) { animation-delay: 405ms; }
+.oc-stagger > :nth-child(11) { animation-delay: 450ms; }
+.oc-stagger > :nth-child(n+12) { animation-delay: 495ms; }
+
+/* Scroll reveals where the browser can drive them from the scroll position
+   alone; elsewhere the content is simply there. */
+@supports (animation-timeline: view()) {
+  .oc-reveal {
+    animation: oc-rise linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 38%;
+  }
+}
+
+/* A field of sparkles: each child is a .oc-sparkle positioned by the page. */
+.oc-twinkle { animation: oc-twinkle 4.8s ease-in-out infinite; }
+.oc-twinkle:nth-child(2n) { animation-duration: 6.2s; animation-delay: -1.4s; }
+.oc-twinkle:nth-child(3n) { animation-duration: 5.4s; animation-delay: -3.1s; }
+.oc-twinkle:nth-child(5n) { animation-duration: 7.1s; animation-delay: -2.2s; }
+.oc-float { animation: oc-float 7s ease-in-out infinite; }
+
+/* Page-to-page: same-document transitions (the catalog web app) and
+   cross-document ones (opencourse.dev) both fade the page and keep the header. */
+@view-transition { navigation: auto; }
+::view-transition-old(root) { animation: 160ms ease both oc-vt-out; }
+::view-transition-new(root) { animation: 260ms var(--ease) both oc-vt-in; }
+@keyframes oc-vt-out { to { opacity: 0; } }
+@keyframes oc-vt-in { from { opacity: 0; transform: translateY(6px); } }
+::view-transition-group(*) { animation-duration: 340ms; animation-timing-function: var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .oc-glass, .oc-popover { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .oc-aurora::before { display: none; }
+}

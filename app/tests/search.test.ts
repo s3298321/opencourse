@@ -4,14 +4,16 @@ import { describe, expect, it } from 'vitest'
 import { buildCourse } from '@core/manifest'
 import { searchCourse } from '@core/search'
 import type { CourseManifest } from '@core/types'
+import { skipWithoutContent } from './helpers/content'
 
 const dir = join(__dirname, '..', '..', 'content', 'python-asyncio')
-const course = buildCourse(
+const skip = skipWithoutContent('python-asyncio')
+const course = skip ? (undefined as never) : buildCourse(
   JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest,
   dir
 )
 
-describe('searchCourse', () => {
+describe.skipIf(skip)('searchCourse', () => {
   it('ignores queries that are too short', () => {
     expect(searchCourse(course, 'a')).toEqual([])
     expect(searchCourse(course, '   ')).toEqual([])

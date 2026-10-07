@@ -1,0 +1,279 @@
+/* The shared primitives of OpenCourse on the web: the catalog server's web app
+   and opencourse.dev both build on these, so a button, a chip or a card looks
+   the same on both and the same as in the app. Every class is `oc-` prefixed:
+   neither site may name a class after a route (see CLAUDE.md, "Changing the
+   titlebar"), and a prefix keeps these out of each site's own names. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--ui-size);
+  line-height: var(--ui-line-height);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+}
+body { margin: 0; min-height: 100vh; background: var(--bg); }
+h1, h2, h3, h4, h5, h6 { font-weight: var(--heading-weight); line-height: 1.2; letter-spacing: -0.015em; margin: 0; }
+p { margin: 0; }
+img, svg, video { max-width: 100%; }
+img { display: block; }
+::selection { background: rgba(222, 222, 227, 0.22); color: #fff; }
+
+a { color: inherit; text-decoration: none; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+
+/* The app's one scrollbar. Never set scrollbar-width or scrollbar-color: Chromium
+   drops every rule below for an element that has either. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  min-width: 32px; min-height: 32px;
+  background-color: var(--scrollbar);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover); border-width: 2px; }
+::-webkit-scrollbar-thumb:active { background-color: var(--accent); border-width: 2px; }
+
+code, kbd, pre, samp { font-family: var(--font-mono); }
+
+/* ---------- layout ---------- */
+.oc-wrap { width: 100%; max-width: var(--content); margin: 0 auto; padding: 0 var(--gutter); }
+.oc-visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- brand ---------- */
+.oc-brand {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  color: var(--fg); font-weight: var(--brand-weight); letter-spacing: var(--brand-letter-spacing);
+  font-size: 15px; white-space: nowrap;
+}
+.oc-brand img { width: 25px; height: 25px; flex: none; object-fit: contain; }
+.oc-silver-text {
+  background: var(--silver);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.oc-eyebrow {
+  display: inline-block; text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.72rem; font-weight: 600; color: var(--muted);
+}
+
+/* ---------- buttons ---------- */
+.oc-btn {
+  --btn-bg: var(--accent); --btn-fg: var(--accent-fg);
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  background: var(--btn-bg); color: var(--btn-fg);
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  padding: 0.45rem 0.9rem; font: inherit; font-weight: 600; line-height: 1.3;
+  cursor: pointer; white-space: nowrap; text-decoration: none; user-select: none;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease, transform var(--dur-fast) var(--ease), opacity var(--dur-fast) ease;
+}
+.oc-btn:hover:not(:disabled):not([aria-disabled='true']) { box-shadow: inset 0 0 0 1px var(--hover-ring), 0 6px 22px -6px rgba(228, 228, 232, 0.35); }
+.oc-btn:active:not(:disabled):not([aria-disabled='true']) { transform: translateY(1px); }
+.oc-btn:disabled, .oc-btn[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+.oc-btn svg { width: 1.05em; height: 1.05em; flex: none; }
+.oc-btn.secondary { --btn-bg: var(--chip-bg); --btn-fg: var(--fg); border-color: var(--border); }
+.oc-btn.secondary:hover:not(:disabled) { border-color: var(--line-strong); background: var(--raised); box-shadow: none; }
+.oc-btn.ghost { --btn-bg: transparent; --btn-fg: var(--fg); font-weight: 500; }
+.oc-btn.ghost:hover:not(:disabled) { background: var(--sheen); box-shadow: none; }
+.oc-btn.danger { --btn-bg: var(--err-bg); --btn-fg: var(--err); border-color: var(--err-border); }
+.oc-btn.danger:hover:not(:disabled) { --btn-bg: #3a1d20; box-shadow: none; }
+.oc-btn.danger-solid { --btn-bg: #c94a4a; --btn-fg: var(--err-fg); }
+.oc-btn.sm { padding: 0.3rem 0.65rem; font-size: 0.82rem; }
+.oc-btn.lg { padding: 0.75rem 1.35rem; font-size: 1rem; border-radius: var(--radius); }
+.oc-btn.xl { padding: 0.95rem 1.7rem; font-size: 1.05rem; border-radius: var(--radius-md); }
+.oc-btn.icon { padding: 0.45rem; aspect-ratio: 1; }
+/* The primary call to action: silver with a light sweep on hover. */
+.oc-btn.shine { overflow: hidden; background: var(--silver); border-color: rgba(255, 255, 255, 0.35); }
+.oc-btn.shine::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.75) 50%, transparent 70%);
+  transform: translateX(-120%);
+}
+.oc-btn.shine:hover::after { animation: oc-shine 900ms var(--ease); }
+
+/* ---------- form controls ---------- */
+.oc-input, .oc-select, .oc-textarea {
+  width: 100%; background: var(--card); color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem; font: inherit; line-height: 1.4;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease, background-color var(--dur-fast) ease;
+}
+.oc-input::placeholder, .oc-textarea::placeholder { color: #75757f; }
+.oc-input:hover, .oc-select:hover, .oc-textarea:hover { border-color: #4a4a52; }
+.oc-input:focus, .oc-select:focus, .oc-textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.oc-input[aria-invalid='true'] { border-color: var(--err-border); }
+.oc-select {
+  appearance: none; cursor: pointer;
+  background-image: var(--chevron); background-repeat: no-repeat;
+  background-position: right 12px center; background-size: 12px 12px; padding-right: 36px;
+}
+.oc-textarea { resize: vertical; min-height: 5rem; }
+.oc-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.oc-label { font-size: var(--text-sm); font-weight: 600; color: var(--fg); }
+.oc-hint { font-size: 0.8rem; color: var(--muted); }
+.oc-error-text { font-size: 0.82rem; color: var(--err); }
+
+/* ---------- chips, pills, badges ---------- */
+.oc-chip {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: var(--chip-bg); color: var(--chip-fg);
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  padding: 0.22rem 0.7rem; font-size: 0.8rem; line-height: 1.4; white-space: nowrap;
+  cursor: pointer; text-decoration: none;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease);
+}
+.oc-chip:hover { border-color: var(--line-strong); color: var(--fg); }
+.oc-chip:active { transform: scale(0.97); }
+.oc-chip .count { color: var(--muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.oc-chip.on, .oc-chip[aria-pressed='true'], .oc-chip[aria-current='true'] {
+  background: var(--selected); color: var(--fg); border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--selected-edge);
+}
+.oc-tag {
+  display: inline-flex; align-items: center; border-radius: var(--radius-pill);
+  background: var(--chip-bg); color: var(--chip-fg); padding: 0.1rem 0.55rem; font-size: 0.74rem;
+}
+.oc-pill {
+  display: inline-flex; align-items: center; gap: 0.35rem; border-radius: var(--radius-pill);
+  padding: 0.12rem 0.55rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.01em;
+  border: 1px solid var(--border); color: var(--chip-fg); background: var(--chip-bg); white-space: nowrap;
+}
+.oc-pill.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-border); }
+.oc-pill.err { color: var(--err); background: var(--err-bg); border-color: var(--err-border); }
+.oc-pill.silver { color: var(--accent-fg); background: var(--silver); border-color: transparent; }
+.oc-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* The app's segmented control (Library tabs, author mode). */
+.oc-segment { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--code-bg); }
+.oc-segment button, .oc-segment a {
+  border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 0.8rem; font-weight: 600;
+  padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; white-space: nowrap;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.oc-segment button:hover, .oc-segment a:hover { color: var(--fg); }
+.oc-segment [aria-pressed='true'], .oc-segment [aria-selected='true'], .oc-segment [aria-current='page'] {
+  background: var(--bg); color: var(--fg); box-shadow: var(--shadow-sm);
+}
+
+.oc-kbd {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.4em;
+  font: 600 0.7rem/1.5 var(--font-sans); color: var(--muted);
+  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: var(--radius-xs); padding: 0 0.3rem;
+}
+
+/* ---------- surfaces ---------- */
+.oc-card {
+  position: relative; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.oc-panel {
+  position: relative; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 1.25rem 1.4rem;
+}
+/* Glass: the app's grained, blurred chrome. Falls back to solid under reduced transparency. */
+.oc-glass {
+  background-color: var(--header-bg);
+  background-image: var(--grain); background-size: var(--grain-size);
+  -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%);
+}
+.oc-popover {
+  background-color: var(--popover);
+  background-image: var(--grain); background-size: var(--grain-size);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+/* A hairline that is brighter on top, as if lit from above. */
+.oc-edge::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: var(--silver-edge);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+/* The pointer-following sheen; design/pointer-glow.ts sets --mx and --my. */
+.oc-glow { isolation: isolate; }
+.oc-glow::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, -40%), var(--sheen), transparent 45%);
+  opacity: 0; transition: opacity var(--dur) ease;
+}
+.oc-glow:hover::after { opacity: 1; }
+
+/* ---------- decoration ---------- */
+.oc-sparkle {
+  display: inline-block; width: 1em; height: 1em; flex: none;
+  background: var(--silver);
+  -webkit-mask: var(--sparkle) center / contain no-repeat; mask: var(--sparkle) center / contain no-repeat;
+}
+/* The silver aurora that sits behind heroes: three soft lights over the grain. */
+.oc-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.oc-aurora::before {
+  content: ''; position: absolute; inset: -30% -10% auto -10%; height: 140%;
+  background:
+    radial-gradient(42% 38% at 22% 28%, var(--aurora-a), transparent 70%),
+    radial-gradient(36% 34% at 78% 18%, var(--aurora-b), transparent 70%),
+    radial-gradient(50% 40% at 55% 75%, var(--aurora-c), transparent 72%);
+  filter: blur(20px);
+  animation: oc-aurora 24s ease-in-out infinite alternate;
+}
+.oc-aurora::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: var(--grain); background-size: var(--grain-size); opacity: 0.6;
+  -webkit-mask: linear-gradient(to bottom, #000 40%, transparent); mask: linear-gradient(to bottom, #000 40%, transparent);
+}
+.oc-divider { height: 1px; border: 0; margin: 0; background: linear-gradient(90deg, transparent, var(--line-strong), transparent); }
+
+/* ---------- loading ---------- */
+.oc-skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--chip-bg) 0%, #34343a 45%, var(--chip-bg) 90%);
+  background-size: 300% 100%;
+  animation: oc-shimmer 1.6s ease-in-out infinite;
+}
+.oc-spinner { width: 1.1em; height: 1.1em; animation: oc-spin-star 1.4s var(--ease) infinite; }
+
+/* ---------- prose: course descriptions and documentation ---------- */
+.oc-prose { font-size: 15.5px; line-height: 1.7; color: var(--fg); overflow-wrap: anywhere; }
+.oc-prose > * + * { margin-top: 1em; }
+.oc-prose h1 { font-size: 1.9rem; margin: 0 0 1rem; letter-spacing: -0.02em; }
+.oc-prose h2 { font-size: 1.4rem; margin: 2.4rem 0 0.7rem; letter-spacing: -0.015em; }
+.oc-prose h3 { font-size: 1.12rem; margin: 1.8rem 0 0.5rem; }
+.oc-prose h4, .oc-prose h5 { font-size: 1rem; margin: 1.5rem 0 0.4rem; }
+.oc-prose h2 + *, .oc-prose h3 + *, .oc-prose h4 + * { margin-top: 0.5em; }
+.oc-prose a { color: var(--accent); text-decoration: underline; text-decoration-color: rgba(228, 228, 232, 0.35); text-underline-offset: 3px; }
+.oc-prose a:hover { text-decoration-color: var(--accent); }
+.oc-prose strong { color: #f0f0f3; }
+.oc-prose ul, .oc-prose ol { padding-left: 1.3rem; }
+.oc-prose li + li { margin-top: 0.3em; }
+.oc-prose li > ul, .oc-prose li > ol { margin-top: 0.3em; }
+.oc-prose code {
+  font-size: 0.86em; background: var(--chip-bg); padding: 0.12em 0.38em; border-radius: var(--radius-xs);
+  border: 1px solid var(--line);
+}
+.oc-prose pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0.95rem 1.1rem; overflow-x: auto; line-height: 1.55;
+}
+.oc-prose pre code { background: none; border: 0; padding: 0; font-size: 0.84rem; }
+.oc-prose blockquote {
+  margin: 1rem 0; padding: 0.55rem 1rem; border-left: 3px solid var(--accent);
+  background: var(--chip-bg); border-radius: 0 6px 6px 0; color: var(--chip-fg);
+}
+.oc-prose table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; font-size: 0.9rem; }
+.oc-prose th, .oc-prose td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+.oc-prose th { background: var(--chip-bg); font-weight: 600; }
+.oc-prose tr:nth-child(even) td { background: rgba(255, 255, 255, 0.015); }
+.oc-prose img { max-width: 100%; border-radius: 6px; }
+.oc-prose hr { border: 0; height: 1px; background: var(--border); margin: 2rem 0; }

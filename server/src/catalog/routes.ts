@@ -5,6 +5,7 @@ import type { Ctx } from '../context'
 import { badRequest, notFound } from '../errors'
 import { requireAccount } from '../auth/routes'
 import { catalogPage, courseOverview, courseStatuses, recordAcquisition, tagCounts, visibleCourse } from './catalog'
+import { SERVER_VERSION } from '../version'
 
 const SORTS: ReadonlySet<string> = new Set(['downloads', 'recent', 'title'])
 
@@ -13,16 +14,24 @@ export function asList(value: unknown): string[] {
   return typeof value === 'string' && value ? [value] : []
 }
 
+/** The catalog's query string, as the API and the web app's first paint both read it. */
+export function catalogQuery(query: Record<string, unknown>): { q?: string; tags: string[]; sort?: CatalogSort; page: number } {
+  const sort = typeof query['sort'] === 'string' && SORTS.has(query['sort']) ? query['sort'] as CatalogSort : undefined
+  return { q: typeof query['q'] === 'string' ? query['q'].slice(0, 200) : undefined, tags: asList(query['tag']).slice(0, 5), sort, page: Number(query['page'] ?? 1) || 1 }
+}
+
 export function registerCatalogRoutes(app: FastifyInstance, ctx: Ctx): void {
   const d = ctx.db
 
-  app.get('/api/v1/server', async () => ({ opencourse: 1, api: 1, name: ctx.config.name, description: ctx.config.description, registration: ctx.config.registration }))
+  app.get('/api/v1/server', async () => ({ opencourse: 1, api: 1, name: ctx.config.name, description: ctx.config.description, registration: ctx.config.registration, version: SERVER_VERSION }))
 
-  app.get('/api/v1/courses', async (request) => {
-    const query = request.query as Record<string, unknown>
-    const sort = typeof query['sort'] === 'string' && SORTS.has(query['sort']) ? query['sort'] as CatalogSort : undefined
-    return catalogPage(d, { q: typeof query['q'] === 'string' ? query['q'].slice(0, 200) : undefined, tags: asList(query['tag']), sort, page: Number(query['page'] ?? 1) || 1 })
+  // For a load balancer or a container's health check: the database answers.
+  app.get('/healthz', async (_request, reply) => {
+    d.prepare('SELECT 1').get()
+    return reply.header('Cache-Control', 'no-store').send({ ok: true })
   })
+
+  app.get('/api/v1/courses', async (request) => catalogPage(d, catalogQuery(request.query as Record<string, unknown>)))
 
   app.get('/api/v1/tags', async () => ({ tags: tagCounts(d) }))
 

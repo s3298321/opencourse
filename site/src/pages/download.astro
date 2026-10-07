@@ -26,7 +26,7 @@ const build = [
       {release
         ? <p class="dl-lede">Version {release.version}, released {formatDate(release.publishedAt)}.</p>
         : <p class="dl-lede">The first release is on its way. Until then, OpenCourse builds from source in a few minutes.</p>}
-      {release ? <DownloadButton meta={false} /> : <a class="oc-btn xl secondary" href={SITE.releasesUrl} rel="noopener noreferrer"><Icon name="github" size={18} />Watch for the first release</a>}
+      {release ? <DownloadButton meta={false} note={false} /> : <a class="oc-btn xl secondary" href={SITE.releasesUrl} rel="noopener noreferrer"><Icon name="github" size={18} />Watch for the first release</a>}
       <ul class="dl-facts">
         <li><Icon name="laptop" size={16} />Apple silicon Macs</li>
         <li><Icon name="check" size={16} />{SITE.minimumMacOS} or later</li>
@@ -37,23 +37,26 @@ const build = [
   </section>
 
   <div class="oc-wrap dl-body">
+    {release?.unsigned && (
+      <section class="dl-section" id="first-open">
+        <div class="callout">
+          <Icon name="shield-check" size={20} />
+          <div>
+            <strong>Not yet signed by Apple</strong>
+            <p>OpenCourse is not signed with an Apple Developer ID yet, so the first time you open it, macOS says it cannot verify the app. Close that message, open <strong>System Settings ▸ Privacy &amp; Security</strong>, scroll to the note about OpenCourse and choose <strong>Open Anyway</strong>. You do this once for each version you download.</p>
+          </div>
+        </div>
+      </section>
+    )}
+
     {release && (
       <section class="dl-section oc-reveal">
         <h2>Install it</h2>
         <ol class="steps">
           <li class="oc-panel"><span class="how-n">1</span><div><strong>Open the download</strong><p>Double-click <code>OpenCourse-mac-arm64.dmg</code> in your Downloads folder.</p></div></li>
           <li class="oc-panel"><span class="how-n">2</span><div><strong>Drag it to Applications</strong><p>Drop the OpenCourse icon onto the Applications folder in the window that opens.</p></div></li>
-          <li class="oc-panel"><span class="how-n">3</span><div><strong>Open it</strong><p>Start OpenCourse from Applications or Spotlight, and import or add your first course.</p></div></li>
+          <li class="oc-panel"><span class="how-n">3</span><div><strong>Open it</strong><p>Start OpenCourse from Applications or Spotlight{release.unsigned ? <>, allow it once as <a href="#first-open">described above</a>,</> : ''} and import or add your first course.</p></div></li>
         </ol>
-        {release.unsigned && (
-          <div class="callout">
-            <Icon name="shield-check" size={20} />
-            <div>
-              <strong>The first time you open it</strong>
-              <p>This build is not signed with an Apple Developer ID yet, so macOS stops it the first time. Open <strong>System Settings ▸ Privacy &amp; Security</strong>, scroll to the note about OpenCourse and choose <strong>Open Anyway</strong>. You only do this once.</p>
-            </div>
-          </div>
-        )}
       </section>
     )}
 

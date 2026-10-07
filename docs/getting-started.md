@@ -11,9 +11,10 @@ later: exercises, the AI features, writing a course and sharing one.
 2. Open the disk image and drag **OpenCourse** to **Applications**.
 3. Open it from Applications or Spotlight.
 
-If macOS says it cannot check the app for malicious software, the build you
-have is not signed yet. Open **System Settings ▸ Privacy & Security**, find the
-note about OpenCourse and choose **Open Anyway**. You only do this once.
+OpenCourse is not signed with an Apple Developer ID yet, so the first time you
+open it macOS says it cannot verify the app. Close that message, open **System
+Settings ▸ Privacy & Security**, scroll to the note about OpenCourse and choose
+**Open Anyway**. You do this once for each version you download.
 
 The first time you open OpenCourse it asks for a name, so that several people
 can share one Mac with separate libraries and progress. Nothing leaves your Mac.

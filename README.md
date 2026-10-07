@@ -396,8 +396,10 @@ npm run check        # astro check, then every link, anchor and download in dist
 2. Tag it: `git tag v0.2.0 && git push origin v0.2.0`.
 3. `.github/workflows/release.yml` builds `OpenCourse-mac-arm64.dmg` on macOS
    and uploads it to a **draft** release - signed and notarized when the
-   repository has the Apple secrets the workflow lists, unsigned (and marked so
-   on the release) otherwise.
+   repository has the Apple secrets the workflow lists. Otherwise it is ad-hoc
+   signed, which is what lets macOS offer **Open Anyway** rather than call the
+   app damaged, and marked as unsigned on the release, which makes the website
+   show how to open it.
 4. Write the notes and publish the draft. opencourse.dev rebuilds itself with
    the new version.
 

@@ -3,13 +3,15 @@
  * The Mac download. With a published release it is GitHub's permalink to the
  * newest DMG, which starts the download without showing GitHub at all; before
  * the first release it leads to the download page, which says what to do instead.
+ * While releases are not signed by Apple, it says so, because the button starts
+ * the download without passing the page that explains how to open it.
  */
 import Icon from './Icon.astro'
 import { SITE } from '../site.config'
 import { megabytes, release } from '../lib/data'
 
-interface Props { size?: 'lg' | 'xl'; meta?: boolean; class?: string }
-const { size = 'xl', meta = true, class: className } = Astro.props
+interface Props { size?: 'lg' | 'xl'; meta?: boolean; note?: boolean; class?: string }
+const { size = 'xl', meta = true, note = true, class: className } = Astro.props
 ---
 <div class:list={['download', className]}>
   {release
@@ -18,4 +20,7 @@ const { size = 'xl', meta = true, class: className } = Astro.props
   {meta && (release
     ? <span class="download-meta">Apple silicon · v{release.version} · {megabytes(release.asset!.size)}</span>
     : <span class="download-meta">First release coming soon · build it from source today</span>)}
+  {note && release?.unsigned && (
+    <a class="download-note" href="/download#first-open"><Icon name="shield-check" size={14} />Not yet signed by Apple · how to open it</a>
+  )}
 </div>

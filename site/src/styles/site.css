@@ -50,6 +50,8 @@ html:focus-within { scroll-behavior: smooth; }
 /* ---------- download button ---------- */
 .download { display: inline-flex; flex-direction: column; align-items: center; gap: 0.5rem; }
 .download-meta { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.download-note { display: inline-flex; align-self: center; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--chip-fg); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+.download-note:hover { text-decoration-color: currentColor; }
 .download-button .icon { transition: transform var(--dur) var(--spring); }
 .download-button:hover .icon { transform: translateY(2px); }
 

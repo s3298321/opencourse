@@ -34,9 +34,12 @@ mac:
     - target: dmg
       arch: [arm64]
   darkModeSupport: true
-  # Unsigned by default. The release workflow (.github/workflows/release.yml)
-  # overrides this with the Developer ID and turns on notarization when the
-  # signing secrets exist; a local `npm run dmg` stays unsigned.
+  # Unsigned by default, and a local `npm run dmg` stays that way. The release
+  # workflow (.github/workflows/release.yml) overrides this: with the Developer
+  # ID and notarization when the signing secrets exist, and with an ad-hoc
+  # signature (`-`) when they do not, because a downloaded app whose signature
+  # does not cover the bundle is "damaged" on Apple silicon rather than merely
+  # unverified.
   identity: null
   # The dev Electron binary carries its own NSMicrophoneUsageDescription, so
   # `npm run dev` prompts correctly whether or not this is here. The packaged

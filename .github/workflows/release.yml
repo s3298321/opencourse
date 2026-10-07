@@ -9,8 +9,12 @@
 #   APPLE_SIGNING_IDENTITY      e.g. "Developer ID Application: Name (TEAMID)"
 #   APPLE_API_KEY_P8            an App Store Connect API key (.p8 contents), for notarization
 #   APPLE_API_KEY_ID, APPLE_API_ISSUER
-# Without them the build is unsigned, and the release says so in a marker the
-# website reads to show Gatekeeper's "Open Anyway" instructions.
+# Without them the build is ad-hoc signed: a valid signature with no Apple
+# identity behind it. That is not optional on Apple silicon - a downloaded app
+# whose signature does not cover the whole bundle is reported as "damaged" and
+# cannot be opened at all, while an ad-hoc signed one gets Gatekeeper's usual
+# "cannot verify" prompt and the Open Anyway button. The release says so between
+# markers the website reads to show those instructions itself.
 name: Release
 
 on:
@@ -75,7 +79,7 @@ jobs:
             npx electron-builder --mac --arm64 --publish always \
               -c.mac.identity="${APPLE_SIGNING_IDENTITY#Developer ID Application: }" -c.mac.notarize=true
           else
-            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 --publish always
+            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 --publish always -c.mac.identity=-
           fi
 
       - name: Say so on an unsigned release
@@ -87,6 +91,7 @@ jobs:
             gh release view "$GITHUB_REF_NAME" --json body --jq .body
             echo
             echo "<!-- opencourse:unsigned -->"
-            echo "> This build is not signed with an Apple Developer ID. The first time you open it, macOS stops it: open **System Settings ▸ Privacy & Security** and choose **Open Anyway**."
+            echo "> This build is not signed with an Apple Developer ID yet. The first time you open it, macOS says it cannot verify the app: close the message, open **System Settings ▸ Privacy & Security**, scroll to the note about OpenCourse and choose **Open Anyway**. You do this once for each version you download."
+            echo "<!-- /opencourse:unsigned -->"
           } > "$RUNNER_TEMP/notes.md"
           gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"

@@ -172,5 +172,8 @@ export function renderNotes(markdown: string): string {
     tokens[idx]!.attrSet('rel', 'noopener noreferrer nofollow')
     return linkOpen(tokens, idx, options, env, self)
   }
-  return md.render(markdown.replace(/<!--[\s\S]*?-->/g, ''))
+  // The release workflow's unsigned notice sits between markers; the download
+  // page shows its own, so it is dropped here rather than said twice.
+  const notes = markdown.replace(/<!--\s*opencourse:unsigned\s*-->[\s\S]*?<!--\s*\/opencourse:unsigned\s*-->/g, '')
+  return md.render(notes.replace(/<!--[\s\S]*?-->/g, ''))
 }

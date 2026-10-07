@@ -85,6 +85,10 @@ jobs:
             npx electron-builder --mac --arm64 --publish always \
               -c.mac.identity="${APPLE_SIGNING_IDENTITY#Developer ID Application: }" -c.mac.notarize=true
           else
+            # Missing secrets arrive as empty strings, and an ad-hoc signature
+            # still makes electron-builder read CSC_LINK: "" is a path to the
+            # working directory, "not a file". Unset, they mean "no certificate".
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_KEY_ID APPLE_API_ISSUER
             CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 --publish always -c.mac.identity=-
           fi
 

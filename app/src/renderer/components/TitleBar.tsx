@@ -3,6 +3,7 @@ import type { CSSProperties, JSX, ReactNode } from 'react'
 import type { UserProfile } from '@core/types'
 import Menu from './Menu'
 import Brand from './Brand'
+import UpdateButton from './UpdateButton'
 import { screenOf, sectionOf, type Route } from '../routes'
 
 /**
@@ -20,6 +21,10 @@ import { screenOf, sectionOf, type Route } from '../routes'
  * The user chip opens a menu rather than jumping straight to the picker:
  * switching user is one of the things you might want from your own name, and
  * settings and the log are the others.
+ *
+ * A waiting update of the app comes first of all, on every screen including
+ * the picker: it is about the app rather than the screen, and it is gone again
+ * once there is nothing to update.
  */
 export default function TitleBar({
   back,
@@ -54,6 +59,9 @@ export default function TitleBar({
     <div className="titlebar" style={{ '--titlebar-controls-width': `${controlsWidth}px` } as CSSProperties}>
       {back ? <div className="crumbs"><a onClick={back.onClick}>← {back.label}</a></div> : <Brand />}
       <div className="titlebar-right" ref={controlsRef}>
+        <UpdateButton
+          openSettings={navigate && route ? () => navigate({ name: 'settings', from: screenOf(route), section: 'updates' }) : undefined}
+        />
         {actions}
         {navigate && section && (
           <div

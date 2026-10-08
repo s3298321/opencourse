@@ -905,3 +905,31 @@ export type ThemeImportResult =
   | { status: 'ok'; theme: ThemeSummary; replaced: boolean }
   | { status: 'cancelled' }
   | { status: 'rejected'; message: string }
+
+/**
+ * Where an update of the app itself stands (main/updates.ts). The display half
+ * only: the release it is about stays in main, so the renderer can ask to
+ * install "the update" but never name what to download.
+ */
+export type AppUpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'current' }
+  | { state: 'available'; version: string; size: number; notesUrl: string; installable: boolean; reason?: string }
+  | { state: 'downloading'; version: string; received: number; total: number }
+  | { state: 'verifying'; version: string }
+  | { state: 'ready'; version: string }
+  /** Something open would be lost by quitting now; `reason` says what. Nothing was downloaded. */
+  | { state: 'blocked'; version: string; size: number; notesUrl: string; reason: string }
+  | { state: 'error'; message: string; version?: string; notesUrl?: string }
+
+export interface AppUpdateInfo {
+  status: AppUpdateStatus
+  /** Off unless turned on: while it is off the app never contacts GitHub on its own. */
+  automatic: boolean
+  currentVersion: string
+  /** When the last check finished, successfully or not; null before any. */
+  checkedAt: number | null
+  /** Where to get the new version by hand, when this copy cannot replace itself. */
+  downloadUrl: string
+}

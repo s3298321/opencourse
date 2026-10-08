@@ -56,6 +56,36 @@ const HELPERS = `
   }));
 `
 
+/** The example course, imported through the real path the first time a suite asks for it. */
+export async function ensureExampleCourse(win: BrowserWindow): Promise<ReturnType<typeof import('./fixture-identities')['fixtureCourse']>> {
+  const { fixtureCourse } = await import('./fixture-identities')
+  const found = fixtureCourse(EXAMPLE)
+  if (found) return found
+  const { importCourseZip } = await import('./import')
+  const imported = await importCourseZip(join(specResourcesDir(), 'opencourse-example-course.zip'))
+  if (imported.status !== 'ok') throw new Error('the example course did not import: ' + imported.status)
+  win.webContents.send('courses:changed')
+  return fixtureCourse(EXAMPLE)
+}
+
+/** Renderer code that opens the example course's first lesson from wherever the window is. */
+export const OPEN_EXAMPLE_LESSON = `
+  if (document.querySelector('.settings') || document.querySelector('.logs')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+  document.querySelector('.titlebar [data-section="courses"]').click();
+  await wait('.library');
+  const card = await (async () => {
+    for (let n = 0; n < 160; n++) {
+      const found = [...document.querySelectorAll('.course-card')].find((c) => /OpenCourse example course/.test(c.textContent));
+      if (found) return found;
+      await sleep(50);
+    }
+    throw new Error('no example course card');
+  })();
+  card.click();
+  (await wait('.lesson-row')).click();
+  await wait('.lesson-head h1');
+`
+
 export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   const results: Result[] = []
   const run = async (name: string, body: string): Promise<void> => {
@@ -107,15 +137,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   const { getReadingScale, readPreferences, setReadingScale } = await import('./preferences')
 
   await inMain('the example course is in the library, with an answered side chat', async () => {
-    const { fixtureCourse } = await import('./fixture-identities')
-    let course = fixtureCourse(EXAMPLE)
-    if (!course) {
-      const { importCourseZip } = await import('./import')
-      const imported = await importCourseZip(join(specResourcesDir(), 'opencourse-example-course.zip'))
-      if (imported.status !== 'ok') throw new Error('the example course did not import: ' + imported.status)
-      win.webContents.send('courses:changed')
-      course = fixtureCourse(EXAMPLE)
-    }
+    const course = await ensureExampleCourse(win)
     const module = course?.modules[0]
     const first = module?.lessons?.[0]
     if (!course || !module || !first) throw new Error('the example course has no first lesson')
@@ -134,20 +156,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   })
 
   await run('a lesson opens at the app\'s own size, with the control at the column\'s foot', `
-    if (document.querySelector('.settings')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
-    document.querySelector('.titlebar [data-section="courses"]').click();
-    await wait('.library');
-    const card = await (async () => {
-      for (let n = 0; n < 160; n++) {
-        const found = [...document.querySelectorAll('.course-card')].find((c) => /OpenCourse example course/.test(c.textContent));
-        if (found) return found;
-        await sleep(50);
-      }
-      throw new Error('no example course card');
-    })();
-    card.click();
-    (await wait('.lesson-row')).click();
-    await wait('.lesson-head h1');
+    ${OPEN_EXAMPLE_LESSON}
     await wait('.content .reading-size');
     if (label() !== '100%') throw new Error('the control reads ' + label());
     const box = pill().getBoundingClientRect();

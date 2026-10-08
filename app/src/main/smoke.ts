@@ -1,6 +1,7 @@
 import { editorSmoke } from './editor-smoke'
 import { themeChecks } from './theme-smoke'
 import { readingSizeChecks } from './reading-smoke'
+import { appUpdateChecks } from './update-smoke'
 import { FIXTURE_API, fixtureCourse } from './fixture-identities'
 /**
  * Headless smoke check: boots the real window, drives the real renderer, and
@@ -2939,7 +2940,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         }
         throw new Error('Test user picker did not load');
       })()`)
-      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { editor: editorSmoke, reading: readingSizeChecks }
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks }
       const unknown = only.filter((name) => !suites[name])
       if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
       const results: Result[] = []
@@ -2992,6 +2993,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
       // Brings the example course and leaves a lesson at 100%; the theme suite
       // starts from the library whatever it is shown.
       ...(await readingSizeChecks(win)),
+      ...(await appUpdateChecks(win)),
       // Themes go on and come off again inside their own suite, which ends in
       // the library on the app's own look - where projectChecks starts anyway,
       // and the suites after that depend on the screen it leaves.

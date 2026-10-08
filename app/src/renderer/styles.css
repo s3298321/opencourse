@@ -214,7 +214,11 @@ input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow:
   -webkit-app-region: drag;
   height: 38px; flex: 0 0 38px;
   display: grid;
-  grid-template-columns: minmax(var(--titlebar-controls-width, 80px), 1fr) minmax(0, max-content) minmax(var(--titlebar-controls-width, 80px), 1fr);
+  /* Both sides share the free space, so the middle is centred - until the
+     window is too narrow for that, when the empty left side gives way first
+     and the controls keep their width. Two equal minimums used to push the
+     controls off a 720px window. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(var(--titlebar-controls-width, 80px), 1fr);
   align-items: center;
   padding: 0 0.75rem;
   gap: 0.75rem;
@@ -236,6 +240,26 @@ input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow:
 .titlebar .user-chip, .titlebar .chat-chip {
   display: flex; align-items: center; gap: 0.4rem;
   font-size: 12px; font-weight: 600; padding: 0.15rem 0.5rem;
+}
+/* A waiting update of the app: the one chip in the accent, because it is the
+   one that is news. Not .update-badge - that is a course's update, on its card. */
+.titlebar .update-chip {
+  display: flex; align-items: center; gap: 0.35rem;
+  font-size: 12px; font-weight: 600; padding: 0.15rem 0.55rem;
+  background: var(--accent); color: var(--accent-fg); border-radius: 999px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.titlebar .update-chip:hover, .titlebar .update-chip.open { background: var(--accent); filter: brightness(1.08); }
+.titlebar .update-chip.failed { background: var(--err-bg); color: var(--err); box-shadow: inset 0 0 0 1px var(--err-border); }
+.titlebar .update-chip:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
+.update-chip-glyph { flex: none; }
+.titlebar .update-chip .menu-caret { display: none; }
+.update-chip-short { display: none; }
+/* Narrow windows: the arrow says it, the tooltip and aria-label say the rest. */
+@media (max-width: 900px) {
+  .titlebar .update-chip .update-chip-text { display: none; }
+  .titlebar .update-chip .update-chip-short { display: inline; }
+  .titlebar .update-chip { padding: 0.15rem 0.45rem; }
 }
 /* A toggle, so it has to show which way it is set. */
 .titlebar .chat-chip.on { background: var(--selected); color: var(--fg); box-shadow: inset 0 0 0 1px var(--selected-edge); }
@@ -474,6 +498,9 @@ input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow:
 }
 .settings-check:hover { background: var(--chip-bg); }
 .settings-check input { margin: 0; flex: none; accent-color: var(--check-accent); }
+.settings-update-status p { margin: 0.75rem 0 0; }
+.settings-update-reason { display: block; margin-top: 0.25rem; }
+.settings-update-progress { display: block; width: 100%; margin-top: 0.5rem; accent-color: var(--accent); }
 .settings-section.danger { border-color: var(--err-border); }
 .settings-section.danger h2 { color: var(--err); }
 .settings-section.danger ul { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; }
@@ -1850,7 +1877,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 button, a, input, select, textarea { transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
 button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 button:hover { filter: none; }
-button:not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.menu-item):not(.section-switch button):not(.reading-size button):not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--hover-ring); }
+button:not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.update-chip):not(.menu-item):not(.section-switch button):not(.reading-size button):not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--hover-ring); }
 .titlebar .user-chip:hover, .user-menu .menu-item { box-shadow: none; }
 .titlebar .user-chip:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
 .course-card, .user-card, .coach-card { transition: border-color 140ms ease, background-color 140ms ease, transform 140ms var(--ease); }

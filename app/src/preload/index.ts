@@ -1,4 +1,4 @@
-import type { AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
+import type { AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
 import type { AuthoringCourse, CourseDraft, SaveCourseResult, SavePreview } from '../core/course-document'
 import type { AttachmentKind, AttachmentUpload } from '../main/course-authoring'
 import type { CourseManifest } from '../core/types'
@@ -158,6 +158,15 @@ const api = {
   /** Smoke and shots only, like importCoursePath. */
   importThemePath: (zipPath: string, onDuplicate?: 'replace' | 'keep' | 'cancel'): Promise<ThemeImportResult> =>
     ipcRenderer.invoke('themes:importPath', zipPath, onDuplicate),
+
+  // --- updates of the app itself: app-wide, off unless turned on ---
+  getAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:state'),
+  /** A press of "Check for updates": unlike an automatic check, it reports a failure. */
+  checkForAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:check'),
+  /** Download, check and stage the release main found, then restart into it. */
+  installAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:install'),
+  setAppUpdateAutomatic: (on: boolean): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:setAutomatic', on),
+  onAppUpdateChanged: (handler: (info: AppUpdateInfo) => void): (() => void) => subscribe('appUpdate:changed', handler),
 
   // --- the reader's text size on a lesson screen: one of READING_SCALES ---
   getReadingScale: (): Promise<number> => ipcRenderer.invoke('reading:scale'),

@@ -13,6 +13,8 @@ import { buildMenu } from './menu'
 import { wantsMic } from './mic'
 import { registerProtocolHandler, registerSchemePrivileges } from './protocol'
 import { applyWindowLook, windowLookOptions } from './theme-window'
+import { isolatedRun } from './run-mode'
+import { quitVetoed, runPendingInstall, startUpdates } from './updates'
 
 // Must happen before the app is ready.
 app.setName(BRAND.displayName)
@@ -23,7 +25,6 @@ registerSchemePrivileges()
 // A smoke run must not inherit - or disturb - the real data directory. Every
 // path the app owns hangs off userData (see main/paths.ts), so this one line
 // isolates users, courses, progress, exercise files and virtualenvs together.
-const isolatedRun = Boolean(process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS'] || process.env['OPENCOURSE_LIVE_CHECK'] || process.env['OPENCOURSE_FLASHCARD_SMOKE'])
 if (isolatedRun) {
   // Recorded so the run can delete it on the way out: these profiles hold a
   // virtualenv apiece and quietly filled a disk before anyone noticed.
@@ -53,6 +54,11 @@ app.on('child-process-gone', (_e, details) => {
   // A utility process exiting cleanly is not news.
   if (details.reason !== 'clean-exit') appLog.warn('A helper process went away', { type: details.type, reason: details.reason, exitCode: details.exitCode, name: details.name ?? null })
 })
+// An update the learner asked for is swapped in by a helper once the app has
+// gone. will-quit is the first moment the quit can no longer be refused (a
+// course with unsaved edits can refuse it), and this is registered before the
+// log closes so what it says is kept.
+app.on('will-quit', runPendingInstall)
 // will-quit, not before-quit: other modules stop their work on before-quit, and
 // what that stopping logs should make it to disk too.
 app.on('will-quit', closeLogSinks)
@@ -129,6 +135,9 @@ function createWindow(): BrowserWindow {
       detail: 'Your edits to this course have not been saved. Discarding them leaves the course as it was last saved.'
     })
     if (choice === 0) event.preventDefault()
+    // Kept editing: if this quit was an update's restart, it is not one any
+    // more - the next ordinary quit installs it, without opening the app again.
+    else quitVetoed()
   })
 
   win.once('ready-to-show', () => {
@@ -208,6 +217,7 @@ app.whenReady().then(async () => {
   app.on('before-quit', closeDb)
 
   createWindow()
+  startUpdates()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

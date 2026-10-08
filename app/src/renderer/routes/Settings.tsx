@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { CoachModel, Session, UserProfile } from '@core/types'
+import type { AppUpdateInfo, CoachModel, Session, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
 import ThemeSection from '../components/ThemeSettings'
 import ServerSettings from '../components/ServerSettings'
 import ConnectionIcon from '../components/ConnectionIcon'
+import { formatDownloadSize, useAppUpdate } from '../components/useAppUpdate'
 import type { Route, Screen } from '../routes'
 
 interface Props {
   user: UserProfile | null
   navigate: (r: Route, options?: { keepScroll?: boolean }) => void
-  route: { name: 'settings'; from: Screen }
+  route: { name: 'settings'; from: Screen; section?: 'updates' }
   onSession: (session: Session) => void
   onSessionChanged: (session: Session, user: UserProfile | null) => void
 }
@@ -60,6 +61,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
                 <NameSection user={user} onSession={onSession} />
                 <ThemeSection />
                 <ServerSettings />
+                <UpdatesSection focus={route.section === 'updates'} />
                 <h2>Connections</h2>
                 <KeySection onChanged={onKeyChanged} />
                 <SubscriptionSection />
@@ -254,6 +256,97 @@ function KeySection({ onChanged }: { onChanged: () => void }): JSX.Element {
  * billed on it, on top of the answer. Off until someone turns it on, and when
  * it is on the model still decides, question by question, whether to search.
  */
+/**
+ * Updates of the app itself. Unlike everything around it this is not about you
+ * but about the copy of the app every user here runs, and the page says so.
+ * Automatic checks are off until ticked: while they are off the app never
+ * contacts GitHub on its own (main/updates.ts).
+ */
+function UpdatesSection({ focus }: { focus: boolean }): JSX.Element {
+  const info = useAppUpdate()
+  const section = useRef<HTMLElement | null>(null)
+  // Opened from the titlebar's update button: show this part, not the top.
+  useEffect(() => {
+    if (focus && info) section.current?.scrollIntoView({ block: 'start' })
+  }, [focus, info === null])
+
+  return (
+    <section className="settings-section settings-updates" ref={section}>
+      <h2>Updates</h2>
+      {!info ? <p className="meta">Loading…</p> : <UpdatesBody info={info} />}
+    </section>
+  )
+}
+
+function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
+  const status = info.status
+  const busy = status.state === 'checking' || status.state === 'downloading' || status.state === 'verifying'
+  const check = (): void => void window.opencourse.checkForAppUpdate()
+  const install = (): void => void window.opencourse.installAppUpdate()
+  const download = (): void => void window.opencourse.openExternal(info.downloadUrl)
+  const notes = 'notesUrl' in status && status.notesUrl ? <> · <a href={status.notesUrl}>What’s new</a></> : null
+
+  return (
+    <>
+      <p className="meta">
+        This is OpenCourse {info.currentVersion}.
+        {info.checkedAt !== null && ` Last checked ${new Date(info.checkedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.`}
+      </p>
+      <label className="settings-check">
+        <input
+          type="checkbox"
+          className="settings-update-automatic"
+          checked={info.automatic}
+          onChange={(e) => void window.opencourse.setAppUpdateAutomatic(e.target.checked)}
+        />
+        <span>Check for updates automatically</span>
+      </label>
+      <p className="meta">
+        For every OpenCourse user on this Mac account. A check asks GitHub, where OpenCourse is published, for the
+        latest version. While this is off, OpenCourse never does that on its own - only when you press the button.
+      </p>
+
+      <div className="settings-update-status" role="status">
+        {status.state === 'current' && <p>You have the latest version.</p>}
+        {status.state === 'available' && (
+          <p>
+            <strong>OpenCourse {status.version} is available</strong> · {formatDownloadSize(status.size)}{notes}
+            {!status.installable && status.reason && <span className="meta settings-update-reason">{status.reason}</span>}
+          </p>
+        )}
+        {status.state === 'blocked' && (
+          <p>
+            <strong>OpenCourse {status.version} is waiting</strong>{notes}
+            <span className="meta settings-update-reason">{status.reason}</span>
+          </p>
+        )}
+        {status.state === 'downloading' && (
+          <>
+            <p>Downloading OpenCourse {status.version}…</p>
+            <progress className="settings-update-progress" value={status.received} max={status.total} />
+          </>
+        )}
+        {status.state === 'verifying' && <p>Checking the download…</p>}
+        {status.state === 'ready' && <p><strong>OpenCourse {status.version} is ready.</strong> It is installed when OpenCourse restarts.</p>}
+        {status.state === 'error' && <p className="import-note error">{status.message}</p>}
+      </div>
+
+      <div className="actions">
+        {(status.state === 'available' && status.installable) || status.state === 'blocked' ? (
+          <button className="settings-update-install" onClick={install}>Install and restart</button>
+        ) : null}
+        {status.state === 'ready' && <button className="settings-update-install" onClick={install}>Restart to update</button>}
+        {((status.state === 'available' && !status.installable) || (status.state === 'error' && status.version)) && (
+          <button onClick={download}>Download OpenCourse {status.version}</button>
+        )}
+        <button className="secondary settings-update-check" disabled={busy || status.state === 'ready'} onClick={check}>
+          {status.state === 'checking' ? 'Checking…' : 'Check for updates'}
+        </button>
+      </div>
+    </>
+  )
+}
+
 function WebSearchSection(): JSX.Element {
   const [on, setOn] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)

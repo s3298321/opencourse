@@ -76,6 +76,8 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: Ctx): void {
   const logins = new RateLimiter(10, 15 * 60_000)
   const verifies = new RateLimiter(20, 15 * 60_000)
   const limit = (limiter: RateLimiter, key: string): void => { if (!limiter.hit(key)) throw tooMany() }
+  /** Every step of a sign-up asks, so a code or ticket from before closing cannot finish one. */
+  const requireOpen = (): void => { if (config.registration !== 'open') throw forbidden('registration_closed', 'This server is not accepting new accounts.') }
 
   const accountByLogin = (login: string) => d.prepare('SELECT id, username, email, password_hash, disabled_at FROM accounts WHERE email = ? OR username = ?')
     .get(login, login) as { id: string; username: string; email: string; password_hash: string; disabled_at: string | null } | undefined
@@ -91,7 +93,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: Ctx): void {
   }
 
   app.post('/api/v1/auth/register/start', { schema: { body: emailBody } }, async (request, reply) => {
-    if (config.registration !== 'open') throw forbidden('registration_closed', 'This server is not accepting new accounts.')
+    requireOpen()
     const email = cleanEmail((request.body as { email: string }).email)
     limit(perIp, `register:${request.ip}`); limit(perEmail, `register:${email.toLowerCase()}`)
     const existing = d.prepare('SELECT username FROM accounts WHERE email = ?').get(email) as { username: string } | undefined
@@ -105,6 +107,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: Ctx): void {
   })
 
   app.post('/api/v1/auth/register/verify', { schema: { body: codeBody } }, async (request) => {
+    requireOpen()
     const { email: raw, code } = request.body as { email: string; code: string }
     const email = cleanEmail(raw)
     limit(verifies, `verify:${request.ip}`)
@@ -128,6 +131,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.post('/api/v1/auth/register/complete', {
     schema: { body: { type: 'object', required: ['ticket', 'username', 'password'], additionalProperties: false, properties: { ticket: { type: 'string', maxLength: 100 }, username: { type: 'string', maxLength: 64 }, password: { type: 'string', maxLength: 1024 }, ...sessionProperty } } }
   }, async (request, reply) => {
+    requireOpen()
     const { ticket, username, password } = request.body as { ticket: string; username: string; password: string }
     const row = d.prepare('SELECT email, expires_at FROM registration_tickets WHERE ticket_hash = ?').get(sha256(ticket)) as { email: string; expires_at: string } | undefined
     if (!row || Date.parse(row.expires_at) <= Date.now()) throw badRequest('invalid_ticket', 'This sign-up has expired. Start again with your email address.')

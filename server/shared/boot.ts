@@ -12,6 +12,9 @@ export interface BootServer extends ServerInfo {
   /** Where "Get the app" points. */
   appUrl: string
   sourceUrl: string
+  /** The operator's privacy policy and legal notice; null when not configured. */
+  privacyUrl: string | null
+  legalUrl: string | null
 }
 
 export type BootData =

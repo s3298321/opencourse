@@ -177,7 +177,20 @@ export function openDb(file: string): Db {
   const d = new DatabaseSync(file)
   d.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;')
   migrate(d)
+  sweepExpired(d)
   return d
+}
+
+/**
+ * Deletes codes, sign-up tickets and sessions past their expiry. Each holds an
+ * address or a device, and none can be used any more, so they are not kept -
+ * the privacy page promises as much. Runs on open and whenever a code is issued.
+ */
+export function sweepExpired(d: Db, now = Date.now()): void {
+  const at = new Date(now).toISOString()
+  d.prepare('DELETE FROM email_codes WHERE expires_at <= ?').run(at)
+  d.prepare('DELETE FROM registration_tickets WHERE expires_at <= ?').run(at)
+  d.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(at)
 }
 
 function migrate(d: Db): void {

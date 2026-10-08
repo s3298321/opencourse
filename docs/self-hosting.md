@@ -74,6 +74,8 @@ Everything is set with environment variables (in `.env` with Docker).
 | `OPENCOURSE_SERVER_PORT` | `8787` | The port to listen on. |
 | `OPENCOURSE_TRUST_PROXY` | | `1` when behind a proxy, so rate limits see each visitor's real address. |
 | `OPENCOURSE_SERVER_APP_URL` | `https://opencourse.dev/download` | Where **Get the app** points. |
+| `OPENCOURSE_SERVER_PRIVACY_URL` | | Your privacy policy. Every page's footer links to it; without it there is no link. |
+| `OPENCOURSE_SERVER_LEGAL_URL` | | Your legal notice, linked the same way. |
 | `OPENCOURSE_SERVER_DEV` | | `1` on a developer's machine only: sign-up codes are printed and served at `/dev/outbox` instead of mailed. Never on a public server. |
 
 `GET /healthz` answers `{"ok": true}` while the database does, for load

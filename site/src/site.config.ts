@@ -17,6 +17,10 @@ export const SITE = {
   downloadUrl: 'https://github.com/s3298321/opencourse/releases/latest/download/OpenCourse-mac-arm64.dmg',
   releasesUrl: 'https://github.com/s3298321/opencourse/releases',
   issuesUrl: 'https://github.com/s3298321/opencourse/issues',
+  /** Who runs opencourse.dev and the public catalog, for the privacy page and the legal notice. */
+  operator: 'Sergei Kravtsov',
+  /** Forwarded by SES to the operator's own mailbox (opencourse-infra, modules/contact-mail). */
+  contactEmail: 'contact@opencourse.dev',
   minimumMacOS: 'macOS 13 Ventura',
   docsBranch: 'master',
   description: 'OpenCourse is a free, open-source Mac app for courses on any subject: lessons, live visualizations, quizzes, flashcards, exercises that grade themselves, and an AI tutor that has read the lesson with you.'

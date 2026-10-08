@@ -16,7 +16,8 @@ function read(): Boot {
   return {
     server: {
       opencourse: 1, api: 1, name: 'OpenCourse server', description: '', registration: 'open',
-      publicUrl: window.location.origin, appUrl: DEFAULT_APP_URL, sourceUrl: SOURCE_URL
+      publicUrl: window.location.origin, appUrl: DEFAULT_APP_URL, sourceUrl: SOURCE_URL,
+      privacyUrl: null, legalUrl: null
     },
     account: null,
     page: null

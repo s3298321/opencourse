@@ -68,6 +68,8 @@ Everything comes from the environment.
 | `OPENCOURSE_REGISTRATION` | `open` | `closed`: only existing accounts can sign in |
 | `OPENCOURSE_TRUST_PROXY` | | `1` to use `X-Forwarded-For` for rate limits |
 | `OPENCOURSE_SERVER_APP_URL` | `https://opencourse.dev/download` | Where the web app's **Get the app** points |
+| `OPENCOURSE_SERVER_PRIVACY_URL` | | Your privacy policy, linked from every web page's footer; no link when unset |
+| `OPENCOURSE_SERVER_LEGAL_URL` | | Your legal notice, linked the same way |
 | `OPENCOURSE_SERVER_WEB_DIR` | `dist/web` | The built web app, if it lives elsewhere |
 | `OPENCOURSE_SERVER_DEV` | | `1`: no SMTP, codes go to stdout and `/dev/outbox`. Never on a reachable server |
 

@@ -43,7 +43,7 @@ beforeAll(async () => {
   const { buildApp } = await import('../../server/src/app')
   const { Outbox } = await import('../../server/src/auth/mailer')
   outbox = new Outbox(false)
-  const config = { port: 0, host: '127.0.0.1', dataDir: join(root, 'server'), name: 'Live test server', description: 'For the live test.', publicUrl: 'http://127.0.0.1', smtpUrl: null, mailFrom: 'test@localhost', registration: 'open' as const, dev: false, trustProxy: false, appUrl: 'https://opencourse.dev/download', webDir: null }
+  const config = { port: 0, host: '127.0.0.1', dataDir: join(root, 'server'), name: 'Live test server', description: 'For the live test.', publicUrl: 'http://127.0.0.1', smtpUrl: null, mailFrom: 'test@localhost', registration: 'open' as const, dev: false, trustProxy: false, appUrl: 'https://opencourse.dev/download', privacyUrl: null, legalUrl: null, webDir: null }
   const { app } = await buildApp({ config, mailer: outbox as never, logger: false })
   await app.listen({ port: 0, host: '127.0.0.1' })
   base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`

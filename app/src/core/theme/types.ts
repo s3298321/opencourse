@@ -62,7 +62,6 @@ export interface FontFaceSpec {
 
 export interface FontSlot {
   family?: string[]
-  size?: number
   weight?: number
   lineHeight?: number
   /** In em. */

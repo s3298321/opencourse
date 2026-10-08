@@ -98,6 +98,8 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
         brand: css('.titlebar .brand', 'font-family'),
         weight: css('.titlebar .brand', 'font-weight'),
         prose: token('--reading-size'),
+        ui: token('--ui-size'),
+        bodySize: css(document.body, 'font-size'),
         mark: el('.titlebar .brand img').src,
         grain: css('.content', 'background-image')
       };
@@ -142,6 +144,10 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       if (document.head.lastElementChild.id !== 'opencourse-theme') throw new Error('the theme is not the last stylesheet');
       if (card('Paper & Ink').querySelector('.theme-choose').getAttribute('aria-pressed') !== 'true') throw new Error('the card does not say it is chosen');
       if (css(document.documentElement, 'color-scheme') !== 'light') throw new Error('color-scheme stayed ' + css(document.documentElement, 'color-scheme'));
+      // Paper & Ink once set its own sizes. Text size is the reader's now, so a
+      // theme applied over it leaves every size exactly where it was.
+      const sizes = { prose: token('--reading-size'), ui: token('--ui-size'), bodySize: css(document.body, 'font-size') };
+      for (const key of Object.keys(sizes)) if (sizes[key] !== window.__themeBaseline[key]) throw new Error('the theme moved ' + key + ': ' + window.__themeBaseline[key] + ' became ' + sizes[key]);
       const titlebar = document.querySelector('.titlebar');
       if (css(titlebar, 'background-color') !== 'rgba(246, 241, 231, 0.72)') throw new Error('titlebar ' + css(titlebar, 'background-color'));
       if (!css(titlebar, 'background-image').includes('paper-grain.png')) throw new Error('the titlebar has no grain texture');

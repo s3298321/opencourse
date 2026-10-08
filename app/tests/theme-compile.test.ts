@@ -202,20 +202,32 @@ describe('compileTheme', () => {
     expect(compile({ grain: { texture: 'images/linen.png', amount: 0 } }).values['--glass-grain']).toBe('none')
   })
 
-  it('writes fonts with quotes, fallbacks and the code scale', () => {
+  it('writes fonts with quotes and fallbacks', () => {
     const compiled = compile({
       fonts: {
         faces: [{ family: 'Literata', src: 'fonts/Literata.woff2', weight: '200 900', style: 'italic' }],
-        ui: { family: 'Literata', size: 30 }, code: { family: ['ui-monospace'], size: 15 }, heading: { weight: 650, letterSpacing: -0.02 }
+        ui: { family: 'Literata' }, code: { family: ['ui-monospace'] }, heading: { weight: 650, letterSpacing: -0.02 }
       }
     })
     expect(compiled.values['--font-ui']).toBe('"Literata", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif')
-    expect(compiled.values['--ui-size']).toBe('18px')
     expect(compiled.values['--font-mono']).toMatch(/^ui-monospace, ui-monospace/)
-    expect(compiled.values['--code-scale']).toBe('1.2')
     expect(compiled.values['--heading-weight']).toBe('650')
     expect(compiled.values['--heading-letter-spacing']).toBe('-0.02em')
     expect(compiled.faces).toEqual([{ family: 'Literata', src: 'fonts/Literata.woff2', weight: '200 900', style: 'italic' }])
+  })
+
+  it('reads a size from the first format as nothing, and says so once', () => {
+    // Text size is the reader's: a theme from before that was decided still
+    // loads, but its sizes reach no declaration and the card carries one note.
+    const compiled = compile({
+      fonts: { ui: { family: 'Literata', size: 30 }, reading: { size: 17, lineHeight: 1.7 }, code: { size: 15 } }
+    })
+    expect(Object.keys(compiled.values).filter((name) => /size|scale/.test(name) && !/image|grain/.test(name))).toEqual([])
+    expect(compiled.css).not.toMatch(/--(ui|reading)-size|--code-scale/)
+    expect(compiled.values['--reading-line-height']).toBe('1.7')
+    const notes = compiled.readNotes.map((note) => note.message)
+    expect(notes.filter((message) => /size/i.test(message))).toEqual(['Text size is set by the reader, so the font sizes in this theme are ignored.'])
+    expect(notes.join('\n')).not.toMatch(/not part of the format/)
   })
 
   it('tells main what to do with the window', () => {

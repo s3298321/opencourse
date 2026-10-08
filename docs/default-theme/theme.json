@@ -87,10 +87,8 @@
 
   "fonts": {
     "faces": [],
-    "ui": { "size": 15, "lineHeight": 1.55 },
-    "reading": { "size": 15 },
+    "ui": { "lineHeight": 1.55 },
     "heading": { "weight": 700 },
-    "code": { "size": 12.5 },
     "brand": { "weight": 600, "letterSpacing": -0.025 }
   },
 

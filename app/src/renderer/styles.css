@@ -71,12 +71,14 @@
      computed-value time, and these properties then inherit - so headings and
      prose take whatever font surrounds them until a theme names one. */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* The two sizes are the app's own and no theme sets them: how large text
+     reads is the reader's choice, --reading-scale, which a lesson screen sets
+     inline and which every text size on it multiplies by. */
   --ui-size: 15px;
   --ui-line-height: 1.55;
   --reading-size: 15px;
   --heading-weight: 700;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
-  --code-scale: 1;
   --brand-weight: 600;
   --brand-letter-spacing: -0.025em;
 
@@ -845,7 +847,7 @@ button.secondary.danger { background: var(--chip-bg); color: var(--err); border-
   background: var(--chip-bg); padding: 0.1em 0.35em; border-radius: 4px;
 }
 .prose pre { padding: 0.85rem 1rem; border-radius: 8px; overflow-x: auto; border: 1px solid var(--border); }
-.prose pre code { background: none; padding: 0; font-size: calc(0.85rem * var(--code-scale)); }
+.prose pre code { background: none; padding: 0; font-size: 0.85rem; }
 .prose img { max-width: 100%; border-radius: 6px; }
 .prose a[href^="http"]::after { content: " ↗"; font-size: 0.8em; color: var(--muted); }
 
@@ -928,7 +930,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 .exercise summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
 .exercise pre {
   background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
-  padding: 0.8rem 1rem; overflow-x: auto; font-size: calc(0.85rem * var(--code-scale));
+  padding: 0.8rem 1rem; overflow-x: auto; font-size: 0.85rem;
 }
 
 .lesson-nav { display: flex; justify-content: space-between; gap: 0.75rem; margin: 2.5rem 0 0; }
@@ -1147,12 +1149,12 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 .coach-brief-head h2 { margin: 0; font-size: 1rem; }
 .coach-brief-text {
   margin: 0.75rem 0 0; white-space: pre-wrap; word-break: break-word;
-  font-family: var(--font-mono); font-size: calc(0.84rem * var(--code-scale));
+  font-family: var(--font-mono); font-size: 0.84rem;
   color: var(--muted); background: var(--code-bg); border-radius: 8px; padding: 0.9rem 1rem;
 }
 .coach-brief textarea {
   width: 100%; margin: 0.75rem 0 0.6rem; padding: 0.7rem 0.8rem; resize: vertical;
-  font-family: var(--font-mono); font-size: calc(0.84rem * var(--code-scale)); line-height: 1.5;
+  font-family: var(--font-mono); font-size: 0.84rem; line-height: 1.5;
   color: var(--fg); background: var(--bg);
   border: 1px solid var(--border); border-radius: 8px;
 }
@@ -1207,7 +1209,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 .coach-panel-body { padding: 0.4rem 1.1rem 1.1rem; min-height: 0; }
 .coach-file-text {
   white-space: pre-wrap; word-break: break-word;
-  font-family: var(--font-mono); font-size: calc(0.84rem * var(--code-scale));
+  font-family: var(--font-mono); font-size: 0.84rem;
   color: var(--fg); background: var(--code-bg); border-radius: 8px; padding: 0.9rem 1rem;
 }
 

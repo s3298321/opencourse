@@ -26,6 +26,14 @@ describe('theme properties', () => {
     expect(unread).toEqual([])
   })
 
+  it('never include a type size', () => {
+    // How large text reads is the reader's choice, made beside the lesson. A
+    // theme that could set it would undo that choice on every apply.
+    const sizes = [...THEME_PROPERTIES].filter((name) => /size|scale/.test(name) && !/image|grain/.test(name))
+    expect(sizes).toEqual([])
+    for (const name of ['--ui-size', '--reading-size', '--reading-scale', '--code-scale']) expect(THEME_PROPERTIES.has(name)).toBe(false)
+  })
+
   it('are the only custom properties a region rule paints with', () => {
     // Every background declaration on a themed region goes through a token.
     for (const selector of ['.titlebar', '.sidebar', '.sidechat', '.content-glass', '.menu-panel, .search-panel']) {

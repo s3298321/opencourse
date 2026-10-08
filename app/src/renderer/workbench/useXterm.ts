@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { xtermTheme, type WorkbenchTheme } from './theme'
+import { TERMINAL_FONT_PX, xtermTheme, type WorkbenchTheme } from './theme'
 
 export interface XtermHandle {
   hostRef: (node: HTMLDivElement | null) => void
@@ -57,7 +57,7 @@ export function useXterm(
     const initial = (applied.current = themeRef.current)
     const terminal = new Terminal({
       fontFamily: initial.mono,
-      fontSize: 12 * initial.codeScale,
+      fontSize: TERMINAL_FONT_PX,
       lineHeight: 1.2,
       cursorBlink: Boolean(options.onData),
       convertEol: false,
@@ -109,7 +109,6 @@ export function useXterm(
     applied.current = theme
     terminal.options.theme = xtermTheme(theme)
     terminal.options.fontFamily = theme.mono
-    terminal.options.fontSize = 12 * theme.codeScale
     const size = fit()
     if (size) callbacks.current.onResize?.(size.cols, size.rows)
   }, [theme, fit])

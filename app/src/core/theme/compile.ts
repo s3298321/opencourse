@@ -244,16 +244,13 @@ export function compileTheme(theme: Theme, options: CompileOptions): CompiledThe
   // Type.
   const fonts = theme.fonts
   if (fonts.ui?.family) values['--font-ui'] = families(fonts.ui.family, DEFAULT_UI_STACK)
-  if (fonts.ui?.size !== undefined) values['--ui-size'] = px(fonts.ui.size)
   if (fonts.ui?.lineHeight !== undefined) values['--ui-line-height'] = num(fonts.ui.lineHeight)
   if (fonts.reading?.family) values['--font-reading'] = families(fonts.reading.family, DEFAULT_UI_STACK)
-  if (fonts.reading?.size !== undefined) values['--reading-size'] = px(fonts.reading.size)
   if (fonts.reading?.lineHeight !== undefined) values['--reading-line-height'] = num(fonts.reading.lineHeight)
   if (fonts.heading?.family) values['--font-heading'] = families(fonts.heading.family, DEFAULT_UI_STACK)
   if (fonts.heading?.weight !== undefined) values['--heading-weight'] = String(fonts.heading.weight)
   if (fonts.heading?.letterSpacing !== undefined) values['--heading-letter-spacing'] = `${num(fonts.heading.letterSpacing)}em`
   if (fonts.code?.family) values['--font-mono'] = families(fonts.code.family, DEFAULT_MONO_STACK)
-  if (fonts.code?.size !== undefined) values['--code-scale'] = num(fonts.code.size / 12.5)
   if (fonts.brand?.family) values['--font-brand'] = families(fonts.brand.family, DEFAULT_UI_STACK)
   if (fonts.brand?.weight !== undefined) values['--brand-weight'] = String(fonts.brand.weight)
   if (fonts.brand?.letterSpacing !== undefined) values['--brand-letter-spacing'] = `${num(fonts.brand.letterSpacing)}em`

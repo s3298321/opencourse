@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CodeEditor from '../src/renderer/workbench/CodeEditor'
 import type { WorkbenchTheme } from '../src/renderer/workbench/theme'
 
-const theme: WorkbenchTheme = { dark: true, fg: '#eee', bg: '#111', muted: '#aaa', accent: '#ddd', border: '#444', ok: '#0f0', err: '#f00', scrollbar: '#333', scrollbarHover: '#555', activeLine: 'rgba(255, 255, 255, 0.04)', selection: 'rgba(196, 196, 205, 0.18)', mono: 'ui-monospace, monospace', codeScale: 1 }
+const theme: WorkbenchTheme = { dark: true, fg: '#eee', bg: '#111', muted: '#aaa', accent: '#ddd', border: '#444', ok: '#0f0', err: '#f00', scrollbar: '#333', scrollbarHover: '#555', activeLine: 'rgba(255, 255, 255, 0.04)', selection: 'rgba(196, 196, 205, 0.18)', mono: 'ui-monospace, monospace' }
 let root: Root
 let container: HTMLDivElement
 beforeEach(() => {

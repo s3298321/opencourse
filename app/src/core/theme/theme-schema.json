@@ -757,8 +757,8 @@
             },
             "size": {
               "type": "number",
-              "minimum": 12,
-              "maximum": 18
+              "deprecated": true,
+              "description": "Accepted and ignored: text size is the reader's choice, set beside the lesson."
             },
             "lineHeight": {
               "type": "number",
@@ -788,8 +788,8 @@
             },
             "size": {
               "type": "number",
-              "minimum": 13,
-              "maximum": 22
+              "deprecated": true,
+              "description": "Accepted and ignored: text size is the reader's choice, set beside the lesson."
             },
             "lineHeight": {
               "type": "number",
@@ -850,9 +850,8 @@
             },
             "size": {
               "type": "number",
-              "minimum": 10,
-              "maximum": 18,
-              "description": "The editor's size in px; code elsewhere scales with it."
+              "deprecated": true,
+              "description": "Accepted and ignored: text size is the reader's choice, set beside the lesson."
             }
           }
         },

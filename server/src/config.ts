@@ -26,6 +26,9 @@ export interface ServerConfig {
   trustProxy: boolean
   /** Where "Get the app" points. */
   appUrl: string
+  /** The operator's privacy policy and legal notice, linked from every page; null for no link. */
+  privacyUrl: string | null
+  legalUrl: string | null
   /** The built web app (dist/web); null when there is none, as in a fresh checkout's `npm run dev`. */
   webDir: string | null
 }
@@ -34,6 +37,14 @@ export interface ServerConfig {
 function defaultWebDir(): string | null {
   const here = dirname(fileURLToPath(import.meta.url))
   return [join(here, 'web'), join(here, '..', 'dist', 'web')].find((dir) => existsSync(join(dir, 'index.html'))) ?? null
+}
+
+/** An optional link the operator sets: http(s) or nothing, so a typo fails at start rather than in a footer. */
+function linkUrl(env: NodeJS.ProcessEnv, name: string): string | null {
+  const value = env[name]
+  if (!value) return null
+  if (!/^https?:\/\/[^\s"'<>]+$/.test(value)) throw new Error(`${name} must be an http(s) URL`)
+  return value
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -55,6 +66,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     dev: env['OPENCOURSE_SERVER_DEV'] === '1',
     trustProxy: env['OPENCOURSE_TRUST_PROXY'] === '1',
     appUrl: env['OPENCOURSE_SERVER_APP_URL'] || DEFAULT_APP_URL,
+    privacyUrl: linkUrl(env, 'OPENCOURSE_SERVER_PRIVACY_URL'),
+    legalUrl: linkUrl(env, 'OPENCOURSE_SERVER_LEGAL_URL'),
     webDir: env['OPENCOURSE_SERVER_WEB_DIR'] ? resolve(env['OPENCOURSE_SERVER_WEB_DIR']) : defaultWebDir()
   }
 }

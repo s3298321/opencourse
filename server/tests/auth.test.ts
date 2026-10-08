@@ -83,6 +83,31 @@ describe('sign-up by email code', () => {
     expect((await post('/api/v1/auth/register/start', { email: 'x@example.org' })).json().error.code).toBe('registration_closed')
     expect((await server.app.inject({ method: 'GET', url: '/api/v1/server' })).json()).toMatchObject({ opencourse: 1, api: 1, registration: 'closed' })
   })
+
+  it('forgets the addresses of codes and tickets once they expire', async () => {
+    await post('/api/v1/auth/register/start', { email: 'gone@example.org' })
+    const ticket = (await post('/api/v1/auth/register/verify', { email: 'gone@example.org', code: lastCode(server.outbox, 'gone@example.org') })).json().ticket
+    expect(ticket).toBeTruthy()
+    server.ctx.db.prepare("UPDATE email_codes SET expires_at = '2000-01-01T00:00:00.000Z'").run()
+    server.ctx.db.prepare("UPDATE registration_tickets SET expires_at = '2000-01-01T00:00:00.000Z'").run()
+    await post('/api/v1/auth/register/start', { email: 'next@example.org' })
+    const kept = JSON.stringify([...server.ctx.db.prepare('SELECT * FROM email_codes').all(), ...server.ctx.db.prepare('SELECT * FROM registration_tickets').all()])
+    expect(kept).not.toContain('gone@example.org')
+  })
+
+  it('lets no sign-up begun before closing finish after it', async () => {
+    const email = 'late@example.org'
+    await post('/api/v1/auth/register/start', { email })
+    const code = lastCode(server.outbox, email)
+    const ticket = (await post('/api/v1/auth/register/verify', { email, code })).json().ticket
+    await post('/api/v1/auth/register/start', { email: 'later@example.org' })
+    const pending = lastCode(server.outbox, 'later@example.org')
+
+    server.ctx.config.registration = 'closed'
+    expect((await post('/api/v1/auth/register/verify', { email: 'later@example.org', code: pending })).json().error.code).toBe('registration_closed')
+    expect((await post('/api/v1/auth/register/complete', { ticket, username: 'late', password: 'a long enough password' })).json().error.code).toBe('registration_closed')
+    expect(server.ctx.db.prepare('SELECT COUNT(*) AS n FROM accounts').get()).toEqual({ n: 0 })
+  })
 })
 
 describe('signing in and out', () => {

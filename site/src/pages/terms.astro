@@ -3,7 +3,7 @@
 // software itself is under the MIT License.
 import Base from '../layouts/Base.astro'
 import { SITE, catalogHost } from '../site.config'
-const updated = 'October 7, 2026'
+const updated = 'October 8, 2026'
 ---
 <Base title="Terms" description="The terms for using the public OpenCourse catalog, and the license of the software.">
   <article class="oc-wrap legal oc-prose">
@@ -18,12 +18,12 @@ const updated = 'October 7, 2026'
     <ul>
       <li><strong>Your courses are yours.</strong> You keep the rights to what you publish. By publishing, you allow the catalog to store it and to offer it to anyone, free, for learning with OpenCourse.</li>
       <li><strong>Publish only what you may share.</strong> Do not publish material you do not have the rights to, or anything illegal, hateful, harassing, deceptive or harmful.</li>
-      <li><strong>Moderation.</strong> The maintainers may remove a course from the catalog, telling its publisher why, and may disable accounts that break these terms. Learners who already added a course keep their copy.</li>
+      <li><strong>Moderation.</strong> The maintainers may remove a course from the catalog, telling its publisher why, and may disable accounts that break these terms. Learners who already added a course keep their copy. To report a course, see <a href="/legal#report">the legal notice</a>.</li>
       <li><strong>Be kind to the service.</strong> No automated abuse, scraping beyond the public API's reasonable use, or attempts to break its security. Report vulnerabilities privately through GitHub.</li>
       <li><strong>No guarantee.</strong> The catalog is run in good faith, for free, and may change or stop. Keep your own copies of what you publish.</li>
     </ul>
 
     <h2>Changes</h2>
-    <p>If these terms change, the new version is published here with a new date. Questions go to the project on <a href={SITE.repoUrl} rel="noopener noreferrer">GitHub</a>.</p>
+    <p>If these terms change, the new version is published here with a new date. Questions go to <a href={`mailto:${SITE.contactEmail}`}>{SITE.contactEmail}</a>.</p>
   </article>
 </Base>

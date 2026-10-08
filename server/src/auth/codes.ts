@@ -6,7 +6,7 @@
  * for a new address is also bound to the account that asked for it.
  */
 import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
-import type { Db } from '../db'
+import { sweepExpired, type Db } from '../db'
 import { CODE_LENGTH } from '@core/catalog/api'
 import { hmac } from './secrets'
 
@@ -18,6 +18,7 @@ const digest = (secret: Buffer, purpose: CodePurpose, email: string, code: strin
 
 export function issueCode(d: Db, secret: Buffer, purpose: CodePurpose, email: string, now = Date.now(), accountId: string | null = null): string {
   const code = String(randomInt(0, 10 ** CODE_LENGTH)).padStart(CODE_LENGTH, '0')
+  sweepExpired(d, now)
   d.prepare('UPDATE email_codes SET consumed_at = ? WHERE email = ? AND purpose = ? AND consumed_at IS NULL').run(new Date(now).toISOString(), email, purpose)
   d.prepare('INSERT INTO email_codes(id, email, purpose, code_hmac, created_at, expires_at, account_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(randomUUID(), email, purpose, digest(secret, purpose, email, code), new Date(now).toISOString(), new Date(now + CODE_TTL_MS).toISOString(), accountId)

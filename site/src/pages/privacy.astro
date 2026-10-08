@@ -1,44 +1,89 @@
 ---
-// DRAFT: plain-language summary of what the code does. Have it reviewed before
-// launch, and keep it true when the app, the server or the hosting changes.
+// A plain-language account of what the code and the hosting do. Keep it true
+// when the app, the server or opencourse-infra changes: the retention periods
+// below are the server's (auth/sessions.ts, auth/codes.ts, db.ts sweepExpired)
+// and the infrastructure's (log_retention_days, snapshot_retain_count, the
+// backups bucket's lifecycle, contact-mail's retention_days).
 import Base from '../layouts/Base.astro'
 import { SITE, catalogHost } from '../site.config'
-const updated = 'October 7, 2026'
+const updated = 'October 8, 2026'
+const host = SITE.url.replace(/^https?:\/\//, '')
+const mail = `mailto:${SITE.contactEmail}`
 ---
-<Base title="Privacy" description="What OpenCourse, opencourse.dev and the public catalog do with your data - in plain language.">
+<Base title="Privacy" description="What OpenCourse, opencourse.dev and the public catalog do with your data, why, for how long, and what you can ask for.">
   <article class="oc-wrap legal oc-prose">
     <span class="oc-eyebrow">Last updated {updated}</span>
     <h1>Privacy</h1>
-    <p>OpenCourse is built so that your learning stays yours. This page says, plainly, what each part of the project stores and sends.</p>
+    <p>OpenCourse is built so that your learning stays yours. This page says, plainly, what each part of the project stores and sends, why, for how long, and what you can ask for.</p>
+
+    <h2>Who is responsible</h2>
+    <p>{host} and the public catalog, {catalogHost}, are run by <strong>{SITE.operator}</strong>, a private individual in France, for free and without any commercial purpose. {SITE.operator} is the controller of the personal data described here. Write to <a href={mail}>{SITE.contactEmail}</a> about anything on this page.</p>
 
     <h2>The OpenCourse app</h2>
     <ul>
-      <li><strong>Everything stays on your Mac.</strong> Courses, progress, flashcard reviews, Coach notes, chats and settings are files and a database in your user folder. There is no OpenCourse account and no cloud copy.</li>
+      <li><strong>Everything stays on your Mac.</strong> Courses, progress, flashcard reviews, Coach notes, chats and settings are files and a database in your user folder. There is no OpenCourse account and no cloud copy, and the app sends nothing to {host} or to its operator.</li>
       <li><strong>No analytics.</strong> The app reports nothing about how you use it to anyone.</li>
       <li><strong>AI features talk to OpenAI, with your key.</strong> When you use the side chat or Coach, the lesson's text (never its quiz answers or exercise solutions), your question and, for Coach, your voice go to OpenAI under your own API key or ChatGPT subscription. OpenAI's terms and privacy policy apply to that. The key is stored in your Mac's keychain and sent only to OpenAI.</li>
       <li><strong>Web search, when you turn it on,</strong> is run by OpenAI. To show where an answer came from, the app may fetch the small icons of the cited websites.</li>
       <li><strong>Catalog servers you connect to</strong> receive what is needed to sign in, add, update and publish courses (see below for {catalogHost}).</li>
     </ul>
 
-    <h2>This website, {SITE.url.replace(/^https?:\/\//, '')}</h2>
+    <h2>This website, {host}</h2>
     <ul>
       <li>No cookies, no analytics, no third-party scripts, fonts or trackers. Your browser loads files from this site only.</li>
-      <li>The hosting provider keeps standard request logs (address, time, page, browser) for security and to keep the site running. They are not used to profile anyone.</li>
-      <li>The download button fetches the app from GitHub Releases, so GitHub sees that request.</li>
+      <li>The site is served by Amazon CloudFront, which logs each request (address, time, page, browser). The logs are kept for 30 days, for security and to keep the site running, and are not used to profile anyone.</li>
+      <li>The download button fetches the app from GitHub Releases, so GitHub sees that request, under its own privacy policy.</li>
     </ul>
 
     <h2>The public catalog, {catalogHost}</h2>
+    <p>The catalog is not taking new accounts for now. Anyone can browse it.</p>
     <ul>
       <li><strong>Browsing</strong> needs no account and sets no cookie.</li>
       <li><strong>An account</strong> stores your email address, your username and a salted hash of your password - never the password itself. Your email is used only to send you sign-in codes and security notices.</li>
-      <li><strong>Signing in</strong> stores a session for each device you use (its browser or app name and when it was last used), which you can see and end in Settings. The web catalog uses a single, strictly necessary session cookie.</li>
-      <li><strong>Publishing</strong> stores the courses you publish and makes them public under your username. <strong>Adding a course</strong> is counted, so a course can show how many people learn with it; the count is never shown per person.</li>
-      <li><strong>Moderation and security</strong> actions are written to an audit log. The server's request logs (address, time, page) are kept for up to 30 days, for security and to limit abuse.</li>
-      <li><strong>Deleting your account</strong> in Settings removes it and every course you published, at once.</li>
+      <li><strong>Codes</strong> sent by email are stored only as a keyed hash, work for ten minutes, and are deleted once they expire.</li>
+      <li><strong>Signing in</strong> stores a session for each device you use (its browser or app name and when it was last used), which you can see and end in Settings. A session ends 90 days after its last use in the app, 30 on the web, or when you sign out. The web catalog uses a single, strictly necessary session cookie.</li>
+      <li><strong>Publishing</strong> stores the courses you publish and makes them public under your username. <strong>Adding a course</strong> is recorded against your account, so a course can show how many people learn with it; the count is never shown per person.</li>
+      <li><strong>Moderation and security</strong> actions are written to an audit log. The server's request logs (address, time, page) are kept for 30 days, for security and to limit abuse.</li>
+      <li><strong>Deleting your account</strong> in Settings removes it, every course you published and every record of what you added, at once. It leaves the backups within a year (see below).</li>
     </ul>
     <p>Self-hosted catalog servers are run by their own operators, who decide their own policies.</p>
 
-    <h2>Questions</h2>
-    <p>Open an issue on <a href={SITE.issuesUrl} rel="noopener noreferrer">GitHub</a>, or write to the maintainers from there.</p>
+    <h2>Writing to {SITE.contactEmail}</h2>
+    <p>Mail to <a href={mail}>{SITE.contactEmail}</a> is received by Amazon SES, kept for 90 days in AWS, and forwarded to the operator's own mailbox at Proton Mail (Switzerland), where it is kept as long as the conversation needs it.</p>
+
+    <h2>Why, on what basis, and for how long</h2>
+    <table>
+      <thead>
+        <tr><th>What</th><th>Why</th><th>Legal basis (GDPR)</th><th>Kept</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Account: email, username, password hash</td><td>To give you an account and sign you in</td><td>Contract, art. 6(1)(b)</td><td>Until you delete the account</td></tr>
+        <tr><td>Sessions: device name, last use</td><td>To keep you signed in, and let you end a session</td><td>Contract, art. 6(1)(b)</td><td>Until you sign out, or 90 days unused (30 on the web)</td></tr>
+        <tr><td>Email codes</td><td>To confirm an address or reset a password</td><td>Contract, art. 6(1)(b)</td><td>10 minutes</td></tr>
+        <tr><td>Published courses, and what you added</td><td>To offer courses in the catalog and count their learners</td><td>Contract, art. 6(1)(b)</td><td>Until you unpublish them or delete the account</td></tr>
+        <tr><td>Request logs, website and catalog</td><td>Security, limiting abuse, keeping the services running</td><td>Legitimate interest, art. 6(1)(f)</td><td>30 days</td></tr>
+        <tr><td>Audit log of moderation and security actions</td><td>Being able to account for every moderation decision</td><td>Legitimate interest, art. 6(1)(f)</td><td>As long as the catalog runs</td></tr>
+        <tr><td>Backups of the catalog</td><td>Restoring it after a failure</td><td>Legitimate interest, art. 6(1)(f)</td><td>Daily disk snapshots for 14 days; database copies for one year</td></tr>
+        <tr><td>Mail to {SITE.contactEmail}</td><td>Answering you</td><td>Legitimate interest, art. 6(1)(f)</td><td>90 days in AWS, then in the operator's mailbox</td></tr>
+      </tbody>
+    </table>
+    <p>There are no ads, no data is sold or shared for marketing, and nobody is profiled or subject to automated decisions.</p>
+
+    <h2>Who else handles it</h2>
+    <ul>
+      <li><strong>Amazon Web Services</strong> hosts the website, the catalog and its backups, sends the catalog's emails and receives mail for {SITE.contactEmail}. It processes the data only on the operator's behalf, under its Data Processing Addendum.</li>
+      <li><strong>Proton</strong> (Switzerland) holds the operator's mailbox.</li>
+      <li><strong>GitHub</strong> serves the app's downloads, as a separate controller.</li>
+    </ul>
+
+    <h2>Where it is stored</h2>
+    <p>Everything the website and the catalog store is in AWS's US East (N. Virginia) region, in the United States. That transfer outside the European Union relies on AWS's Data Processing Addendum, which includes the European Commission's standard contractual clauses, and on Amazon's certification under the EU-U.S. Data Privacy Framework. Switzerland, where Proton keeps mail, is recognised by the European Commission as protecting personal data adequately.</p>
+
+    <h2>Your rights</h2>
+    <p>You can ask for a copy of your data, have it corrected or deleted, restrict or object to its use, and receive it in a portable form. Much of this is in the catalog's Settings: change your email, end sessions, delete your account. For anything else, write to <a href={mail}>{SITE.contactEmail}</a> from the address on your account; you will have an answer within a month.</p>
+    <p>You can also complain to the CNIL, France's data protection authority, at <a href="https://www.cnil.fr/fr/plaintes" rel="noopener noreferrer">cnil.fr</a> (in French).</p>
+
+    <h2>Changes</h2>
+    <p>When this page changes, the date at the top changes with it. Questions about it go to <a href={mail}>{SITE.contactEmail}</a>; see also the <a href="/legal">legal notice</a> and the <a href="/terms">terms</a>.</p>
   </article>
 </Base>

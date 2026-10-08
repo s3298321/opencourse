@@ -125,6 +125,8 @@ function Footer() {
           <a href={server.appUrl}>Get the app</a>
           <a href={server.sourceUrl} rel="noopener noreferrer">Source on GitHub</a>
           <a href="/sitemap.xml">Sitemap</a>
+          {server.privacyUrl && <a href={server.privacyUrl}>Privacy</a>}
+          {server.legalUrl && <a href={server.legalUrl}>Legal notice</a>}
         </nav>
       </div>
       <div className="oc-wrap site-footer-legal">

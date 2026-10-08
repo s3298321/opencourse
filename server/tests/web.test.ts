@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { BOOT_ELEMENT_ID, type Boot } from '../shared/boot'
+import { loadConfig } from '../src/config'
 import { PAGES } from '../shared/pages'
 import { auth, localCourse, publish, richCourse, signUp, testServer, type TestServer } from './helpers'
 
@@ -100,6 +101,15 @@ describe('the web app\'s shell', () => {
     expect(signedIn.headers['cache-control']).toBe('no-store')
     expect(bootOf((await page('/settings')).body).account).toBeNull()
     expect(boot.server).toMatchObject({ name: 'Test server', publicUrl: 'http://127.0.0.1:8787', appUrl: 'https://opencourse.dev/download' })
+  })
+
+  it('links the operator\'s policies only when it has them', async () => {
+    expect(bootOf((await page('/')).body).server).toMatchObject({ privacyUrl: null, legalUrl: null })
+    await server.close()
+    server = await testServer({ privacyUrl: 'https://example.org/privacy', legalUrl: 'https://example.org/legal' })
+    expect(bootOf((await page('/')).body).server).toMatchObject({ privacyUrl: 'https://example.org/privacy', legalUrl: 'https://example.org/legal' })
+    expect(loadConfig({ OPENCOURSE_SERVER_PRIVACY_URL: 'https://example.org/privacy' })).toMatchObject({ privacyUrl: 'https://example.org/privacy', legalUrl: null })
+    expect(() => loadConfig({ OPENCOURSE_SERVER_LEGAL_URL: 'javascript:alert(1)' })).toThrow('OPENCOURSE_SERVER_LEGAL_URL')
   })
 
   it('lists only listed courses in the sitemap', async () => {

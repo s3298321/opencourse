@@ -49,7 +49,8 @@ export function createShell(ctx: Ctx): Shell {
   const template = config.webDir ? readFileSync(join(config.webDir, 'index.html'), 'utf8') : NO_WEB_APP
   const server: BootServer = {
     opencourse: 1, api: 1, name: config.name, description: config.description, registration: config.registration,
-    version: SERVER_VERSION, publicUrl: config.publicUrl, appUrl: config.appUrl, sourceUrl: SOURCE_URL
+    version: SERVER_VERSION, publicUrl: config.publicUrl, appUrl: config.appUrl, sourceUrl: SOURCE_URL,
+    privacyUrl: config.privacyUrl, legalUrl: config.legalUrl
   }
   const mark = `${config.publicUrl}/mark-512.png`
 

@@ -18,7 +18,7 @@ const featured = generated.featured.length >= 3 ? generated.featured.slice(0, 6)
 const faq = [
   { q: 'Is OpenCourse free?', a: `Yes. The app is free and open source under the MIT License, and so is the catalog server. The AI features - side chat and Coach - use your own OpenAI account, through an API key or a ChatGPT subscription, so you pay OpenAI for what you use and nothing else.` },
   { q: 'Which Macs does it run on?', a: `Macs with Apple silicon, on ${SITE.minimumMacOS} or later.` },
-  { q: 'Do I need an account?', a: `No. OpenCourse works entirely on your Mac. An account is only for a catalog server, such as ${catalogHost}, and only if you want to add courses from it or publish your own.` },
+  { q: 'Do I need an account?', a: `No. OpenCourse works entirely on your Mac. An account is only for a catalog server, and only if you want to add courses from it or publish your own. The public catalog, ${catalogHost}, is not taking new accounts for now: anyone can browse it, and anyone can run their own.` },
   { q: 'Where do courses come from?', a: `Three places: a catalog server you connect to, a course archive (.zip) someone sends you, or the editor built into the app, where you write your own. The format is documented and open, so any tool can produce one.` },
   { q: 'Is it only for programming?', a: 'No - a course can be about anything. Lessons, pictures, interactive visualizations, quizzes and flashcards work for any subject. Programming courses additionally get exercises that run and grade your code, in Python, C or LLVM IR.' },
   { q: 'What happens to my data?', a: 'Your courses, progress, notes and chats stay on your Mac. The app sends nothing anywhere unless you use an AI feature (which talks to OpenAI with your key) or a catalog server you chose. There are no analytics.' },
@@ -198,7 +198,7 @@ const jsonLd = {
         <article class="oc-panel oc-edge share-card">
           <span class="bento-icon"><Icon name="cloud-upload" /></span>
           <h3>Publish to a catalog</h3>
-          <p>Publish from the editor to {catalogHost}. Learners add your course in one click, and every new version reaches them as an update that keeps their progress.</p>
+          <p>Publish from the editor to a catalog server. Learners add your course in one click, and every new version reaches them as an update that keeps their progress. The public catalog, {catalogHost}, is not taking new accounts for now.</p>
           <a class="more-link" href={SITE.catalogUrl}>Visit the catalog<Icon name="arrow-up-right" size={15} /></a>
         </article>
         <article class="oc-panel oc-edge share-card">

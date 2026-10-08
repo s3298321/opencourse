@@ -1,0 +1,42 @@
+---
+// The legal notice French law (LCEN) asks of every website, and the way to
+// report a course. The host's details are AWS's own; check them against AWS
+// when the hosting changes.
+import Base from '../layouts/Base.astro'
+import { SITE, catalogHost } from '../site.config'
+const updated = 'October 8, 2026'
+const host = SITE.url.replace(/^https?:\/\//, '')
+const mail = `mailto:${SITE.contactEmail}`
+---
+<Base title="Legal notice" description="Who publishes opencourse.dev and the public catalog, who hosts them, and how to report a course.">
+  <article class="oc-wrap legal oc-prose">
+    <span class="oc-eyebrow">Last updated {updated}</span>
+    <h1>Legal notice</h1>
+    <p lang="fr">Mentions légales</p>
+
+    <h2>Publisher</h2>
+    <p>{host} and the public catalog, {catalogHost}, are published by <strong>{SITE.operator}</strong>, a private individual in France, on a non-professional basis. As French law allows a non-professional publisher, the publisher's postal address is not published here; it is known to the host. {SITE.operator} is also the director of publication.</p>
+    <p>Contact: <a href={mail}>{SITE.contactEmail}</a></p>
+
+    <h2>Host</h2>
+    <p>Amazon Web Services EMEA SARL<br />38 avenue John F. Kennedy, L-1855 Luxembourg<br />+352 26 73 30 00</p>
+    <p>The app's downloads are served by GitHub, Inc., from <a href={SITE.releasesUrl} rel="noopener noreferrer">the project's releases</a>.</p>
+
+    <h2 id="report">Reporting a course</h2>
+    <p>Courses in the catalog are written and published by their authors. To report one that is illegal, infringes your rights or breaks the <a href="/terms">terms</a>, write to <a href={mail}>{SITE.contactEmail}</a> with:</p>
+    <ul>
+      <li>the course's address on {catalogHost};</li>
+      <li>what is wrong with it, and where in the course;</li>
+      <li>for a copyright or other rights claim, the work concerned and why the rights are yours;</li>
+      <li>your name and how to reach you.</li>
+    </ul>
+    <p>Every report is read promptly. A course found to be illegal or infringing is removed from the catalog, and its publisher is told why. Copies that learners already added live on their own Macs, where the catalog cannot reach them.</p>
+    <p>Security problems go privately through <a href={`${SITE.repoUrl}/security`} rel="noopener noreferrer">GitHub</a> instead, so they are not public before they are fixed.</p>
+
+    <h2>Intellectual property</h2>
+    <p>The OpenCourse app, the catalog server and this website are open source under the <a href={`${SITE.repoUrl}/blob/master/LICENSE`} rel="noopener noreferrer">MIT License</a>. Each course belongs to its publisher.</p>
+
+    <h2>Personal data</h2>
+    <p>What the website and the catalog store, and your rights over it, are on the <a href="/privacy">privacy page</a>.</p>
+  </article>
+</Base>

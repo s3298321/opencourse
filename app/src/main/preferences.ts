@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { normalizePreferences } from '../core/preferences'
 import { DEFAULT_MODEL, isRealtimeModelId } from '../core/coach/models'
+import { DEFAULT_READING_SCALE, normalizeReadingScale } from '../core/reading-scale'
 import type { Preferences } from '../core/types'
 import { userPreferencesFile } from './paths'
 import { requireUser } from './users'
@@ -36,4 +37,17 @@ export function setDefaultCoachModel(model: string): string {
   }
   writePreferences({ ...readPreferences(), defaultCoachModel: model })
   return getDefaultCoachModel()
+}
+
+/** The reader's text size on a lesson screen; 1 when they have not chosen one. */
+export function getReadingScale(): number {
+  return readPreferences().readingScale ?? DEFAULT_READING_SCALE
+}
+
+/** Snapped to a step, like every other way a scale is read. Returns what was kept. */
+export function setReadingScale(scale: number): number {
+  const { readingScale: _previous, ...rest } = readPreferences()
+  const next = normalizeReadingScale(scale)
+  writePreferences(next === DEFAULT_READING_SCALE ? rest : { ...rest, readingScale: next })
+  return getReadingScale()
 }

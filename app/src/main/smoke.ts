@@ -1,5 +1,6 @@
 import { editorSmoke } from './editor-smoke'
 import { themeChecks } from './theme-smoke'
+import { readingSizeChecks } from './reading-smoke'
 import { FIXTURE_API, fixtureCourse } from './fixture-identities'
 /**
  * Headless smoke check: boots the real window, drives the real renderer, and
@@ -2920,7 +2921,12 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
     } catch (error) { report({ error: String(error) }); cleanup(); app.exit(1) }
     return
   }
-  if (process.env['OPENCOURSE_SMOKE_EDITOR_ONLY']) {
+  // Suites that bring their own course run on their own too, which is how they
+  // are checked on a checkout whose content/ cannot feed the full run.
+  // OPENCOURSE_SMOKE_EDITOR_ONLY=1 is the older spelling of ONLY=editor.
+  const only = (process.env['OPENCOURSE_SMOKE_ONLY'] ?? (process.env['OPENCOURSE_SMOKE_EDITOR_ONLY'] ? 'editor' : ''))
+    .split(',').map((name) => name.trim()).filter(Boolean)
+  if (only.length) {
     try {
       const { createUser } = await import('./users')
       createUser('Course author')
@@ -2933,7 +2939,11 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         }
         throw new Error('Test user picker did not load');
       })()`)
-      const results = await editorSmoke(win)
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { editor: editorSmoke, reading: readingSizeChecks }
+      const unknown = only.filter((name) => !suites[name])
+      if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
+      const results: Result[] = []
+      for (const name of only) results.push(...(await suites[name]!(win)))
       const failed = results.filter(result => !result.ok)
       report({ passed: results.length - failed.length, failed: failed.length, results })
       cleanup(); app.exit(failed.length ? 1 : 0)
@@ -2979,6 +2989,9 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
       ...answerResults,
       ...coachFileResults,
       ...(await coachChecks()),
+      // Brings the example course and leaves a lesson at 100%; the theme suite
+      // starts from the library whatever it is shown.
+      ...(await readingSizeChecks(win)),
       // Themes go on and come off again inside their own suite, which ends in
       // the library on the app's own look - where projectChecks starts anyway,
       // and the suites after that depend on the screen it leaves.

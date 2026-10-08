@@ -831,12 +831,16 @@ button.secondary.danger { background: var(--chip-bg); color: var(--err); border-
 
 /* ---------- blocks ---------- */
 .block { margin: 1.6rem 0; }
-.prose { font-family: var(--font-reading); font-size: var(--reading-size); line-height: var(--reading-line-height); }
-.prose h1 { font-size: 1.75rem; margin: 0 0 1rem; }
-.prose h2 { font-size: 1.3rem; margin: 2rem 0 0.6rem; }
-.prose h3 { font-size: 1.08rem; margin: 1.5rem 0 0.5rem; }
+/* --reading-scale is the reader's text size, set inline on a lesson screen's
+   .body and inherited by the lesson, the exercise brief and the side chat.
+   Every text size there multiplies by it; everywhere else it is absent and
+   reads as 1, so .prose in Coach or Review is untouched. */
+.prose { font-family: var(--font-reading); font-size: calc(var(--reading-size) * var(--reading-scale, 1)); line-height: var(--reading-line-height); }
+.prose h1 { font-size: calc(1.75rem * var(--reading-scale, 1)); margin: 0 0 1rem; }
+.prose h2 { font-size: calc(1.3rem * var(--reading-scale, 1)); margin: 2rem 0 0.6rem; }
+.prose h3 { font-size: calc(1.08rem * var(--reading-scale, 1)); margin: 1.5rem 0 0.5rem; }
 .prose table { border-collapse: collapse; width: 100%; margin: 1rem 0; display: block; overflow-x: auto; }
-.prose th, .prose td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; font-size: 0.92rem; }
+.prose th, .prose td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; font-size: calc(0.92rem * var(--reading-scale, 1)); }
 .prose th { background: var(--chip-bg); }
 .prose blockquote {
   margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--accent);
@@ -847,7 +851,7 @@ button.secondary.danger { background: var(--chip-bg); color: var(--err); border-
   background: var(--chip-bg); padding: 0.1em 0.35em; border-radius: 4px;
 }
 .prose pre { padding: 0.85rem 1rem; border-radius: 8px; overflow-x: auto; border: 1px solid var(--border); }
-.prose pre code { background: none; padding: 0; font-size: 0.85rem; }
+.prose pre code { background: none; padding: 0; font-size: calc(0.85rem * var(--reading-scale, 1)); }
 .prose img { max-width: 100%; border-radius: 6px; }
 .prose a[href^="http"]::after { content: " ↗"; font-size: 0.8em; color: var(--muted); }
 
@@ -857,15 +861,15 @@ button.secondary.danger { background: var(--chip-bg); color: var(--err); border-
 [data-appearance='light'] .shiki, [data-appearance='light'] .shiki span { color: var(--shiki-light) !important; }
 
 .takeaways { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; padding: 0.4rem 1.25rem 1rem; }
-.takeaways h2 { font-size: 0.95rem; }
+.takeaways h2 { font-size: calc(0.95rem * var(--reading-scale, 1)); }
 
 .objectives { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1.25rem; margin-bottom: 1.5rem; }
-.objectives h2 { margin: 0 0 0.4rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.objectives h2 { margin: 0 0 0.4rem; font-size: calc(0.78rem * var(--reading-scale, 1)); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .objectives ul { margin: 0; padding-left: 1.15rem; }
 .objectives li { margin: 0.15rem 0; }
 
 figure { margin: 0; }
-figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem; }
+figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading-scale, 1)); margin-top: 0.35rem; }
 
 .viz-frame { position: relative; }
 .viz-frame iframe {
@@ -908,7 +912,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 /* The fullscreen stand-in for the floating offer, which would sit behind it. */
 .viz-ask { padding: 0.25rem 0.7rem; font-size: 0.8rem; border-radius: 999px; }
 .viz-frame:fullscreen iframe { flex: 1; width: 100%; height: auto !important; border: 0; border-radius: 0; }
-.viz-title { color: var(--muted); font-size: 0.86rem; margin-bottom: 0.3rem; }
+.viz-title { color: var(--muted); font-size: calc(0.86rem * var(--reading-scale, 1)); margin-bottom: 0.3rem; }
 
 .card {
   background: var(--card); border: 1px solid var(--border);
@@ -916,27 +920,31 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 }
 .quiz .question { font-weight: 600; margin-bottom: 0.6rem; }
 .quiz label { display: flex; gap: 0.5rem; align-items: flex-start; margin: 0.3rem 0; cursor: pointer; }
-.quiz .feedback { padding: 0.7rem 0.85rem; border-radius: 6px; margin-top: 0.8rem; font-size: 0.93rem; }
+.quiz .feedback { padding: 0.7rem 0.85rem; border-radius: 6px; margin-top: 0.8rem; font-size: calc(0.93rem * var(--reading-scale, 1)); }
 .quiz .feedback.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
 .quiz .feedback.err { background: var(--err-bg); color: var(--err); border: 1px solid var(--err-border); }
 .quiz .feedback .explanation { margin-top: 0.4rem; color: var(--fg); }
 .quiz .actions { margin-top: 0.7rem; display: flex; gap: 0.5rem; align-items: center; }
 
-.exercise h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+.exercise h3 { margin: 0 0 0.5rem; font-size: calc(1.05rem * var(--reading-scale, 1)); }
 .exercise .prompt { margin-bottom: 0.85rem; }
-.exercise .verify { color: var(--muted); font-size: 0.9rem; margin: 0.85rem 0; }
+.exercise .verify { color: var(--muted); font-size: calc(0.9rem * var(--reading-scale, 1)); margin: 0.85rem 0; }
 .exercise .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.9rem; }
 .exercise details { margin-top: 0.75rem; }
-.exercise summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
+.exercise summary { cursor: pointer; color: var(--accent); font-size: calc(0.92rem * var(--reading-scale, 1)); }
 .exercise pre {
   background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
-  padding: 0.8rem 1rem; overflow-x: auto; font-size: 0.85rem;
+  padding: 0.8rem 1rem; overflow-x: auto; font-size: calc(0.85rem * var(--reading-scale, 1));
 }
 
 .lesson-nav { display: flex; justify-content: space-between; gap: 0.75rem; margin: 2.5rem 0 0; }
 .lesson-nav .spacer { flex: 1; }
 .lesson-head { margin-bottom: 1.25rem; }
-.lesson-head h1 { margin: 0.2rem 0 0.3rem; font-size: 1.8rem; }
+.lesson-head h1 { margin: 0.2rem 0 0.3rem; font-size: calc(1.8rem * var(--reading-scale, 1)); }
+/* Text the lesson inherits rather than sizes - quiz options, an exercise's
+   prompt, the objectives, the buttons - and the line under the title. */
+.lesson-inner { font-size: calc(var(--ui-size) * var(--reading-scale, 1)); }
+.lesson-inner .meta, .workbench-brief .meta { font-size: calc(0.86rem * var(--reading-scale, 1)); }
 .empty { color: var(--muted); padding: 3rem 0; text-align: center; }
 
 /* ---------- search ---------- */
@@ -984,10 +992,10 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   background-color: var(--bg);
   background-image: var(--reading-image); background-size: var(--reading-image-size);
   background-position: var(--reading-image-position); background-repeat: var(--reading-image-repeat);
-  font-size: 14px;
+  font-size: calc(14px * var(--reading-scale, 1));
 }
 .workbench-back { margin-bottom: 1rem; }
-.workbench-brief .exercise h3 { font-size: 1.05rem; }
+.workbench-brief .exercise h3 { font-size: calc(1.05rem * var(--reading-scale, 1)); }
 /* A hairline you can actually grab: the hit area is wider than the line. */
 .workbench-grip {
   flex: 0 0 7px;
@@ -1441,7 +1449,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 
 /* One exchange. The learner's words sit in a tinted bubble on the right; the
    answer is prose across the full width, so the two never look alike. */
-.chat-turn { margin: 0 0 1.1rem; font-size: 0.9rem; line-height: 1.55; }
+.chat-turn { margin: 0 0 1.1rem; font-size: calc(0.9rem * var(--reading-scale, 1)); line-height: 1.55; }
 .chat-turn.user { display: flex; flex-direction: column; align-items: flex-end; }
 .chat-bubble {
   max-width: 88%;
@@ -1454,7 +1462,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   color: var(--fg);
 }
 .chat-bubble .chat-body { white-space: pre-wrap; overflow-wrap: anywhere; }
-.chat-turn.assistant .prose { font-size: 0.9rem; }
+.chat-turn.assistant .prose { font-size: calc(0.9rem * var(--reading-scale, 1)); }
 .chat-turn.assistant .prose > :first-child { margin-top: 0; }
 .chat-turn.assistant .prose > :last-child { margin-bottom: 0; }
 .chat-turn.partial { opacity: 0.75; }
@@ -1481,7 +1489,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   border-radius: 999px;
   background: var(--chip-bg);
   color: var(--chip-fg);
-  font-size: 0.66rem; font-weight: 600; line-height: 1.35;
+  font-size: calc(0.66rem * var(--reading-scale, 1)); font-weight: 600; line-height: 1.35;
   text-align: center; text-decoration: none;
   font-variant-numeric: tabular-nums;
 }
@@ -1495,7 +1503,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 .chat-sources { margin-top: 0.65rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
 .chat-sources-label {
   margin: 0 0 0.25rem 0.1rem;
-  font-size: 0.68rem; font-weight: 600;
+  font-size: calc(0.68rem * var(--reading-scale, 1)); font-weight: 600;
   letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--muted);
 }
@@ -1506,7 +1514,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   padding: 0.28rem 0.4rem;
   border-radius: 6px;
   color: var(--fg); text-decoration: none;
-  font-size: 0.8rem; line-height: 1.3;
+  font-size: calc(0.8rem * var(--reading-scale, 1)); line-height: 1.3;
 }
 .chat-source:hover { background: var(--chip-bg); text-decoration: none; }
 .chat-source-n {
@@ -1516,7 +1524,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   border-radius: 999px;
   background: var(--chip-bg);
   color: var(--chip-fg);
-  font-size: 0.66rem; font-weight: 600; text-align: center;
+  font-size: calc(0.66rem * var(--reading-scale, 1)); font-weight: 600; text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .chat-source:hover .chat-source-n { background: var(--card); }
@@ -1536,7 +1544,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 .chat-source-host {
   flex: 0 1 auto; max-width: 40%; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--muted); font-size: 0.72rem;
+  color: var(--muted); font-size: calc(0.72rem * var(--reading-scale, 1));
 }
 
 .chat-quote {
@@ -1620,7 +1628,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 .sidechat-input {
   display: block;
   width: 100%;
-  max-height: calc(0.88rem * 1.5 * 8 + 0.9rem);
+  max-height: calc(0.88rem * var(--reading-scale, 1) * 1.5 * 8 + 0.9rem);
   margin: 0;
   padding: 0.65rem 0.85rem 0.25rem;
   border: 0;
@@ -1628,7 +1636,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: calc(0.88rem * var(--reading-scale, 1));
   line-height: 1.5;
   resize: none;
   overflow-y: hidden;
@@ -1671,10 +1679,10 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   padding: 0;
   border: 0;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: calc(0.78rem * var(--reading-scale, 1));
   line-height: 1.45;
   /* Whole lines, so a scrolled quote never looks like a clipped one. */
-  max-height: calc(0.78rem * 1.45 * 4);
+  max-height: calc(0.78rem * var(--reading-scale, 1) * 1.45 * 4);
   overflow-y: auto;
   white-space: pre-wrap;
 }
@@ -1763,6 +1771,45 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
   box-shadow: 0 6px 18px rgb(var(--shadow-rgb) / 0.22);
 }
 
+/* The reader's text size, floating at the foot of the lesson column. The strip
+   is the last thing in the scroller, zero high and sticky to its bottom, so the
+   pill stays put at the column's bottom-left while the lesson scrolls under it
+   - inside the column, so it never covers the sidebar or the side chat, and
+   hides with the column when the editor opens. The lesson's own column is at
+   least as tall as the scroller, so a short lesson still puts it at the foot.
+   Above a visualization's bar (2), below the "Ask about this" offer (8). */
+.lesson-inner { min-height: 100%; }
+.reading-size-strip { position: sticky; bottom: 0; height: 0; z-index: 4; }
+/* An opaque card rather than glass: it floats over text, and text showing
+   through text is unreadable twice. Quiet until it is wanted - the letters are
+   muted, not the whole pill faded. */
+/* Stacked, like a map's zoom: narrow enough to sit in the lesson's left
+   margin at an ordinary window width instead of over the start of its lines. */
+.reading-size {
+  position: absolute; left: 1rem; bottom: 1rem;
+  display: flex; flex-direction: column; align-items: stretch;
+  padding: 2px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background-color: var(--card);
+  box-shadow: 0 6px 18px rgb(var(--shadow-rgb) / 0.28);
+}
+.reading-size button {
+  background: none; border: 0; border-radius: 9px;
+  padding: 0.2rem 0.3rem;
+  color: var(--muted);
+  font-size: 12px; font-weight: 600; line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.reading-size button span { margin-left: 1px; }
+/* The two letters say which way they go by their own size. */
+.reading-size .reading-size-smaller { font-size: 11px; }
+.reading-size .reading-size-larger { font-size: 14px; }
+.reading-size .reading-size-reset { min-width: 3.2em; font-size: 10.5px; padding: 0.15rem 0.2rem; }
+.reading-size button:not(:disabled):hover { color: var(--fg); background: var(--chip-bg); }
+.reading-size button:disabled { opacity: 0.45; cursor: default; }
+.reading-size .reading-size-reset:disabled { opacity: 1; }
+.reading-size button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+
 /* Course projects: the familiar chat next to an independently scrolling brief. */
 .project-screen { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .project-screen[hidden] { display: none; }
@@ -1803,7 +1850,7 @@ figure figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.35rem
 button, a, input, select, textarea { transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
 button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 button:hover { filter: none; }
-button:not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.menu-item):not(.section-switch button):not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--hover-ring); }
+button:not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.menu-item):not(.section-switch button):not(.reading-size button):not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--hover-ring); }
 .titlebar .user-chip:hover, .user-menu .menu-item { box-shadow: none; }
 .titlebar .user-chip:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
 .course-card, .user-card, .coach-card { transition: border-color 140ms ease, background-color 140ms ease, transform 140ms var(--ease); }

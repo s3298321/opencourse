@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, JSX, RefObject, SetStateAction } from 'react'
+import type { CSSProperties, Dispatch, JSX, RefObject, SetStateAction } from 'react'
 import { findLesson, lessonKey, itemSiblings } from '@core/manifest'
 import { QUOTE_HIGHLIGHT } from '@core/vizbridge'
 import type {
@@ -19,6 +19,7 @@ import SideChat from '../components/SideChat'
 import Sidebar from '../components/Sidebar'
 import TitleBar from '../components/TitleBar'
 import LessonHeader from '../components/LessonHeader'
+import ReadingSize from '../components/ReadingSize'
 import { AskProvider, type Ask, type AskOffer } from '../ask-context'
 import { itemRoute, type Route, type Screen } from '../routes'
 
@@ -40,6 +41,31 @@ interface Props {
    * top) - the two used to be indistinguishable because only a mount happened.
    */
   scrollRef: RefObject<{ key: string; top: number }>
+  /**
+   * The reader's text size, held by App for the same reason as the scroll
+   * offset - and read before the lesson renders, so the offset is restored at
+   * the size it was taken at. Null while it is still being read.
+   */
+  readingScale: number | null
+  setReadingScale: (scale: number) => void
+}
+
+/** What a reading position is pinned to when the text changes size: a block-level piece of the lesson. */
+const ANCHORS = 'p, li, h1, h2, h3, h4, pre, blockquote, figure, table, .quiz, .exercise, .viz-frame, .lesson-head'
+
+/**
+ * The first piece of the lesson whose bottom is still in view, and how far its
+ * top sits below the column's. Resizing text moves everything under a fixed
+ * scrollTop, and the browser's own scroll anchoring stands down when the
+ * anchor's margins change - which they do here, being in em.
+ */
+function readingAnchor(column: HTMLElement): { element: Element; offset: number } | null {
+  const top = column.getBoundingClientRect().top
+  for (const element of column.querySelectorAll(ANCHORS)) {
+    const box = element.getBoundingClientRect()
+    if (box.height && box.bottom > top) return { element, offset: box.top - top }
+  }
+  return null
 }
 
 /** Marks a passage of text in this window (null clears it). See the comment on `attach`. */
@@ -85,7 +111,9 @@ export default function LessonView({
   route,
   chatOpen,
   setChatOpen,
-  scrollRef
+  scrollRef,
+  readingScale,
+  setReadingScale
 }: Props): JSX.Element {
   const [course, setCourse] = useState<CourseView | null>(null)
   const [progress, setProgress] = useState<CourseProgress | null>(null)
@@ -278,6 +306,28 @@ export default function LessonView({
     )
   }, [openExerciseId, found])
 
+  // Keep your place when the text changes size: pin the passage at the top of
+  // the column before, and put it back where it was after the new layout.
+  const anchor = useRef<{ element: Element; offset: number } | null>(null)
+  const changeReadingScale = useCallback(
+    (scale: number) => {
+      const column = contentRef.current
+      anchor.current = column ? readingAnchor(column) : null
+      // An offer floats where the text was; at the new size it is somewhere else.
+      setSelection(null)
+      setReadingScale(scale)
+    },
+    [setReadingScale]
+  )
+  useLayoutEffect(() => {
+    const column = contentRef.current
+    const pinned = anchor.current
+    anchor.current = null
+    if (!column || !pinned || !pinned.element.isConnected) return
+    const now = pinned.element.getBoundingClientRect().top - column.getBoundingClientRect().top
+    column.scrollTop += now - pinned.offset
+  }, [readingScale])
+
   // Before paint, so the lesson does not flash at the top on the way back.
   useLayoutEffect(() => {
     if (openExerciseId !== null) return
@@ -304,9 +354,9 @@ export default function LessonView({
     // course *and* progress: the column is not rendered until both have
     // arrived, and whichever lands second is the render that first has an
     // element to scroll.
-  }, [openExerciseId, course, progress, here, lessonScroll])
+  }, [openExerciseId, course, progress, here, lessonScroll, readingScale === null])
 
-  if (!course || !progress) return <div className="empty">Loading…</div>
+  if (!course || !progress || readingScale === null) return <div className="empty">Loading…</div>
   if (!found) return <div className="empty">That lesson is not in this course.</div>
 
   const { lesson, ref } = found
@@ -335,7 +385,10 @@ export default function LessonView({
         }
         back={{ label: 'All courses', onClick: () => navigate({ name: 'library' }) }}
       />
-      <div className="body">
+      {/* The reader's text size reaches everything on this screen that is read -
+          the lesson, the exercise brief, the side chat - by inheritance, and
+          nothing else in the app, which falls back to var(--reading-scale, 1). */}
+      <div className="body" style={{ '--reading-scale': readingScale } as CSSProperties}>
         <Sidebar
           course={course}
           current={{ moduleId, lessonId }}
@@ -354,7 +407,7 @@ export default function LessonView({
             if (!editorOpen) lessonScroll.current = { key: here, top: e.currentTarget.scrollTop }
           }}
         >
-          <div className="content-inner" data-ask="lesson">
+          <div className="content-inner lesson-inner" data-ask="lesson">
             <LessonHeader lesson={lesson} index={ref.index} total={course.flatLessons.length} />
 
             {/* A visualization offers its own selections through this. */}
@@ -396,6 +449,7 @@ export default function LessonView({
               )}
             </div>
           </div>
+          <ReadingSize scale={readingScale} onChange={changeReadingScale} />
         </div>
         {chatOpen && !editorOpen && (
           <SideChat
@@ -405,6 +459,7 @@ export default function LessonView({
             onQuoteUsed={() => setQuote(null)}
             onClose={() => setChatOpen(false)}
             onAddKey={() => navigate({ name: 'settings', from: route })}
+            textScale={readingScale}
           />
         )}
         {editorOpen && openExercise && workbenchTarget && (

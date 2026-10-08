@@ -26,6 +26,8 @@ interface Props {
   onClose?: () => void
   /** Takes you to settings. The panel never learns what a Route is. */
   onAddKey: () => void
+  /** The reader's text size, when a lesson screen sets one: the composer refits to it. */
+  textScale?: number
 }
 
 const MIN_WIDTH = 320
@@ -266,7 +268,8 @@ export default function ChatPanelView({
   onQuoteUsed,
   onClose,
   onAddKey,
-  storageKey
+  storageKey,
+  textScale = 1
 }: Props): JSX.Element {
   // The lesson column and the sidebar are the only things it has to leave
   // room for: the editor takes the whole workspace, so the two are never
@@ -281,7 +284,7 @@ export default function ChatPanelView({
   const scroller = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLTextAreaElement | null>(null)
   const twin = useRef<HTMLTextAreaElement | null>(null)
-  useAutoGrow(field, twin, draft)
+  useAutoGrow(field, twin, draft, textScale)
 
   const answering = panel.activeId !== null && panel.busy.has(panel.activeId)
 

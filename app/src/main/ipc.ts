@@ -81,7 +81,7 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getDefaultCoachModel, setDefaultCoachModel } from './preferences'
+import { getDefaultCoachModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
 import type { ChatDefaults, ThemeImportResult } from '../core/types'
 import { closeDb } from './db'
 import {
@@ -492,6 +492,13 @@ export function registerIpc(): void {
 
   ipcMain.handle('spec:save', () => saveSpecBundle())
   ipcMain.handle('spec:saveTheme', () => saveThemeSpecBundle())
+
+  /* --- the reader's text size ----------------------------------------------
+     Per user, in preferences.json, and not a theme's to set: see
+     core/reading-scale.ts. Snapped to a step on the way in. */
+
+  ipcMain.handle('reading:scale', () => getReadingScale())
+  ipcMain.handle('reading:setScale', (_e, scale: number) => setReadingScale(scale))
 
   /* --- themes --------------------------------------------------------------
      A theme is values for the stylesheet's tokens and nothing else

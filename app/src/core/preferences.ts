@@ -7,6 +7,7 @@ import { defaultChatModel, isChatModelId, isReasoningEffort, reasoningEffortsFor
 import { isRealtimeModelId } from './coach/models'
 import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
+import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -45,6 +46,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   // A theme is named by its app-local UUID; anything else is a hand-edit that
   // means nothing, and reads as "no theme" rather than as an error.
   const theme = values['theme']
+  const readingScale = normalizeReadingScale(values['readingScale'])
   const kept: Preferences = {
     ...(chatModels ? { chatModels } : {}),
     ...(preferred ? { defaultChatModel: preferred } : {}),
@@ -55,7 +57,8 @@ export function normalizePreferences(raw: unknown): Preferences {
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
     ...(typeof theme === 'string' && UUID.test(theme) ? { theme } : {}),
-    ...(typeof values['activeServer'] === 'string' && UUID.test(values['activeServer']) ? { activeServer: values['activeServer'] } : {})
+    ...(typeof values['activeServer'] === 'string' && UUID.test(values['activeServer']) ? { activeServer: values['activeServer'] } : {}),
+    ...(readingScale !== DEFAULT_READING_SCALE ? { readingScale } : {})
   }
   if (values['ai'] && typeof values['ai'] === 'object') kept.ai = aiSettings({ ...kept, ai: values['ai'] as Preferences['ai'] })
   const title = values['titleGeneration'] as Partial<NonNullable<Preferences['titleGeneration']>> | undefined

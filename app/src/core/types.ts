@@ -801,6 +801,11 @@ export interface Preferences {
    * users/<id>/servers/servers.json. Absent, or naming one that is gone: none.
    */
   activeServer?: string
+  /**
+   * The reader's text size on a lesson screen, one of READING_SCALES
+   * (core/reading-scale.ts). Absent means 1 - the app's own size.
+   */
+  readingScale?: number
 }
 
 /**

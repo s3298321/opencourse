@@ -159,6 +159,10 @@ const api = {
   importThemePath: (zipPath: string, onDuplicate?: 'replace' | 'keep' | 'cancel'): Promise<ThemeImportResult> =>
     ipcRenderer.invoke('themes:importPath', zipPath, onDuplicate),
 
+  // --- the reader's text size on a lesson screen: one of READING_SCALES ---
+  getReadingScale: (): Promise<number> => ipcRenderer.invoke('reading:scale'),
+  setReadingScale: (scale: number): Promise<number> => ipcRenderer.invoke('reading:setScale', scale),
+
   getProgress: (courseId: string): Promise<CourseProgress> => ipcRenderer.invoke('progress:get', courseId),
   toggleLesson: (courseId: string, moduleId: string, lessonId: string): Promise<CourseProgress> =>
     ipcRenderer.invoke('progress:toggleLesson', courseId, moduleId, lessonId),

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- A mask, not a picture: opaque where the mark is painted. The tick is cut
+       out of the disc so the surface behind it shows through on any theme. -->
+  <mask id="tick">
+    <rect width="16" height="16" fill="#fff"/>
+    <path d="M4.7 8.4 7 10.6l4.3-4.9" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </mask>
+  <circle cx="8" cy="8" r="8" mask="url(#tick)"/>
+</svg>

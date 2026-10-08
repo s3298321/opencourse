@@ -17,6 +17,7 @@ import { beginAuthoringTurn, authoringRunState } from './authoring-state'
 import { appendAuthoringMessage, insertAuthoringChat, recordAuthoringTool, selectAuthoringChat, selectAuthoringChats, selectAuthoringMessages, updateAuthoringChat } from './authoring-chatdb'
 import { cancelChatTitles, generateChatTitle } from './chattitles'
 import { log } from './log'
+import { whenSenderGone } from './senders'
 
 interface Run { chat: ChatSummary; controller: AbortController; finish: (status: 'complete' | 'stopped' | 'failed', error?: string) => void }
 const running = new Map<string, Run>()
@@ -75,13 +76,13 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   const started = Date.now()
   let toolCalls = 0
   let answered = '', finalized = false, seq = -1
-  let release = () => {}, timer: ReturnType<typeof setTimeout> | undefined
+  let release = () => {}, unbindLost = () => {}, timer: ReturnType<typeof setTimeout> | undefined
   const push = (channel: string, ...args: unknown[]) => { if (!sender.isDestroyed()) sender.send(channel, id, ...args) }
   const lost = () => { controller.abort(); finish('stopped') }
   const finish = (status: 'complete' | 'stopped' | 'failed', error?: string): void => {
     if (finalized) return
     finalized = true; clearTimeout(timer); running.delete(id)
-    sender.removeListener('destroyed', lost); sender.removeListener('render-process-gone', lost); sender.removeListener('did-start-loading', lost)
+    unbindLost()
     try {
       if (currentUserId() === owner && selectAuthoringChat(id, database) && answered) appendAuthoringMessage(id, { role: 'assistant', text: answered, status, generation: { model: chat.model, provider: chat.provider!, reasoning: chat.reasoning }, at: new Date().toISOString() }, database)
     } catch (failure) { error ??= (failure as Error).message }
@@ -96,7 +97,7 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   try { const lease = beginAuthoringTurn(chat.courseId, id, lost); token = lease.token; release = lease.release }
   catch (error) { return { status: 'failed', message: (error as Error).message } }
   running.set(id, { chat, controller, finish })
-  sender.once('destroyed', lost); sender.once('render-process-gone', lost); sender.once('did-start-loading', lost)
+  unbindLost = whenSenderGone(sender, lost)
   let key: string
   try { ({ chat, key } = await prepareAIRequest('authoring', chat, controller.signal)) }
   catch (error) {

@@ -490,7 +490,7 @@
       "properties": {
         "amount": {
           "$ref": "#/$defs/grainAmount",
-          "description": "Opacity of the noise; 0.12 is the app's own, 0 turns it off."
+          "description": "Opacity of the noise; 0.12 if omitted, 0.2 is the app's own, 0 turns it off."
         },
         "scale": {
           "type": "number",

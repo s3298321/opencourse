@@ -9,9 +9,9 @@
 :root {
   --fg: #dedee3;
   --muted: #a5a5af;
-  --bg: #18181b;
-  --card: #202024;
-  --raised: #28282d;
+  --bg: #111110;
+  --card: #232323;
+  --raised: #232323;
   --accent: #e4e4e8;
   --accent-fg: #202024;
   --border: #393940;
@@ -28,14 +28,14 @@
   --err-border: #563036;
   --accent-ring: rgba(196, 196, 205, 0.15);
   --code-bg: #1d1d21;
-  --bubble: #2e2e34;
+  --bubble: #232323;
   --bubble-border: #42424a;
-  --composer-bg: #28282d;
+  --composer-bg: #232323;
   --scrollbar: rgba(222, 222, 227, 0.18);
   --scrollbar-hover: rgba(222, 222, 227, 0.36);
-  --chrome: rgba(0, 0, 0, 0.52);
-  --glass: rgba(0, 0, 0, 0.25);
-  --popover: rgba(36, 36, 41, 0.94);
+  --chrome: rgba(0, 0, 0, 0.4);
+  --glass: rgba(0, 0, 0, 0.19);
+  --popover: rgba(0, 0, 0, 0.72);
   --err-fg: #fff;
   --overlay: rgba(0, 0, 0, 0.35);
   /* A triplet, because every shadow supplies its own alpha: rgb(var(--shadow-rgb) / 0.2). */
@@ -792,6 +792,16 @@ button.secondary.danger { background: var(--chip-bg); color: var(--err); border-
 .lesson-row .num { color: var(--muted); font-variant-numeric: tabular-nums; width: 1.6rem; flex: none; }
 .lesson-row .mins { margin-left: auto; color: var(--muted); font-size: 0.82rem; }
 .check { width: 1.1rem; flex: none; display: inline-block; color: var(--ok); }
+/* Done: a disc in the theme's success colour with the tick cut out of it, so
+   the surface shows through. It sits centred on the title's first line, not
+   on its baseline - a wrapping title is two lines tall, and a disc on the
+   baseline rides above the text. */
+.check.done { align-self: flex-start; height: 1lh; display: inline-flex; align-items: center; }
+.check.done::before {
+  content: ''; width: 0.95em; height: 0.95em; background-color: var(--ok);
+  -webkit-mask: url('./assets/done-mark.svg') center / contain no-repeat;
+  mask: url('./assets/done-mark.svg') center / contain no-repeat;
+}
 
 /* ---------- lesson sidebar ---------- */
 .sidebar {
@@ -801,7 +811,9 @@ button.secondary.danger { background: var(--chip-bg); color: var(--err); border-
   background-position: var(--sidebar-image-position); background-repeat: var(--sidebar-image-repeat);
   padding: 1rem 0.75rem 3rem; font-size: 0.9rem;
 }
-.sidebar .course-title { font-weight: 700; padding: 0 0.5rem 0.5rem; }
+/* Its link takes `.sidebar a`'s padding like every row, so the container adds
+   none sideways - padding both put the title a step right of the chapters. */
+.sidebar .course-title { font-weight: 700; padding: 0 0 0.5rem; }
 .sidebar .module-title {
   font-weight: 600; margin: 0.9rem 0 0.25rem; color: var(--muted);
   text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em; padding: 0 0.5rem;
@@ -1811,7 +1823,7 @@ button:not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.menu-ite
 @keyframes surface-fade { from { opacity: 0; } }
 @keyframes surface-enter { from { opacity: 0; transform: translateY(4px); } }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :root { --chrome: #1c1c20; --glass: #18181b; --popover: #242429; --glass-grain: none; }
+  :root { --chrome: #1c1c20; --glass: #111110; --popover: #232323; --glass-grain: none; }
   .menu-panel, .search-panel { backdrop-filter: none; }
 }
 @media (prefers-contrast: more) {

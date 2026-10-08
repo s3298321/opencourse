@@ -33,7 +33,7 @@ export interface WindowSpec {
 }
 
 export interface GrainSpec {
-  /** Opacity of the noise, 0-0.4. 0.12 is the app's own. */
+  /** Opacity of the noise, 0-0.4; 0.12 when a theme gives none. The app's own is 0.2. */
   amount: number
   /** Tile scale, 0.5-3: larger is coarser. */
   scale: number

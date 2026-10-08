@@ -294,6 +294,37 @@ describe('independent main-process AI routing', () => {
     expect(stopped.get().messages.at(-1)?.status).toBe('stopped')
     expect(mock.title).not.toHaveBeenCalled()
   })
+  it.each(['chat', 'project'] as const)('keeps naming a %s while a frame in the page loads, and stops when the window reloads', async scope => {
+    // A visualization's iframe fires did-start-loading on the whole window, as
+    // does a pushState. Neither is the learner leaving, and both used to cancel
+    // every title in flight without a word in the log.
+    mock.stream.mockImplementation(async (options: ChatStreamOptions) => {
+      options.onDelta('A completed explanation')
+      return { text: 'A completed explanation', aborted: false, citations: [], output: [] }
+    })
+    let release!: (result: { text: string; aborted: boolean }) => void
+    mock.title.mockImplementation(() => new Promise(resolve => { release = resolve }))
+    const kept = titleChat(scope)
+    await kept.send('Explain callbacks'); await settled(kept.done)
+    await vi.waitFor(() => expect(mock.title).toHaveBeenCalledTimes(1))
+    const keptRequest = mock.title.mock.calls[0][0] as ChatStreamOptions
+    sender.emit('did-start-loading')
+    sender.emit('did-start-navigation', { isMainFrame: false, isSameDocument: false })
+    sender.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true })
+    expect(keptRequest.signal?.aborted).toBe(false)
+    release({ text: 'Callbacks Explained', aborted: false })
+    await vi.waitFor(() => expect(kept.get().chat.title).toBe('Callbacks Explained'))
+    sender.send.mockClear()
+    const reloaded = titleChat(scope)
+    await reloaded.send('Explain promises'); await settled(reloaded.done)
+    await vi.waitFor(() => expect(mock.title).toHaveBeenCalledTimes(2))
+    const reloadedRequest = mock.title.mock.calls[1][0] as ChatStreamOptions
+    sender.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false })
+    expect(reloadedRequest.signal?.aborted).toBe(true)
+    release({ text: 'Late Promise Title', aborted: false })
+    await new Promise(resolve => setImmediate(resolve))
+    expect(reloaded.get().chat.title).toBe('Explain promises')
+  })
   it.each(['chat', 'project'] as const)('cancels pending %s titles on deletion and user changes, ignoring late results', async scope => {
     mock.stream.mockImplementation(async (options: ChatStreamOptions) => {
       options.onDelta('A completed explanation')

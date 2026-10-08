@@ -3,7 +3,7 @@ export const BRAND = {
   name: 'opencourse',
   displayName: 'OpenCourse',
   scheme: 'opencourse',
-  background: '#18181b'
+  background: '#111110'
 } as const
 
 export const ASSET_SCHEMES = [BRAND.scheme] as const

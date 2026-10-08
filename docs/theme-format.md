@@ -161,14 +161,16 @@ opaque where a surface must be.
 
 ### grain
 
-The fine static noise on glass surfaces.
+The fine static noise on glass surfaces: dark and light specks, weighted for
+the theme's `appearance` so the texture shows without greying the surface
+beneath it.
 
 ```json
 "grain": { "amount": 0.12, "scale": 1, "texture": "images/paper-grain.png" }
 ```
 
-- `amount`: 0-0.4, the noise's strength. 0.12 is the app's own; 0 turns it off
-  everywhere.
+- `amount`: 0-0.4, the noise's strength; 0.12 if you leave it out. The app's
+  own is 0.2; 0 turns it off everywhere.
 - `scale`: 0.5-3; larger is coarser.
 - `texture`: a tileable picture to use instead of the generated noise -
   paper, linen, film. Draw it with transparency: at `amount` 0.12 it is drawn

@@ -182,7 +182,11 @@ describe('compileTheme', () => {
   it('turns grain into a data URL the CSP already allows', () => {
     const strong = compile({ grain: { amount: 0.3, scale: 2 } })
     expect(strong.values['--glass-grain']).toMatch(/^url\("data:image\/svg\+xml,/)
-    expect(decodeURIComponent(strong.values['--glass-grain']!)).toContain('slope="0.3"')
+    // Dark specks carry most of the strength on a dark theme, so the grain
+    // textures the glass without lifting it to grey; a light theme mirrors it.
+    expect(decodeURIComponent(strong.values['--glass-grain']!)).toContain('tableValues="0.54 0.54 0.27 0 0.068 0.135 0.135"')
+    const light = compile({ appearance: 'light', palette: { background: '#f7f5f0', text: '#1d1b16', accent: '#8a4b0f' }, grain: { amount: 0.3 } })
+    expect(decodeURIComponent(light.values['--glass-grain']!)).toContain('tableValues="0.135 0.135 0.068 0 0.27 0.54 0.54"')
     expect(strong.values['--grain-size']).toBe('320px 320px')
     expect(compile({ grain: { amount: 0 } }).values['--glass-grain']).toBe('none')
     expect(compile({ grain: { texture: 'images/linen.png', scale: 2 } }).values['--grain-size']).toBe('256px 192px')

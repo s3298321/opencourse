@@ -106,7 +106,7 @@ function pictureLayer(picture: Picture, options: CompileOptions): Layer {
 }
 
 /**
- * A grain texture at a strength: drawn as authored at the app's own 0.12, and
+ * A grain texture at a strength: drawn as authored at 0.12, and
  * with its opacity scaled for any other amount. CSS cannot fade one background
  * layer, so the renderer does it on a canvas (theme/ThemeProvider.tsx), reading
  * the strength off this URL - in its sandbox, where the picture is decoded anyway.
@@ -196,7 +196,7 @@ export function compileTheme(theme: Theme, options: CompileOptions): CompiledThe
     values['--glass-grain'] = grain.amount > 0 ? textureImage(grain.texture, grain.amount, options) : 'none'
     values['--grain-size'] = `${px(w * grain.scale)} ${px(h * grain.scale)}`
   } else {
-    values['--glass-grain'] = grain.amount > 0 ? svgUrl(grainSvg(grain.amount)) : 'none'
+    values['--glass-grain'] = grain.amount > 0 ? svgUrl(grainSvg(grain.amount, theme.appearance)) : 'none'
     values['--grain-size'] = `${px(GRAIN_TILE * grain.scale)} ${px(GRAIN_TILE * grain.scale)}`
   }
   values['--select-chevron'] = svgUrl(chevronSvg(colorCss(opaqueOver(flat(tokens.fg), windowColor))))
@@ -216,7 +216,7 @@ export function compileTheme(theme: Theme, options: CompileOptions): CompiledThe
       // The theme's own grain is referenced, not copied, so it switches off
       // with --glass-grain under reduced transparency.
       const image = amount === grain.amount ? 'var(--glass-grain)'
-        : grain.texture ? textureImage(grain.texture, amount, options) : svgUrl(grainSvg(amount))
+        : grain.texture ? textureImage(grain.texture, amount, options) : svgUrl(grainSvg(amount, theme.appearance))
       layers.push({ image, size: 'var(--grain-size)', position: '0% 0%', repeat: 'repeat' })
     }
     if (spec.image?.tint) layers.push(tintLayer(spec.image.tint))

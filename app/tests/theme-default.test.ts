@@ -70,13 +70,13 @@ describe('docs/default-theme', () => {
   it('generates the same grain the stylesheet ships as a file', () => {
     const file = readFileSync(join(__dirname, '..', 'src', 'renderer', 'assets', 'glass-grain.svg'), 'utf8')
     const strip = (svg: string): string => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/>\s+</g, '><').trim()
-    expect(strip(grainSvg(0.12))).toBe(strip(file))
+    expect(strip(grainSvg(0.2))).toBe(strip(file))
   })
 
   it('passes its own contrast audit', () => {
     const { theme, assets } = load()
     const compiled = compileTheme(theme, { url: (path) => `${THEME_URL_PREFIX}default/${path}`, assets })
     expect(auditTheme(theme, compiled).filter((note) => note.level === 'warning')).toEqual([])
-    expect(compiled.native).toEqual({ appearance: 'dark', vibrancy: true, background: '#18181b' })
+    expect(compiled.native).toEqual({ appearance: 'dark', vibrancy: true, background: '#111110' })
   })
 })

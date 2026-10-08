@@ -331,7 +331,15 @@ const SCRIPT = `(async () => {
     btn.click()
     await sleep(400)
     assert(/completed/i.test(btn.textContent), 'button did not change: ' + btn.textContent)
-    assert(document.querySelector('.sidebar a.current .check')?.textContent === '✓', 'no sidebar checkmark')
+    // The mark is a masked disc with no text, so what has to be true is that it paints, in the theme's success colour.
+    const mark = document.querySelector('.sidebar a.current .check.done')
+    assert(mark, 'no completion mark in the sidebar')
+    const disc = getComputedStyle(mark, '::before')
+    const ok = getComputedStyle(document.documentElement).getPropertyValue('--ok').trim()
+    const probe = document.createElement('span'); probe.style.color = ok; document.body.append(probe)
+    const okRgb = getComputedStyle(probe).color; probe.remove()
+    assert(disc.backgroundColor === okRgb, 'the mark is ' + disc.backgroundColor + ', not --ok ' + okRgb)
+    assert(parseFloat(disc.width) >= 10 && disc.maskImage.includes('url('), 'the mark has no size or no mask: ' + disc.width + ' ' + disc.maskImage)
     return btn.textContent
   })
 
@@ -343,11 +351,17 @@ const SCRIPT = `(async () => {
     assert(titles.length > 3, 'only ' + titles.length + ' lesson titles in the sidebar')
     const lines = titles.map((t) => t.getClientRects().length > 1 || t.getBoundingClientRect().height > 30)
     assert(lines.some(Boolean), 'no lesson title wraps, so this proves nothing')
-    assert([...document.querySelectorAll('.sidebar .check')].some((c) => c.textContent === '✓'), 'no ticked lesson')
+    assert(document.querySelector('.sidebar .check.done'), 'no ticked lesson')
     const lefts = titles.map((t) => Math.round(t.getBoundingClientRect().left * 2) / 2)
     const spread = Math.max(...lefts) - Math.min(...lefts)
     assert(spread < 1, 'titles start between ' + Math.min(...lefts) + 'px and ' + Math.max(...lefts) + 'px')
-    return titles.length + ' titles at ' + lefts[0] + 'px, ' + lines.filter(Boolean).length + ' wrapping'
+    // The course title is a link, and links in the sidebar are padded; its
+    // container was padded as well, which put it a step right of the chapters.
+    const textLeft = (el) => { const range = document.createRange(); range.selectNodeContents(el); return Math.round(range.getClientRects()[0].left) }
+    const course = textLeft(document.querySelector('.sidebar .course-title a'))
+    const chapter = textLeft(document.querySelector('.sidebar .module-title'))
+    assert(Math.abs(course - chapter) <= 1, 'the course title starts at ' + course + 'px and the chapters at ' + chapter + 'px')
+    return titles.length + ' titles at ' + lefts[0] + 'px, ' + lines.filter(Boolean).length + ' wrapping; course title and chapters at ' + chapter + 'px'
   })
 
   // --- exercise scaffolding ------------------------------------------------------
@@ -2671,11 +2685,11 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
     await check('light system preference retains charcoal surfaces and legible silver controls', `(() => {
       const root = getComputedStyle(document.documentElement);
       const content = getComputedStyle(document.querySelector('.content'));
-      if (root.colorScheme !== 'dark' || content.backgroundColor !== 'rgba(0, 0, 0, 0.25)') throw new Error('Appearance followed the light preference or picker lost its black tint');
+      if (root.colorScheme !== 'dark' || content.backgroundColor !== 'rgba(0, 0, 0, 0.19)') throw new Error('Appearance followed the light preference or picker lost its black tint');
       const button = [...document.querySelectorAll('.user-card.new button')].find(b => b.textContent.trim() === 'Create');
       const style = getComputedStyle(button);
       if (style.color !== 'rgb(32, 32, 36)' || style.backgroundColor !== 'rgb(228, 228, 232)') throw new Error('Off-white control contrast is incorrect');
-      if (root.getPropertyValue('--bg').trim() !== '#18181b' || root.getPropertyValue('--fg').trim() !== '#dedee3') throw new Error('Softened palette did not load');
+      if (root.getPropertyValue('--bg').trim() !== '#111110' || root.getPropertyValue('--fg').trim() !== '#dedee3') throw new Error('Softened palette did not load');
       return 'soft charcoal surfaces, off-white text, legible brighter off-white controls';
     })()`)
     await check('surface transparency follows the requested hierarchy', `(async () => {
@@ -2687,8 +2701,8 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
         const probe = document.createElement('div'); probe.className = className; document.querySelector('.app').append(probe);
         try { return alpha(probe); } finally { probe.remove(); }
       });
-      if (title !== 0.52 || picker !== 0.25 || values.slice(0, 3).some(value => value !== picker) || values[3] !== 1) throw new Error(JSON.stringify({title, picker, values}));
-      if (getComputedStyle(document.querySelector('.titlebar')).backgroundColor !== 'rgba(0, 0, 0, 0.52)') throw new Error('Titlebar lost its black tint');
+      if (title !== 0.4 || picker !== 0.19 || values.slice(0, 3).some(value => value !== picker) || values[3] !== 1) throw new Error(JSON.stringify({title, picker, values}));
+      if (getComputedStyle(document.querySelector('.titlebar')).backgroundColor !== 'rgba(0, 0, 0, 0.4)') throw new Error('Titlebar lost its black tint');
       if (getComputedStyle(document.querySelector('.titlebar')).backgroundImage !== 'none') throw new Error('Titlebar should be smooth, without grain');
       if (getComputedStyle(document.body).backgroundColor !== 'rgba(0, 0, 0, 0)') throw new Error('Body obscures native vibrancy');
       const textured = getComputedStyle(document.querySelector('.content'));
@@ -2697,7 +2711,7 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
       const url = textured.backgroundImage.slice(4, -1).replace(/^["']|["']$/g, '');
       const grain = new Image(); grain.src = url; await grain.decode();
       if (grain.naturalWidth !== 160) throw new Error('Grain asset is missing');
-      return 'black tint: 52% titlebar; 25% picker/list/sidebar/chat surfaces; static grain loaded; opaque reading content';
+      return 'black tint: 40% titlebar; 19% picker/list/sidebar/chat surfaces; static grain loaded; opaque reading content';
     })()`)
     await cdp.sendCommand('Emulation.setEmulatedMedia', { features: [
       { name: 'prefers-reduced-motion', value: 'reduce' },
@@ -2708,7 +2722,7 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
       const chrome = getComputedStyle(document.querySelector('.titlebar'));
       const card = getComputedStyle(document.querySelector('.user-card'));
       if (chrome.backgroundColor !== 'rgb(28, 28, 32)') throw new Error('Chrome remains translucent');
-      if (getComputedStyle(document.querySelector('.content')).backgroundColor !== 'rgb(24, 24, 27)') throw new Error('Main surface remains translucent');
+      if (getComputedStyle(document.querySelector('.content')).backgroundColor !== 'rgb(17, 17, 16)') throw new Error('Main surface remains translucent');
       if (getComputedStyle(document.querySelector('.content')).backgroundImage !== 'none') throw new Error('Texture remains enabled');
       if (card.transitionDuration.split(',').some(v => parseFloat(v) !== 0)) throw new Error('Motion remains enabled');
       if (getComputedStyle(document.documentElement).getPropertyValue('--border').trim() !== '#74747c') throw new Error('Contrast preference was ignored');

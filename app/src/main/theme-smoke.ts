@@ -280,7 +280,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       await window.opencourse.removeTheme(window.__themeId);
       await until(() => !themed() && !document.documentElement.dataset.appearance, 'the theme to come off');
       await until(() => document.querySelector('.titlebar .brand img').src === window.__themeBaseline.mark, 'the app\\'s own mark');
-      if (token('--bg') !== '#18181b') throw new Error('--bg ' + token('--bg'));
+      if (token('--bg') !== '#111110') throw new Error('--bg ' + token('--bg'));
       if ([...document.fonts].some((f) => f.family.replace(/"/g, '') === 'Ledger Dots')) throw new Error('the theme font stayed');
       if ((await window.opencourse.listThemes()).length) throw new Error('a theme is still installed');
       return 'own look, own mark, no theme fonts';

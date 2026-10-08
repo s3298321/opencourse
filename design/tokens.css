@@ -12,9 +12,9 @@
   /* ----- shared with the app ----- */
   --fg: #dedee3;
   --muted: #a5a5af;
-  --bg: #18181b;
-  --card: #202024;
-  --raised: #28282d;
+  --bg: #111110;
+  --card: #232323;
+  --raised: #232323;
   --accent: #e4e4e8;
   --accent-fg: #202024;
   --border: #393940;
@@ -32,9 +32,9 @@
   --code-bg: #1d1d21;
   --scrollbar: rgba(222, 222, 227, 0.18);
   --scrollbar-hover: rgba(222, 222, 227, 0.36);
-  --chrome: rgba(0, 0, 0, 0.52);
-  --glass: rgba(0, 0, 0, 0.25);
-  --popover: rgba(36, 36, 41, 0.94);
+  --chrome: rgba(0, 0, 0, 0.4);
+  --glass: rgba(0, 0, 0, 0.19);
+  --popover: rgba(0, 0, 0, 0.72);
   --err-fg: #fff;
   --overlay: rgba(0, 0, 0, 0.35);
   --shadow-rgb: 0 0 0;
@@ -101,7 +101,7 @@
 }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :root { --chrome: #1c1c20; --glass: #18181b; --popover: #242429; --header-bg: #1c1c20; --grain: none; }
+  :root { --chrome: #1c1c20; --glass: #111110; --popover: #232323; --header-bg: #1c1c20; --grain: none; }
 }
 @media (prefers-contrast: more) {
   :root { --border: #74747c; --muted: #c5c5cd; --selected-edge: rgba(222, 222, 227, 0.55); --line: rgba(222, 222, 227, 0.4); --line-strong: rgba(222, 222, 227, 0.6); }

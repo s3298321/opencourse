@@ -283,11 +283,19 @@ export async function finishPasswordReset(flowId: string, code: string, password
   return saveConnection(f.url, f.info, auth)
 }
 
-/** Signs out here and, as far as the server can still be reached, there too. */
+/**
+ * Signs out here and, as far as the server can still be reached, there too.
+ * The log says which: a server that is down when you remove it shows up as
+ * one last "Server unreachable" for /auth/logout, and without this line that
+ * reads like the app still trying to talk to a server you removed.
+ */
 export async function signOut(id: string): Promise<ServerConnection[]> {
   const userId = requireUser()
   const access = serverAccess(id)
-  if (access.token) await callServer(access.url, '/auth/logout', accepted, { method: 'POST', token: access.token, route: '/auth/logout' }).catch(() => undefined)
+  if (access.token) {
+    const told = await callServer(access.url, '/auth/logout', accepted, { method: 'POST', token: access.token, route: '/auth/logout' }).then(() => true, () => false)
+    log.child('servers').info(told ? 'Signed out of a server' : 'Signed out here; the server could not be reached to end the session there', { data: { host: new URL(access.url).host } })
+  }
   dropToken(userId, id)
   const all = readAll(userId)
   const entry = all.find((c) => c.id === id)
@@ -299,7 +307,9 @@ export async function signOut(id: string): Promise<ServerConnection[]> {
 export async function removeConnection(id: string): Promise<ServerConnection[]> {
   await signOut(id)
   const userId = requireUser()
+  const removed = readAll(userId).find((c) => c.id === id)
   writeAll(readAll(userId).filter((c) => c.id !== id), userId)
   if (readPreferences().activeServer === id) setActiveServer(null)
+  if (removed) log.child('servers').info('Server connection removed', { data: { host: new URL(removed.url).host } })
   return listConnections()
 }

@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import { lessonKey } from '@core/manifest'
 import type { CourseProgress, CourseView } from '@core/types'
 import type { Route } from '../routes'
+import CompletionMark from './CompletionMark'
 
 interface Props {
   course: CourseView
@@ -24,7 +25,7 @@ export default function Sidebar({ course, current, progress, navigate }: Props):
           <ol>
             {mod.type === 'project' ? (
               <li><a className={current?.moduleId === mod.slug ? 'current' : undefined} onClick={() => navigate({ name: 'project', courseId: course.courseId, moduleId: mod.slug })}>
-                <span className="check">{progress.projects?.[mod.slug]?.completedAt ? '✓' : '◇'}</span><span>Project workspace</span>
+                <CompletionMark done={!!progress.projects?.[mod.slug]?.completedAt} project /><span>Project workspace</span>
               </a></li>
             ) : mod.lessons.map((lesson) => {
               const isCurrent = current.moduleId === mod.slug && current.lessonId === lesson.slug
@@ -41,7 +42,7 @@ export default function Sidebar({ course, current, progress, navigate }: Props):
                       })
                     }
                   >
-                    <span className="check">{done.has(lessonKey(mod.slug, lesson.slug)) ? '✓' : ''}</span>
+                    <CompletionMark done={done.has(lessonKey(mod.slug, lesson.slug))} />
                     <span>{lesson.title}</span>
                   </a>
                 </li>

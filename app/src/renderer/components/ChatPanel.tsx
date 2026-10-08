@@ -233,7 +233,7 @@ function Message({ message, fresh, chatId }: { message: ChatMessage; fresh: bool
   if (message.role === 'context') {
     return (
       <div className={`chat-context${fresh ? ' enter' : ''}`} title={message.authoring ? "The current course selection was supplied to the assistant here" : message.project ? "The project requirements were given to the assistant here" : "The lesson was given to the assistant here"}>
-        {message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lesson ? `Now reading: ${message.lesson.lessonId.replace(/-/g, ' ')}` : 'Lesson context'}
+        {message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lessonTitle ? `Now reading: ${message.lessonTitle}` : 'Lesson context'}
       </div>
     )
   }
@@ -443,7 +443,7 @@ export default function ChatPanelView({
               <div>
                 <div>{chat.title || 'A new chat'}</div>
                 <div className="meta">
-                  {chat.historyLabel ?? chat.startedIn?.lessonId.replace(/-/g, ' ') ?? 'Project'} · {chat.messages} message
+                  {chat.historyLabel ?? (chat.startedIn ? 'Conversation' : 'Project')} · {chat.messages} message
                   {chat.messages === 1 ? '' : 's'}
                 </div>
               </div>

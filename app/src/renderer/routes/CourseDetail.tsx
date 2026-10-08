@@ -8,6 +8,7 @@ import type { CourseProgress, CourseView, ReviewCount, ReviewSummary, UserProfil
 import { reviewRecommendation } from '../review-display'
 import { itemRoute, type Route, type Screen } from '../routes'
 import Html from '../components/Html'
+import CompletionMark from '../components/CompletionMark'
 import CourseServerPanel from '../components/CourseServerPanel'
 
 interface Props {
@@ -133,7 +134,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
                   <h3>{mod.title}</h3>
                   {mod.type === 'project' ? (
                     <div className="lesson-row project-row" onClick={() => navigate({ name: 'project', courseId: course.courseId, moduleId: mod.slug })}>
-                      <span className="check">{progress.projects?.[mod.slug]?.completedAt ? '✓' : '◇'}</span>
+                      <CompletionMark done={!!progress.projects?.[mod.slug]?.completedAt} project />
                       <span>Project · {mod.project.deliverables.length} deliverables</span>
                       {mod.project.estimated_minutes && <span className="mins">{mod.project.estimated_minutes} min</span>}
                     </div>
@@ -155,7 +156,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
                         }
                       >
                         <span className="num">{(ref?.index ?? 0) + 1}</span>
-                        <span className="check">{done.has(lessonKey(mod.slug, lesson.slug)) ? '✓' : ''}</span>
+                        <CompletionMark done={done.has(lessonKey(mod.slug, lesson.slug))} />
                         <span>{lesson.title}</span>
                         {lesson.estimated_minutes && <span className="mins">{lesson.estimated_minutes} min</span>}
                       </div>

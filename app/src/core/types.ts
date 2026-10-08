@@ -618,6 +618,12 @@ export interface ChatMessage {
   citations?: ChatCitation[]
   /** Which lesson this was sent from. Absent on nothing the app writes. */
   lesson?: ChatLessonRef
+  /**
+   * That lesson's title as the course has it now, on a lesson's context row
+   * only. Filled in by main when the chat is read, never stored: the IDs in
+   * `lesson` are UUIDs, and a learner reading "Now reading" wants the title.
+   */
+  lessonTitle?: string
   project?: { moduleId: string; fingerprint: string }
   authoring?: { target: AuthoringTarget; label: string; draftVersion: number }
   status?: 'complete' | 'stopped' | 'failed'

@@ -113,7 +113,7 @@ jobs:
             gh release view "$GITHUB_REF_NAME" --json body --jq .body
             echo
             echo "<!-- opencourse:unsigned -->"
-            echo "> This build is not signed with an Apple Developer ID yet. The first time you open it, macOS says it cannot verify the app: close the message, open **System Settings ▸ Privacy & Security**, scroll to the note about OpenCourse and choose **Open Anyway**. You do this once for each version you download."
+            echo "> This build is not signed with an Apple Developer ID yet. The first time you open it, macOS says it cannot verify the app: close the message, open **System Settings ▸ Privacy & Security**, scroll to the note about OpenCourse and choose **Open Anyway**. You do this once for each version you download yourself; a version OpenCourse installs from **Settings ▸ Updates** opens without it."
             echo "<!-- /opencourse:unsigned -->"
           } > "$RUNNER_TEMP/notes.md"
           gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"

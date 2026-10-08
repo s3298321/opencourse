@@ -6,7 +6,7 @@
 // backups bucket's lifecycle, contact-mail's retention_days).
 import Base from '../layouts/Base.astro'
 import { SITE, catalogHost } from '../site.config'
-const updated = 'October 8, 2026'
+const updated = 'October 9, 2026'
 const host = SITE.url.replace(/^https?:\/\//, '')
 const mail = `mailto:${SITE.contactEmail}`
 ---
@@ -26,6 +26,7 @@ const mail = `mailto:${SITE.contactEmail}`
       <li><strong>AI features talk to OpenAI, with your key.</strong> When you use the side chat or Coach, the lesson's text (never its quiz answers or exercise solutions), your question and, for Coach, your voice go to OpenAI under your own API key or ChatGPT subscription. OpenAI's terms and privacy policy apply to that. The key is stored in your Mac's keychain and sent only to OpenAI.</li>
       <li><strong>Web search, when you turn it on,</strong> is run by OpenAI. To show where an answer came from, the app may fetch the small icons of the cited websites.</li>
       <li><strong>Catalog servers you connect to</strong> receive what is needed to sign in, add, update and publish courses (see below for {catalogHost}).</li>
+      <li><strong>Updates of the app, when you ask for them.</strong> The app checks for a new version only when you press <em>Check for updates</em> in Settings, or every few hours if you turn on automatic checks there; they are off until you do. A check asks GitHub for the latest release, and installing one downloads it from GitHub. GitHub sees your IP address and the app's version, as it does for any download. Nothing else is sent.</li>
     </ul>
 
     <h2>This website, {host}</h2>
@@ -73,7 +74,7 @@ const mail = `mailto:${SITE.contactEmail}`
     <ul>
       <li><strong>Amazon Web Services</strong> hosts the website, the catalog and its backups, sends the catalog's emails and receives mail for {SITE.contactEmail}. It processes the data only on the operator's behalf, under its Data Processing Addendum.</li>
       <li><strong>Proton</strong> (Switzerland) holds the operator's mailbox.</li>
-      <li><strong>GitHub</strong> serves the app's downloads, as a separate controller.</li>
+      <li><strong>GitHub</strong> serves the app's downloads and answers its update checks, as a separate controller.</li>
     </ul>
 
     <h2>Where it is stored</h2>

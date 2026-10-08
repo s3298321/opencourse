@@ -42,6 +42,26 @@ describe('parseRelease', () => {
     expect(parseRelease(release({}, { digest: `sha256:${'A'.repeat(64)}` }))?.asset.sha256).toBe(DIGEST)
   })
 
+  it('reads the release GitHub actually published (v0.1.0, trimmed to what is read)', () => {
+    const published = {
+      tag_name: 'v0.1.0',
+      draft: false,
+      prerelease: false,
+      html_url: 'https://github.com/s3298321/opencourse/releases/tag/v0.1.0',
+      assets: [
+        { name: 'latest-mac.yml', size: 345, digest: 'sha256:9e0569c5fdfca4117250d4805f1339618a4eeea7636d556b6f0b389e8b2a8f75', browser_download_url: 'https://github.com/s3298321/opencourse/releases/download/v0.1.0/latest-mac.yml' },
+        { name: 'OpenCourse-mac-arm64.dmg', size: 137791214, digest: 'sha256:e21b31d2322c3a85010ad413437ed59ca4c7824d67eeba5e7eb1fe3bfdb49598', browser_download_url: 'https://github.com/s3298321/opencourse/releases/download/v0.1.0/OpenCourse-mac-arm64.dmg' }
+      ]
+    }
+    expect(parseRelease(published)).toEqual({
+      version: '0.1.0',
+      notesUrl: 'https://github.com/s3298321/opencourse/releases/tag/v0.1.0',
+      asset: { url: published.assets[1]!.browser_download_url, size: 137791214, sha256: 'e21b31d2322c3a85010ad413437ed59ca4c7824d67eeba5e7eb1fe3bfdb49598' }
+    })
+    // Where GitHub sends that download (a 302, observed): an allowed hop.
+    expect(allowedUpdateUrl('https://release-assets.githubusercontent.com/github-production-release-asset/1408788733/c22edfb5-8172-4327-a487-1c3ad731ad77')).toBe(true)
+  })
+
   it('refuses anything that is not a release this app can install', () => {
     const refused: Array<[string, unknown]> = [
       ['not an object', 'v0.2.0'],

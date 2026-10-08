@@ -86,6 +86,16 @@ function testFeed(): URL | null {
   }
 }
 
+/**
+ * Whether this run may check and install at all. An isolated run (smoke,
+ * shots, a live check) never reaches the network - but a test feed is this
+ * machine, not the network, so an isolated run with one may: that is how the
+ * whole path is checked end to end without a learner's profile.
+ */
+function updatesAllowed(): boolean {
+  return !isolatedRun || testFeed() !== null
+}
+
 export function appUpdateInfo(): AppUpdateInfo {
   return { status, automatic, currentVersion: app.getVersion(), checkedAt, downloadUrl: DOWNLOAD_PAGE }
 }
@@ -250,7 +260,7 @@ async function download(found: Release, file: string): Promise<void> {
 function schedule(delay: number): void {
   if (timer) clearTimeout(timer)
   timer = null
-  if (!automatic || isolatedRun) return
+  if (!automatic || !updatesAllowed()) return
   timer = setTimeout(() => void checkForAppUpdate(false), delay)
   timer.unref?.()
 }
@@ -272,7 +282,7 @@ function availableStatus(found: Release): AppUpdateStatus {
  * where an automatic check that cannot reach GitHub just tries again later.
  */
 export async function checkForAppUpdate(manual: boolean): Promise<AppUpdateInfo> {
-  if (simulated || isolatedRun) return appUpdateInfo()
+  if (simulated || !updatesAllowed()) return appUpdateInfo()
   // A download or install in progress is the answer already.
   if (inFlight || ['downloading', 'verifying', 'ready'].includes(status.state)) return appUpdateInfo()
   // What an automatic check that could not get an answer leaves on screen:
@@ -337,7 +347,7 @@ export function setAppUpdateAutomatic(on: boolean): AppUpdateInfo {
  * restart that a "Keep editing" dialog was going to cancel must not start.
  */
 export async function installAppUpdate(): Promise<AppUpdateInfo> {
-  if (simulated || isolatedRun) return appUpdateInfo()
+  if (simulated || !updatesAllowed()) return appUpdateInfo()
   if (pending) {
     // Already staged: this press is "Restart to update".
     pending.relaunch = true
@@ -423,21 +433,24 @@ export function quitVetoed(): void {
  * waits for this process to exit before touching anything.
  */
 export function runPendingInstall(): void {
-  if (!pending || isolatedRun) return
+  if (!pending || !updatesAllowed()) return
   try {
     const dir = appUpdatesDir()
     mkdirSync(dir, { recursive: true })
     const script = writeHelper(dir)
+    // Never reopened after an isolated run: that would be an ordinary launch,
+    // on the learner's real profile.
+    const relaunch = pending.relaunch && !isolatedRun
     const child = spawn('/bin/sh', helperArgs(script, {
       pid: process.pid,
       target: pending.target,
       staged: pending.staged,
       result: join(dir, 'result.json'),
-      relaunch: pending.relaunch,
+      relaunch,
       version: pending.version
     }), { detached: true, stdio: 'ignore' })
     child.unref()
-    logger.info('Update helper started', { version: pending.version, relaunch: pending.relaunch })
+    logger.info('Update helper started', { version: pending.version, relaunch })
   } catch (error) {
     logger.error('Update helper did not start', { error: String((error as Error).message ?? error) })
   }
@@ -484,7 +497,7 @@ function settleLastInstall(): void {
 }
 
 export function startUpdates(): void {
-  if (started || isolatedRun) return
+  if (started || !updatesAllowed()) return
   started = true
   automatic = readSettings()
   settleLastInstall()

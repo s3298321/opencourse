@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import type { ChatCitation, ChatQuote } from '../core/types'
+import { simulateAppUpdate } from './updates'
 
 const NAV = `(async (target) => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -178,6 +179,28 @@ const NAV = `(async (target) => {
     await waitFor('.detail h1')
   } else if (target === 'lesson') {
     click(document.querySelector('.lesson-row'))
+    await waitFor('.lesson-head h1')
+  } else if (target === 'reading-larger') {
+    // Two presses of A+, so the shot shows the lesson at 125%.
+    document.querySelector('.content').scrollTop = 0
+    click(await waitFor('.reading-size-larger'))
+    await sleep(100)
+    click(document.querySelector('.reading-size-larger'))
+    await sleep(300)
+  } else if (target === 'reading-reset') {
+    click(await waitFor('.reading-size-reset'))
+    await sleep(200)
+  } else if (target === 'update-available') {
+    // Main has set the status; the button shows its menu.
+    click(await waitFor('.titlebar .update-chip'))
+    await waitFor('.update-menu')
+    await sleep(200)
+  } else if (target === 'update-settings') {
+    click([...document.querySelectorAll('.update-menu .menu-item')].find((b) => /Update settings/.test(b.textContent)))
+    await waitFor('.settings-updates')
+    await sleep(300)
+  } else if (target === 'update-clear') {
+    click(document.querySelector('.titlebar .crumbs a'))
     await waitFor('.lesson-head h1')
   } else if (target === 'viz') {
     document.querySelector('.viz-frame').scrollIntoView({ block: 'center' })
@@ -561,7 +584,14 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     { target: 'create-user', photo: false },
     { target: 'library-empty', photo: true },
     { target: 'import', photo: false },
-    ...['library', 'course', 'lesson', 'sidechat'].map((target) => ({ target, photo: true })),
+    ...['library', 'course', 'lesson'].map((target) => ({ target, photo: true })),
+    // The reader's text size, and an update of the app waiting in the titlebar.
+    { target: 'reading-larger', photo: true },
+    { target: 'reading-reset', photo: false },
+    { target: 'update-available', photo: true },
+    { target: 'update-settings', photo: true },
+    { target: 'update-clear', photo: false },
+    { target: 'sidechat', photo: true },
     { target: 'sidechat-ask-answer', photo: true },
     { target: 'sidechat-answer-quote', photo: true },
     { target: 'sidechat-model', photo: true },
@@ -632,8 +662,10 @@ export async function runShots(win: BrowserWindow): Promise<void> {
       if (target === 'sidechat') await seedSideChat()
       if (target === 'project') await seedProjectChat()
       if (target === 'project-narrow') win.setSize(720, 860)
+      if (target === 'update-available') simulateAppUpdate({ state: 'available', version: '0.2.0', size: 138_000_000, notesUrl: 'https://github.com/s3298321/opencourse/releases/tag/v0.2.0', installable: true })
       if (target === 'coach-empty') win.setSize(1240, 860)
       await win.webContents.executeJavaScript(NAV.replace('%TARGET%', target))
+      if (target === 'update-clear') simulateAppUpdate(null)
       if (target === hold) {
         console.log(`holding at ${target}: the window is yours until you close it`)
         await new Promise<void>((resolve) => win.once('closed', () => resolve()))

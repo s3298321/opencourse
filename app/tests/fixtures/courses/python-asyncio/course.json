@@ -1,0 +1,383 @@
+{
+  "schema_version": "1.5",
+  "slug": "python-asyncio",
+  "title": "Python asyncio in five lessons",
+  "version": "1.0.0",
+  "description": "How `asyncio` lets one thread wait on many things at once: the event loop, tasks, cancellation and streams. A short course kept with the app's source for its own tests, smoke run and screenshots - complete enough to use every kind of block.",
+  "author": "OpenCourse",
+  "difficulty": "intermediate",
+  "estimated_hours": 1,
+  "subject": "Programming",
+  "runtime": {
+    "language": "python",
+    "version": ">=3.11"
+  },
+  "prerequisites": [
+    "Comfortable writing Python functions and modules.",
+    "Python 3.11 or later on your Mac."
+  ],
+  "tags": [
+    "python",
+    "asyncio",
+    "concurrency"
+  ],
+  "cover_image": "assets/cover.svg",
+  "modules": [
+    {
+      "slug": "foundations",
+      "title": "Foundations",
+      "lessons": [
+        {
+          "slug": "why-async",
+          "title": "Why async, and what it isn't",
+          "estimated_minutes": 12,
+          "objectives": [
+            "Tell work that waits apart from work that computes.",
+            "Explain why one thread can keep many network calls in flight.",
+            "Recognise the cases where asyncio does not help at all."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "why-async",
+              "content": "# Why async\n\nMost programs spend their time waiting. A web request leaves your machine and nothing happens on it until the reply comes back; a database query is mostly a pause; reading a socket is mostly a pause. While a plain Python function waits, the whole thread waits with it.\n\n`asyncio` lets one thread wait on many things at once. A function written with `async def` can stop at an `await`, hand control back to a scheduler, and pick up again later where it stopped:\n\n```python\nimport asyncio\n\n\nasync def download(name: str) -> str:\n    await asyncio.sleep(1)  # stands in for the network\n    return name\n\n\nasync def main() -> None:\n    print(await download(\"report.csv\"))\n\n\nasyncio.run(main())\n```\n\nThe `await` is the only place this function can be paused. Nothing else interrupts it, which is why async code is easier to reason about than threads: between two awaits, your code runs alone."
+            },
+            {
+              "type": "visualization",
+              "slug": "sync-vs-async",
+              "src": "assets/viz/sync-vs-async/index.html",
+              "title": "Waiting in turn, or waiting together",
+              "height": 300
+            },
+            {
+              "type": "markdown",
+              "slug": "what-it-is-not",
+              "content": "## What it isn't\n\nAsync is not parallelism. Only one coroutine runs at any moment, on one thread, so a loop that adds up a billion numbers takes exactly as long inside a coroutine as outside one. It also blocks every other coroutine while it runs.\n\n| The work | Does asyncio help? | Why |\n|---|---|---|\n| Many network calls | Yes | They mostly wait, and waits can overlap. |\n| Reading many files | Sometimes | The disk is fast; the operating system already buffers. |\n| Resizing images | No | It computes the whole time; nothing waits. |\n| A single slow query | No | There is nothing to overlap it with. |\n\nA useful rule: if you could speed a task up by giving it a faster network, asyncio can probably help; if you would need a faster processor, it cannot.\n\nThe price is that waiting has to be explicit. A library that blocks - a synchronous HTTP client, `time.sleep` - stops every coroutine at once, and nothing warns you. Async code calls async libraries all the way down."
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- Async helps with work that waits, not with work that computes.\n- A coroutine can only be paused at an `await`.\n- One blocking call stops every coroutine on the thread."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-why-1",
+              "id": "q-why-1",
+              "kind": "single",
+              "question": "What kind of work does asyncio speed up?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "Work that spends most of its time computing.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "Work that spends most of its time waiting.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "Any work, by using every processor core.",
+                  "correct": false
+                }
+              ],
+              "explanation": "Overlapping waits is the whole trick; computation still happens one piece at a time."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-why-2",
+              "id": "q-why-2",
+              "kind": "multiple",
+              "question": "Which of these block every coroutine on the thread?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "time.sleep(1)",
+                  "correct": true
+                },
+                {
+                  "id": "b",
+                  "text": "await asyncio.sleep(1)",
+                  "correct": false
+                },
+                {
+                  "id": "c",
+                  "text": "A synchronous HTTP request",
+                  "correct": true
+                },
+                {
+                  "id": "d",
+                  "text": "A loop adding up a billion numbers",
+                  "correct": true
+                }
+              ],
+              "explanation": "Only an await gives control back to the loop. Anything else keeps the thread busy until it returns."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-why-3",
+              "id": "q-why-3",
+              "kind": "text",
+              "question": "Which keyword marks the only places a coroutine can be paused?",
+              "answers": [
+                "await"
+              ],
+              "explanation": "Control returns to the scheduler at an await and nowhere else."
+            }
+          ]
+        },
+        {
+          "slug": "event-loop",
+          "title": "The event loop, one step at a time",
+          "estimated_minutes": 15,
+          "objectives": [
+            "Describe what the event loop does between two awaits.",
+            "Follow a task from ready, to waiting, to running and back.",
+            "Explain why a coroutine that never awaits starves the others."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "event-loop",
+              "content": "# The event loop\n\nAt the heart of `asyncio` is a loop that keeps a list of tasks ready to run and a list of tasks waiting on something. Each turn, it takes one ready task and runs it until that task reaches an `await` on something that is not finished yet. Then the task joins the waiting list, and the loop picks the next ready one.\n\nStep through the picture below. Three tasks share one thread, and at no point does any of them sit idle while there is something else it could be doing."
+            },
+            {
+              "type": "visualization",
+              "slug": "event-loop-stepper",
+              "src": "assets/viz/event-loop/index.html",
+              "title": "The event loop, one step at a time",
+              "height": 380
+            },
+            {
+              "type": "markdown",
+              "slug": "ready-and-waiting",
+              "content": "## Ready, waiting, running\n\nA task is always in one of three places:\n\n- **Ready**: it could run, and is queued for its turn.\n- **Running**: it is the one task the loop is executing right now.\n- **Waiting**: it reached an `await` on something unfinished - a socket, a timer, another task.\n\nWhen the thing a waiting task needs completes, the loop moves the task back to the ready queue. The operating system tells the loop which sockets have data, so a thousand waiting tasks cost almost nothing.\n\n## Taking turns is voluntary\n\nThe loop cannot take the thread away from a task. A coroutine that computes for ten seconds without awaiting keeps every other task waiting for ten seconds, however urgent their replies are. This is called cooperative scheduling: every task has to cooperate by reaching an `await` often enough.\n\n```python\nasync def unfriendly() -> None:\n    total = 0\n    for n in range(50_000_000):  # no await anywhere in here\n        total += n\n```\n\nIf a piece of work genuinely needs the processor for a long time, give it its own thread or process with `asyncio.to_thread` or a process pool, and await the result. The loop stays free while the work happens elsewhere.\n\n## One loop per thread\n\n`asyncio.run(main())` creates a loop, runs `main` on it until it finishes, and closes it. Almost every program should call it exactly once, at the top. Calling it from inside a coroutine is an error: there is already a loop running, and the inner call would have to block it."
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- The loop runs one ready task at a time, until it awaits something unfinished.\n- Waiting tasks cost almost nothing; the operating system wakes them.\n- Scheduling is cooperative: a task that never awaits starves the rest."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-loop-1",
+              "id": "q-loop-1",
+              "kind": "single",
+              "question": "A coroutine adds up fifty million numbers with no await inside the loop. What happens to the other tasks?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "They run on other cores meanwhile.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "They wait until it finishes.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "The loop pauses it after a time slice.",
+                  "correct": false
+                }
+              ],
+              "explanation": "The loop has no way to interrupt a task, so nothing else gets a turn until that one yields."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "coroutines-and-tasks",
+      "title": "Coroutines and tasks",
+      "lessons": [
+        {
+          "slug": "await-and-tasks",
+          "title": "await, create_task and gather: running coroutines side by side",
+          "estimated_minutes": 20,
+          "objectives": [
+            "Explain why awaiting coroutines one by one runs them in sequence.",
+            "Start coroutines concurrently with create_task and gather.",
+            "Keep a reference to every task you start."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "await-runs-in-order",
+              "content": "# Awaiting one at a time\n\nCalling a coroutine function does not run it. It creates a coroutine object, and nothing happens until something awaits it. Awaiting it runs it to the end before the next line starts - so this takes three seconds, not one:\n\n```python\nasync def main() -> None:\n    a = await download(\"a\")  # one second\n    b = await download(\"b\")  # another second\n    c = await download(\"c\")  # and another\n```\n\nEach `await` here waits for its download to finish completely. The loop is free during those waits, but there is nothing else for it to run."
+            },
+            {
+              "type": "markdown",
+              "slug": "create-task",
+              "content": "## Starting work with create_task\n\n`asyncio.create_task` wraps a coroutine in a task and schedules it on the loop straight away. The task starts running at the next await, whether or not anything is waiting for its result:\n\n```python\nasync def main() -> None:\n    first = asyncio.create_task(download(\"a\"))\n    second = asyncio.create_task(download(\"b\"))\n    print(await first, await second)  # about one second in all\n```\n\nBoth downloads are in flight before the first `await`. Awaiting `first` still waits for it, but by then `second` is already waiting on the network too.\n\nKeep a reference to every task you create. The loop holds only a weak reference, so a task stored nowhere can be garbage-collected before it finishes, and its work silently never happens. Assigning it to a name, a list or a set is enough.\n\n## Collecting results with gather\n\n`asyncio.gather` takes several awaitables, runs them concurrently and returns their results as a list, in the order you passed them - not the order they finished in:\n\n```python\nresults = await asyncio.gather(download(\"a\"), download(\"b\"), download(\"c\"))\n```\n\nSince Python 3.11, `asyncio.TaskGroup` does the same job with clearer rules about errors: every task started in the group is awaited when the `async with` block ends, and if one of them raises, the others are stopped and the error comes out of the block.\n\n| Tool | Starts the work | Gives you |\n|---|---|---|\n| `await coro` | When awaited | Its result, after it finishes |\n| `create_task(coro)` | Immediately | A task to await later |\n| `gather(*coros)` | Immediately | All results, in order |\n| `TaskGroup` | Immediately | Tasks, all awaited at the end of the block |"
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- Awaiting coroutines one by one runs them in sequence.\n- `create_task` and `gather` start work concurrently.\n- Keep a reference to every task, or it may never finish."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-tasks-1",
+              "id": "q-tasks-1",
+              "kind": "single",
+              "question": "What does asyncio.gather return?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "The results in the order the awaitables were passed.",
+                  "correct": true
+                },
+                {
+                  "id": "b",
+                  "text": "The results in the order they finished.",
+                  "correct": false
+                },
+                {
+                  "id": "c",
+                  "text": "Only the first result to arrive.",
+                  "correct": false
+                }
+              ],
+              "explanation": "Order follows the arguments, so results line up with what you asked for."
+            },
+            {
+              "type": "exercise",
+              "slug": "ex-tasks-1",
+              "id": "ex-tasks-1",
+              "title": "Fetch three things at once",
+              "prompt": "`main` fetches `a`, `b` and `c` one after another, which takes about 0.6 seconds. Change it so that the three fetches run concurrently and `main` still returns `[\"a\", \"b\", \"c\"]`, in that order.",
+              "starter_code": "import asyncio\n\n\nasync def fetch(name: str, delay: float) -> str:\n    \"\"\"Pretend to download something: wait, then return its name.\"\"\"\n    await asyncio.sleep(delay)\n    return name\n\n\nasync def main() -> list[str]:\n    \"\"\"Fetch a, b and c, 0.2 seconds each, and return their names in order.\"\"\"\n    # your code here - this runs them one after another\n    results = []\n    for name in (\"a\", \"b\", \"c\"):\n        results.append(await fetch(name, 0.2))\n    return results\n\n\nif __name__ == \"__main__\":\n    print(asyncio.run(main()))\n",
+              "solution": "import asyncio\n\n\nasync def fetch(name: str, delay: float) -> str:\n    \"\"\"Pretend to download something: wait, then return its name.\"\"\"\n    await asyncio.sleep(delay)\n    return name\n\n\nasync def main() -> list[str]:\n    \"\"\"Fetch a, b and c, 0.2 seconds each, and return their names in order.\"\"\"\n    return list(await asyncio.gather(*(fetch(name, 0.2) for name in (\"a\", \"b\", \"c\"))))\n\n\nif __name__ == \"__main__\":\n    print(asyncio.run(main()))\n",
+              "tests": "\"\"\"Checks for ex-tasks-1. Run with: pytest -q\"\"\"\nimport asyncio\nimport time\n\nimport exercise\n\n\ndef test_returns_the_names_in_order():\n    assert asyncio.run(exercise.main()) == [\"a\", \"b\", \"c\"]\n\n\ndef test_runs_the_fetches_at_the_same_time():\n    started = time.perf_counter()\n    asyncio.run(exercise.main())\n    assert time.perf_counter() - started < 0.45\n",
+              "test_command": "pytest -q",
+              "verification_instructions": "Run `pytest -q` in the exercise folder. Both checks pass when the names come back in order in well under 0.6 seconds.",
+              "hints": [
+                "Start all three before you wait for any of them.",
+                "The order of the results should follow the order you asked in, not the order they finish."
+              ]
+            }
+          ]
+        },
+        {
+          "slug": "cancellation-and-timeouts",
+          "title": "Cancellation and timeouts",
+          "estimated_minutes": 15,
+          "objectives": [
+            "Cancel a task and handle CancelledError cleanly.",
+            "Put a time limit on any await with asyncio.timeout.",
+            "Release resources even when a task is cancelled."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "cancelling-a-task",
+              "content": "# Cancelling a task\n\n`task.cancel()` asks a task to stop. At its next `await`, the task receives `asyncio.CancelledError`, which unwinds it like any other exception - so `finally` blocks and `async with` exits still run:\n\n```python\nasync def worker() -> None:\n    try:\n        while True:\n            await asyncio.sleep(1)\n    finally:\n        print(\"cleaning up\")\n```\n\nCatch `CancelledError` only to tidy up, and re-raise it. Swallowing it leaves the caller waiting for a task that has decided not to stop."
+            },
+            {
+              "type": "markdown",
+              "slug": "timeouts",
+              "content": "## Timeouts\n\n`asyncio.timeout` (Python 3.11) cancels whatever is inside it once the time is up, and turns that into a `TimeoutError` at the edge of the block:\n\n```python\nasync with asyncio.timeout(2):\n    reply = await download(\"slow.csv\")\n```\n\nPrefer a timeout around a whole operation to a timeout per call: a reply that arrives one byte a second can pass every per-call limit and still take an hour."
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- Cancelling raises `CancelledError` at the task's next await.\n- Clean up in `finally`, and let the error carry on.\n- Bound a whole operation with `asyncio.timeout`."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-cancel-1",
+              "id": "q-cancel-1",
+              "kind": "single",
+              "question": "Where does a cancelled task receive CancelledError?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "Immediately, wherever it is.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "At its next await.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "Only when it returns.",
+                  "correct": false
+                }
+              ],
+              "explanation": "Like every other switch in asyncio, it happens at a suspension point."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "streams",
+      "title": "Streams and subprocesses",
+      "lessons": [
+        {
+          "slug": "streams-and-subprocess",
+          "title": "Streams and subprocesses",
+          "estimated_minutes": 15,
+          "objectives": [
+            "Read and write a TCP connection with streams.",
+            "Explain backpressure and what drain() waits for.",
+            "Run a subprocess without blocking the loop."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "streams",
+              "content": "# Streams\n\n`asyncio.open_connection` returns a reader and a writer for a TCP connection. Reading is an await, because the data may not have arrived yet; writing is not, because it only adds to a buffer:\n\n```python\nreader, writer = await asyncio.open_connection(\"example.org\", 80)\nwriter.write(b\"GET / HTTP/1.0\\r\\n\\r\\n\")\nawait writer.drain()\nreply = await reader.read()\n```\n\n## Backpressure\n\nIf you write faster than the other side reads, the buffer grows without limit. `await writer.drain()` pauses the writer once the buffer passes its high-water mark and resumes it when the buffer has emptied below the low one. Call it after every write that might be large."
+            },
+            {
+              "type": "visualization",
+              "slug": "streams-backpressure",
+              "src": "assets/viz/streams-backpressure/index.html",
+              "title": "Backpressure in a stream",
+              "height": 220
+            },
+            {
+              "type": "markdown",
+              "slug": "subprocesses",
+              "content": "## Subprocesses\n\n`asyncio.create_subprocess_exec` starts a program and gives you its standard streams as the same readers and writers, so a slow command waits like a slow socket:\n\n```python\nproc = await asyncio.create_subprocess_exec(\"ls\", \"-l\", stdout=asyncio.subprocess.PIPE)\nlisting, _ = await proc.communicate()\n```"
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- Reads are awaits; writes fill a buffer.\n- `drain()` is how a writer respects a slow reader.\n- Subprocess pipes are streams like any other."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-streams-1",
+              "id": "q-streams-1",
+              "kind": "single",
+              "question": "What does await writer.drain() wait for?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "The connection to close.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "The buffer to empty enough to keep writing.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "The other side to send a reply.",
+                  "correct": false
+                }
+              ],
+              "explanation": "It is flow control: the writer pauses while the reader catches up."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

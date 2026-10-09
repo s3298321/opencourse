@@ -1,7 +1,7 @@
 /**
  * Packs a course directory into the importable archive the app expects.
  *
- *   npm run zip:course python-asyncio    one course
+ *   npm run zip:course <slug>            one course
  *   npm run zip:course                   every course in content/
  *
  * Archives land in content-zip/ (git-ignored - they are build output, and the

@@ -7,10 +7,8 @@
  * be in there - because a tutor holding the quiz answers is a bug you only
  * notice by reading a transcript.
  */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildCourse, findLesson } from '@core/manifest'
+import { findLesson } from '@core/manifest'
 import { MAX_CONTEXT_CHARS, lessonContextText } from '@core/sidechat/context'
 import {
   DEFAULT_CHAT_MODEL,
@@ -24,15 +22,10 @@ import { newChatDefaults, normalizePreferences } from '@core/preferences'
 import { SIDE_CHAT_INSTRUCTIONS } from '@core/sidechat/prompt'
 import { MAX_INPUT_CHARS, buildInput, needsContext } from '@core/sidechat/thread'
 import { isChatId, newChatId } from '@core/sidechat/ids'
-import { skipWithoutContent } from './helpers/content'
-import type { ChatMessage, ChatQuote, CourseManifest, Lesson } from '@core/types'
+import { committedCourseDirs, fixtureCourseDir, loadCourse } from './helpers/courses'
+import type { ChatMessage, ChatQuote, Lesson } from '@core/types'
 
-const dir = join(__dirname, '..', '..', 'content', 'python-asyncio')
-const skipCourse = skipWithoutContent('python-asyncio')
-const course = skipCourse ? (undefined as never) : buildCourse(
-  JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest,
-  dir
-)
+const course = loadCourse(fixtureCourseDir('python-asyncio'))
 
 const AT = '2026-09-14T10:00:00.000Z'
 let seq = 0
@@ -158,9 +151,9 @@ describe('the input sent to the model', () => {
   })
 })
 
-describe.skipIf(skipCourse)('a lesson flattened for the model', () => {
-  const found = skipCourse ? (undefined as never) : findLesson(course, 'foundations', 'event-loop')!
-  const text = skipCourse ? '' : lessonContextText(course.title, found.module.title, found.lesson, course.subject)
+describe('a lesson flattened for the model', () => {
+  const found = findLesson(course, 'foundations', 'event-loop')!
+  const text = lessonContextText(course.title, found.module.title, found.lesson, course.subject)
 
   it('says which course, module and lesson it is', () => {
     expect(text).toContain(course.title)
@@ -243,13 +236,16 @@ describe.skipIf(skipCourse)('a lesson flattened for the model', () => {
   })
 
   it('keeps no answer from any course shipped with the repo', () => {
-    for (const ref of course.flatLessons) {
-      const at = findLesson(course, ref.moduleId, ref.lessonId)!
-      const out = lessonContextText(course.title, at.module.title, at.lesson, course.subject)
-      for (const block of at.lesson.blocks) {
-        if (block.type === 'quiz' && block.explanation) expect(out).not.toContain(block.explanation)
-        if (block.type === 'exercise' && block.solution) expect(out).not.toContain(block.solution)
-        if (block.type === 'exercise' && block.tests) expect(out).not.toContain(block.tests)
+    for (const dir of committedCourseDirs()) {
+      const each = loadCourse(dir)
+      for (const ref of each.flatLessons) {
+        const at = findLesson(each, ref.moduleId, ref.lessonId)!
+        const out = lessonContextText(each.title, at.module.title, at.lesson, each.subject)
+        for (const block of at.lesson.blocks) {
+          if (block.type === 'quiz' && block.explanation) expect(out).not.toContain(block.explanation)
+          if (block.type === 'exercise' && block.solution) expect(out).not.toContain(block.solution)
+          if (block.type === 'exercise' && block.tests) expect(out).not.toContain(block.tests)
+        }
       }
     }
   })

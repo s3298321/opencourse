@@ -1,7 +1,8 @@
 # Every push to master and every pull request: the three packages, each with
 # its own checks. The app runs on macOS - its resources are zipped with `ditto`
-# and its toolchains are Apple's. content/ is not in the repository, so the
-# tests about particular courses skip here (app/tests/helpers/content.ts).
+# and its toolchains are Apple's. content/ is not in the repository, and no
+# test reads it: they use the committed courses in app/tests/fixtures/courses
+# and docs/example-course. Only the content gates look in content/.
 name: CI
 
 on:

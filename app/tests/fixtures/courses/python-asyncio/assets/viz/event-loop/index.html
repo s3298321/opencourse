@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>The event loop, one step at a time</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="controls">
+    <button id="step">Step</button>
+    <span id="step-label">Step 1 of 6</span>
+  </div>
+  <p id="caption"></p>
+  <div class="panels">
+    <section class="panel">
+      <h2 class="panel-title">Ready to run</h2>
+      <ul id="ready"></ul>
+    </section>
+    <section class="panel">
+      <h2 class="panel-title">Waiting on I/O</h2>
+      <ul id="waiting"></ul>
+    </section>
+    <section class="panel">
+      <h2 class="panel-title">Running now</h2>
+      <ul id="running"></ul>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

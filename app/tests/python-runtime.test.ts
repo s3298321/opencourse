@@ -3,7 +3,7 @@
  * and opt-in: OPENCOURSE_TEST_PYTHON=1 npx vitest run tests/python-runtime.test.ts
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -11,15 +11,14 @@ import { depsFor } from '@core/scaffold'
 import { pythonToolchain } from '@core/toolchains'
 import type { ExerciseBlock } from '@core/types'
 import { ensureCourseEnv, findTool, runSteps } from '../src/main/toolchain'
+import { fixtureCourseDir, readManifest } from './helpers/courses'
 
 const enabled = Boolean(process.env['OPENCOURSE_TEST_PYTHON'])
 const tc = pythonToolchain
 const floor = tc.parseFloor('>=3.11')
 
-// Read only when the test is asked for: an opt-in test must not fail a plain `npm test`.
-const manifest = (enabled ? JSON.parse(
-  readFileSync(join(__dirname, '../../content/python-asyncio/course.json'), 'utf8')
-) : { modules: [] }) as { modules: { lessons: { blocks: ExerciseBlock[] }[] }[] }
+// The committed fixture course's exercise: a test must not depend on content/.
+const manifest = readManifest(fixtureCourseDir('python-asyncio')) as unknown as { modules: { lessons: { blocks: ExerciseBlock[] }[] }[] }
 
 function exerciseById(id: string): ExerciseBlock {
   for (const mod of manifest.modules) {

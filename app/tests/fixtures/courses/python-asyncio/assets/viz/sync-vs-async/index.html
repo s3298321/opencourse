@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Waiting in turn, or waiting together</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1 class="panel-title">Three downloads of one second each</h1>
+  <div class="row">
+    <span class="label">One after another</span>
+    <div class="track"><span class="bar a seq"></span><span class="bar b seq"></span><span class="bar c seq"></span></div>
+    <span class="total">3 s</span>
+  </div>
+  <div class="row">
+    <span class="label">Waiting together</span>
+    <div class="track"><span class="bar a par"></span><span class="bar b par"></span><span class="bar c par"></span></div>
+    <span class="total">1 s</span>
+  </div>
+  <button id="replay">Replay</button>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,6 +1,19 @@
 /** Disposable smoke/screenshot fixtures name authored content; resolve it to actual local IDs. */
+import { app } from 'electron'
+import { join } from 'node:path'
 import { getCourse, listCourses } from './courses'
 import { readDocument } from './course-store'
+
+/**
+ * The committed courses smoke and shots import - `python-asyncio` and
+ * `intro-to-c`, kept in tests/fixtures/courses. Never content/: that is
+ * authoring input, gitignored, and a run must not depend on what is in it.
+ * A packaged app has no tests/ inside it, so smoking one names the folder
+ * with OPENCOURSE_FIXTURE_COURSES.
+ */
+export function fixtureCoursesDir(): string {
+  return process.env['OPENCOURSE_FIXTURE_COURSES'] || join(app.getAppPath(), 'tests', 'fixtures', 'courses')
+}
 export function fixtureCourse(slug: string) {
   const id = listCourses().find((c) => c.slug === slug)?.courseId
   return id ? getCourse(id) : undefined

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" width="600" height="300">
+  <rect width="600" height="300" fill="#1f5f8b"/>
+  <g fill="none" stroke="#9fd3f5" stroke-width="10" stroke-linecap="round">
+    <path d="M90 110h150M90 150h90M90 190h190"/>
+    <path d="M330 110h60M360 150h120M420 190h90"/>
+  </g>
+  <text x="300" y="262" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="30" font-weight="700">Python asyncio</text>
+</svg>

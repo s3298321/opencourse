@@ -1,0 +1,10 @@
+body { margin: 0; padding: 14px 18px; font: 14px/1.45 -apple-system, sans-serif; color: #1d1d1f; background: #f7f8fa; }
+.controls { display: flex; align-items: center; gap: 12px; }
+button { font: inherit; padding: 4px 14px; }
+#step-label { font-variant-numeric: tabular-nums; color: #555; }
+#caption { min-height: 2.9em; margin: 10px 0; }
+.panels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.panel { background: #fff; border: 1px solid #d9dde3; border-radius: 8px; padding: 8px 10px; min-height: 120px; }
+.panel-title { font-size: 13px; margin: 0 0 6px; white-space: nowrap; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { background: #e8f0fd; border-radius: 4px; padding: 3px 6px; margin-bottom: 4px; font-family: ui-monospace, monospace; font-size: 12px; }

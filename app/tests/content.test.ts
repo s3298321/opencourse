@@ -1,7 +1,13 @@
 /**
- * Integration: the authored courses and the format fixture. Loads them the way the app
- * does - validate, build, render every markdown block, resolve every asset -
- * so a bad manifest or a broken link fails here rather than in the window.
+ * Integration: courses loaded the way the app does - validate, build, render
+ * every markdown block, resolve every asset - so a bad manifest or a broken
+ * link fails here rather than in the window.
+ *
+ * `npm test` checks the committed courses only: the format's example and the
+ * fixtures in tests/fixtures/courses. `npm run validate:content` is the content
+ * gate, and adds every course in content/ - authoring input, gitignored, so
+ * whatever is on this machine - with the checks about particular courses that
+ * are there.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -13,22 +19,14 @@ import { validateManifest } from '@core/schema'
 import { CURRENT_SCHEMA_VERSION } from '@core/course-document'
 import { getToolchain, outputMatch, resolveRuntime, TOOLCHAIN_IDS } from '@core/toolchains'
 import type { CourseManifest, ExerciseBlock } from '@core/types'
-import { skipWithoutContent } from './helpers/content'
+import { committedCourseDirs, CONTENT_DIR, contentCourseDirs, fixtureCourseDirs } from './helpers/courses'
 
-const REPO = join(__dirname, '..', '..')
-
-/** Every authored course in content/, plus the format fixture. */
-function courseDirs(): string[] {
-  const content = join(REPO, 'content')
-  const dirs = existsSync(content)
-    ? readdirSync(content, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && existsSync(join(content, e.name, 'course.json')))
-        .map((e) => join(content, e.name))
-    : []
-  return [...dirs, join(REPO, 'docs', 'example-course')]
-}
-
-const COURSE_DIRS = courseDirs()
+/** Set by `npm run validate:content`: the gate over content/. */
+const GATE = Boolean(process.env['OPENCOURSE_VALIDATE_CONTENT'])
+const CONTENT = GATE ? contentCourseDirs() : []
+const COURSE_DIRS = [...committedCourseDirs(), ...CONTENT]
+/** A particular authored course, checked by the gate when it is on this machine. */
+const authored = (slug: string): boolean => GATE && existsSync(join(CONTENT_DIR, slug, 'course.json'))
 
 let md: MarkdownRenderer
 beforeAll(async () => {
@@ -163,8 +161,8 @@ describe.each([
     projects: ['data-audit-project', 'experiment-decision-project', 'churn-handoff-project'] },
   { slug: 'operating-systems-and-c', language: 'c', lessons: 30, quizzes: 60, exercises: 21,
     projects: ['stream-counter', 'file-copy', 'small-launcher'] }
-].filter(({ slug }) => !skipWithoutContent(slug)))('content/$slug', ({ slug, language, lessons, quizzes, exercises, projects }) => {
-  const dir = join(REPO, 'content', slug)
+].filter(({ slug }) => authored(slug)))('content/$slug', ({ slug, language, lessons, quizzes, exercises, projects }) => {
+  const dir = join(CONTENT_DIR, slug)
   const manifest = JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
   const course = buildCourse(manifest, dir)
 
@@ -192,7 +190,8 @@ describe.each([
   })
 })
 
-describe.each(COURSE_DIRS.filter((dir) => dir.startsWith(join(REPO, 'content'))))('%s authoring format', (dir) => {
+// The fixtures follow the authoring rules too, so they look like a real course.
+describe.each([...fixtureCourseDirs(), ...CONTENT])('%s authoring format', (dir) => {
   const manifest = JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
 
   it('uses the latest documented version', () => {
@@ -218,9 +217,9 @@ describe.each(COURSE_DIRS.filter((dir) => dir.startsWith(join(REPO, 'content')))
   })
 })
 
-const skipLlvm = skipWithoutContent('intro-to-llvm')
+const skipLlvm = !authored('intro-to-llvm')
 describe.skipIf(skipLlvm)('content/intro-to-llvm', () => {
-  const dir = join(REPO, 'content', 'intro-to-llvm')
+  const dir = join(CONTENT_DIR, 'intro-to-llvm')
   const manifest = skipLlvm ? (undefined as never) : JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
   const course = skipLlvm ? (undefined as never) : buildCourse(manifest, dir)
 

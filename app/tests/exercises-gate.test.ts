@@ -12,7 +12,7 @@
  *
  * Opt-in, because it builds real environments and runs real compilers.
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -21,11 +21,11 @@ import { getToolchain, outputMatch, resolveRuntime } from '@core/toolchains'
 import type { Toolchain } from '@core/toolchains'
 import type { CourseManifest, ExerciseBlock } from '@core/types'
 import { ensureCourseEnv, runSteps } from '../src/main/toolchain'
+import { committedCourseDirs, contentCourseDirs } from './helpers/courses'
 
 const enabled = Boolean(process.env['OPENCOURSE_CHECK_EXERCISES'])
 const only = process.env['OPENCOURSE_ONLY']
 
-const REPO = join(__dirname, '..', '..')
 
 interface Found {
   slug: string
@@ -34,15 +34,9 @@ interface Found {
   exercises: { moduleId: string; lessonId: string; lessonTitle: string; exercise: ExerciseBlock }[]
 }
 
+/** Whatever is in content/, and the committed courses - the example and the test fixtures - always. */
 function courseDirs(): string[] {
-  const contentDir = join(REPO, 'content')
-  const dirs = existsSync(contentDir)
-    ? readdirSync(contentDir, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-        .map((e) => join(contentDir, e.name))
-        .filter((dir) => existsSync(join(dir, 'course.json')))
-    : []
-  return [...dirs, join(REPO, 'docs', 'example-course')]
+  return [...contentCourseDirs(), ...committedCourseDirs()]
 }
 
 function load(dir: string): Found {

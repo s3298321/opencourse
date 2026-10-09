@@ -1,7 +1,7 @@
 /** The Python descriptor: discovery order, floors, and the pytest-only plan. */
 import { describe, expect, it } from 'vitest'
 import { childEnv } from '@core/runner'
-import { pythonToolchain, PYTHON_NAMES, pythonSearchDirs, venvPython } from '@core/toolchains/python'
+import { pythonToolchain, venvPython } from '@core/toolchains/python'
 import type { PlanContext } from '@core/toolchains/types'
 
 const tc = pythonToolchain
@@ -19,43 +19,24 @@ function context(overrides: Partial<PlanContext> = {}): PlanContext {
   }
 }
 
-describe('interpreter discovery', () => {
-  it('probes newest Python first', () => {
-    expect(PYTHON_NAMES[0]).toBe('python3.14')
-    expect([...PYTHON_NAMES]).toEqual([...PYTHON_NAMES].sort().reverse())
-    expect(tc.discovery.names).toEqual(PYTHON_NAMES)
+describe('bundled interpreter', () => {
+  it('has no system discovery candidates or developer tools requirement', () => {
+    expect(tc.discovery.names).toEqual([])
+    expect(tc.discovery.fallbackNames).toEqual([])
+    expect(tc.discovery.searchDirs('/Users/me')).toEqual([])
+    expect(tc.discovery.needsCommandLineTools).toBe(false)
   })
-
-  it('looks in the places a GUI process cannot reach through PATH', () => {
-    const dirs = pythonSearchDirs('/Users/me')
-    expect(dirs).toContain('/opt/homebrew/bin')
-    expect(dirs).toContain('/usr/local/bin')
-    expect(dirs).toContain('/Users/me/.pyenv/shims')
-    expect(dirs).toContain('/Library/Frameworks/Python.framework/Versions/3.12/bin')
-    expect(dirs[0]).toBe('/opt/homebrew/bin')
-  })
-
-  it('keeps bare names out of the absolute candidates', () => {
-    // findTool composes searchDirs x names for the absolute pass; python3 is the
-    // CLT shim on a bare macOS, so it is opt-in through fallbackNames only.
-    expect(`${pythonSearchDirs('/Users/me')[0]}/${tc.discovery.names[0]}`).toBe('/opt/homebrew/bin/python3.14')
-    expect(tc.discovery.names).not.toContain('python3')
-    expect(tc.discovery.fallbackNames).toContain('python3')
-    expect(tc.discovery.needsCommandLineTools).toBe(true)
-  })
-
-  it('builds a probe that exits 0 only at or above the floor', () => {
-    expect(tc.discovery.probeArgs(tc.parseFloor('>=3.11')).join(' ')).toContain('sys.version_info[:2] >= (3, 11)')
+  it('checks the patch version as well as major and minor', () => {
+    expect(tc.discovery.probeArgs(tc.parseFloor('>=3.14.8')).join(' ')).toContain('sys.version_info[:3] >= (3, 14, 8)')
   })
 })
 
 describe('parseFloor', () => {
   it.each([
     ['>=3.11', '3.11'],
-    ['>= 3.12.1', '3.12'],
+    ['>= 3.12.1', '3.12.1'],
     ['3.13', '3.13'],
     [undefined, '3.11'],
-    ['garbage', '3.11']
   ])('%s -> %s', (spec, label) => {
     const floor = tc.parseFloor(spec as string | undefined)
     expect(floor.kind).toBe('semver')
@@ -66,8 +47,12 @@ describe('parseFloor', () => {
     expect(tc.versionLabel(tc.parseFloor('>=3.12'))).toBe('Python 3.12')
   })
 
-  it('suggests a Homebrew formula that matches the floor', () => {
-    expect(tc.installHint(tc.parseFloor('>=3.12'))[0]).toBe('brew install python@3.12')
+  it('rejects expressions that are not minimum requirements', () => {
+    for (const spec of ['garbage', '<3.15', '==3.14', '>=3.11,<3.15', '3', '3.15.0rc3']) expect(() => tc.parseFloor(spec)).toThrow('Minimum Python version')
+  })
+
+  it('suggests updating the app instead of installing system Python', () => {
+    expect(tc.installHint(tc.parseFloor('>=3.15'))[0]).toContain('Update OpenCourse')
   })
 })
 
@@ -121,12 +106,14 @@ describe('environment', () => {
     const provision = tc.provision
     if (!provision) throw new Error('Python provisions an environment')
     const env = childEnv({
-      base: { PATH: '/usr/bin:/bin' },
+      base: { PATH: '/usr/bin:/bin', PYTHONHOME: '/host', PYTHONPATH: '/host/modules' },
       pathDirs: [provision.binDir('/w/course/.venv'), '/opt/homebrew/bin'],
       extra: tc.extraEnv({ envDir: '/w/course/.venv' })
     })
     expect(env['PATH']).toBe('/w/course/.venv/bin:/opt/homebrew/bin:/usr/bin:/bin')
     expect(env['VIRTUAL_ENV']).toBe('/w/course/.venv')
+    expect(env['PYTHONHOME']).toBeUndefined()
+    expect(env['PYTHONPATH']).toBeUndefined()
   })
 
   it('never lets a stale __pycache__ decide the verdict', () => {

@@ -1,10 +1,10 @@
-# OpenCourse course archive format — v1.5
+# OpenCourse course archive format — v1.6
 
 This document is the source of truth for course authors. A OpenCourse course is a
 self-contained directory holding a `course.json` manifest plus its assets,
 distributed as a `.zip` of that directory. The desktop app ships no courses at
 all: you import an archive, or add a course from an OpenCourse server you have
-connected to, and the app validates it against the v1.5 JSON Schema and renders
+connected to, and the app validates it against the v1.6 JSON Schema and renders
 it directly.
 
 **A course can be about anything.** Nothing in the format is specific to
@@ -17,6 +17,12 @@ Python exercise for computing a Gini coefficient is a first-class course.
 You can get this document, the JSON Schema and a working example course out of
 the app itself — **Library ▸ Get the course format…**. The example imports
 as-is, so it doubles as a starting template.
+
+**What changed in v1.6:** Exercises are Python-only and use the interpreter bundled
+with OpenCourse. Each course still gets a local virtual environment. Projects can
+use any language; learners install and configure their own tools. Older Python
+archives remain compatible. Courses declaring C, LLVM IR, or another exercise
+language are rejected regardless of their declared format version.
 
 **What changed in v1.5:** A course has a `version` of its own, `MAJOR.MINOR.PATCH`
 (required from schema 1.5; older archives import as `0.1.0`). Every element may
@@ -38,8 +44,8 @@ must now include a `slug` regardless of the declared version):
 | --- | --- | --- |
 | course | `runtime` | How the course's exercises are built and run: `{ language, version, packages, flags }`. Replaces `python_version`, which still works. |
 | course | `subject` | Free text shown on the library card and course page: `"Programming"`, `"Economics"`. |
-| exercise | `runtime` | Overrides the course runtime for one exercise, so a single course can mix languages. |
-| exercise | `extra_files` | Read-only support files written next to the learner's work: a header, a fixture, a `Makefile`. |
+| exercise | `runtime` | Overrides the course runtime for one exercise, to customize its minimum Python version and dependencies. |
+| exercise | `extra_files` | Read-only support files written next to the learner's work: a helper module or a fixture. |
 | exercise | `expected_output` | Verify by stdout instead of by a test file — the only workable shape when the learner's whole program is the answer. |
 | exercise | `stdin` | Fed to the program under the `expected_output` shape. |
 | exercise | `match` | How stdout is compared: `exact` \| `trimmed` (default) \| `lines`. |
@@ -101,7 +107,7 @@ and the import is refused as a whole — a course is never half-installed.
 
 | Field             | Type                | Required | Description |
 | ----------------- | ------------------- | -------- | ----------- |
-| `schema_version`  | string              | yes      | `"1.0"` to `"1.5"`. The app writes `"1.5"`. |
+| `schema_version`  | string              | yes      | `"1.0"` to `"1.6"`. The app writes `"1.6"`. |
 | `slug`            | string (kebab-case) | yes      | Portable kebab-case name. Every import creates a separate library course, even when slugs match. |
 | `title`           | string              | yes      | Course title shown in the catalog. |
 | `version`         | string              | from 1.5 | The course's own version: three numbers, `MAJOR.MINOR.PATCH`, such as `1.2.0`. No pre-release tags. A new course starts at `0.1.0`. |
@@ -238,7 +244,7 @@ not change its UUID, progress, chat attachments or learner workspace.
 
 The schema requires `slug` on all six block types, including imported courses.
 Missing, invalid or duplicate names fail validation. The app does not add slugs to
-existing courses; add them to `course.json` before importing. Exported format 1.5
+existing courses; add them to `course.json` before importing. Exported format 1.6
 ZIPs preserve the authored block slugs.
 
 #### `markdown`
@@ -338,30 +344,25 @@ one:
 - **`tests`** — the course ships a checking program that exercises the functions
   the learner wrote. This is the shape for almost everything.
 - **`expected_output`** — the course states the stdout the learner's whole
-  program must produce. This is the shape for the first lessons of a compiled
-  language, where writing a complete program *is* the exercise, and for anything
-  else whose contract is really "print this".
+  program must produce. Use it when the contract is "print this".
 
 `tests` wins if both are present.
 
 ##### The `Runtime` object
 
-Valid on the course (the default for every exercise) and on any exercise (an
-override, merged over the course's). Each field is interpreted by the language,
-which is why one shape covers all of them:
+Valid on the course (defaults) and an exercise (overrides).
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `language` | enum | `"python"` \| `"c"` \| `"llvm-ir"`. Defaults to `"python"`. |
-| `version` | string | The floor. Python: a PEP 440 specifier, `">=3.11"` (default). C: a language standard, `">=c17"` (default). LLVM IR: unused. |
-| `packages` | string[] | Python: pip requirements. C and LLVM IR: library names, one `-l` each (`["m"]` links libm). |
-| `flags` | string[] | Python: unused. C: compiler flags. LLVM IR: compiler flags, passed to clang for both the learner's IR and the C test harness. |
+| `language` | enum | Only `"python"`; defaults to Python. |
+| `version` | string | Minimum Python version: `MAJOR.MINOR[.PATCH]` or `>=MAJOR.MINOR[.PATCH]`. Defaults to `>=3.11`. |
+| `packages` | string[] | pip requirements installed into the local course venv. |
+| `flags` | string[] | Legacy field, unused by Python; retained for compatibility. |
 
-`flags` are validated, not quoted into a shell. Only `-std=`, `-W…`, `-f…`,
-`-g`, `-O…`, `-D…` and `-pedantic` are accepted, and never anything containing
-a `/`. `-o` is refused: the app owns the output path. A flag the app will not
-run makes the exercise report "cannot run this in-app" rather than failing
-silently.
+An exercise's version overrides the course version, which overrides legacy
+`python_version`. A bare version is also a minimum, never an exact interpreter
+selection. Unsupported version expressions are rejected. If bundled Python is
+too old, setup reports both versions and asks the learner to update OpenCourse.
 
 ##### Python
 
@@ -380,84 +381,10 @@ silently.
 
 `starter_code` becomes `exercise.py`, `solution` becomes `solution.py`, `tests`
 becomes `test_exercise.py` and imports the learner's work as `import exercise`.
-The app builds one virtualenv per course from the interpreter it finds on the
-machine, installs `pytest` plus `runtime.packages`, and runs `pytest -q`.
-
-##### C
-
-The learner writes functions in `exercise.c`; the course's `test_exercise.c`
-has its own `main()` and asserts. Declare the interface in a header and ship it
-through `extra_files`, so both translation units agree:
-
-```json
-{
-  "type": "exercise", "id": "ex-2", "slug": "ex-2",
-  "title": "Add two integers",
-  "prompt": "Implement `add` so that it returns the sum of its arguments.",
-  "runtime": { "language": "c", "version": ">=c17", "flags": ["-Wall", "-Wextra", "-Werror"] },
-  "extra_files": [{ "path": "exercise.h", "content": "int add(int a, int b);\n" }],
-  "starter_code": "#include \"exercise.h\"\n\nint add(int a, int b) { return 0; }\n",
-  "solution": "#include \"exercise.h\"\n\nint add(int a, int b) { return a + b; }\n",
-  "tests": "#include <assert.h>\n#include <stdio.h>\n#include \"exercise.h\"\n\nint main(void) {\n  assert(add(2, 2) == 4);\n  puts(\"1 check passed\");\n  return 0;\n}\n",
-  "verification_instructions": "It must compile with no warnings and every assertion must hold."
-}
-```
-
-The app compiles both files together and runs the binary; a failed `assert`
-exits non-zero, which is all the grading contract needs. There is no
-environment to build and nothing to download — the compiler comes from the Xcode
-Command Line Tools, and `assert.h` comes from libc.
-
-The other shape, for a first lesson:
-
-```json
-{
-  "type": "exercise", "id": "ex-3", "slug": "ex-3",
-  "title": "Your first program",
-  "prompt": "Print `Hello, world` on a line of its own.",
-  "runtime": { "language": "c" },
-  "starter_code": "#include <stdio.h>\n\nint main(void) {\n  /* your code here */\n  return 0;\n}\n",
-  "solution": "#include <stdio.h>\n\nint main(void) {\n  puts(\"Hello, world\");\n  return 0;\n}\n",
-  "expected_output": "Hello, world\n",
-  "verification_instructions": "Running it prints exactly one line: Hello, world."
-}
-```
-
-##### LLVM IR
-
-The learner writes textual LLVM IR in `exercise.ll`. The shapes mirror C's: with
-`tests`, the course's `test_exercise.c` owns `main()` and calls functions the
-IR defines; with `expected_output`, the IR defines `@main` itself and its stdout
-is compared.
-
-```json
-{
-  "type": "exercise", "id": "ex-4", "slug": "ex-4",
-  "title": "Add two integers in IR",
-  "prompt": "Make @add return the sum of its two i32 arguments.",
-  "runtime": { "language": "llvm-ir", "flags": ["-Wall", "-Werror"] },
-  "extra_files": [{ "path": "exercise.h", "content": "#ifndef EXERCISE_H\n#define EXERCISE_H\n#include <stdint.h>\n/* define i32 @add(i32 %a, i32 %b) */\nint32_t add(int32_t a, int32_t b);\n#endif\n" }],
-  "starter_code": "define i32 @add(i32 %a, i32 %b) {\n  ret i32 %a\n}\n",
-  "solution": "define i32 @add(i32 %a, i32 %b) {\n  %sum = add i32 %a, %b\n  ret i32 %sum\n}\n",
-  "tests": "#include <assert.h>\n#include <stdio.h>\n#include \"exercise.h\"\n\nint main(void) {\n  assert(add(2, 2) == 4);\n  puts(\"1 check passed\");\n  return 0;\n}\n",
-  "verification_instructions": "compile, link and run all succeed, and the program prints 1 check passed."
-}
-```
-
-The app runs three visible steps. **compile** turns `exercise.ll` into an object
-file with clang, *with the IR verifier switched on* - a release clang skips it
-for IR input, and a phi with a missing predecessor or a use its definition does
-not dominate would otherwise compile into a program that does something
-arbitrary. **link** links that object with `test_exercise.c` (compiled as C17),
-and **run** runs the result. The compiler is the same one C uses: every clang
-reads `.ll` files, so nothing is installed. A machine whose Command Line Tools
-predate the verifier flag can use Homebrew's LLVM instead (`brew install
-llvm`); the app finds its clang without it being on `PATH`.
-
-Keep the boundary with C simple: `i32`, `i64`, `double` and `ptr` map onto
-`int32_t`, `int64_t`, `double` and pointers on every platform. Narrower integers
-and structs passed by value bring in ABI attributes (`zeroext`, `byval`, struct
-coercion) that differ between targets.
+The app builds one local virtualenv per course from its bundled interpreter,
+installs `pytest` plus `runtime.packages`, and runs `pytest -q`. No system Python
+or Command Line Tools installation is required. Installing dependencies may
+require internet access. Runtime updates arrive through app updates.
 
 ##### Field reference
 
@@ -466,10 +393,10 @@ coercion) that differ between targets.
 | `id` | yes | Portable author ID; the app assigns a separate UUID for learner progress. |
 | `title`, `prompt` | yes | Markdown is *not* rendered in `prompt` — keep it plain. |
 | `runtime` | no | Overrides the course runtime for this exercise. |
-| `starter_code` | yes in practice | Written to the language's learner file, and **never overwritten** once the learner has edited it. Omitted, the learner gets an empty file. |
+| `starter_code` | yes in practice | Written to `exercise.py`, and **never overwritten** once the learner has edited it. Omitted, the learner gets an empty file. |
 | `solution` | no | Written to the solution file and shown behind a "Show solution" toggle. |
-| `tests` | no | Written to the language's test file. |
-| `test_command` | no | **Python only**, defaults to `pytest -q`. Only `pytest …` runs in-app. C derives its own commands and ignores this. |
+| `tests` | no | Written to `test_exercise.py`. |
+| `test_command` | no | Defaults to `pytest -q`. Only `pytest …` runs in-app. |
 | `extra_files` | no | `[{ path, content }]`, rewritten on every open. Every path segment must start with a letter or digit — which rules out `..`, absolute paths and dotfiles — and `.command` is refused. |
 | `expected_output` | no | The stdout the program must produce. Ignored when `tests` is present. |
 | `stdin` | no | Written to the program's stdin and then closed. |
@@ -478,73 +405,29 @@ coercion) that differ between targets.
 | `verification_instructions` | yes | What the learner should see when it works. |
 | `hints` | no | Rendered in a collapsed `<details>`. |
 
-##### Which files land where
+##### Files, environments, and checks
 
-| | Python | C | LLVM IR |
-| --- | --- | --- | --- |
-| the learner edits | `exercise.py` | `exercise.c` | `exercise.ll` |
-| `tests` becomes | `test_exercise.py` | `test_exercise.c` | `test_exercise.c` |
-| `solution` becomes | `solution.py` | `solution.c` | `solution.ll` |
-| dependencies | `requirements.txt` (course-level) | none — `runtime.packages` become `-l` flags | as for C |
-| environment | `.venv/` in the course directory | none; the system compiler is the environment | as for C |
-| build output | — | `.opencourse-build/`, wiped before every run | as for C |
+| Purpose | File |
+| --- | --- |
+| Learner's work | `exercise.py` |
+| Checks | `test_exercise.py` |
+| Reference solution | `solution.py` |
+| Course dependencies | `requirements.txt` |
+| Course environment | `.venv/` |
 
-**How the app runs it.** The exercise is scaffolded to
-`<workspace>/<course-uuid>/exercises/<block-uuid>/`. The app resolves
-the language's tool against `runtime.version`, prepares an environment if that
-language needs one, and then runs the checks from the exercise directory in
-the in-app workbench. A compiled language runs as visible steps - `compile`
-and `run` for C, `compile`, `link` and `run` for LLVM IR - so diagnostics land
-where the learner reads them.
+Packages are pooled across the course's exercises. The app preserves learner
+source files and progress when recreating a venv after an app update, relocation,
+or a broken environment. Existing venvs based on system Python are rebuilt using
+the bundled interpreter.
 
-Two consequences for authors:
+Tests must be deterministic, fast, and fail for the untouched starter while
+passing for the reference solution. Use pytest and import the learner's module
+as `exercise`. Test network behavior against local fixtures or loopback servers,
+not the internet. Avoid brittle exact wall-clock assertions.
 
-- **Only `pytest` runs in-app for Python.** A `test_command` that is not a
-  `pytest …` invocation, or that contains shell syntax, is refused by the
-  workbench with a note to use its Terminal tab; it never auto-completes the
-  exercise. Keep it to `pytest` and flags.
-- **`packages` are pooled per course, per language.** `requirements.txt` holds
-  the union of every Python exercise's packages, so adding one to a late
-  exercise reinstalls for the whole course, once. A C exercise's `-lm`
-  contributes nothing to it.
-
-**Rules for tests.** Whatever the language, they must
-
-- **fail against the untouched `starter_code`** — a test that passes on the
-  starter proves nothing, and the exercise gate rejects it;
-- **pass against `solution`** — same gate, same run;
-- keep timing assertions loose (assert `< 0.9s` for work that should take
-  0.5 s), and avoid the network.
-
-Per language:
-
-- **Python** — import the learner's module as `import exercise` and reference the
-  names `starter_code` already declares. Need a local server? Start one in the
-  test (`asyncio.start_server`), never reach out to the internet.
-- **C** — `test_exercise.c` owns `main()`, so `exercise.c` must not define one.
-  Declare the shared interface in a header shipped via `extra_files` and
-  `#include` it from both sides. `assert.h` is enough; do not vendor a test
-  framework. Print something on success (`puts("3 checks passed")`) so a pass
-  does not look like an empty pane.
-- **LLVM IR** — the same rules as C, with the header documenting each IR
-  signature next to its C prototype. A harness that reports the value a
-  function returned is worth more here than in C, because there is no way to
-  printf-debug IR; call `setvbuf(stdout, NULL, _IONBF, 0)` first, so that IR
-  which crashes does not take the earlier report lines with it in the pipe's
-  buffer.
-
-**Grading a memory bug.** `-fsanitize=undefined -fno-sanitize-recover=all`
-aborts with a readable runtime error and a non-zero exit, which makes UBSan a
-real grader for out-of-bounds reads and signed overflow. **Do not use
-`-fsanitize=address`**: an ASan-instrumented binary built by Apple clang 17 on
-macOS 26 hangs at startup with no output until the watchdog kills it. For leaks
-and use-after-free, have the course provide an allocation-counting header
-through `extra_files` and assert the count balances — which teaches ownership
-better than a sanitizer report anyway.
-
-Run `npm run check:exercises` in `app/` after editing any exercise. It plans and
-runs every exercise with the same code the app uses, against both `solution`
-(must pass) and `starter_code` (must fail), in every language the course mixes.
+Run `npm run check:exercises` in `app/` after editing exercises. The gate uses the
+same bundled interpreter, scaffolder and runner as the app, checking both the
+starter (must fail) and solution (must pass).
 
 ## How the app loads a course
 
@@ -606,7 +489,7 @@ Relative paths remain intact under `assets/viz/`. Replacement uploads receive ne
 immutable paths. Shared attachments stay until no saved or draft content uses them;
 imported supporting files are retained conservatively.
 
-**Export ZIP…** (on the course page) exports the last saved version in format 1.5, with `course.json` at
+**Export ZIP…** (on the course page) exports the last saved version in format 1.6, with `course.json` at
 the archive root and package assets included. Local IDs/documents, drafts, chats,
 progress, workspaces, environments and recovery data are excluded. Reimporting the
 export starts a new course with fresh identities and learner state.
@@ -619,13 +502,13 @@ before a course is exposed.
 
 ### OpenCourse identifiers
 
-The display name is OpenCourse. The current archive format version is 1.5;
+The display name is OpenCourse. The current archive format version is 1.6;
 course assets use `opencourse://`, and the visualization bridge uses
 `/__opencourse/viz-bridge.js` and `opencourse-viz`/`opencourse-app` messages.
 These are the only supported app identifiers; there are no old-brand aliases.
 Course manifests with ordinary relative asset paths remain importable.
 
-The published schema identity is `urn:opencourse:course:1.5`; this is an
+The published schema identity is `urn:opencourse:course:1.6`; this is an
 identifier, not a hosted schema URL. The bundled example uses the course slug
 `opencourse-example`. Keep unrelated course, module, lesson, quiz and exercise IDs
 stable when editing a course.

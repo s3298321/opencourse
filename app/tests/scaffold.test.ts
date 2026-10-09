@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyScaffold, assertSafeRelativePath, assertSafeSegment, depsFor, planScaffold } from '@core/scaffold'
-import { cToolchain, pythonToolchain } from '@core/toolchains'
+import { pythonToolchain } from '@core/toolchains'
 import type { ScaffoldContextInput } from '@core/scaffold'
 import type { ExerciseBlock } from '@core/types'
 
@@ -34,9 +34,6 @@ function ctx(overrides: Partial<ScaffoldContextInput> = {}): ScaffoldContextInpu
   }
 }
 
-const cCtx = (overrides: Partial<ScaffoldContextInput> = {}): ScaffoldContextInput =>
-  ctx({ toolchain: cToolchain, runtime: { language: 'c', version: '>=c17', packages: [], flags: [] }, ...overrides })
-
 describe('paths', () => {
   const plan = planScaffold(target, exercise, ctx())
 
@@ -55,12 +52,7 @@ describe('paths', () => {
     }
   })
 
-  it('gives a toolchain with nothing to install no environment at all', () => {
-    const plan = planScaffold(target, { ...exercise, tests: 'int main(void){return 0;}' }, cCtx())
-    expect(plan.envDir).toBeUndefined()
-    expect(plan.depsPath).toBeUndefined()
-    expect(plan.learnerPath.endsWith('/exercise.c')).toBe(true)
-  })
+
 })
 
 describe('files', () => {
@@ -77,10 +69,9 @@ describe('files', () => {
 
   it('names the learner file in the README, whatever it is called', () => {
     expect(byName('README.md')).toContain('`exercise.py`')
-    const c = planScaffold(target, { ...exercise, tests: 'int main(void){return 0;}' }, cCtx())
+    const c = planScaffold(target, { ...exercise, tests: 'int main(void){return 0;}' }, ctx())
     const readme = c.files.find((f) => f.path.endsWith('README.md'))?.content ?? ''
-    expect(readme).toContain('`exercise.c`')
-    expect(readme).not.toContain('exercise.py')
+    expect(readme).toContain('`exercise.py`')
   })
 
   it('puts the starter in the never-overwrite list', () => {
@@ -92,7 +83,7 @@ describe('files', () => {
   it('writes nothing that opens Terminal.app', () => {
     // The built-in editor is the only way into an exercise. A `.command` in the
     // folder would be a second one, and one macOS runs on a double-click.
-    const c = planScaffold(target, { ...exercise, tests: 'int main(void){return 0;}' }, cCtx())
+    const c = planScaffold(target, { ...exercise, tests: 'int main(void){return 0;}' }, ctx())
     for (const p of [plan, c]) {
       expect(p.files.some((f) => f.path.endsWith('.command'))).toBe(false)
       expect(p.files.some((f) => f.mode !== undefined)).toBe(false)
@@ -116,38 +107,38 @@ describe('files', () => {
   it('uses the toolchain empty starter when the course ships none', () => {
     const py = planScaffold(target, { ...exercise, starter_code: undefined }, ctx())
     expect(py.preserveFiles[0]?.content).toBe('# your code here\n')
-    const c = planScaffold(target, { ...exercise, starter_code: undefined, tests: 'x' }, cCtx())
-    expect(c.preserveFiles[0]?.content).toBe('/* your code here */\n')
+    const c = planScaffold(target, { ...exercise, starter_code: undefined, tests: 'x' }, ctx())
+    expect(c.preserveFiles[0]?.content).toBe('# your code here\n')
   })
 })
 
 describe('extra_files', () => {
   const withHeader: ExerciseBlock = {
     ...exercise,
-    tests: '#include "exercise.h"\nint main(void){return 0;}\n',
+    tests: 'import exercise\n',
     extra_files: [
-      { path: 'exercise.h', content: 'int add(int, int);\n' },
+      { path: 'support.py', content: 'VALUE = 3\n' },
       { path: 'fixtures/data.txt', content: '1 2 3\n' }
     ]
   }
 
   it('regenerates them, so a learner cannot break them permanently', () => {
-    const plan = planScaffold(target, withHeader, cCtx())
+    const plan = planScaffold(target, withHeader, ctx())
     const names = plan.files.map((f) => f.path.replace(`${plan.exerciseDir}/`, ''))
-    expect(names).toContain('exercise.h')
+    expect(names).toContain('support.py')
     expect(names).toContain('fixtures/data.txt')
-    expect(plan.preserveFiles.map((f) => f.path.split('/').pop())).toEqual(['exercise.c'])
+    expect(plan.preserveFiles.map((f) => f.path.split('/').pop())).toEqual(['exercise.py'])
   })
 
   it('lists them in the README so the learner knows what is provided', () => {
-    const plan = planScaffold(target, withHeader, cCtx())
-    expect(plan.files.find((f) => f.path.endsWith('README.md'))?.content).toContain('`exercise.h`')
+    const plan = planScaffold(target, withHeader, ctx())
+    expect(plan.files.find((f) => f.path.endsWith('README.md'))?.content).toContain('`support.py`')
   })
 
   it('refuses a path that would write outside the exercise', () => {
     for (const bad of ['../evil.h', '/etc/passwd', 'a/../../b', '~/.zshrc', '.hidden', 'evil.command']) {
       expect(
-        () => planScaffold(target, { ...withHeader, extra_files: [{ path: bad, content: 'x' }] }, cCtx()),
+        () => planScaffold(target, { ...withHeader, extra_files: [{ path: bad, content: 'x' }] }, ctx()),
         bad
       ).toThrow()
     }

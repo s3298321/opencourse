@@ -47,7 +47,7 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
   useEffect(refreshKey, [refreshKey])
   useEffect(() => window.opencourse.onCoachChanged(refresh), [refresh])
 
-  // Coach ▸ New Coach… lands here, the way Import Course… lands in the library.
+  // Coach ▸ New Coach lands here, the way Import Course lands in the library.
   useEffect(() => {
     if (newSignal > 0) setNaming(true)
   }, [newSignal])
@@ -102,7 +102,7 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
               </div>
               <div className="actions">
                 <button disabled={busy || naming} onClick={() => setNaming(true)}>
-                  New coach…
+                  New coach
                 </button>
               </div>
             </div>
@@ -142,7 +142,7 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
                 </div>
                 <div className="actions">
                   <button disabled={busy || !name.trim()} onClick={() => void create()}>
-                    {busy ? 'Creating…' : 'Create'}
+                    {busy ? 'Creating' : 'Create'}
                   </button>
                   <button
                     className="secondary"

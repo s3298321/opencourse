@@ -21,8 +21,8 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.
   ${star(140, 120, 14, 0.8)}${star(1070, 150, 18, 0.9)}${star(1010, 520, 10, 0.6)}${star(210, 520, 9, 0.5)}${star(620, 70, 7, 0.5)}${star(1120, 340, 7, 0.5)}
   <image x="96" y="182" width="132" height="132" xlink:href="data:image/png;base64,${mark}"/>
   <text x="252" y="268" font-family="SF Pro Display, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="54" font-weight="600" letter-spacing="-1.4" fill="#dedee3">OpenCourse</text>
-  <text x="96" y="430" font-family="SF Pro Display, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="88" font-weight="700" letter-spacing="-4" fill="url(#silver)">Courses that teach back.</text>
-  <text x="98" y="496" font-family="SF Pro Text, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="28" fill="#a5a5af">Free and open source for Mac · lessons, quizzes, exercises and a tutor</text>
+  <text x="96" y="430" font-family="SF Pro Display, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="88" font-weight="700" letter-spacing="-4" fill="url(#silver)">Courses on your Mac.</text>
+  <text x="98" y="496" font-family="SF Pro Text, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="28" fill="#a5a5af">Study and create courses · Free and open source</text>
 </svg>`
 const grainTile = await sharp(Buffer.from(grain)).png().toBuffer()
 await sharp(Buffer.from(svg))

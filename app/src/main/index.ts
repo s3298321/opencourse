@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electro
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { configureBundledPython, pythonResourcesDir } from './bundled-python'
 import { closeDb } from './db'
 import { log } from './log'
 import { closeLogSinks, installLogSinks } from './logging'
@@ -17,10 +18,14 @@ import { isolatedRun } from './run-mode'
 import { quitVetoed, runPendingInstall, startUpdates } from './updates'
 
 // Must happen before the app is ready.
+// Long Responses streams can fail with ERR_QUIC_PROTOCOL_ERROR. Keep HTTPS on
+// TCP (HTTP/2 or HTTP/1.1), retaining Chromium's system proxy support.
+app.commandLine.appendSwitch('disable-quic')
 app.setName(BRAND.displayName)
 nativeTheme.themeSource = 'dark'
 app.setPath('userData', join(app.getPath('appData'), BRAND.name))
 registerSchemePrivileges()
+configureBundledPython(pythonResourcesDir(app.isPackaged, app.getAppPath(), process.resourcesPath))
 
 // A smoke run must not inherit - or disturb - the real data directory. Every
 // path the app owns hangs off userData (see main/paths.ts), so this one line

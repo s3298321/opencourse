@@ -801,7 +801,7 @@ export interface Preferences {
    */
   webSearch?: boolean
   /**
-   * The applied theme: the app-local UUID of one under users/<id>/themes.
+   * The applied theme: an installed UUID or a reserved built-in id.
    * Absent means no theme - the app's own look, which is not itself a theme.
    */
   theme?: string
@@ -877,9 +877,9 @@ export interface CoachToolOutcome {
 
 /* --- themes ---------------------------------------------------------------- */
 
-/** An installed theme, as Settings and the View menu show it. */
+/** A built-in or installed theme, as Settings and the View menu show it. */
 export interface ThemeSummary {
-  /** The app-local UUID - what `applyTheme` takes. */
+  /** The app-local UUID or reserved built-in id - what `applyTheme` takes. */
   id: string
   /** The archive's own `id`; importing another with the same one replaces this. */
   portableId: string
@@ -894,6 +894,8 @@ export interface ThemeSummary {
   swatch: string[]
   notes: ThemeNote[]
   active: boolean
+  /** Ships with the app, available to every user and cannot be removed. */
+  builtin?: boolean
   /** Set when the installed files can no longer be read; such a theme can only be removed. */
   error?: string
 }

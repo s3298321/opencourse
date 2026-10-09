@@ -27,7 +27,7 @@ const catalogUrl = (process.env.PUBLIC_CATALOG_URL ?? 'https://catalog.opencours
 const brand = join(repo, 'design', 'assets', 'brand')
 rmSync(join(pub, 'brand'), { recursive: true, force: true })
 cpSync(brand, join(pub, 'brand'), { recursive: true })
-for (const file of ['favicon-32.png', 'apple-touch-icon.png']) cpSync(join(brand, file), join(pub, file))
+for (const file of ['favicon-32.png', 'favicon-192.png', 'favicon-512.png', 'apple-touch-icon.png', 'apple-touch-icon-180.png']) cpSync(join(brand, file), join(pub, file))
 
 /* ---------- format downloads ---------- */
 const downloads = join(pub, 'downloads')

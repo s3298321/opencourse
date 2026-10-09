@@ -11,8 +11,8 @@
  * preference (`preferences.json { theme }`); its absence is the app's own look,
  * which is not a theme and cannot be removed.
  *
- * Every id the renderer passes is checked to be UUID-shaped and installed for
- * the current user before a path is built from it.
+ * Built-in White is bundled data and has a reserved preference id. Every id
+ * used to build a filesystem path must still be an installed UUID.
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -23,6 +23,8 @@ import { extensionOf } from '../core/import'
 import { THEME_IMAGE_EXTENSIONS, THEME_POLICY } from '../core/theme/assets'
 import { auditTheme } from '../core/theme/audit'
 import { compileTheme, THEME_URL_PREFIX, type CompiledTheme } from '../core/theme/compile'
+import { compiledWhiteTheme, whiteTheme } from '../core/theme/builtin'
+import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
 import type { ActiveTheme, ThemeImportResult, ThemeSummary } from '../core/types'
 import { readThemeDirectory, type ThemeDirectory } from './theme-files'
 import { extractArchive } from './unzip'
@@ -100,7 +102,13 @@ function summarize(entry: Installed, activeId: string | undefined): ThemeSummary
 export function listThemes(): ThemeSummary[] {
   const userId = requireUser()
   const active = readPreferences().theme
-  return installed(userId).map((entry) => summarize(entry, active))
+  return [{
+    id: WHITE_THEME_ID, portableId: whiteTheme.id, name: whiteTheme.name,
+    author: whiteTheme.author, description: whiteTheme.description,
+    appearance: 'light', preview: null, builtin: true,
+    swatch: ['--bg', '--card', '--accent', '--fg'].map((property) => compiledWhiteTheme.values[property]!),
+    notes: [], active: active === WHITE_THEME_ID
+  }, ...installed(userId).map((entry) => summarize(entry, active))]
 }
 
 /** The applied theme, compiled - or null for the app's own look. */
@@ -117,6 +125,12 @@ function activeEntry(): (Installed & { read: ThemeDirectory }) | null {
 }
 
 export function getActiveTheme(): ActiveTheme {
+  if (currentUserId() && readPreferences().theme === WHITE_THEME_ID) {
+    return {
+      id: WHITE_THEME_ID, name: whiteTheme.name, css: compiledWhiteTheme.css,
+      appearance: 'light', faces: [], logo: null
+    }
+  }
   const entry = activeEntry()
   if (!entry) return { id: null }
   const compiled = compile(entry)
@@ -132,6 +146,7 @@ export function getActiveTheme(): ActiveTheme {
 
 /** What the window itself should do; null when no theme is applied (or nobody is signed in). */
 export function activeThemeNative(): CompiledTheme['native'] | null {
+  if (currentUserId() && readPreferences().theme === WHITE_THEME_ID) return compiledWhiteTheme.native
   const entry = activeEntry()
   return entry ? compile(entry).native : null
 }
@@ -144,6 +159,10 @@ export function applyTheme(id: string | null): ActiveTheme {
     return { id: null }
   }
   if (typeof id !== 'string') throw new Error('invalid theme id')
+  if (id === WHITE_THEME_ID) {
+    writePreferences({ ...rest, theme: id })
+    return getActiveTheme()
+  }
   const entry = readInstalled(userId, id)
   if (!entry) throw new Error('That theme is not installed.')
   if ('error' in entry.read) throw new Error(`That theme cannot be applied: ${entry.read.error}`)
@@ -153,6 +172,7 @@ export function applyTheme(id: string | null): ActiveTheme {
 
 export function removeTheme(id: string): { wasActive: boolean } {
   const userId = requireUser()
+  if (id === WHITE_THEME_ID) throw new Error('Built-in themes cannot be removed.')
   if (typeof id !== 'string' || !UUID.test(id)) throw new Error('invalid theme id')
   const entry = readInstalled(userId, id)
   if (!entry) throw new Error('That theme is not installed.')

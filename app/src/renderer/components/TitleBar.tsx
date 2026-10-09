@@ -123,7 +123,7 @@ function UserMenu({
       }
       items={[
         ...(route.name !== 'settings'
-          ? [{ id: 'settings', label: 'Settings…', onSelect: () => navigate({ name: 'settings', from }) }]
+          ? [{ id: 'settings', label: 'Settings', onSelect: () => navigate({ name: 'settings', from }) }]
           : []),
         ...(route.name !== 'logs'
           ? [{ id: 'logs', label: 'Logs', onSelect: () => navigate({ name: 'logs', from }) }]

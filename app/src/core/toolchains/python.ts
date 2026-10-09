@@ -1,36 +1,13 @@
-/**
- * The Python toolchain: a per-course virtualenv built from the system
- * interpreter, and pytest.
- *
- * Nothing is bundled - the interpreter comes from the learner's machine, which
- * is why discovery probes absolute paths a GUI process could never reach
- * through PATH.
- */
+/** Python exercises use the interpreter shipped with OpenCourse and a local course venv. */
 import { safeFlags, tokenizeCommand } from './argv'
-import type { PlanContext, TestPlan, Toolchain, VersionFloor } from './types'
-
-/** Interpreter basenames, newest first. */
-export const PYTHON_NAMES = ['python3.14', 'python3.13', 'python3.12', 'python3.11'] as const
-
-/**
- * Bare names are a last resort. On a Finder-launched app PATH is launchd's
- * minimal one, where `python3` is the Command Line Tools shim: it is 3.9.6 (so
- * it fails every course floor anyway) and invoking it without CLT installed
- * pops Apple's developer-tools dialog attributed to *this* app.
- */
-export const PYTHON_FALLBACK_NAMES = ['python3', 'python'] as const
+import type { PlanContext, TestPlan, Toolchain } from './types'
 
 export const DEFAULT_TEST_COMMAND = 'pytest -q'
 export const BASE_REQUIREMENTS = ['pytest>=8']
+export const PYTHON_MINIMUM_PATTERN = /^(?:>=\s*)?(\d+)\.(\d+)(?:\.(\d+))?$/
 
-const DEFAULT_FLOOR: [number, number] = [3, 11]
-
-/** Directories worth probing directly, highest priority first. */
-export function pythonSearchDirs(home: string): string[] {
-  const frameworks = PYTHON_NAMES.map(
-    (name) => `/Library/Frameworks/Python.framework/Versions/${name.replace('python', '')}/bin`
-  )
-  return ['/opt/homebrew/bin', '/usr/local/bin', ...frameworks, `${home}/.pyenv/shims`, `${home}/.local/bin`]
+export function validPythonMinimum(spec: string): boolean {
+  return PYTHON_MINIMUM_PATTERN.test(spec.trim())
 }
 
 export function venvBinDir(envDir: string): string {
@@ -39,10 +16,6 @@ export function venvBinDir(envDir: string): string {
 
 export function venvPython(envDir: string): string {
   return `${envDir}/bin/python`
-}
-
-function semver(floor: VersionFloor): [number, number] {
-  return floor.kind === 'semver' ? [floor.major, floor.minor] : DEFAULT_FLOOR
 }
 
 export const pythonToolchain: Toolchain = {
@@ -62,15 +35,15 @@ export const pythonToolchain: Toolchain = {
   },
 
   discovery: {
-    names: PYTHON_NAMES,
-    fallbackNames: PYTHON_FALLBACK_NAMES,
-    searchDirs: pythonSearchDirs,
+    names: [],
+    fallbackNames: [],
+    searchDirs: () => [],
     probeArgs(floor) {
-      const [major, minor] = semver(floor)
-      return ['-c', `import sys; sys.exit(0 if sys.version_info[:2] >= (${major}, ${minor}) else 1)`]
+      const { major, minor, patch = 0 } = floor.kind === 'semver' ? floor : { major: 3, minor: 11 }
+      return ['-c', `import sys; sys.exit(0 if sys.version_info[:3] >= (${major}, ${minor}, ${patch}) else 1)`]
     },
-    versionArgs: ['-c', 'import sys; print("%d.%d.%d" % sys.version_info[:3])'],
-    needsCommandLineTools: true
+    versionArgs: ['-c', 'import sys, ssl, sqlite3, ctypes, venv, ensurepip; print("%d.%d.%d" % sys.version_info[:3])'],
+    needsCommandLineTools: false
   },
 
   provision: {
@@ -84,20 +57,21 @@ export const pythonToolchain: Toolchain = {
     stampFile: '.opencourse-requirements'
   },
 
-  /** ">=3.11" / "3.12" / ">= 3.11.2" -> [3, 11]. Falls back to 3.11. */
+  /** A bare version is a minimum, never an interpreter selector. */
   parseFloor(spec) {
-    const m = /(\d+)\.(\d+)/.exec(spec ?? '')
-    const [major, minor] = m ? [Number(m[1]), Number(m[2])] : DEFAULT_FLOOR
-    return { kind: 'semver', major, minor, label: `${major}.${minor}` }
+    const m = PYTHON_MINIMUM_PATTERN.exec((spec ?? '>=3.11').trim())
+    if (!m) throw new Error('Minimum Python version must be MAJOR.MINOR[.PATCH] or >=MAJOR.MINOR[.PATCH].')
+    const major = Number(m[1]), minor = Number(m[2])
+    const patch = m[3] === undefined ? undefined : Number(m[3])
+    return { kind: 'semver', major, minor, ...(patch === undefined ? {} : { patch }), label: `${major}.${minor}${patch === undefined ? '' : `.${patch}`}` }
   },
 
   versionLabel(floor) {
     return `${this.label} ${floor.label}`
   },
 
-  installHint(floor) {
-    const [major, minor] = semver(floor)
-    return [`brew install python@${major}.${minor}`, 'or download it from https://www.python.org/downloads/']
+  installHint() {
+    return ['Update OpenCourse to get a newer bundled Python. If the runtime is missing or damaged, reinstall OpenCourse.']
   },
 
   /**
@@ -111,11 +85,15 @@ export const pythonToolchain: Toolchain = {
       PYTHONUNBUFFERED: '1',
       PYTHONDONTWRITEBYTECODE: '1',
       PY_COLORS: '1',
-      ...(envDir ? { VIRTUAL_ENV: envDir, PYTHONHOME: null } : {})
+      PYTHONHOME: null,
+      PYTHONPATH: null,
+      PYTHONNOUSERSITE: '1',
+      VIRTUAL_ENV: envDir ?? null
     }
   },
 
   plan(ctx: PlanContext): TestPlan {
+    if (ctx.runtime.language !== 'python') return { kind: 'unsupported', command: '', reason: 'Only Python exercises are supported' }
     const flags = safeFlags(ctx.runtime.flags)
     if (!flags.ok) return { kind: 'unsupported', command: ctx.runtime.flags.join(' '), reason: flags.reason }
 

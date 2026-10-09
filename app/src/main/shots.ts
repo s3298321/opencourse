@@ -13,7 +13,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { app, type BrowserWindow } from 'electron'
+import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
+import { app, nativeTheme, type BrowserWindow } from 'electron'
 import type { ChatCitation, ChatQuote } from '../core/types'
 import { simulateAppUpdate } from './updates'
 
@@ -130,6 +131,11 @@ const NAV = `(async (target) => {
     }
     document.querySelector('.settings-models').scrollIntoView({ block: 'center' })
     await sleep(300)
+  } else if (target === 'white-apply') {
+    await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)})
+    await waitFor('#opencourse-theme')
+    document.querySelector('.settings-appearance').scrollIntoView({ block: 'start' })
+    await sleep(500)
   } else if (target === 'theme-apply') {
     // The example theme, imported the way Settings does it and applied.
     const result = await window.opencourse.importThemePath(window.__OPENCOURSE_SHOTS_THEME)
@@ -139,26 +145,27 @@ const NAV = `(async (target) => {
     await document.fonts.ready
     document.querySelector('.settings-appearance').scrollIntoView({ block: 'start' })
     await sleep(500)
-  } else if (target === 'theme-library') {
+  } else if (target === 'theme-library' || target === 'white-library') {
     click(document.querySelector('.titlebar .crumbs a'))
     await sleep(200)
     click(document.querySelector('.titlebar [data-section="courses"]'))
     await waitFor('.course-card')
     await sleep(500)
-  } else if (target === 'theme-lesson') {
+  } else if (target === 'theme-lesson' || target === 'white-lesson') {
     click([...document.querySelectorAll('.course-card')].find((c) => /Python asyncio/.test(c.textContent)))
     await waitFor('.detail')
     click([...document.querySelectorAll('.lesson-row')].find((r) => /await, create_task/.test(r.textContent)))
     await waitFor('.lesson-head h1')
     await sleep(600)
-  } else if (target === 'theme-workbench') {
+  } else if (target === 'theme-workbench' || target === 'white-workbench') {
     click([...document.querySelectorAll('.exercise .actions button')].find((b) => /open editor|editor open/i.test(b.textContent)))
     await waitFor('.workbench .cm-content')
     await sleep(1200)
-  } else if (target === 'theme-off') {
+  } else if (target === 'theme-off' || target === 'white-off') {
     // Back to the app's own look, and to a screen with the user chip, for the picker shot.
     await window.opencourse.applyTheme(null)
-    click(document.querySelector('.workbench-back'))
+    const back = document.querySelector('.workbench-back')
+    if (back) click(back)
     await sleep(300)
   } else if (target === 'users-switch') {
     // Straight to the picker: the menu that would open it is gone from the
@@ -365,26 +372,26 @@ const NAV = `(async (target) => {
       await sleep(400)
     }
     await waitFor('.library')
-  } else if (target === 'import-c') {
-    const result = await window.fixtureAPI.importCoursePath(window.__OPENCOURSE_SHOTS_ZIP_C)
+  } else if (target === 'import-python') {
+    const result = await window.fixtureAPI.importCoursePath(window.__OPENCOURSE_SHOTS_ZIP_PYTHON)
     if (result.status !== 'ok') throw new Error('import said ' + JSON.stringify(result))
     await sleep(300)
-  } else if (target === 'c-course') {
-    const card = [...document.querySelectorAll('.course-card')].find((c) => /Introduction to C/i.test(c.textContent))
+  } else if (target === 'python-course') {
+    const card = [...document.querySelectorAll('.course-card')].find((c) => /Introduction to Python/i.test(c.textContent))
     click(card)
     await waitFor('.detail h1')
     await sleep(300)
-  } else if (target === 'c-viz') {
-    const row = [...document.querySelectorAll('.lesson-row')].find((r) => /Pointers are addresses/i.test(r.textContent))
+  } else if (target === 'python-viz') {
+    const row = [...document.querySelectorAll('.lesson-row')].find((r) => /Lists and references/i.test(r.textContent))
     click(row)
     await waitFor('.lesson-head h1')
     await waitFor('.viz-frame')
     document.querySelector('.viz-frame').scrollIntoView({ block: 'center' })
     await sleep(1800)
-  } else if (target === 'c-workbench-pass') {
-    const t = { courseId: 'intro-to-c', moduleId: 'arrays-strings-pointers', lessonId: 'pointers', blockId: 'ex-ptr-1' }
-    const solution = await window.fixtureAPI.getSolution('intro-to-c', 'ex-ptr-1')
-    if (!solution) throw new Error('no reference solution for ex-ptr-1')
+  } else if (target === 'python-workbench-pass') {
+    const t = { courseId: 'intro-to-python', moduleId: 'arrays-strings-pointers', lessonId: 'pointers', blockId: 'ex-swap-1' }
+    const solution = await window.fixtureAPI.getSolution('intro-to-python', 'ex-swap-1')
+    if (!solution) throw new Error('no reference solution for ex-swap-1')
     await window.fixtureAPI.writeExerciseFile(t, solution, null)
     const exercise = await waitFor('.exercise')
     exercise.scrollIntoView({ block: 'start' })
@@ -394,7 +401,7 @@ const NAV = `(async (target) => {
     await sleep(500)
     click([...document.querySelectorAll('.workbench-actions button')].find((b) => /run checks/i.test(b.textContent)))
     await sleep(300)
-    // A C build is fast, but the compiler probe on a cold profile is not free.
+    // A fresh Python environment may need to install test requirements.
     const t0 = Date.now()
     while (Date.now() - t0 < 60000) {
       const btn = [...document.querySelectorAll('.workbench-actions button')][0]
@@ -426,11 +433,11 @@ const NAV = `(async (target) => {
   return document.title
 })(${JSON.stringify('%TARGET%')})`
 
-/** The app ships no courses, so a screenshot run brings its own - one per language. */
+/** The app ships no courses, so a screenshot run brings its own - two Python courses. */
 function buildArchives(): { zips: Record<string, string>; drop: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'opencourse-shots-zips-'))
   const zips: Record<string, string> = {}
-  for (const slug of ['python-asyncio', 'intro-to-c']) {
+  for (const slug of ['python-asyncio', 'intro-to-python']) {
     const zip = join(dir, `${slug}.zip`)
     execFileSync('ditto', [
       '-c', '-k', '--norsrc', '--noextattr',
@@ -628,10 +635,10 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     ),
     // A second course, in a second language, through the same screens.
     { target: 'to-library', photo: false },
-    { target: 'import-c', photo: false },
-    { target: 'c-course', photo: true },
-    { target: 'c-viz', photo: true },
-    { target: 'c-workbench-pass', photo: true },
+    { target: 'import-python', photo: false },
+    { target: 'python-course', photo: true },
+    { target: 'python-viz', photo: true },
+    { target: 'python-workbench-pass', photo: true },
     { target: 'import-project-course', photo: false },
     { target: 'project', photo: true },
     { target: 'project-editor', photo: true },
@@ -655,6 +662,10 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     { target: 'logs', photo: true },
     // Theme Settings is on the settings page, so go back there for it.
     { target: 'logs-to-settings', photo: false },
+    // Built-in White over settings, the library, a lesson and the live editor.
+    ...['white-apply', 'white-library', 'white-lesson', 'white-workbench'].map((target) => ({ target, photo: true })),
+    { target: 'white-off', photo: false },
+    { target: 'logs-to-settings', photo: false },
     // The example theme over the same screens, so a theme regression is as
     // visible here as one in the app's own look.
     { target: 'theme-apply', photo: true },
@@ -667,6 +678,16 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     { target: 'users-switch', photo: true }
   ]
 
+  // A focused path for visual QA that does not depend on other course runtimes.
+  const whiteSteps = [
+    { target: 'users', photo: true }, { target: 'create-user', photo: false },
+    { target: 'import', photo: false }, { target: 'library', photo: true },
+    { target: 'user-menu', photo: false }, { target: 'settings', photo: true },
+    ...['white-apply', 'white-library', 'white-lesson', 'white-workbench'].map((target) => ({ target, photo: true })),
+    { target: 'white-off', photo: false }
+  ]
+  const selectedSteps = process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' ? whiteSteps : steps
+
   const { zips, drop } = buildArchives()
   const tidy = (): void => {
     drop()
@@ -676,13 +697,14 @@ export async function runShots(win: BrowserWindow): Promise<void> {
   try {
     await win.webContents.executeJavaScript(
       `window.__OPENCOURSE_SHOTS_ZIP = ${JSON.stringify(zips['python-asyncio'])};` +
-      `window.__OPENCOURSE_SHOTS_ZIP_C = ${JSON.stringify(zips['intro-to-c'])};` +
+      `window.__OPENCOURSE_SHOTS_ZIP_PYTHON = ${JSON.stringify(zips['intro-to-python'])};` +
       `window.__OPENCOURSE_SHOTS_ZIP_PROJECT = ${JSON.stringify(join(app.getAppPath(), 'resources', 'spec', 'opencourse-example-course.zip'))};` +
       `window.__OPENCOURSE_SHOTS_THEME = ${JSON.stringify(join(app.getAppPath(), 'resources', 'spec', 'opencourse-example-theme.zip'))};`
     )
     const hold = process.env['OPENCOURSE_SHOTS_HOLD']
+    let defaultMark: string | null = null
     let n = 0
-    for (const { target, photo } of steps) {
+    for (const { target, photo } of selectedSteps) {
       // What a tool call will write once there is a live session to make one.
       if (target === 'coach-files') await seedCoachWorkspace(win)
       if (target === 'sidechat') await seedSideChat()
@@ -691,6 +713,9 @@ export async function runShots(win: BrowserWindow): Promise<void> {
       if (target === 'update-available') simulateAppUpdate({ state: 'available', version: '0.2.0', size: 138_000_000, notesUrl: 'https://github.com/s3298321/opencourse/releases/tag/v0.2.0', installable: true })
       if (target === 'coach-empty') win.setSize(1240, 860)
       await win.webContents.executeJavaScript(NAV.replace('%TARGET%', target))
+      if (process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' && target === 'library') {
+        defaultMark = await win.webContents.executeJavaScript("document.querySelector('.titlebar .brand img').src")
+      }
       if (target === 'update-clear') simulateAppUpdate(null)
       if (target === hold) {
         console.log(`holding at ${target}: the window is yours until you close it`)
@@ -702,6 +727,37 @@ export async function runShots(win: BrowserWindow): Promise<void> {
       const file = join(dir, `${String(n).padStart(2, '0')}-${target}.png`)
       writeFileSync(file, (await win.webContents.capturePage()).toPNG())
       console.log('wrote', file)
+      if (process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' && target === 'white-workbench') {
+        await win.webContents.executeJavaScript(`(async () => {
+          const editor = document.querySelector('.cm-editor');
+          const terminal = document.querySelector('.xterm');
+          const text = editor.querySelector('.cm-content').textContent;
+          const wait = async (color) => {
+            for (let n = 0; n < 200; n++) {
+              if (getComputedStyle(editor).backgroundColor === color) return;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Editor did not switch to ' + color);
+          };
+          await window.opencourse.applyTheme(null);
+          await wait('rgb(29, 29, 33)');
+          await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)});
+          await wait('rgb(247, 247, 249)');
+          if (!editor.isConnected || !terminal.isConnected || editor.querySelector('.cm-content').textContent !== text)
+            throw new Error('Switching White changed editor or terminal state');
+        })()`)
+        if (nativeTheme.themeSource !== 'light') throw new Error('White did not set native light appearance')
+        await new Promise<void>((resolve) => { win.webContents.once('did-finish-load', () => resolve()); win.reload() })
+        await win.webContents.executeJavaScript(`(async () => {
+          for (let n = 0; n < 200 && !document.querySelector('.library'); n++)
+            await new Promise(resolve => setTimeout(resolve, 25));
+          if (document.documentElement.dataset.appearance !== 'light' || getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() !== '#ffffff')
+            throw new Error('White did not survive reload');
+          if (document.querySelector('.titlebar .brand img')?.src !== ${JSON.stringify(defaultMark)})
+            throw new Error('White changed the logo');
+        })()`)
+        console.log('White verified: native appearance, persistent preference, unchanged logo, live editor and terminal')
+      }
     }
     tidy()
     app.exit(0)

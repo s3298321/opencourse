@@ -19,7 +19,7 @@ const { size = 'xl', meta = true, note = true, class: className } = Astro.props
     : <a class={`oc-btn ${size} shine download-button`} href="/download"><Icon name="download" size={19} />Get OpenCourse</a>}
   {meta && (release
     ? <span class="download-meta">Apple silicon · v{release.version} · {megabytes(release.asset!.size)}</span>
-    : <span class="download-meta">First release coming soon · build it from source today</span>)}
+    : <span class="download-meta">No release available yet · source build instructions</span>)}
   {note && release?.unsigned && (
     <a class="download-note" href="/download#first-open"><Icon name="shield-check" size={14} />Not yet signed by Apple · how to open it</a>
   )}

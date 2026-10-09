@@ -20,7 +20,8 @@ place the app goes online.
 
 A course does not have to be about programming. Markdown, images,
 visualizations and quizzes are the whole format; the `exercise` block is an
-extra any course may reach for, in Python, C or LLVM IR, whatever its subject.
+extra any course may reach for, in Python using the bundled interpreter, whatever its subject. Projects may
+use any language with user-managed tools.
 
 The app ships **no courses**. You pick or create a local user, then import
 course archives into that user's library, or add courses from a server's
@@ -33,7 +34,7 @@ content/                    courses you are authoring (gitignored; the content g
 content-zip/                importable .zip of each course (generated, ignored)
 app/tests/fixtures/courses/ the committed courses every test, smoke run and screenshot uses
 app/                        the Electron app (TypeScript, React)
-app/src/core/toolchains/    one descriptor per language; nothing else names one
+app/src/core/toolchains/    Python exercise layout, provisioning and check plans
 app/src/core/coach/         the pure half of Coach: prompt, tools, event reducer
 app/src/core/sidechat/      the pure half of side chat: lesson context, thread rules
 app/src/core/catalog/       server courses: identity, versions, the API contract
@@ -43,7 +44,7 @@ site/                       opencourse.dev (Astro, static): the app, the downloa
 design/                     the web's design layer: the app's tokens, shared by site and web app
 docs/getting-started.md     the user's guide, from download to publishing
 docs/self-hosting.md        running a catalog server: Docker, mail, admin, backups
-docs/course-format.md       the course format, v1.5
+docs/course-format.md       the course format, v1.6
 docs/server-api.md          the server API, v1
 .github/workflows/          CI, app releases, the website, the server image
 docs/example-course/        a minimal course exercising every block type
@@ -238,6 +239,8 @@ the permission outright at any other time.
   Appearance** and chosen there or from **View ▸ Theme**. It sets colours,
   opacity, grain, pictures, fonts and the titlebar mark - values for the
   stylesheet's own tokens, compiled by `app/src/core/theme/`, never CSS. The
+  app ships Dark (the default) and White, with the same logo, typography and
+  layout. Choose either in Settings or View; built-in themes cannot be removed.
   app's own look is not a theme but the absence of one; it is exported as
   `docs/default-theme` to start from, and a test keeps the two identical.
   `docs/theme-format.md` is the contract; **Help ▸ Get the theme format…**
@@ -264,25 +267,20 @@ the permission outright at any other time.
   the checks below it and an interactive terminal in the exercise directory.
   That editor is the only way into an exercise. "Run checks" saves, runs the
   exercise's plan, streams the output, and marks the exercise complete when it
-  goes green — completion is earned, not self-reported. A compiled language
-  runs as two visible steps, `compile` then `run`, so the compiler's
-  diagnostics land where you are already looking.
+  goes green — completion is earned, not self-reported.
 - **An exercise is correct when it exits 0.** That is the entire grading
-  contract, which is why it costs nothing to add a language. A course states
-  correctness either with a test file (`pytest` for Python, an `assert.h` `main`
-  for C) or with the stdout its program must print.
+  contract. Python exercises use pytest checks or compare the program’s stdout
+  against an expected-output contract.
 - **The files are the source of truth.** The workbench edits
-  `…/workspace/<course>/<module>/<lesson>/<exercise>/exercise.{py,c}` on disk;
+  `…/workspace/<course>/<module>/<lesson>/<exercise>/exercise.py` on disk;
   if the file changes underneath the editor (from its own Terminal tab, say)
   you are asked which version wins. Your file is written once and never
   overwritten.
-- **Toolchains come from your machine, not from the app.** For Python, OpenCourse
-  finds an interpreter satisfying the course's floor, builds one virtualenv per
-  course under `workspace/<course>/.venv`, and installs `pytest` plus whatever
-  the course declares. For C there is nothing to build at all: `cc` from the
-  Xcode Command Line Tools is the environment and libc brings `assert.h`.
-  Nothing is bundled and nothing is downloaded except from PyPI. If a tool is
-  missing the app says so and shows you the one command that installs it.
+- **Python is bundled with the app.** Exercises are Python-only. OpenCourse
+  builds a local `.venv` per course using its bundled interpreter, then installs
+  pytest and course packages there. System Python is never selected. Version
+  settings are minimum requirements; update OpenCourse for a newer runtime.
+  Projects may use any language and have user-managed tools and setup.
 
 ## Authoring
 
@@ -291,7 +289,7 @@ Edit `course.json` by hand, then:
 ```bash
 cd app
 npm run validate:content    # schema + assets + unique ids + every exercise plans
-npm run check:exercises     # exercises actually work, in every language they use
+npm run check:exercises     # exercises actually work, using bundled Python
 ```
 
 Both run in CI-friendly, non-interactive mode and are the two gates a course
@@ -309,7 +307,7 @@ Then **Library ▸ Import course…**. Every import creates a new library course
 even when the slug matches an existing course. Use **Edit course** to change an
 existing course while preserving progress, or **Create course** to author one
 directly in the app. **Export ZIP…** on a course's page downloads the last saved
-version in format 1.5. **Get the course format…** saves the spec, schema and an
+version in format 1.6. **Get the course format…** saves the spec, schema and an
 example course.
 
 Nothing you change in the editor — by hand or through the assistant — is
@@ -395,7 +393,7 @@ npm run check        # astro check, then every link, anchor and download in dist
 ## Releasing
 
 1. Raise `version` in `app/package.json` and commit.
-2. Tag it: `git tag v0.2.0 && git push origin v0.2.0`.
+2. Tag it: `git tag v0.3.0 && git push origin v0.3.0`.
 3. `.github/workflows/release.yml` builds `OpenCourse-mac-arm64.dmg` on macOS
    and uploads it to a **draft** release - signed and notarized when the
    repository has the Apple secrets the workflow lists. Otherwise it is ad-hoc
@@ -471,13 +469,14 @@ courses, and configure your AI connections again in Settings.
 Course manifests using relative asset paths remain importable. The app supports
 only `opencourse://` asset URLs and the OpenCourse visualization bridge; old
 branded URLs, bridge identifiers, and environment variables have no aliases.
-The current course-format version is 1.5; imports from 1.0–1.4 remain supported.
+The current course-format version is 1.6; compatible Python imports from 1.0–1.5 remain supported.
 
 ## Branding assets
 
 The generated constellation master and its prompt are in
 `app/resources/branding/`. `npm run build:icons` (from `app/`, on macOS)
-recreates `resources/icon.png`, `resources/icon.icns`, and the renderer mark
+recreates `resources/icon.png`, `resources/icon.icns`, the renderer mark,
+and the default theme's matching mark
 using `sips` and `iconutil`, and the web's sizes in `design/assets/brand/`
 (`node scripts/build-icons.mjs web` redoes only those). The app bundle and DMG
 use the ICNS; the renderer, About panel, and development Dock use PNG exports,

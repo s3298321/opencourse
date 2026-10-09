@@ -71,7 +71,7 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
           <div className="actions catalog-detail-actions">
             {inLibrary
               ? <button onClick={() => navigate({ name: 'course', courseId })}>Open in my courses</button>
-              : <button disabled={busy} onClick={() => void add()}>{busy ? 'Adding…' : 'Add to my courses'}</button>}
+              : <button disabled={busy} onClick={() => void add()}>{busy ? 'Adding' : 'Add to my courses'}</button>}
             {course.ownedByYou && <button className="secondary" onClick={() => navigate({ name: 'publication', serverId, courseId })}>Manage publication</button>}
           </div>
           {note && <p className={`import-note${note.error ? ' error' : ''}`} role="status">{note.text}</p>}

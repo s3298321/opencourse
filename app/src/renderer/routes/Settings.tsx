@@ -133,7 +133,7 @@ function NameSection({
           }}
         />
         <button disabled={!changed || busy} onClick={() => void save()}>
-          {busy ? 'Saving…' : 'Save'}
+          {busy ? 'Saving' : 'Save'}
         </button>
       </div>
       {note && <p className={`import-note${note.error ? ' error' : ''}`}>{note.text}</p>}
@@ -232,7 +232,7 @@ function KeySection({ onChanged }: { onChanged: () => void }): JSX.Element {
 
       <div className="actions">
         <button disabled={busy || !key.trim()} onClick={() => void save()}>
-          {busy ? 'Checking…' : stored?.has ? 'Replace key' : 'Save key'}
+          {busy ? 'Checking' : stored?.has ? 'Replace key' : 'Save key'}
         </button>
         {stored?.has && (
           <button className="secondary" disabled={busy} onClick={() => void forget()}>
@@ -340,7 +340,7 @@ function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
           <button onClick={download}>Download OpenCourse {status.version}</button>
         )}
         <button className="secondary settings-update-check" disabled={busy || status.state === 'ready'} onClick={check}>
-          {status.state === 'checking' ? 'Checking…' : 'Check for updates'}
+          {status.state === 'checking' ? 'Checking' : 'Check for updates'}
         </button>
       </div>
     </>
@@ -491,7 +491,7 @@ function DangerSection({
           <p className="meta">Removes {user.name} and everything they own on this Mac.</p>
           <div className="actions">
             <button className="secondary danger" onClick={() => setArming(true)}>
-              Delete…
+              Delete
             </button>
           </div>
         </>
@@ -521,7 +521,7 @@ function DangerSection({
               }}
             />
             <button className="danger" disabled={!ready || busy} onClick={() => void remove()}>
-              {busy ? 'Deleting…' : 'Delete for good'}
+              {busy ? 'Deleting' : 'Delete for good'}
             </button>
             <button
               className="secondary"

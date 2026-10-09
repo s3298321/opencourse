@@ -26,9 +26,13 @@ function requireChat(id: string): ChatSummary {
   const chat = selectAuthoringChat(id)
   if (!chat) throw new Error('That authoring chat does not exist.')
   readDocument(chat.courseId)
-  return running.get(id)?.chat ?? conversationConfig('authoring', chat)
+  return chatConfig(chat)
 }
-export function listAuthoringChats(courseId: string): ChatSummary[] { readDocument(courseId); return selectAuthoringChats(courseId).map(chat => running.get(chat.id)?.chat ?? conversationConfig('authoring', chat)) }
+function chatConfig(chat: ChatSummary): ChatSummary {
+  const snapshot = running.get(chat.id)?.chat
+  return snapshot ? { ...chat, model: snapshot.model, reasoning: snapshot.reasoning, provider: snapshot.provider } : conversationConfig('authoring', chat)
+}
+export function listAuthoringChats(courseId: string): ChatSummary[] { readDocument(courseId); return selectAuthoringChats(courseId).map(chatConfig) }
 export function getAuthoringChat(id: string) { return { chat: requireChat(id), messages: selectAuthoringMessages(id) } }
 export function createAuthoringChat(courseId: string): ChatSummary {
   readDocument(courseId)
@@ -99,7 +103,12 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     if (error) logger.error('Authoring turn failed', { ...outcome, message: error })
     else if (status === 'failed') logger.warn('Authoring turn ended without an answer', outcome)
     else logger.info(status === 'complete' ? 'Authoring turn complete' : 'Authoring turn stopped', outcome)
-    if (error) push('authoringChat:error', scrubSecrets(error)); else push('authoringChat:done')
+    if (error) {
+      const message = error.includes('net::ERR_QUIC_PROTOCOL_ERROR')
+        ? 'The connection to OpenAI broke (net::ERR_QUIC_PROTOCOL_ERROR). Completed changes remain in this editor. Send another message to continue, or save your changes before closing or restarting the app.'
+        : error
+      push('authoringChat:error', scrubSecrets(message))
+    } else push('authoringChat:done')
   }
   let token: symbol
   try { const lease = beginAuthoringTurn(chat.courseId, id, lost); token = lease.token; release = lease.release }
@@ -136,6 +145,7 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     available -= content.length; kept.unshift({ role: message.role === 'assistant' ? 'assistant' : 'user', content })
   }
   input.push(...kept)
+  void generateChatTitle({ scope: 'authoring', chatId: id, courseId: chat.courseId, owner, sender, key, provider: chat.provider!, model: chat.model, reasoningEfforts: conversationReasoning('authoring', chat.model, chat.pinnedProvider) })
   timer = setTimeout(() => { controller.abort(); finish('failed', 'Course creation timed out. Completed draft changes are preserved; send another message to continue.') }, 30 * 60_000)
   setImmediate(() => { void (async () => {
     try {
@@ -160,7 +170,6 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
         }
       })
       finish(result.stopped ? 'stopped' : 'complete')
-      if (!result.stopped && !controller.signal.aborted && currentUserId() === owner && answered.trim()) void generateChatTitle({ scope: 'authoring', chatId: id, courseId: chat.courseId, owner, sender, key, provider: chat.provider!, model: chat.model, reasoningEfforts: conversationReasoning('authoring', chat.model, chat.pinnedProvider), prompt: asked, response: answered })
     } catch (error) { finish(controller.signal.aborted ? 'stopped' : 'failed', controller.signal.aborted ? undefined : (error as Error).message) }
   })() })
   return { status: 'ok', seq }

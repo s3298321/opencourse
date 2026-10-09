@@ -75,7 +75,7 @@ export default function Library({
     }
   }, [refresh])
 
-  // The Course ▸ Import Course… menu item lands here. runImport is stable, so
+  // The Course ▸ Import Course menu item lands here. runImport is stable, so
   // this only ever fires on a fresh signal.
   useEffect(() => {
     if (importSignal > 0) void runImport()
@@ -121,10 +121,10 @@ export default function Library({
               {tab === 'mine' && <div className="actions">
                 <button disabled={busy} onClick={() => { void window.opencourse.createCourse().then(({ document }) => navigate({ name: 'courseEditor', courseId: document.courseId })).catch((err) => setNote({ text: err.message, error: true })) }}>Create course</button>
                 <button disabled={busy} onClick={() => void runImport()}>
-                  Import course…
+                  Import course
                 </button>
                 <button className="secondary" onClick={() => void saveSpec()}>
-                  Get the course format…
+                  Get the course format
                 </button>
               </div>}
             </div>

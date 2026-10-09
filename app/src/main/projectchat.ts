@@ -139,7 +139,6 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
   }
   input.push(...kept)
   const controller = new AbortController()
-  const titleReasoning = conversationReasoning('project', chat.model, chat.pinnedProvider)
   let answered = ''
   let finalized = false
   let toolCalls = 0
@@ -165,15 +164,14 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
     else logger.info(status === 'complete' ? 'Answer complete' : 'Answer stopped', outcome)
     if (error) push('projectChat:error', scrubSecrets(error))
     else push('projectChat:done')
-    if (valid && status === 'complete' && answered.trim() && !controller.signal.aborted) void generateChatTitle({
-      scope: 'project', chatId: id, courseId: chat.courseId, owner, sender,
-      key, provider: chat.provider ?? 'apiKey', model: chat.model, reasoningEfforts: titleReasoning,
-      prompt: asked, response: answered
-    })
   }
   const lost = (): void => { controller.abort(); finish('stopped') }
   const unbindLost = whenSenderGone(sender, lost)
   inflight.set(id, { controller, finish, chat })
+  void generateChatTitle({
+    scope: 'project', chatId: id, courseId: chat.courseId, owner, sender,
+    key, provider: chat.provider ?? 'apiKey', model: chat.model, reasoningEfforts: conversationReasoning('project', chat.model, chat.pinnedProvider)
+  })
   const budget = { bytes: 0, signal: controller.signal }
   turnTimer = setTimeout(() => {
     controller.abort()

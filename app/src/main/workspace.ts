@@ -27,8 +27,7 @@ export type ScaffoldRequest = ExerciseTarget
 
 /**
  * The deps file is course-level, so it must cover every exercise in the course
- * that shares this toolchain. Exercises in another language contribute nothing:
- * a C exercise's `-lm` has no business in requirements.txt.
+ * that shares this toolchain. Python packages are pooled across the course.
  */
 function coursePackages(course: Course, language: string): string[] {
   const packages = new Set<string>()

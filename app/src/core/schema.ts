@@ -21,6 +21,8 @@ function describe(err: ErrorObject): string {
   const path = (err.instancePath + field) || '(root)'
   // The raw pattern means nothing to an author; say what a version looks like.
   if (err.instancePath === '/version' && err.keyword === 'pattern') return '/version: use three numbers, MAJOR.MINOR.PATCH, such as 1.2.0'
+  if (err.keyword === 'enum' && err.instancePath.endsWith('/runtime/language')) return `${path}: Only Python exercises are supported`
+  if (err.keyword === 'pattern' && (err.instancePath.endsWith('/runtime/version') || err.instancePath === '/python_version')) return `${path}: Minimum Python version must be MAJOR.MINOR[.PATCH] or >=MAJOR.MINOR[.PATCH]`
   if (err.keyword === 'pattern' && err.instancePath.endsWith('/uid')) return `${err.instancePath}: must be a lowercase UUID v4`
   if (err.keyword === 'additionalProperties') {
     return `${path}: unknown field "${(err.params as { additionalProperty: string }).additionalProperty}"`

@@ -79,7 +79,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
             {note && <p role="status">{note}</p>}
             <CourseServerPanel course={course} navigate={navigate} actions={<>
               <button className="secondary" onClick={() => navigate({ name: 'courseEditor', courseId })}>Edit course</button>
-              <button className="secondary" onClick={() => { void window.opencourse.exportCourse(courseId).then(({ saved }) => { if (saved) setNote(`Saved to ${saved}`) }).catch((err) => setNote(err.message)) }}>Export ZIP…</button>
+              <button className="secondary" onClick={() => { void window.opencourse.exportCourse(courseId).then(({ saved }) => { if (saved) setNote(`Saved to ${saved}`) }).catch((err) => setNote(err.message)) }}>Export ZIP</button>
             </>} />
             <div className="summary">
               <button
@@ -93,7 +93,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
                 <button className="secondary" disabled={reviewBusy || !review?.eligible} onClick={() => {
                   setReviewBusy(true); setNote(null)
                   void window.opencourse.startReviewSession(courseId, reviewCount).then(session => navigate({ name: 'review', session })).catch(err => setNote(err.message)).finally(() => setReviewBusy(false))
-                }}>{reviewBusy ? 'Starting…' : 'Review'}</button>
+                }}>{reviewBusy ? 'Starting' : 'Review'}</button>
                 <select aria-label="Number of flashcards" value={reviewCount} disabled={reviewBusy} onChange={event => setReviewCount(Number(event.target.value) as ReviewCount)}>
                   {[10, 15, 20].map(count => <option key={count} value={count}>{count} cards</option>)}
                 </select>

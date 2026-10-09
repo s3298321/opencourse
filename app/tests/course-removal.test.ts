@@ -3,9 +3,9 @@ import { installCourseFixture } from './helpers/course'
 // @vitest-environment node
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { EventEmitter } from 'node:events'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { projectCourse } from './helpers/project'
 import { makeZip } from './helpers/zip'
 
@@ -28,6 +28,9 @@ const { insertProjectChat, appendProjectMessage, selectProjectChats, selectProje
 const { openCourseProject } = await import('../src/main/courseprojects')
 const { createProject, listProjects } = await import('../src/main/coach')
 const { ensureCourseEnv, runSteps } = await import('../src/main/toolchain')
+const { configureBundledPython, bundledPythonDir, BUNDLED_PYTHON_VERSION } = await import('../src/main/bundled-python')
+const originalRuntime = bundledPythonDir()
+afterEach(() => configureBundledPython(originalRuntime))
 const { pythonToolchain } = await import('../src/core/toolchains/python')
 const { createPty, disposeAllPtys } = await import('../src/main/pty')
 
@@ -144,11 +147,15 @@ describe('deleting a course', () => {
     const envDir = join(courseDir, '.venv')
     let creating!: () => void
     const started = new Promise<void>((resolve) => { creating = resolve })
+    const runtimeDir = join(root, `runtime-${n}`)
+    mkdirSync(join(runtimeDir, 'bin'), { recursive: true })
+    symlinkSync(process.execPath, join(runtimeDir, 'bin', 'python3'))
+    configureBundledPython(runtimeDir)
     const toolchain = {
       ...pythonToolchain,
       discovery: {
-        names: [basename(process.execPath)], fallbackNames: [], searchDirs: () => [dirname(process.execPath)],
-        probeArgs: () => ['--version'], versionArgs: ['--version'], needsCommandLineTools: false
+        ...pythonToolchain.discovery,
+        probeArgs: () => ['--version'], versionArgs: ['-e', `console.log(${JSON.stringify(BUNDLED_PYTHON_VERSION)})`]
       },
       provision: {
         ...pythonToolchain.provision!,

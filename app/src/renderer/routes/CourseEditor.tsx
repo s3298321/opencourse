@@ -339,7 +339,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
         <div className="author-mode" role="group" aria-label="Course editing mode"><button className={mode === 'manual' ? 'active' : ''} aria-pressed={mode === 'manual'} onClick={() => setMode('manual')}>Manual</button><button className={mode === 'ai' ? 'active' : ''} aria-pressed={mode === 'ai'} onClick={() => { setChatInitialized(true); setMode('ai') }}>AI</button></div>
       </div><div className="actions">
         <button className="secondary author-preview-toggle" onClick={() => setShowPreview((show) => !show)}>{showPreview ? 'Edit' : 'Preview'}</button>
-        <button className="author-save" title="Save (⌘S)" disabled={editingLocked || !manifest || (!unsaved && !neverSaved)} onClick={() => void save()}>{busy ? 'Saving…' : learnerCopy ? 'Save as local copy' : 'Save'}</button>
+        <button className="author-save" title="Save (⌘S)" disabled={editingLocked || !manifest || (!unsaved && !neverSaved)} onClick={() => void save()}>{busy ? 'Saving' : learnerCopy ? 'Save as local copy' : 'Save'}</button>
       </div></header>
       {errors.length > 0 && <div className="author-errors" role="alert"><strong>Course validation</strong>{errors.map((error) => <p key={error}>{error}</p>)}</div>}
       {manifest && <EditorAttachments value={data?.document.attachments ?? []}><div className="author-layout">

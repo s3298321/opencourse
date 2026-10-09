@@ -59,6 +59,36 @@ async function settled(channel: string) {
   await vi.waitFor(() => expect(sender.send.mock.calls.some(([name]) => name === channel)).toBe(true))
 }
 describe('independent main-process AI routing', () => {
+  it('keeps completed authoring edits after a QUIC failure and allows a follow-up without replaying the tool', async () => {
+    const { log } = await import('../src/main/log')
+    const { authoringRunState } = await import('../src/main/authoring-state')
+    const records: { message: string; data?: Record<string, unknown> }[] = []
+    log.addSink({ name: 'quic-test', minLevel: 'error', write: record => records.push(record) })
+    try {
+      const courseId = authoring.createCourse().document.courseId
+      const c = authoringChats.createAuthoringChat(courseId)
+      mock.stream.mockResolvedValueOnce({ text: '', aborted: false, output: [{ type: 'function_call', call_id: 'edit-title', name: 'update_element', arguments: JSON.stringify({ fields: { title: 'Completed edit' } }) }] })
+        .mockImplementationOnce(async (options: ChatStreamOptions) => {
+          options.onDelta('I updated the title.')
+          throw new Error('net::ERR_QUIC_PROTOCOL_ERROR')
+        })
+      await expect(authoringChats.sendAuthoringMessage(sender as never, c.id, 'Update the title', { kind: 'overview' }, 0, 0)).resolves.toMatchObject({ status: 'ok' })
+      await settled('authoringChat:error')
+      expect(sender.send).toHaveBeenCalledWith('authoringChat:error', c.id, expect.stringContaining('save your changes before closing or restarting'))
+      const draft = authoring.getAuthoringCourse(courseId)
+      expect(draft.draft).toMatchObject({ dirty: true, draftVersion: 1, manifest: { title: 'Completed edit' } })
+      expect(draft.document.manifest).toBeNull()
+      expect(authoringRunState(courseId)).toEqual({ chatId: null })
+      expect(authoringChats.getAuthoringChat(c.id).messages.at(-1)).toMatchObject({ role: 'assistant', text: 'I updated the title.', status: 'failed' })
+      expect(records.find(record => record.message === 'Authoring turn failed')?.data).toMatchObject({ message: 'net::ERR_QUIC_PROTOCOL_ERROR', toolCalls: 1 })
+      expect(mock.stream).toHaveBeenCalledTimes(2)
+      sender.send.mockClear()
+      await expect(authoringChats.sendAuthoringMessage(sender as never, c.id, 'Continue from the current draft', { kind: 'overview' }, 0, 1)).resolves.toMatchObject({ status: 'ok' })
+      await settled('authoringChat:done')
+      expect(mock.stream).toHaveBeenCalledTimes(3)
+      expect(authoring.getAuthoringCourse(courseId).draft).toEqual(draft.draft)
+    } finally { log.removeSink('quic-test') }
+  })
   it('loads validated context metadata from the on-disk catalog when offline', async () => {
     const directory = join(dataDir, 'users', owner, 'connections', 'models')
     mkdirSync(directory, { recursive: true })
@@ -101,18 +131,20 @@ describe('independent main-process AI routing', () => {
   })
   const titleCases = [
     { scope: 'chat', provider: 'apiKey' }, { scope: 'chat', provider: 'chatgpt' },
-    { scope: 'project', provider: 'apiKey' }, { scope: 'project', provider: 'chatgpt' }
+    { scope: 'project', provider: 'apiKey' }, { scope: 'project', provider: 'chatgpt' },
+    { scope: 'authoring', provider: 'apiKey' }, { scope: 'authoring', provider: 'chatgpt' }
   ] as const
-  function titleChat(scope: 'chat' | 'project') {
-    const created = scope === 'chat' ? chat.createChat(target.courseId, lesson) : project.createProjectChat(target)
+  function titleChat(scope: 'chat' | 'project' | 'authoring') {
+    const courseId = scope === 'authoring' ? authoring.createCourse().document.courseId : target.courseId
+    const created = scope === 'chat' ? chat.createChat(courseId, lesson) : scope === 'project' ? project.createProjectChat(target) : authoringChats.createAuthoringChat(courseId)
     return {
       id: created.id,
-      get: () => scope === 'chat' ? chat.getChat(created.id)! : project.getProjectChat(created.id),
-      list: () => scope === 'chat' ? chat.listChats(target.courseId) : project.listProjectChats(target),
-      send: (text: string) => scope === 'chat' ? chat.sendChatMessage(sender as never, created.id, text, undefined, lesson) : project.sendProjectMessage(sender as never, created.id, text),
-      remove: () => scope === 'chat' ? chat.deleteChat(created.id) : project.deleteProjectChat(created.id),
-      done: scope === 'chat' ? 'chat:done' : 'projectChat:done',
-      titleEvent: scope === 'chat' ? 'chat:title' : 'projectChat:title'
+      get: () => scope === 'chat' ? chat.getChat(created.id)! : scope === 'project' ? project.getProjectChat(created.id) : authoringChats.getAuthoringChat(created.id),
+      list: () => scope === 'chat' ? chat.listChats(courseId) : scope === 'project' ? project.listProjectChats(target) : authoringChats.listAuthoringChats(courseId),
+      send: (text: string) => scope === 'chat' ? chat.sendChatMessage(sender as never, created.id, text, undefined, lesson) : scope === 'project' ? project.sendProjectMessage(sender as never, created.id, text) : authoringChats.sendAuthoringMessage(sender as never, created.id, text, { kind: 'overview' }, 0, 0),
+      remove: () => scope === 'chat' ? chat.deleteChat(created.id) : scope === 'project' ? project.deleteProjectChat(created.id) : authoringChats.deleteAuthoringChat(created.id),
+      done: scope === 'chat' ? 'chat:done' : scope === 'project' ? 'projectChat:done' : 'authoringChat:done',
+      titleEvent: scope === 'chat' ? 'chat:title' : scope === 'project' ? 'projectChat:title' : 'authoringChat:title'
     }
   }
   it.each(['chat', 'project'] as const)('stops $0 generation on Save and rejects delayed chunks and completion', async (scope) => {
@@ -122,6 +154,8 @@ describe('independent main-process AI routing', () => {
       request = options; options.onDelta('Partial answer')
       return new Promise((resolve) => { release = resolve })
     })
+    let releaseTitle!: (result: unknown) => void
+    mock.title.mockImplementation(() => new Promise(resolve => { releaseTitle = resolve }))
     const c = titleChat(scope)
     await c.send('Explain'); await vi.waitFor(() => expect(mock.stream).toHaveBeenCalledOnce())
     const before = authoring.getAuthoringCourse(target.courseId)
@@ -135,8 +169,41 @@ describe('independent main-process AI routing', () => {
     release({ text: 'Late answer', aborted: false, citations: [], output: [] })
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(c.get().messages).toEqual(transcript)
-    expect(mock.title).not.toHaveBeenCalled()
+    expect(mock.title).toHaveBeenCalledOnce()
+    expect(mock.title.mock.calls[0][0].signal.aborted).toBe(true)
+    releaseTitle({ text: 'Late Title', aborted: false })
+    await new Promise(resolve => setImmediate(resolve))
+    expect(c.get().chat.title).toBe('Explain')
     if (scope === 'chat') expect(chat.isAnswering(c.id)).toBe(false)
+  })
+  it.each(['chat', 'project', 'authoring'] as const)('retries %s naming from only the first user message after a title request fails', async scope => {
+    const c = titleChat(scope)
+    mock.stream.mockImplementation(async (options: ChatStreamOptions) => {
+      const answer = mock.stream.mock.calls.length === 1 ? 'First answer' : 'Follow-up answer'
+      options.onDelta(answer)
+      return { text: answer, aborted: false, citations: [], output: [] }
+    })
+    mock.title.mockRejectedValueOnce(new Error('Temporary naming failure'))
+    await c.send('First question'); await settled(c.done)
+    await vi.waitFor(() => expect(mock.title).toHaveBeenCalledOnce())
+    sender.send.mockClear()
+    await c.send('Different follow-up'); await settled(c.titleEvent)
+    expect(mock.title.mock.calls[1][0].input[1]).toEqual({ role: 'user', content: JSON.stringify({ prompt: 'First question' }) })
+    expect(c.get().chat.title).toBe('Conversation Overview')
+  })
+  it.each(['chat', 'project', 'authoring'] as const)('keeps a single %s title request pending across follow-ups', async scope => {
+    const c = titleChat(scope)
+    let releaseTitle!: (result: unknown) => void
+    mock.title.mockImplementation(() => new Promise(resolve => { releaseTitle = resolve }))
+    await c.send('First question'); await settled(c.done)
+    sender.send.mockClear()
+    await c.send('Different follow-up'); await settled(c.done)
+    expect(mock.title).toHaveBeenCalledOnce()
+    expect(mock.title.mock.calls[0][0].input[1]).toEqual({ role: 'user', content: JSON.stringify({ prompt: 'First question' }) })
+    expect(c.get().chat.title).toBe('First question')
+    releaseTitle({ text: 'Initial Question Summary', aborted: false })
+    await settled(c.titleEvent)
+    expect(c.get().chat.title).toBe('Initial Question Summary')
   })
   it('refreshes lesson context after an edit while retaining its historical snapshot', async () => {
     const c = titleChat('chat')
@@ -168,6 +235,7 @@ describe('independent main-process AI routing', () => {
     await ai.setTitleGenerationSettings(config)
     const c = titleChat(scope)
     await c.send('Explain callbacks'); await settled(c.titleEvent)
+    await settled(c.done)
     expect(mock.stream.mock.calls[0][0]).toMatchObject({ provider, model: answerModel, key: provider === 'apiKey' ? 'sk-test-api' : 'subscription-token-one' })
     expect(mock.title.mock.calls[0][0]).toMatchObject({ ...config, key: titleProvider === 'apiKey' ? 'sk-test-api' : 'subscription-token-one' })
     expect(readPreferences().titleGeneration).toEqual(config)
@@ -217,7 +285,7 @@ describe('independent main-process AI routing', () => {
     await new Promise(resolve => setImmediate(resolve))
     expect(c.get().chat.title).toBe('Explain callbacks')
   })
-  it.each(titleCases)('names $scope chats through $provider after the answer, keeps prompt titles while streaming, and persists once', async ({ scope, provider }) => {
+  it.each(titleCases)('names $scope chats through $provider immediately from the first user message, and persists once', async ({ scope, provider }) => {
     const model = provider === 'apiKey' ? 'gpt-5.1' : 'gpt-5.3-codex'
     await ai.getAIModelSettings(scope, provider)
     await ai.setAIProfile(scope, provider, profile(model, 'high'))
@@ -241,9 +309,9 @@ describe('independent main-process AI routing', () => {
     await vi.waitFor(() => expect(releaseAnswer).toBeTypeOf('function'))
     expect(c.get().chat.title).toBe(prompt)
     expect(c.list().find(row => row.id === c.id)?.title).toBe(prompt)
-    expect(mock.title).not.toHaveBeenCalled()
-    releaseAnswer()
-    await settled(c.done)
+    await vi.waitFor(() => expect(mock.title).toHaveBeenCalledTimes(1))
+    expect(c.get().messages.filter(message => message.role !== 'context')).toHaveLength(1)
+    expect(sender.send.mock.calls.some(([name]) => name === c.done)).toBe(false)
     expect(mock.title).toHaveBeenCalledTimes(1)
     const request = mock.title.mock.calls[0][0] as ChatStreamOptions
     expect(request).toMatchObject({ provider, model, key: provider === 'apiKey' ? 'sk-test-api' : 'subscription-token-one' })
@@ -252,19 +320,25 @@ describe('independent main-process AI routing', () => {
     expect(request.webSearch).toBeUndefined()
     expect(request.input).toEqual([
       { role: 'system', content: TITLE_INSTRUCTIONS },
-      { role: 'user', content: JSON.stringify({ prompt, response: 'The event loop schedules callbacks.' }) }
+      { role: 'user', content: JSON.stringify({ prompt }) }
     ])
-    expect(c.get().chat.title).toBe(prompt)
+    releaseTitle({ text: '“Understanding the Event Loop”', aborted: false })
+    await settled(c.titleEvent)
+    expect(sender.send).toHaveBeenCalledWith(c.titleEvent, c.id, 'Understanding the Event Loop')
+    expect(c.get().chat.title).toBe('Understanding the Event Loop')
+    expect(c.list().find(row => row.id === c.id)?.title).toBe('Understanding the Event Loop')
+    expect(c.get().messages.filter(message => message.role !== 'context')).toHaveLength(1)
+    expect(sender.send.mock.calls.some(([name]) => name === c.done)).toBe(false)
+    releaseAnswer()
+    await settled(c.done)
     expect(c.get().messages.filter(message => message.role !== 'context')).toHaveLength(2)
     expect(c.get().messages.at(-1)?.generation).toEqual({ model, provider, reasoning: 'high' })
-    // Another message can complete while naming is pending, without starting a second title request.
+    // Follow-ups keep the generated title and never start a second request.
     sender.send.mockClear()
     expect(await c.send('Show an example')).toMatchObject({ status: 'ok' })
     await settled(c.done)
     expect(mock.title).toHaveBeenCalledTimes(1)
-    releaseTitle({ text: '“Understanding the Event Loop”', aborted: false })
-    await vi.waitFor(() => expect(c.get().chat.title).toBe('Understanding the Event Loop'))
-    expect(sender.send).toHaveBeenCalledWith(c.titleEvent, c.id, 'Understanding the Event Loop')
+    expect(c.get().chat.title).toBe('Understanding the Event Loop')
     expect(c.get().messages.filter(message => message.role !== 'context')).toHaveLength(4)
     closeDb()
     expect(c.list().find(row => row.id === c.id)?.title).toBe('Understanding the Event Loop')
@@ -272,7 +346,7 @@ describe('independent main-process AI routing', () => {
     await c.send('One more example'); await settled(c.done)
     expect(mock.title).toHaveBeenCalledTimes(1)
   })
-  it.each(['chat', 'project'] as const)('keeps completed %s answers successful when naming fails, and does not name stopped replies', async scope => {
+  it.each(['chat', 'project'] as const)('keeps %s answering independent of naming failures and stopped replies', async scope => {
     const c = titleChat(scope)
     mock.stream.mockImplementation(async (options: ChatStreamOptions) => {
       options.onDelta('A completed explanation')
@@ -284,15 +358,16 @@ describe('independent main-process AI routing', () => {
     expect(c.get().messages.at(-1)?.status).toBe('complete')
     expect(sender.send.mock.calls.some(([channel]) => channel.endsWith(':error'))).toBe(false)
     const stopped = titleChat(scope)
-    sender.send.mockClear(); mock.title.mockClear()
+    sender.send.mockClear(); mock.title.mockReset().mockResolvedValue({ text: 'Promise Scheduling', aborted: false, citations: [], output: [] })
     mock.stream.mockImplementation(async (options: ChatStreamOptions) => {
       options.onDelta('Partial explanation')
       return { text: 'Partial explanation', aborted: true, citations: [], output: [] }
     })
     await stopped.send('Explain promises'); await settled(stopped.done)
-    expect(stopped.get().chat.title).toBe('Explain promises')
+    await settled(stopped.titleEvent)
+    expect(stopped.get().chat.title).toBe('Promise Scheduling')
     expect(stopped.get().messages.at(-1)?.status).toBe('stopped')
-    expect(mock.title).not.toHaveBeenCalled()
+    expect(mock.title).toHaveBeenCalledOnce()
   })
   it.each(['chat', 'project'] as const)('keeps naming a %s while a frame in the page loads, and stops when the window reloads', async scope => {
     // A visualization's iframe fires did-start-loading on the whole window, as

@@ -156,7 +156,7 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .back-link svg { width: 15px; height: 15px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.75rem; padding: 4rem 1rem; }
 .empty-art { position: relative; width: 140px; height: 110px; display: grid; place-items: center; margin-bottom: 0.5rem; }
-.empty-art img { width: 64px; height: 64px; border-radius: 16px; box-shadow: var(--shadow-lg), 0 0 60px rgba(228, 228, 232, 0.12); }
+.empty-art img { width: 64px; height: 64px; filter: drop-shadow(0 0 12px rgba(228, 234, 255, 0.3)) drop-shadow(0 0 30px rgba(210, 222, 255, 0.15)); }
 .empty-state h2 { font-size: var(--text-xl); }
 .empty-text { color: var(--muted); max-width: 520px; }
 .empty-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin-top: 0.75rem; }
@@ -511,7 +511,9 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
   .site-nav { display: none; }
 }
 @media (max-width: 760px) {
-  .site-server, .site-divider, .header-search, .get-app span, .hero-search-field .oc-kbd { display: none; }
+  .site-divider, .header-search, .get-app span, .hero-search-field .oc-kbd { display: none; }
+  .site-header-start { flex-direction: column; align-items: flex-start; gap: 0.1rem; }
+  .site-server { max-width: 100%; font-size: 0.7rem; line-height: 1.2; }
   /* Tags become one row that scrolls sideways rather than a wall of chips. */
   .tag-row {
     flex-wrap: nowrap; overflow-x: auto; margin-left: calc(-1 * var(--gutter)); margin-right: calc(-1 * var(--gutter));

@@ -132,7 +132,7 @@ function Password() {
           <PasswordField label="Current password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
           <PasswordField label="New password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} error={issue} hint={<PasswordStrength password={next} />} />
         </div>
-        <div className="form-actions"><button type="submit" className="oc-btn" disabled={busy || !current || !next || Boolean(issue)}>{busy ? 'Saving…' : 'Change password'}</button></div>
+        <div className="form-actions"><button type="submit" className="oc-btn" disabled={busy || !current || !next || Boolean(issue)}>{busy ? 'Saving' : 'Change password'}</button></div>
       </form>
     </Section>
   )
@@ -185,7 +185,7 @@ function DangerZone() {
   const close = (): void => { setOpen(false); setConfirm(''); setPassword(''); setError(null) }
   return (
     <Section icon={<Trash2 />} title="Delete account" tone="danger" description="Deletes your account and every course you published, with all their versions. Learners keep the copies they added. This cannot be undone.">
-      <div className="form-actions start"><button type="button" className="oc-btn danger" onClick={() => setOpen(true)}><Trash2 aria-hidden />Delete my account…</button></div>
+      <div className="form-actions start"><button type="button" className="oc-btn danger" onClick={() => setOpen(true)}><Trash2 aria-hidden />Delete my account</button></div>
       <Dialog
         open={open}
         onClose={close}

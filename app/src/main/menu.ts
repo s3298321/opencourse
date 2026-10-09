@@ -39,7 +39,7 @@ function themeMenu(): MenuItemConstructorOptions {
     label: 'Theme',
     enabled: Boolean(currentUserId()),
     submenu: [
-      { label: `${BRAND.displayName} (no theme)`, type: 'radio', checked: !anyActive, click: () => pickTheme(null) },
+      { label: `${BRAND.displayName} Dark (default)`, type: 'radio', checked: !anyActive, click: () => pickTheme(null) },
       ...(themes.length ? [{ type: 'separator' } as const] : []),
       ...themes.map((theme): MenuItemConstructorOptions => ({
         label: theme.name,
@@ -49,7 +49,7 @@ function themeMenu(): MenuItemConstructorOptions {
         click: () => pickTheme(theme.id)
       })),
       { type: 'separator' },
-      { label: 'Manage Themes…', click: () => send('settings') }
+      { label: 'Manage Themes', click: () => send('settings') }
     ]
   }
 }
@@ -61,7 +61,7 @@ export function buildMenu(): void {
       submenu: [
         { role: 'about' },
         { type: 'separator' },
-        { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
+        { label: 'Settings', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -88,13 +88,13 @@ export function buildMenu(): void {
       label: 'Course',
       submenu: [
         { label: 'Library', accelerator: 'CmdOrCtrl+L', click: () => send('library') },
-        { label: 'Create Course…', accelerator: 'CmdOrCtrl+N', click: () => send('courseNew') },
-        { label: 'Import Course…', accelerator: 'CmdOrCtrl+I', click: () => send('import') },
-        { label: 'Switch User…', accelerator: 'CmdOrCtrl+Shift+U', click: () => send('users') },
+        { label: 'Create Course', accelerator: 'CmdOrCtrl+N', click: () => send('courseNew') },
+        { label: 'Import Course', accelerator: 'CmdOrCtrl+I', click: () => send('import') },
+        { label: 'Switch User', accelerator: 'CmdOrCtrl+Shift+U', click: () => send('users') },
         { type: 'separator' },
         { id: 'save-course', label: 'Save Course', accelerator: 'CmdOrCtrl+S', enabled: editorActive, click: () => send('saveCourse') },
         { type: 'separator' },
-        { label: 'Find in Course…', accelerator: 'CmdOrCtrl+F', click: () => send('search') },
+        { label: 'Find in Course', accelerator: 'CmdOrCtrl+F', click: () => send('search') },
         { type: 'separator' },
         { label: 'Previous Lesson', accelerator: 'CmdOrCtrl+[', click: () => send('prev') },
         { label: 'Next Lesson', accelerator: 'CmdOrCtrl+]', click: () => send('next') }
@@ -104,7 +104,7 @@ export function buildMenu(): void {
       label: 'Coach',
       submenu: [
         { label: 'Coaches', accelerator: 'CmdOrCtrl+Shift+C', click: () => send('coach') },
-        { label: 'New Coach…', click: () => send('coachNew') }
+        { label: 'New Coach', click: () => send('coachNew') }
       ]
     },
     {
@@ -132,11 +132,11 @@ export function buildMenu(): void {
         {
           // The app ships no courses and is tied to no one subject, so the only
           // help worth a menu item is how to write one.
-          label: 'Get the course format…',
+          label: 'Get the course format',
           click: () => void saveSpecBundle()
         },
         {
-          label: 'Get the theme format…',
+          label: 'Get the theme format',
           click: () => void saveThemeSpecBundle()
         }
       ]

@@ -10,11 +10,11 @@
 @keyframes oc-pop { from { opacity: 0; transform: scale(0.96); } }
 @keyframes oc-dialog { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
 @keyframes oc-toast { from { opacity: 0; transform: translateY(16px) scale(0.98); } }
-/* Size and brightness only. It used to turn 45 degrees at its peak, and a
-   four-point star on its corner reads as a square with whiskers. */
+/* A gentle breath and a few pixels of drift. Keep the rays upright and close
+   to full size so the small silhouettes don't collapse into chunky pixels. */
 @keyframes oc-twinkle {
-  0%, 100% { opacity: 0.25; transform: scale(0.6); }
-  50% { opacity: 1; transform: scale(1); }
+  0%, 100% { opacity: 0.35; transform: translate3d(0, 2px, 0) scale(0.88); }
+  50% { opacity: 0.9; transform: translate3d(0, -2px, 0) scale(1); }
 }
 @keyframes oc-aurora {
   0% { transform: translate3d(0, 0, 0) scale(1); }
@@ -23,7 +23,7 @@
 }
 @keyframes oc-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @keyframes oc-shine { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
-@keyframes oc-spin-star { 0% { transform: rotate(0) scale(0.85); } 50% { transform: rotate(90deg) scale(1); } 100% { transform: rotate(180deg) scale(0.85); } }
+@keyframes oc-spin-star { to { transform: rotate(360deg); } }
 @keyframes oc-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 @keyframes oc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
@@ -56,11 +56,15 @@
   }
 }
 
-/* A field of sparkles: each child is a .oc-sparkle positioned by the page. */
-.oc-twinkle { animation: oc-twinkle 4.8s ease-in-out infinite; }
-.oc-twinkle:nth-child(2n) { animation-duration: 6.2s; animation-delay: -1.4s; }
-.oc-twinkle:nth-child(3n) { animation-duration: 5.4s; animation-delay: -3.1s; }
-.oc-twinkle:nth-child(5n) { animation-duration: 7.1s; animation-delay: -2.2s; }
+/* Keep the ray and halo static; composite only transform and opacity.
+   Negative phases keep a newly opened page from pulsing in unison. */
+.oc-twinkle { animation: oc-twinkle 6.8s ease-in-out -2.4s infinite; }
+.oc-twinkle:nth-child(2n) { animation-duration: 8.2s; animation-delay: -5.1s; }
+.oc-twinkle:nth-child(3n) { animation-duration: 7.6s; animation-delay: -1.3s; }
+.oc-twinkle:nth-child(5n) { animation-duration: 9.4s; animation-delay: -6.7s; }
+@media (prefers-reduced-motion: no-preference) {
+  .oc-twinkle { will-change: transform, opacity; }
+}
 .oc-float { animation: oc-float 7s ease-in-out infinite; }
 
 /* Page-to-page: same-document transitions (the catalog web app) and

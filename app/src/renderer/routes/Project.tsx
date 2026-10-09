@@ -109,7 +109,7 @@ export default function Project({ courseId, moduleId, user, navigate, route, act
                         onSelect: () => setEditorId(editor.id)
                       }))}
                     />
-                      <button disabled={openingEditor || !editorId} onClick={() => void openEditor()}>{openingEditor ? 'Opening…' : `Open in ${workspace.editors.find((e) => e.id === editorId)?.label ?? 'editor'}`}</button></>}
+                      <button disabled={openingEditor || !editorId} onClick={() => void openEditor()}>{openingEditor ? 'Opening' : `Open in ${workspace.editors.find((e) => e.id === editorId)?.label ?? 'editor'}`}</button></>}
                     <button className="secondary" onClick={() => void window.opencourse.revealProject(target).catch((err: Error) => setError(err.message))}>Reveal in Finder</button>
                   </div>
                   {!workspace.editors.length && <p className="meta">Install Zed, Visual Studio Code, Cursor or Sublime Text to open the folder directly.</p>}

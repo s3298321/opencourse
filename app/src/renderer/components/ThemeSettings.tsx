@@ -1,11 +1,6 @@
 /**
- * Settings → Appearance: the themes this user has imported, and the app's own
- * look first among them.
- *
- * The first card is not a theme. It is the absence of one - styles.css as it
- * ships - so it cannot be removed and choosing it removes nothing either; it
- * just stops applying whatever theme was on. Every other card is a theme the
- * user imported, applied by choosing it, the same way View → Theme does.
+ * Settings → Appearance: the default dark look, built-in White, then imports.
+ * Built-in looks cannot be removed. Dark is the stylesheet without overrides.
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
@@ -148,14 +143,13 @@ export default function ThemeSection(): JSX.Element {
     <section className="settings-section settings-appearance">
       <h2>Appearance</h2>
       <p className="meta">
-        A theme changes how {BRAND.displayName} looks - colours, surfaces and their grain, pictures behind them,
-        fonts and the mark in the titlebar - and never what it does. Themes you import are yours alone; another
-        user on this Mac does not see them.
+        Choose Dark or White, included with {BRAND.displayName}, or import your own theme.
+        Dark is the default. Imported themes belong to your user on this Mac.
       </p>
       <div className="theme-grid">
         <ThemeCard
-          name={BRAND.displayName}
-          detail="The app's own look"
+          name={`${BRAND.displayName} Dark`}
+          detail="Built-in · Default"
           active={noneActive}
           swatch={DEFAULT_SWATCH}
           preview={null}
@@ -166,22 +160,22 @@ export default function ThemeSection(): JSX.Element {
           <ThemeCard
             key={theme.id}
             name={theme.name}
-            detail={[theme.author, theme.appearance === 'light' ? 'Light' : 'Dark'].filter(Boolean).join(' · ')}
+            detail={theme.builtin ? 'Built-in · Light' : [theme.author, theme.appearance === 'light' ? 'Light' : 'Dark'].filter(Boolean).join(' · ')}
             active={theme.active}
             swatch={theme.swatch}
             preview={theme.preview}
             notes={theme.notes}
             error={theme.error}
             onChoose={() => void choose(theme.id)}
-            onRemove={() => void remove(theme)}
+            onRemove={theme.builtin ? undefined : () => void remove(theme)}
           />
         ))}
       </div>
       <div className="actions">
         <button className="secondary settings-import-theme" disabled={busy} onClick={() => void importOne()}>
-          {busy ? 'Importing…' : 'Import Theme…'}
+          {busy ? 'Importing' : 'Import Theme'}
         </button>
-        <button className="ghost" onClick={() => void window.opencourse.saveThemeSpec()}>Get the theme format…</button>
+        <button className="ghost" onClick={() => void window.opencourse.saveThemeSpec()}>Get the theme format</button>
       </div>
       {note && <p className={`import-note${note.error ? ' error' : ''}`}>{note.text}</p>}
       <p className="meta">If a theme ever makes this page hard to read, View → Theme in the menu bar always works.</p>

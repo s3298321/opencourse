@@ -69,15 +69,14 @@ Programming courses may include exercises that run your code and check it.
 **Open editor** on an exercise opens the workbench: the brief, an editor, a
 terminal, and **Run checks**. The exercise is complete when its checks pass.
 
-Exercises run on your Mac, with tools you install once:
+Python exercises run on your Mac using Python bundled with OpenCourse. You do
+not need to install Python or the Xcode Command Line Tools. Each course gets its
+own local virtual environment; installing pytest and course packages may require
+internet access the first time. Update OpenCourse when a course needs a newer
+Python version.
 
-| Language | What OpenCourse needs |
-| --- | --- |
-| Python | Python 3.11 or later, from [python.org](https://www.python.org/downloads/macos/) or Homebrew. Each course gets its own virtual environment. |
-| C | The Xcode Command Line Tools: run `xcode-select --install` in Terminal. |
-| LLVM IR | The same Command Line Tools, or Homebrew's `llvm`. |
-
-If a tool is missing, the exercise says which one, and how to get it.
+Projects may use any language. Follow the project's instructions to install and
+configure the required tools yourself.
 
 ## AI features
 

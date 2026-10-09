@@ -21,8 +21,10 @@ vi.mock('electron', () => ({
 }))
 
 const { createUser, deleteUser, listUsers, switchUser } = await import('../src/main/users')
-const { applyTheme, getActiveTheme, importThemeZip, listThemes, removeTheme, themeFontData, themeImageFile } = await import('../src/main/themes')
+const { activeThemeNative, applyTheme, getActiveTheme, importThemeZip, listThemes, removeTheme, themeFontData, themeImageFile } = await import('../src/main/themes')
 const { readPreferences } = await import('../src/main/preferences')
+const { WHITE_THEME_ID } = await import('../src/core/theme/builtin-ids')
+const importedThemes = () => listThemes().filter((theme) => !theme.builtin)
 
 /** A real 1×1 PNG: sniffed as one, two pixels short of nothing. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
@@ -70,7 +72,7 @@ describe('importThemeZip', () => {
     expect(result.replaced).toBe(false)
     expect(result.theme).toMatchObject({ portableId: 'paper', name: 'Paper', appearance: 'light', active: false })
     expect(result.theme.id).toMatch(/^[0-9a-f-]{36}$/)
-    expect(listThemes().map((t) => t.name)).toEqual(['Paper'])
+    expect(importedThemes().map((t) => t.name)).toEqual(['Paper'])
     expect(result.theme.swatch).toHaveLength(4)
   })
 
@@ -88,7 +90,7 @@ describe('importThemeZip', () => {
       expect(result.status, member.name).toBe('rejected')
       if (result.status === 'rejected') expect(result.message, member.name).toMatch(reason)
     }
-    expect(listThemes()).toEqual([])
+    expect(importedThemes()).toEqual([])
   })
 
   it('refuses what is not a theme, and leaves the installed ones alone', async () => {
@@ -100,7 +102,7 @@ describe('importThemeZip', () => {
     ] as ZipMember[][]) {
       expect((await importThemeZip(zip(members), keep)).status).toBe('rejected')
     }
-    expect(listThemes().map((t) => t.name)).toEqual(['Paper'])
+    expect(importedThemes().map((t) => t.name)).toEqual(['Paper'])
   })
 
   it('imports with notes rather than refusing a theme with a bad field', async () => {
@@ -124,7 +126,7 @@ describe('importThemeZip', () => {
     expect(second.replaced).toBe(true)
     expect(second.theme.id).toBe(first.theme.id)
     expect(second.theme.active).toBe(true)
-    expect(listThemes().map((t) => t.name)).toEqual(['Paper, revised'])
+    expect(importedThemes().map((t) => t.name)).toEqual(['Paper, revised'])
     const active = getActiveTheme()
     expect(active.id === null ? null : active.name).toBe('Paper, revised')
   })
@@ -132,9 +134,9 @@ describe('importThemeZip', () => {
   it('keeps both when asked, and cancels without touching anything', async () => {
     await importThemeZip(zip(good()), keep)
     expect((await importThemeZip(zip(good()), async () => 'cancel')).status).toBe('cancelled')
-    expect(listThemes()).toHaveLength(1)
+    expect(importedThemes()).toHaveLength(1)
     expect((await importThemeZip(zip(good()), keep)).status).toBe('ok')
-    expect(listThemes()).toHaveLength(2)
+    expect(importedThemes()).toHaveLength(2)
   })
 })
 
@@ -180,7 +182,7 @@ describe('applying and removing', () => {
     applyTheme(result.theme.id)
     expect(removeTheme(result.theme.id)).toEqual({ wasActive: true })
     expect(getActiveTheme()).toEqual({ id: null })
-    expect(listThemes()).toEqual([])
+    expect(importedThemes()).toEqual([])
   })
 
   it('belongs to one user: another sees none of it, and a missing theme reads as none', async () => {
@@ -189,7 +191,7 @@ describe('applying and removing', () => {
     applyTheme(result.theme.id)
     const ada = listUsers()[0]!.id
     createUser('Grace')
-    expect(listThemes()).toEqual([])
+    expect(importedThemes()).toEqual([])
     expect(getActiveTheme()).toEqual({ id: null })
     expect(themeImageFile(result.theme.id, 'images/linen.png')).toBeNull()
     switchUser(ada)
@@ -204,10 +206,46 @@ describe('applying and removing', () => {
     const user = listUsers()[0]!.id
     const file = join(dataDir, 'users', user, 'themes', result.theme.id, 'files', 'theme.json')
     writeFileSync(file, '{ broken')
-    const [listed] = listThemes()
+    const [listed] = importedThemes()
     expect(listed?.error).toMatch(/not valid JSON/)
     expect(() => applyTheme(result.theme.id)).toThrow(/cannot be applied/)
     removeTheme(result.theme.id)
     expect(existsSync(file)).toBe(false)
+  })
+})
+
+
+describe('built-in White theme', () => {
+  it('ships for every user while dark stays the initial default', () => {
+    expect(getActiveTheme()).toEqual({ id: null })
+    expect(activeThemeNative()).toBeNull()
+    expect(listThemes()).toMatchObject([{ id: WHITE_THEME_ID, builtin: true, active: false, appearance: 'light' }])
+    createUser('Grace')
+    expect(listThemes()).toMatchObject([{ id: WHITE_THEME_ID, builtin: true, active: false }])
+    expect(getActiveTheme()).toEqual({ id: null })
+  })
+
+  it('persists White per user, preserves the logo, and returns to dark', () => {
+    const ada = listUsers()[0]!.id
+    const active = applyTheme(WHITE_THEME_ID)
+    expect(active).toMatchObject({ id: WHITE_THEME_ID, appearance: 'light', logo: null, faces: [] })
+    expect(readPreferences().theme).toBe(WHITE_THEME_ID)
+    expect(activeThemeNative()).toEqual({ appearance: 'light', vibrancy: true, background: '#f7f7f9' })
+    expect(listThemes()[0].active).toBe(true)
+    createUser('Grace')
+    expect(getActiveTheme()).toEqual({ id: null })
+    switchUser(ada)
+    expect(getActiveTheme()).toEqual(active)
+    expect(applyTheme(null)).toEqual({ id: null })
+    expect(readPreferences().theme).toBeUndefined()
+    expect(activeThemeNative()).toBeNull()
+  })
+
+  it('cannot remove a built-in theme or serve imported assets through its id', () => {
+    applyTheme(WHITE_THEME_ID)
+    expect(() => removeTheme(WHITE_THEME_ID)).toThrow(/Built-in themes cannot be removed/)
+    expect(getActiveTheme().id).toBe(WHITE_THEME_ID)
+    expect(() => themeFontData(WHITE_THEME_ID, 0)).toThrow(/applied theme/)
+    expect(themeImageFile(WHITE_THEME_ID, 'images/mark.png')).toBeNull()
   })
 })

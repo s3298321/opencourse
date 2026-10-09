@@ -25,8 +25,8 @@ const build = [
       <h1 class="oc-silver-text">Download OpenCourse</h1>
       {release
         ? <p class="dl-lede">Version {release.version}, released {formatDate(release.publishedAt)}.</p>
-        : <p class="dl-lede">The first release is on its way. Until then, OpenCourse builds from source in a few minutes.</p>}
-      {release ? <DownloadButton meta={false} note={false} /> : <a class="oc-btn xl secondary" href={SITE.releasesUrl} rel="noopener noreferrer"><Icon name="github" size={18} />Watch for the first release</a>}
+        : <p class="dl-lede">No release is available to download yet. You can build OpenCourse from source using the instructions below.</p>}
+      {release ? <DownloadButton meta={false} note={false} /> : <a class="oc-btn xl secondary" href={SITE.releasesUrl} rel="noopener noreferrer"><Icon name="github" size={18} />Check releases on GitHub</a>}
       <ul class="dl-facts">
         <li><Icon name="laptop" size={16} />Apple silicon Macs</li>
         <li><Icon name="check" size={16} />{SITE.minimumMacOS} or later</li>
@@ -79,7 +79,7 @@ const build = [
     <section class="dl-section dl-more oc-reveal">
       <a class="oc-card oc-glow more-card" data-glow href={SITE.releasesUrl} rel="noopener noreferrer"><Icon name="git-branch" /><div><strong>Every release</strong><span>Older versions and notes on GitHub</span></div><Icon name="arrow-up-right" size={16} /></a>
       <a class="oc-card oc-glow more-card" data-glow href="/docs/getting-started"><Icon name="graduation-cap" /><div><strong>Getting started</strong><span>Your first course, step by step</span></div><Icon name="arrow-right" size={16} /></a>
-      <a class="oc-card oc-glow more-card" data-glow href={SITE.catalogUrl}><Icon name="book-open" /><div><strong>Find a course</strong><span>Browse the public catalog</span></div><Icon name="arrow-up-right" size={16} /></a>
+      <a class="oc-card oc-glow more-card" data-glow href={SITE.catalogUrl} target="_blank" rel="noopener noreferrer"><Icon name="book-open" /><div><strong>Find a course</strong><span>Browse the public catalog</span></div><Icon name="arrow-up-right" size={16} /></a>
     </section>
   </div>
 </Base>

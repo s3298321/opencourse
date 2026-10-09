@@ -18,7 +18,7 @@ import { createRenderer, type MarkdownRenderer } from '@core/markdown'
 import { validateManifest } from '@core/schema'
 import { CURRENT_SCHEMA_VERSION } from '@core/course-document'
 import { getToolchain, outputMatch, resolveRuntime, TOOLCHAIN_IDS } from '@core/toolchains'
-import type { CourseManifest, ExerciseBlock } from '@core/types'
+import type { CourseManifest } from '@core/types'
 import { committedCourseDirs, CONTENT_DIR, contentCourseDirs, fixtureCourseDirs } from './helpers/courses'
 
 /** Set by `npm run validate:content`: the gate over content/. */
@@ -158,9 +158,8 @@ describe.each(COURSE_DIRS)('%s', (dir) => {
 
 describe.each([
   { slug: 'intro-to-data-science', language: 'python', lessons: 53, quizzes: 84, exercises: 20,
-    projects: ['data-audit-project', 'experiment-decision-project', 'churn-handoff-project'] },
-  { slug: 'operating-systems-and-c', language: 'c', lessons: 30, quizzes: 60, exercises: 21,
-    projects: ['stream-counter', 'file-copy', 'small-launcher'] }
+    projects: ['data-audit-project', 'experiment-decision-project', 'churn-handoff-project'] }
+
 ].filter(({ slug }) => authored(slug)))('content/$slug', ({ slug, language, lessons, quizzes, exercises, projects }) => {
   const dir = join(CONTENT_DIR, slug)
   const manifest = JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
@@ -209,102 +208,6 @@ describe.each([...fixtureCourseDirs(), ...CONTENT])('%s authoring format', (dir)
         expect(recaps, lesson.slug).toHaveLength(1)
         const firstQuiz = lesson.blocks.findIndex((b) => b.type === 'quiz')
         if (firstQuiz >= 0) expect(lesson.blocks.indexOf(recaps[0]), lesson.slug).toBeLessThan(firstQuiz)
-        for (const block of lesson.blocks) {
-          if (block.type === 'quiz') expect(block.explanation, block.id).toBeTruthy()
-        }
-      }
-    }
-  })
-})
-
-const skipLlvm = !authored('intro-to-llvm')
-describe.skipIf(skipLlvm)('content/intro-to-llvm', () => {
-  const dir = join(CONTENT_DIR, 'intro-to-llvm')
-  const manifest = skipLlvm ? (undefined as never) : JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
-  const course = skipLlvm ? (undefined as never) : buildCourse(manifest, dir)
-
-  const exercises = (): ExerciseBlock[] =>
-    course.modules.flatMap((m) => (m.lessons ?? []).flatMap((l) => l.blocks.filter((b) => b.type === 'exercise')))
-  const inLanguage = (language: string): ExerciseBlock[] =>
-    exercises().filter((block) => resolveRuntime(manifest, block).language === language)
-
-  it('is the whole course', () => {
-    expect(course.modules).toHaveLength(8)
-    expect(course.flatItems.filter((item) => item.kind === 'project').map((item) => item.moduleId))
-      .toEqual(['project-a-real-pass'])
-    expect(course.flatLessons).toHaveLength(23)
-    expect(course.quizIds).toHaveLength(92)
-    expect(course.exerciseIds).toHaveLength(22)
-  })
-
-  it('frames every lesson', () => {
-    for (const mod of course.modules) {
-      for (const lesson of mod.lessons ?? []) {
-        expect(lesson.objectives?.length, lesson.slug).toBeGreaterThan(2)
-        expect(lesson.estimated_minutes, lesson.slug).toBeGreaterThan(0)
-        const takeaways = lesson.blocks.filter(
-          (b) => b.type === 'markdown' && b.content.startsWith('## Key takeaways')
-        )
-        expect(takeaways, lesson.slug).toHaveLength(1)
-      }
-    }
-  })
-
-  it('writes IR first and drives LLVM from Python after', () => {
-    expect(exercises().map((block) => resolveRuntime(manifest, block).language).every(
-      (language) => language === 'llvm-ir' || language === 'python'
-    )).toBe(true)
-    expect(inLanguage('llvm-ir')).toHaveLength(9)
-    expect(inLanguage('python')).toHaveLength(13)
-    for (const block of exercises()) {
-      expect(block.solution, block.id).toBeTruthy()
-      expect(block.starter_code, block.id).toBeTruthy()
-    }
-  })
-
-  it('grades hand-written IR with a C harness that owns main and says what failed', () => {
-    for (const block of inLanguage('llvm-ir')) {
-      if (!block.tests) {
-        // The program shape: the learner's IR is the whole program.
-        expect(block.expected_output, block.id).toBeTruthy()
-        expect(block.solution, block.id).toContain('define i32 @main(')
-        continue
-      }
-      expect(block.tests, block.id).toContain('int main(void)')
-      expect(block.solution, block.id).not.toMatch(/define [^@]*@main\(/)
-      const header = (block.extra_files ?? []).find((f) => f.path === 'exercise.h')
-      expect(header?.content, `${block.id} ships no exercise.h`).toContain('#ifndef')
-      expect(block.tests, block.id).toContain('"exercise.h"')
-      expect(block.tests, block.id).toMatch(/checks passed/)
-      // Output is piped, so it is fully buffered: a learner's IR that crashes
-      // would otherwise take every FAIL line printed before it down with it.
-      expect(block.tests, block.id).toContain('setvbuf(stdout, NULL, _IONBF, 0)')
-    }
-  })
-
-  it('pins llvmlite and makes it print modern opaque pointers', () => {
-    for (const block of inLanguage('python')) {
-      expect(resolveRuntime(manifest, block).packages, block.id).toContain('llvmlite>=0.50')
-      expect(block.tests, block.id).toContain('import exercise')
-      const conftest = (block.extra_files ?? []).find((f) => f.path === 'conftest.py')
-      expect(conftest?.content, `${block.id} ships no conftest.py`).toContain(
-        'os.environ["LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS"] = "0"'
-      )
-    }
-  })
-
-  it('gives the project a build, a test runner and a first passing test', () => {
-    const project = manifest.modules.find((m) => m.type === 'project')?.project
-    const paths = (project?.starter_files ?? []).map((f) => f.path)
-    expect(paths).toEqual(expect.arrayContaining(['StrengthReduce.cpp', 'build.sh', 'run_tests.sh', 'tests/mul.ll']))
-    const test = project?.starter_files?.find((f) => f.path === 'tests/mul.ll')?.content ?? ''
-    expect(test).toContain('; RUN:')
-    expect(test).toContain('CHECK-LABEL')
-  })
-
-  it('explains every quiz', () => {
-    for (const mod of course.modules) {
-      for (const lesson of mod.lessons ?? []) {
         for (const block of lesson.blocks) {
           if (block.type === 'quiz') expect(block.explanation, block.id).toBeTruthy()
         }

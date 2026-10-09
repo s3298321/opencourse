@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CourseEditor from '../src/renderer/routes/CourseEditor'
 import type { AuthoringCourse } from '../src/core/course-document'
-import type { AuthoringTarget, ChatSummary } from '../src/core/types'
+import type { AuthoringTarget, ChatSendResult, ChatSummary } from '../src/core/types'
 vi.mock('../src/renderer/components/TitleBar', () => ({ default: () => null }))
 vi.mock('../src/renderer/routes/CourseEditorFields', () => ({
   EditorAttachments: ({ children }: { children: unknown }) => children,
@@ -18,7 +18,12 @@ vi.mock('../src/renderer/routes/CourseEditorPreview', () => ({
   FlashcardPreview: ({ card }: { card: { question: string } }) => createElement('p', null, card.question)
 }))
 let root: Root | undefined
-beforeEach(() => { localStorage.clear(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} }) })
+beforeEach(() => {
+  localStorage.clear()
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }))
+})
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals() })
 async function fixture(existingChats: string[] = [], saved = false) {
   const initial = { schema_version: '1.3', slug: 'demo', title: 'Demo', modules: [{ nodeId: 'module', slug: 'module', title: 'Module', lessons: [{ nodeId: 'lesson', slug: 'lesson', title: 'Lesson', blocks: [{ nodeId: 'block', type: 'markdown' as const, slug: 'intro', content: 'Initial content' }] }] }] }
@@ -28,7 +33,7 @@ async function fixture(existingChats: string[] = [], saved = false) {
   let chats: ChatSummary[] = []
   const summary = (id: string): ChatSummary => ({ id, courseId: 'demo', model: 'gpt-5.1', reasoning: null, provider: 'apiKey', title: '', messages: 0, startedIn: null, createdAt: 'now', updatedAt: 'now' })
   chats = existingChats.map(summary)
-  const send = vi.fn(async () => ({ status: 'ok', seq: 0 }))
+  const send = vi.fn(async (): Promise<ChatSendResult> => ({ status: 'ok', seq: 0 }))
   const stop = vi.fn(async () => {})
   const api = {
     getAuthoringCourse: async () => structuredClone(state),
@@ -65,13 +70,31 @@ async function highlight(node: Node, text: string) {
   await act(async () => node.parentElement!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })))
 }
 describe('course editor AI mode', () => {
+  it('moves an Enter submission out of the composer immediately and restores it if sending fails', async () => {
+    const f = await fixture()
+    await act(async () => f.button('AI').click())
+    let finish!: (result: ChatSendResult) => void
+    f.send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await f.type('Make the lessons read like a book')
+    const input = f.container.querySelector<HTMLTextAreaElement>('.sidechat-input')!
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(input.value).toBe('')
+    expect(f.container.querySelector('.chat-turn.user')?.textContent).toContain('Make the lessons read like a book')
+    expect(f.container.querySelector('.sidechat-tab')?.getAttribute('title')).toBe('Make the lessons read like a book')
+    expect(f.container.querySelector('.sidechat-tab')?.textContent).toContain('Make the lessons read like')
+    expect(f.send).toHaveBeenCalledOnce()
+    await act(async () => finish({ status: 'failed', message: 'Connection unavailable' }))
+    expect(input.value).toBe('Make the lessons read like a book')
+    expect(f.container.querySelector('.chat-turn.user')).toBeNull()
+    expect(f.container.querySelector('.sidechat-tab')?.textContent).toContain('New chat')
+  })
   it('adds flashcards outside blocks, selects and duplicates them, and upgrades the draft to the current format in the edit session', async () => {
     const f = await fixture()
     await act(async () => f.button('+ Add card').click())
     expect(f.container.querySelector('[aria-label="Move card to lesson"]')).toBeNull()
     expect(f.container.querySelector('.outline-row.selected')?.getAttribute('aria-label')).toBe('Flashcard: card')
     await f.flush()
-    expect(f.state().draft.manifest).toMatchObject({ schema_version: '1.5', version: '0.1.0' })
+    expect(f.state().draft.manifest).toMatchObject({ schema_version: '1.6', version: '0.1.0' })
     expect(f.state().draft.manifest.modules[0].lessons![0].blocks).toHaveLength(1)
     expect(f.state().draft.manifest.modules[0].lessons![0].flashcards).toHaveLength(1)
     await act(async () => f.button('Duplicate').click())
@@ -233,7 +256,7 @@ describe('course editor saving', () => {
     expect(saveState(f)).toBe('All changes saved')
     expect(f.button('Save').disabled).toBe(true)
     expect(f.button('Discard draft')).toBeUndefined()
-    expect(f.button('Save & export ZIP…')).toBeUndefined()
+    expect(f.button('Save & export ZIP')).toBeUndefined()
     await act(async () => f.button('+ Add card').click())
     expect(saveState(f)).toBe('Unsaved changes')
     expect(f.onDirty).toHaveBeenLastCalledWith(true)

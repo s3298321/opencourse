@@ -25,6 +25,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AIConnection, AIProvider, AIScope, ChatDefaults, ChatPickerModels, ChatSendResult, ChatLessonRef, ChatModel, ChatQuote, ChatSummary, ChatMessage, ReasoningEffort } from '@core/types'
 import { modelReasoning } from '@core/ai'
+import { MAX_MESSAGE_CHARS } from '@core/sidechat/thread'
+import { REVIEW_REQUEST } from '@core/projects/prompt'
 
 /** Fast enough to read as typing, slow enough to cost nothing. */
 const TICK_MS = 100
@@ -35,6 +37,7 @@ export const isDraft = (id: string | null | undefined): boolean => !!id?.startsW
 
 export type PanelSummary = Omit<ChatSummary, 'startedIn'> & { startedIn?: ChatLessonRef | null; historyLabel?: string }
 export interface PanelThread { chat: PanelSummary; messages: ChatMessage[] }
+interface PendingMessage { chat: PanelSummary; message: ChatMessage; afterSeq: number }
 export interface ChatPanel {
   chats: PanelSummary[]
   tabs: PanelSummary[]
@@ -144,6 +147,12 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   const unlistedRef = useRef(unlisted)
   const defaults = useRef<ChatDefaults & { provider: AIProvider }>({ model: '', reasoning: null, provider: 'apiKey' })
   const sending = useRef(false)
+  const [pendingMessages, setPendingMessages] = useState<ReadonlyMap<string, PendingMessage>>(new Map())
+  const pendingRef = useRef(pendingMessages)
+  const keepPending = useCallback((change: (next: Map<string, PendingMessage>) => void): void => {
+    const next = new Map(pendingRef.current); change(next)
+    pendingRef.current = next; setPendingMessages(next)
+  }, [])
 
   /** Live delta buffers, per chat. Only the active one is ever rendered. */
   const buffers = useRef(new Map<string, string>())
@@ -166,9 +175,15 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     if (isDraft(id)) return
     try {
       const next = await transport.get(id)
+      const pending = pendingRef.current.get(id)
+      if (next) {
+        setChats(current => current.map(chat => chat.id === id ? next.chat : chat))
+        keepUnlisted(current => { if (current.has(id)) current.set(id, next.chat) })
+        if (pending && next.messages.some(message => message.role === 'user' && message.seq > pending.afterSeq && message.text === pending.message.text)) keepPending(messages => messages.delete(id))
+      }
       if (activeRef.current === id) setThread(next)
     } catch (err) { if (activeRef.current === id) setError((err as Error).message) }
-  }, [transport])
+  }, [transport, keepPending, keepUnlisted])
 
   const refreshList = useCallback(async (): Promise<void> => {
     try { setChats(await transport.list()) } catch (err) { setError((err as Error).message) }
@@ -274,6 +289,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
       if (activeRef.current === id) setActivity(message)
     })
     const offTitle = transport.onTitle((id, title) => {
+      keepUnlisted(next => { const chat = next.get(id); if (chat) next.set(id, { ...chat, title }) })
       setChats(current => current.map(chat => chat.id === id ? { ...chat, title } : chat))
       setThread(current => current?.chat.id === id ? { ...current, chat: { ...current.chat, title } } : current)
       void refreshList()
@@ -285,7 +301,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
       offDone()
       offError()
     }
-  }, [loadThread, refreshList, transport])
+  }, [loadThread, refreshList, transport, keepUnlisted])
 
   // The throttle: only runs while something is actually streaming.
   useEffect(() => {
@@ -393,54 +409,71 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
 
   const send = useCallback(
     async (text: string, quote?: ChatQuote, review = false): Promise<boolean> => {
-      if (!activeId || sending.current) return false
+      text = (review ? REVIEW_REQUEST : text).trim().slice(0, MAX_MESSAGE_CHARS)
+      if (!activeId || sending.current || buffers.current.has(activeId) || !text) return false
       setError(null)
       const draft = isDraft(activeId) ? unlistedRef.current.get(activeId) : undefined
+      const summary = draft ?? chats.find(chat => chat.id === activeId) ?? thread?.chat
+      if (!summary) return false
+      sending.current = true
       let sendingId = activeId
-      if (draft) {
-        sending.current = true
-        try { sendingId = (await materialize(draft)).id }
-        catch (err) { setError((err as Error).message); return false }
-        finally { sending.current = false }
+      const afterSeq = thread?.chat.id === activeId ? thread.messages.at(-1)?.seq ?? -1 : -1
+      const optimistic: PendingMessage = {
+        chat: summary, afterSeq,
+        message: { role: 'user', text, seq: afterSeq + 1, at: new Date().toISOString(), ...(quote ? { quote } : {}) }
       }
-      const undo = async (): Promise<void> => { if (draft) await unmaterialize(sendingId, draft) }
-      // Prepare before IPC: a very fast answer can finish before invoke resolves.
+      // Show the question and its title before creating a chat, flushing edits,
+      // or preparing credentials. A thread read can replace it once saved.
+      keepPending(next => next.set(sendingId, optimistic))
       buffers.current.set(sendingId, '')
       setStreaming('')
       setBusy((current) => new Set(current).add(sendingId))
       const clearPending = (): void => {
+        keepPending(next => next.delete(sendingId))
         buffers.current.delete(sendingId)
         if (activeRef.current === sendingId) setStreaming(null)
         setBusy((current) => { const next = new Set(current); next.delete(sendingId); return next })
       }
-      let result
-      try { result = await transport.send(sendingId, text, quote, review) }
-      catch (err) { clearPending(); await undo(); setError((err as Error).message); return false }
-      if (result.status !== 'ok') { clearPending(); await undo() }
-      if (result.status === 'connection-required') {
-        await refreshKey()
-        setError(result.message)
-        return false
-      }
-      if (result.status === 'no-key') {
-        await refreshKey()
-        setError('Chat needs an OpenAI key.')
-        return false
-      }
-      if (result.status === 'busy') {
-        setError('That chat is still answering. Wait for it, or stop it.')
-        return false
-      }
-      if (result.status === 'failed') {
-        setError(result.message)
-        return false
-      }
-      await loadThread(sendingId)
-      await refreshList()
-      keepUnlisted(next => next.delete(sendingId))
-      return true
+      try {
+        if (draft) {
+          try {
+            sendingId = (await materialize(draft)).id
+            keepPending(next => { next.delete(draft.id); next.set(sendingId, optimistic) })
+            buffers.current.delete(draft.id)
+            buffers.current.set(sendingId, '')
+            setBusy(current => { const next = new Set(current); next.delete(draft.id); next.add(sendingId); return next })
+          } catch (err) { clearPending(); setError((err as Error).message); return false }
+        }
+        const undo = async (): Promise<void> => { if (draft) await unmaterialize(sendingId, draft) }
+        let result
+        try { result = await transport.send(sendingId, text, quote, review) }
+        catch (err) { clearPending(); await undo(); setError((err as Error).message); return false }
+        if (result.status !== 'ok') { clearPending(); await undo() }
+        if (result.status === 'connection-required') {
+          await refreshKey()
+          setError(result.message)
+          return false
+        }
+        if (result.status === 'no-key') {
+          await refreshKey()
+          setError('Chat needs an OpenAI key.')
+          return false
+        }
+        if (result.status === 'busy') {
+          setError('That chat is still answering. Wait for it, or stop it.')
+          return false
+        }
+        if (result.status === 'failed') {
+          setError(result.message)
+          return false
+        }
+        await loadThread(sendingId)
+        await refreshList()
+        keepUnlisted(next => next.delete(sendingId))
+        return true
+      } finally { sending.current = false }
     },
-    [activeId, transport, loadThread, refreshKey, refreshList, materialize, unmaterialize, keepUnlisted]
+    [activeId, chats, thread, transport, loadThread, refreshKey, refreshList, materialize, unmaterialize, keepUnlisted, keepPending]
   )
 
   const stop = useCallback(() => {
@@ -517,11 +550,21 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   )
 
   const tabs = useMemo(
-    () => tabIds.map((id) => chats.find((c) => c.id === id) ?? unlisted.get(id)).filter((c): c is PanelSummary => c !== undefined),
-    [tabIds, chats, unlisted]
+    () => tabIds.map((id) => {
+      const chat = chats.find(c => c.id === id) ?? unlisted.get(id)
+      const pending = pendingMessages.get(id)
+      return chat && pending && !chat.title ? { ...chat, title: pending.message.text.slice(0, 120) } : chat
+    }).filter((c): c is PanelSummary => c !== undefined),
+    [tabIds, chats, unlisted, pendingMessages]
   )
   const draft = activeId && isDraft(activeId) ? unlisted.get(activeId) : undefined
-  const shown = useMemo(() => draft ? { chat: draft, messages: [] } : thread, [draft, thread])
+  const shown = useMemo(() => {
+    const pending = activeId ? pendingMessages.get(activeId) : undefined
+    const base = draft ? { chat: draft, messages: [] } : thread
+    if (!pending) return base
+    const chat = base?.chat ?? pending.chat
+    return { chat: chat.title ? chat : { ...chat, title: pending.message.text.slice(0, 120) }, messages: [...(base?.messages ?? []), pending.message] }
+  }, [activeId, draft, thread, pendingMessages])
 
   return {
     chats,

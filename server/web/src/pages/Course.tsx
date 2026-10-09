@@ -155,10 +155,10 @@ export function CoursePage() {
         </aside>
       </div>
 
-      <Dialog open={adding} onClose={() => setAdding(false)} title="Add this course in OpenCourse" description="Courses are learned in the OpenCourse app, where your progress stays on your Mac." footer={<><a className="oc-btn secondary" href={server.appUrl}><Download aria-hidden />Get the app</a><button type="button" className="oc-btn" onClick={() => setAdding(false)}>Done</button></>}>
+      <Dialog open={adding} onClose={() => setAdding(false)} title="Add this course in OpenCourse" description="Add the course to the Mac app to read its lessons and save your progress locally." footer={<><a className="oc-btn secondary" href={server.appUrl}><Download aria-hidden />Get the app</a><button type="button" className="oc-btn" onClick={() => setAdding(false)}>Done</button></>}>
         <ol className="dialog-steps">
-          <li><span className="how-n">1</span><div><strong>Open OpenCourse</strong><p>Free for Mac. Download it if you have not yet.</p></div></li>
-          <li><span className="how-n">2</span><div><strong>Connect to this server</strong><p>Go to <strong>Settings ▸ Servers ▸ Connect to a server…</strong> and enter:</p><div className="server-address"><code>{server.publicUrl.replace(/^https?:\/\//, '')}</code><CopyButton text={server.publicUrl} /></div></div></li>
+          <li><span className="how-n">1</span><div><strong>Open OpenCourse</strong><p>Download and install the Mac app if needed.</p></div></li>
+          <li><span className="how-n">2</span><div><strong>Connect to this server</strong><p>Go to <strong>Settings ▸ Servers ▸ Connect to a server</strong> and enter:</p><div className="server-address"><code>{server.publicUrl.replace(/^https?:\/\//, '')}</code><CopyButton text={server.publicUrl} /></div></div></li>
           <li><span className="how-n">3</span><div><strong>Add the course</strong><p>Open the <strong>Course catalog</strong> tab, find “{course.title}” and choose <strong>Add</strong>.</p></div></li>
         </ol>
       </Dialog>

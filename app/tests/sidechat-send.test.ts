@@ -454,7 +454,7 @@ describe('when it goes wrong', () => {
     stream = { frames: [textFrame('Partial answer')], incomplete: true }
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
     await settle()
-    expect(pushed.at(-1)?.channel).toBe('chat:error')
+    expect(pushed.filter(event => event.channel !== 'chat:title').at(-1)?.channel).toBe('chat:error')
     expect(selectMessages(chat.id).at(-1)).toMatchObject({ text: 'Partial answer', status: 'failed' })
   })
 

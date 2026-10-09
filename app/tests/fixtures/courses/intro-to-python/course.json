@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.6",
+  "slug": "intro-to-python",
+  "title": "Introduction to Python, in two lessons",
+  "version": "1.0.0",
+  "description": "Printing a program result and swapping list items with bundled Python.",
+  "author": "OpenCourse",
+  "difficulty": "beginner",
+  "estimated_hours": 1,
+  "subject": "Programming",
+  "runtime": {
+    "language": "python",
+    "version": ">=3.11"
+  },
+  "prerequisites": [],
+  "tags": [
+    "python",
+    "lists"
+  ],
+  "cover_image": "assets/cover.svg",
+  "modules": [
+    {
+      "slug": "basics",
+      "title": "Basics",
+      "lessons": [
+        {
+          "slug": "hello-c",
+          "title": "Lists and references",
+          "estimated_minutes": 10,
+          "objectives": [
+            "Write Python code",
+            "Read program output",
+            "Understand list references"
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "hello-c",
+              "content": "# Python lists\n\nA list holds values. Use indices to read or change its items. Two names can refer to the same list. Python exercises run in a local course virtual environment."
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- Python is bundled with OpenCourse.\n- A list is mutable.\n- Assignment can swap two items."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-hello-c-1",
+              "id": "q-hello-c-1",
+              "kind": "single",
+              "question": "What index selects the first list item?",
+              "options": [
+                {
+                  "id": "zero",
+                  "text": "0",
+                  "correct": true
+                },
+                {
+                  "id": "one",
+                  "text": "1",
+                  "correct": false
+                }
+              ],
+              "explanation": "Python list indices start at zero."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "arrays-strings-pointers",
+      "title": "Arrays, strings and pointers",
+      "lessons": [
+        {
+          "slug": "pointers",
+          "title": "Lists and references",
+          "estimated_minutes": 15,
+          "objectives": [
+            "Write Python code",
+            "Read program output",
+            "Understand list references"
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "pointers",
+              "content": "# Python lists\n\nA list holds values. Use indices to read or change its items. Two names can refer to the same list. Python exercises run in a local course virtual environment."
+            },
+            {
+              "type": "visualization",
+              "slug": "memory",
+              "src": "assets/viz/memory/index.html",
+              "title": "Values in memory",
+              "height": 240
+            },
+            {
+              "type": "markdown",
+              "slug": "passing-pointers",
+              "content": "# Python lists\n\nA list holds values. Use indices to read or change its items. Two names can refer to the same list. Python exercises run in a local course virtual environment."
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- Python is bundled with OpenCourse.\n- A list is mutable.\n- Assignment can swap two items."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-ptr-1",
+              "id": "q-ptr-1",
+              "kind": "single",
+              "question": "What index selects the first list item?",
+              "options": [
+                {
+                  "id": "zero",
+                  "text": "0",
+                  "correct": true
+                },
+                {
+                  "id": "one",
+                  "text": "1",
+                  "correct": false
+                }
+              ],
+              "explanation": "Python list indices start at zero."
+            },
+            {
+              "type": "exercise",
+              "slug": "ex-swap-1",
+              "id": "ex-swap-1",
+              "title": "Swap the first two items",
+              "prompt": "Implement swap(items) to exchange the first two list items in place.",
+              "starter_code": "def swap(items):\n    pass\n",
+              "solution": "def swap(items):\n    items[0], items[1] = items[1], items[0]\n",
+              "tests": "import exercise\n\ndef test_swap():\n    for values in ([1, 2], [-5, 9], [3, 3]):\n        items = list(values)\n        exercise.swap(items)\n        assert items == list(reversed(values))\n",
+              "verification_instructions": "All checks pass.",
+              "hints": [
+                "Use simultaneous assignment."
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

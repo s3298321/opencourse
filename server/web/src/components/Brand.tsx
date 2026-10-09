@@ -1,12 +1,10 @@
-import { Link } from 'react-router'
-
 /** The mark beside the wordmark, exactly as the app's titlebar shows it. */
-export function Brand({ to = '/' }: { to?: string }) {
+export function Brand() {
   return (
-    <Link to={to} className="oc-brand" aria-label="OpenCourse catalog home" viewTransition>
+    <a href="https://opencourse.dev/" className="oc-brand" aria-label="OpenCourse home">
       <img src="/mark-64.png" alt="" width={25} height={25} />
       <span>OpenCourse</span>
-    </Link>
+    </a>
   )
 }
 

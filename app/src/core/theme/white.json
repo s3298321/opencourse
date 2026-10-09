@@ -1,0 +1,80 @@
+{
+  "$schema": "urn:opencourse:theme:1.0",
+  "format": 1,
+  "id": "opencourse-white",
+  "name": "OpenCourse White",
+  "version": "1.0.0",
+  "author": "OpenCourse",
+  "description": "White surfaces, graphite controls and softly grained glass. The same OpenCourse style in light.",
+  "appearance": "light",
+  "palette": {
+    "background": "#ffffff",
+    "text": "#252529",
+    "accent": "#35353c",
+    "muted": "#686873",
+    "success": "#287345",
+    "danger": "#b73542"
+  },
+  "tokens": {
+    "fg": "#252529",
+    "muted": "#686873",
+    "bg": "#ffffff",
+    "card": "#f4f4f6",
+    "accent": "#35353c",
+    "accent-fg": "#ffffff",
+    "border": "#d8d8df",
+    "selected": { "from": "#e8e8ed", "to": "#f0f0f3" },
+    "selected-edge": "rgba(53, 53, 60, 0.10)",
+    "check-accent": "#565660",
+    "ok": "#287345",
+    "err": "#b73542",
+    "err-fg": "#ffffff",
+    "chip-bg": "#ededf1",
+    "chip-fg": "#53535e",
+    "ok-bg": "#edf7f0",
+    "ok-border": "#c3dfcb",
+    "err-bg": "#fff0f1",
+    "err-border": "#ebc4ca",
+    "accent-ring": "rgba(53, 53, 60, 0.12)",
+    "code-bg": "#f7f7f9",
+    "bubble": "#f4f4f6",
+    "bubble-border": "#d8d8df",
+    "composer-bg": "#ffffff",
+    "scrollbar": "rgba(53, 53, 60, 0.20)",
+    "scrollbar-hover": "rgba(53, 53, 60, 0.38)",
+    "chrome": "rgba(255, 255, 255, 0.72)",
+    "glass": "rgba(255, 255, 255, 0.55)",
+    "popover": "rgba(255, 255, 255, 0.88)",
+    "overlay": "rgba(25, 25, 30, 0.25)",
+    "shadow": "#35353c",
+    "hover-ring": "rgba(53, 53, 60, 0.12)",
+    "editor-active-line": "rgba(53, 53, 60, 0.04)",
+    "terminal-selection": "rgba(53, 53, 60, 0.16)"
+  },
+  "reducedTransparency": {
+    "chrome": "#f4f4f6",
+    "glass": "#f7f7f9",
+    "popover": "#ffffff"
+  },
+  "increasedContrast": {
+    "border": "#85858f",
+    "muted": "#53535e",
+    "selected-edge": "rgba(53, 53, 60, 0.55)"
+  },
+  "window": { "material": "vibrancy", "color": "#f7f7f9" },
+  "grain": { "amount": 0.08, "scale": 1 },
+  "surfaces": {
+    "titlebar": { "grain": 0 },
+    "sidebar": { "grain": 0.08 },
+    "list": { "grain": 0.08 },
+    "sidechat": { "grain": 0.08 },
+    "popover": { "grain": 0.08, "blur": 20 },
+    "reading": { "grain": 0 }
+  },
+  "fonts": {
+    "faces": [],
+    "ui": { "lineHeight": 1.55 },
+    "heading": { "weight": 700 },
+    "brand": { "weight": 600, "letterSpacing": -0.025 }
+  }
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" width="600" height="300">
+  <rect width="600" height="300" fill="#3b3f58"/>
+  <g fill="#f2c14e" font-family="ui-monospace, monospace" font-size="22">
+    <text x="70" y="120">items = [1, 2]</text>
+    <text x="70" y="160">items.reverse()</text>
+  </g>
+  <text x="300" y="250" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="30" font-weight="700">Introduction to Python</text>
+</svg>

@@ -132,8 +132,8 @@ describe('course authoring previews', () => {
     for (const mock of Object.values(learner)) expect(mock).not.toHaveBeenCalled()
   })
   it('uses exercise runtime file names and keeps same-ID quiz radio groups independent in a lesson', async () => {
-    await render({ ...exercise, runtime: { language: 'c' } })
-    expect(container.querySelector('[role="tab"]')?.textContent).toBe('exercise.c')
+    await render({ ...exercise, runtime: { language: 'python' } })
+    expect(container.querySelector('[role="tab"]')?.textContent).toBe('exercise.py')
     expect(container.querySelector('textarea')?.value).toBe('print(1)')
     const lesson = { nodeId: 'lesson', slug: 'learn', title: 'Learn', blocks: [quiz, { ...quiz, nodeId: 'another', slug: 'another' }] }
     const manifest: CourseManifest = { schema_version: '1.3', slug: 'draft', title: 'Draft', modules: [{ slug: 'module', title: 'Module', lessons: [lesson] }] }

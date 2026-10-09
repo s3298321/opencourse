@@ -39,8 +39,8 @@ export default function CourseServerPanel({ course, navigate, actions }: { cours
       </div>
       <div className="actions course-server-actions">
         {actions}
-        {updateOffered && <button onClick={() => setPanel(panel === 'update' ? null : 'update')}>{update.kind === 'update' ? `Update to v${update.version}…` : `Switch to v${update.version}…`}</button>}
-        {canPublish && <button className="secondary" onClick={() => setPanel(panel === 'publish' ? null : 'publish')}>{origin ? 'Publish a new version…' : 'Publish…'}</button>}
+        {updateOffered && <button onClick={() => setPanel(panel === 'update' ? null : 'update')}>{update.kind === 'update' ? `Update to v${update.version}` : `Switch to v${update.version}`}</button>}
+        {canPublish && <button className="secondary" onClick={() => setPanel(panel === 'publish' ? null : 'publish')}>{origin ? 'Publish a new version' : 'Publish'}</button>}
         {origin?.role === 'publisher' && home && <button className="secondary" onClick={() => navigate({ name: 'publication', serverId: home.id, courseId: course.courseId })}>Manage publication</button>}
       </div>
       {panel === 'update' && updateOffered && <UpdatePanel course={course} target={update.version} rolledBack={update.kind === 'switch'} onDone={() => { setPanel(null); refresh() }} />}
@@ -86,7 +86,7 @@ function UpdatePanel({ course, target, rolledBack, onDone }: { course: CourseVie
       </>}
       {error && <p className="import-note error" role="alert">{error}</p>}
       <div className="actions">
-        <button disabled={!preview || busy} onClick={() => void install()}>{busy ? 'Installing…' : rolledBack ? `Switch to v${target}` : `Install v${target}`}</button>
+        <button disabled={!preview || busy} onClick={() => void install()}>{busy ? 'Installing' : rolledBack ? `Switch to v${target}` : `Install v${target}`}</button>
         <button className="secondary" disabled={busy} onClick={onDone}>Cancel</button>
       </div>
     </div>
@@ -144,7 +144,7 @@ function PublishPanel({ course, servers, fixed, onDone }: { course: CourseView; 
         {error && <p className="import-note error" role="alert">{error}</p>}
       </>}
       <div className="actions">
-        {!done && <button disabled={!preview || preview.problems.length > 0 || busy} onClick={() => void publish()}>{busy ? 'Publishing…' : `Publish v${preview?.version ?? ''}`}</button>}
+        {!done && <button disabled={!preview || preview.problems.length > 0 || busy} onClick={() => void publish()}>{busy ? 'Publishing' : `Publish v${preview?.version ?? ''}`}</button>}
         <button className="secondary" disabled={busy} onClick={onDone}>{done ? 'Close' : 'Cancel'}</button>
       </div>
     </div>

@@ -105,6 +105,8 @@ const api = {
   cancelAuthoringChat: (id: string): Promise<void> => ipcRenderer.invoke('authoringChat:cancel', id),
   setAuthoringChatModel: (id: string, model: string): Promise<ChatSummary> => ipcRenderer.invoke('authoringChat:model', id, model),
   setAuthoringChatReasoning: (id: string, reasoning: ReasoningEffort | null): Promise<ChatSummary> => ipcRenderer.invoke('authoringChat:reasoning', id, reasoning),
+  /** This conversation's own connection; null follows Settings' default again. */
+  setAuthoringChatProvider: (id: string, provider: AIProvider | null): Promise<ChatSummary> => ipcRenderer.invoke('authoringChat:provider', id, provider),
   sendAuthoringMessage: (id: string, text: string, target: AuthoringTarget, revision: number, draftVersion: number, quote?: ChatQuote): Promise<ChatSendResult> => ipcRenderer.invoke('authoringChat:send', id, text, target, revision, draftVersion, quote),
   getAuthoringRunState: (courseId: string): Promise<{ chatId: string | null }> => ipcRenderer.invoke('authoring:runState', courseId),
   stopCourseAuthoring: (courseId: string): Promise<void> => ipcRenderer.invoke('authoring:stop', courseId),
@@ -198,6 +200,7 @@ const api = {
   cancelProjectChat: (id: string): Promise<void> => ipcRenderer.invoke('projectChat:cancel', id),
   setProjectChatModel: (id: string, model: string): Promise<ProjectChatSummary> => ipcRenderer.invoke('projectChat:model', id, model),
   setProjectChatReasoning: (id: string, reasoning: ReasoningEffort | null): Promise<ProjectChatSummary> => ipcRenderer.invoke('projectChat:reasoning', id, reasoning),
+  setProjectChatProvider: (id: string, provider: AIProvider | null): Promise<ProjectChatSummary> => ipcRenderer.invoke('projectChat:provider', id, provider),
   sendProjectMessage: (id: string, text: string, quote?: ChatQuote, review = false): Promise<ChatSendResult> => ipcRenderer.invoke('projectChat:send', id, text, quote, review),
   onProjectChatDelta: (handler: (id: string, chunk: string) => void): (() => void) => subscribe('projectChat:delta', handler),
   onProjectChatDone: (handler: (id: string) => void): (() => void) => subscribe('projectChat:done', handler),
@@ -317,6 +320,9 @@ const api = {
     ipcRenderer.invoke('chat:setModel', chatId, model),
   setChatReasoning: (chatId: string, reasoning: ReasoningEffort | null): Promise<ChatSummary> =>
     ipcRenderer.invoke('chat:setReasoning', chatId, reasoning),
+  /** This chat's own connection, from the composer; null follows Settings' default again. */
+  setChatProvider: (chatId: string, provider: AIProvider | null): Promise<ChatSummary> =>
+    ipcRenderer.invoke('chat:setProvider', chatId, provider),
   deleteChat: (chatId: string): Promise<void> => ipcRenderer.invoke('chat:delete', chatId),
   cancelChat: (chatId: string): Promise<void> => ipcRenderer.invoke('chat:cancel', chatId),
   sendChatMessage: (
@@ -326,7 +332,7 @@ const api = {
     lesson: ChatLessonRef
   ): Promise<ChatSendResult> => ipcRenderer.invoke('chat:send', chatId, text, quote, lesson),
   // What the picker offers - already narrowed to what Settings left on.
-  listChatModels: (scope: AIScope = 'chat'): Promise<ChatPickerModels> => ipcRenderer.invoke('ai:models', scope),
+  listChatModels: (scope: AIScope = 'chat', provider?: AIProvider): Promise<ChatPickerModels> => ipcRenderer.invoke('ai:models', scope, provider),
   getAIModelSettings: (scope: AIScope, provider?: AIProvider, refresh = false): Promise<AIModelSettings> => ipcRenderer.invoke('ai:settings', scope, provider, refresh),
   setAIProvider: (scope: AIScope, provider: AIProvider): Promise<void> => ipcRenderer.invoke('ai:provider', scope, provider),
   setAIProfile: (scope: AIScope, provider: AIProvider, profile: AIProfile): Promise<void> => ipcRenderer.invoke('ai:profile', scope, provider, profile),

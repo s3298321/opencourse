@@ -370,6 +370,11 @@ input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow:
 .menu-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-item-hint { color: var(--muted); font-size: 0.74rem; }
 .menu-item-icon { display: inline-flex; align-self: center; flex: none; }
+.menu-heading {
+  padding: 0.3rem 0.55rem 0.2rem;
+  color: var(--muted); font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
 .tooltip-trigger { display: inline-flex; align-items: center; flex: none; }
 .tooltip {
   position: fixed; z-index: 1000; pointer-events: none;
@@ -423,8 +428,14 @@ input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow:
 .settings-section .actions { flex-wrap: wrap; }
 .sidechat-connection {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: 1.6rem; height: 1.6rem; color: var(--muted); cursor: default;
+  width: 1.6rem; height: 1.6rem; padding: 0; color: var(--muted);
 }
+/* A button now: pressing it chooses this chat's connection. Its menu says what
+   the icon means, so the trigger needs no caret of its own. */
+.sidechat-connection.menu-trigger { cursor: pointer; border-radius: 5px; }
+.sidechat-connection.menu-trigger:hover, .sidechat-connection.menu-trigger.open { color: var(--fg); background: var(--chip-bg); }
+.sidechat-connection .menu-caret { display: none; }
+.connection-menu .menu-item { align-items: center; }
 /* The base input carries min-width: 18rem, which bursts the card on a narrow window. */
 .settings-row input[type=text] { flex: 1 1 12rem; min-width: 0; }
 .settings-defaults { display: grid; gap: 0.75rem; margin: 1rem 0; }
@@ -853,7 +864,22 @@ button.secondary.danger { background: var(--chip-bg); color: var(--err); border-
   padding: 0.3rem 0.5rem; border-radius: 6px; color: var(--fg); text-decoration: none;
 }
 .sidebar a:hover { background: var(--chip-bg); text-decoration: none; }
-.sidebar a.current { background: var(--selected); color: var(--fg); font-weight: 600; box-shadow: inset 0 0 0 1px var(--selected-edge); }
+/* The lesson you are on, as tinted glass over the sidebar's own grain rather
+   than an opaque grey slab: a translucent wash of the text colour - light on a
+   dark theme, dark on a light one - brighter at the top, with a lit upper edge
+   and a little of the texture behind it blurred. Opaque again whenever the
+   system asks for less transparency or more contrast (below). */
+.sidebar a.current {
+  color: var(--fg); font-weight: 600;
+  background: linear-gradient(170deg,
+    color-mix(in srgb, var(--fg) 15%, transparent) 0%,
+    color-mix(in srgb, var(--fg) 6%, transparent) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--fg) 13%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--fg) 20%, transparent),
+    0 2px 10px rgb(var(--shadow-rgb) / 0.18);
+  backdrop-filter: blur(10px) saturate(1.3);
+}
 .sidebar a.current .check { color: var(--fg); }
 
 /* ---------- blocks ---------- */
@@ -1831,10 +1857,16 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 /* The two letters say which way they go by their own size. */
 .reading-size .reading-size-smaller { font-size: 11px; }
 .reading-size .reading-size-larger { font-size: 14px; }
-.reading-size .reading-size-reset { min-width: 3.2em; font-size: 10.5px; padding: 0.15rem 0.2rem; }
+.reading-size .reading-size-value { min-width: 3.2em; font-size: 10.5px; padding: 0.15rem 0.2rem; cursor: text; }
+/* The size, being typed: the same box as the button it replaced, so nothing moves. */
+.reading-size .reading-size-field {
+  width: 3.6em; min-width: 0; margin: 1px 0; padding: 0.12rem 0.2rem;
+  border: 1px solid var(--accent); border-radius: 6px; outline: none;
+  background: var(--bg); color: var(--fg);
+  font: 600 10.5px/1.5 inherit; text-align: center; font-variant-numeric: tabular-nums;
+}
 .reading-size button:not(:disabled):hover { color: var(--fg); background: var(--chip-bg); }
 .reading-size button:disabled { opacity: 0.45; cursor: default; }
-.reading-size .reading-size-reset:disabled { opacity: 1; }
 .reading-size button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
 
 /* Course projects: the familiar chat next to an independently scrolling brief. */
@@ -1901,6 +1933,7 @@ button:not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.update-c
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   :root { --chrome: #1c1c20; --glass: #111110; --popover: #232323; --glass-grain: none; }
   .menu-panel, .search-panel { backdrop-filter: none; }
+  .sidebar a.current { background: var(--selected); box-shadow: inset 0 0 0 1px var(--selected-edge); backdrop-filter: none; }
 }
 @media (prefers-contrast: more) {
   :root { --border: #74747c; --muted: #c5c5cd; --selected-edge: rgba(222, 222, 227, 0.55); }

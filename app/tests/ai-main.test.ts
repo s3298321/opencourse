@@ -418,6 +418,43 @@ describe('independent main-process AI routing', () => {
     expect(await project.sendProjectMessage(sender as never, p.id, 'Again')).toMatchObject({ status: 'no-key' })
     expect(mock.stream).toHaveBeenCalledTimes(2)
   })
+  it('lets one conversation of each kind use another connection without moving the default', async () => {
+    await ai.getAIModelSettings('chat', 'chatgpt')
+    await ai.setAIProfile('chat', 'apiKey', profile('gpt-5.1', 'high'))
+    await ai.setAIProfile('chat', 'chatgpt', profile('gpt-5.3-codex', 'low'))
+    await ai.getAIModelSettings('project', 'chatgpt')
+    await ai.setAIProfile('project', 'chatgpt', profile('gpt-5.3-codex'))
+    const pinned = chat.createChat(target.courseId, lesson), plain = chat.createChat(target.courseId, lesson)
+    // Pinned: the subscription's model and level come with it; Settings stays on the key.
+    expect(chat.setChatProvider(pinned.id, 'chatgpt')).toMatchObject({ provider: 'chatgpt', pinnedProvider: 'chatgpt', model: 'gpt-5.3-codex', reasoning: 'low' })
+    expect(ai.profileFor('chat').provider).toBe('apiKey')
+    expect(chat.getChat(plain.id)!.chat).toMatchObject({ provider: 'apiKey', model: 'gpt-5.1' })
+    expect(chat.getChat(plain.id)!.chat.pinnedProvider).toBeUndefined()
+    // Each answers through its own connection, with its own credential.
+    expect(await chat.sendChatMessage(sender as never, pinned.id, 'Explain', undefined, lesson)).toMatchObject({ status: 'ok' })
+    await settled('chat:done'); sender.send.mockClear()
+    expect(await chat.sendChatMessage(sender as never, plain.id, 'Explain', undefined, lesson)).toMatchObject({ status: 'ok' })
+    await settled('chat:done')
+    expect(mock.stream.mock.calls[0][0]).toMatchObject({ provider: 'chatgpt', key: 'subscription-token-one', model: 'gpt-5.3-codex' })
+    expect(mock.stream.mock.calls[1][0]).toMatchObject({ provider: 'apiKey', key: 'sk-test-api', model: 'gpt-5.1' })
+    // Its model picker belongs to its connection: a key model is refused there.
+    expect(() => chat.setChatModel(pinned.id, 'gpt-4.1')).toThrow()
+    // Changing the default moves the plain chat, never the pinned one.
+    ai.setAIProvider('chat', 'chatgpt')
+    expect(chat.getChat(plain.id)!.chat.provider).toBe('chatgpt')
+    ai.setAIProvider('chat', 'apiKey')
+    expect(chat.getChat(pinned.id)!.chat.provider).toBe('chatgpt')
+    // Choosing the default again unpins it.
+    expect(chat.setChatProvider(pinned.id, 'apiKey').pinnedProvider).toBeUndefined()
+    expect(chat.getChat(pinned.id)!.chat).toMatchObject({ provider: 'apiKey', model: 'gpt-5.1' })
+    // Project and course-editor chats keep a choice the same way.
+    const p = project.createProjectChat(target)
+    expect(project.setProjectChatProvider(p.id, 'chatgpt')).toMatchObject({ provider: 'chatgpt', pinnedProvider: 'chatgpt' })
+    expect(ai.profileFor('project').provider).toBe('apiKey')
+    const a = authoringChats.createAuthoringChat(target.courseId)
+    expect(authoringChats.setAuthoringChatProvider(a.id, 'chatgpt')).toMatchObject({ provider: 'chatgpt', pinnedProvider: 'chatgpt' })
+    expect(authoringChats.setAuthoringChatProvider(a.id, null).pinnedProvider).toBeUndefined()
+  })
   it('keeps in-flight settings until completion, switches on the next message, and preserves history and individual selections', async () => {
     await ai.setAIProfile('chat', 'apiKey', { ...profile('gpt-5.1'), enabledModels: null })
     await ai.getAIModelSettings('chat', 'chatgpt')

@@ -40,6 +40,8 @@ export default function Menu({
   'aria-describedby': ariaDescribedBy,
   disabled = false,
   align = 'right',
+  side = 'auto',
+  heading,
   items
 }: {
   label: ReactNode
@@ -51,6 +53,10 @@ export default function Menu({
   disabled?: boolean
   /** Which edge of the trigger the panel lines up with. */
   align?: 'left' | 'right'
+  /** 'above' always opens upwards, like a tooltip; 'auto' prefers below. */
+  side?: 'auto' | 'above'
+  /** A line of text over the items, saying what they choose. */
+  heading?: string
   items: MenuItem[]
 }): JSX.Element {
   const [open, setOpen] = useState(false)
@@ -81,7 +87,7 @@ export default function Menu({
       const below = box.bottom + 4
       // Above only when below does not fit and above has more room: a long list
       // under a trigger near the top still opens downwards and scrolls.
-      const flip = below + height > window.innerHeight - 8 && box.top > window.innerHeight - box.bottom
+      const flip = side === 'above' || (below + height > window.innerHeight - 8 && box.top > window.innerHeight - box.bottom)
       const next = {
         top: flip ? Math.max(8, box.top - 4 - height) : below,
         // Never off the near edge of the window, whichever edge that is.
@@ -104,7 +110,7 @@ export default function Menu({
     }
     follow()
     return () => cancelAnimationFrame(frame)
-  }, [open, align, items.length])
+  }, [open, align, side, items.length])
 
   useEffect(() => {
     if (!open) return
@@ -216,6 +222,7 @@ export default function Menu({
           style={{ top: at?.top ?? -9999, left: at?.left ?? -9999, visibility: at ? 'visible' : 'hidden' }}
           onKeyDown={onKeyDown}
         >
+          {heading && <div className="menu-heading" role="presentation">{heading}</div>}
           {items.map((item, i) => (
             <button
               key={item.id}

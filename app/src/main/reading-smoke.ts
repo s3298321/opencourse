@@ -38,7 +38,7 @@ const HELPERS = `
   };
   const px = (target) => parseFloat(getComputedStyle(typeof target === 'string' ? document.querySelector(target) : target).fontSize);
   const pill = () => document.querySelector('.content .reading-size');
-  const label = () => pill().querySelector('.reading-size-reset').textContent;
+  const label = () => pill().querySelector('.reading-size-value')?.textContent;
   /** What scales, by what it is: the first visible match of each, in the lesson. */
   const SCALED = {
     paragraph: '.lesson-inner .prose p',
@@ -129,6 +129,22 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
       await new Promise((resolve) => setTimeout(resolve, 300))
       writeFileSync(join(tmpdir(), `opencourse-reading-${name}.png`), (await win.webContents.capturePage()).toPNG())
     } catch { /* best effort */ }
+  }
+  /** Keys as a keyboard sends them, into whatever has the focus: text, then Enter or Escape. */
+  const typing = async (name: string, text: string, key: 'Enter' | 'Escape'): Promise<void> => {
+    const cdp = win.webContents.debugger
+    const attached = cdp.isAttached()
+    if (!attached) cdp.attach('1.3')
+    try {
+      if (text) await cdp.sendCommand('Input.insertText', { text })
+      const code = key === 'Enter' ? 13 : 27
+      await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code })
+      await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code })
+    } catch (err) {
+      results.push({ name, ok: false, detail: String(err) })
+    } finally {
+      if (!attached) cdp.detach()
+    }
   }
   const pressing = async (name: string, selector: string, times = 1): Promise<void> => {
     try { for (let n = 0; n < times; n++) await press(selector) } catch (err) { results.push({ name, ok: false, detail: String(err) }) }
@@ -245,10 +261,10 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await shot('125-chat')
   await pressing('A+ pressed with the chat open', '.reading-size-larger')
   await run('the composer refits when the size changes under it', `
-    await until(() => label() === '140%', 'the control to read 140%');
+    await until(() => label() === '150%', 'the control to read 150%');
     await sleep(300);
     const field = document.querySelector('.sidechat-input');
-    if (field.scrollHeight > field.clientHeight + 1) throw new Error('the composer clips at 140%: ' + field.scrollHeight + ' > ' + field.clientHeight);
+    if (field.scrollHeight > field.clientHeight + 1) throw new Error('the composer clips at 150%: ' + field.scrollHeight + ' > ' + field.clientHeight);
     if (field.clientHeight <= window.__readingField) throw new Error('the composer did not grow: ' + field.clientHeight);
     field.select(); document.execCommand('delete');
     return field.clientHeight + 'px';
@@ -304,8 +320,43 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   `)
 
   await shot('125-next')
-  await pressing('the size pressed to reset', '.reading-size-reset')
-  await run('pressing the size goes back to the app\'s own', `
+  // The size can be typed: any whole percent from 50 to 200. Anything else, or
+  // Escape, puts back the size it had.
+  const typeSize = async (name: string, text: string, key: 'Enter' | 'Escape' = 'Enter'): Promise<void> => {
+    await pressing(name + ' (the size pressed)', '.reading-size-value')
+    await run(name + ' (the field is ready)', `
+      const field = await wait('.reading-size .reading-size-field');
+      if (document.activeElement !== field) throw new Error('the field does not have the focus');
+      if (field.selectionStart !== 0 || field.selectionEnd !== field.value.length) throw new Error('the size is not selected to be typed over');
+      return field.value;
+    `)
+    await typing(name, text, key)
+  }
+  await typeSize('250%', '250')
+  await run('a size outside 50 to 200 puts back the one it had', `
+    await until(() => label() === '125%', 'the size to come back');
+    if (document.querySelector('.reading-size-field')) throw new Error('the field stayed open');
+    return label();
+  `)
+  await typeSize('130%', '130')
+  await run('a typed size from 50 to 200 is the new size, saved', `
+    await until(() => label() === '130%', 'the control to read 130%');
+    const paragraph = px([...document.querySelectorAll('.lesson-inner .prose p')].find(visible));
+    if (Math.abs(paragraph - window.__readingBase.paragraph * 1.3) > 1) throw new Error('paragraph ' + paragraph);
+    return label();
+  `)
+  await inMain('the typed size is saved for this user', () => {
+    if (getReadingScale() !== 1.3) throw new Error('preferences hold ' + getReadingScale())
+    return '1.3'
+  })
+  await typeSize('Escape', '90', 'Escape')
+  await run('Escape keeps the size it had', `
+    await until(() => !document.querySelector('.reading-size-field'), 'the field to close');
+    if (label() !== '130%') throw new Error('it reads ' + label());
+    return label();
+  `)
+  await typeSize('100%', '100')
+  await run('typing 100 goes back to the app\'s own', `
     await until(() => label() === '100%', 'the control to read 100%');
     const now = sizes();
     const wrong = Object.entries(window.__readingBase).filter(([key, base]) => base !== null && now[key] !== null && Math.abs(now[key] - base) > 0.5);

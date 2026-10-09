@@ -125,24 +125,38 @@ export async function setAIProfile(scope: AIScope, provider: AIProvider, value: 
   settings[scope].profiles[provider] = profile
   writePreferences({ ...preferences, ai: settings }); notifyAIChanged()
 }
-export function conversationConfig<T extends ChatDefaults & { provider?: AIProvider }>(scope: AIScope, chat: T): T & { provider: AIProvider } {
-  const { provider, profile } = profileFor(scope)
+/** A conversation's connection: its own pinned choice, or Settings' default for the feature. */
+type Conversation = ChatDefaults & { provider?: AIProvider; pinnedProvider?: AIProvider }
+export function conversationConfig<T extends Conversation>(scope: AIScope, chat: T): T & { provider: AIProvider } {
+  const { provider, profile } = profileFor(scope, chat.pinnedProvider)
   return effectiveConversation(chat, provider, profile)
 }
-export function newAIConversation(scope: AIScope): ChatDefaults & { provider: AIProvider } {
-  const { provider, profile } = profileFor(scope)
+export function newAIConversation(scope: AIScope, pinned?: AIProvider): ChatDefaults & { provider: AIProvider } {
+  const { provider, profile } = profileFor(scope, pinned)
   return { ...profileDefaults(profile), provider }
 }
-export function validateConversationModel(scope: AIScope, model: string, reasoning?: ChatDefaults['reasoning']): void {
-  const { provider, profile } = profileFor(scope)
+/**
+ * Choose a connection for one conversation, leaving Settings alone. Choosing
+ * the default unpins it again, so it follows Settings from then on. A model
+ * belongs to a connection, so the conversation takes that connection's default
+ * model and level with it.
+ */
+export function pinnedConversation(scope: AIScope, provider: AIProvider | null): { pinned: AIProvider | null } & ChatDefaults & { provider: AIProvider } {
+  if (provider !== null) checkProvider(provider)
+  const fallback = aiSettings(readPreferences())[scope].provider
+  const chosen = provider ?? fallback
+  return { pinned: chosen === fallback ? null : chosen, ...newAIConversation(scope, chosen) }
+}
+export function validateConversationModel(scope: AIScope, model: string, reasoning?: ChatDefaults['reasoning'], pinned?: AIProvider): void {
+  const { provider, profile } = profileFor(scope, pinned)
   if (!validModelId(model) || (provider === 'apiKey' && !isChatModelId(model))) throw new Error(`not a chat model: ${model}`)
   if (profile.enabledModels !== null && !profile.enabledModels.includes(model)) throw new Error('Enable this model in Settings first.')
   const catalog = cachedCatalog(identity(provider))
   if ((provider === 'chatgpt' || catalog) && !catalog?.models.some(m => m.id === model)) throw new Error('This model is unavailable. Refresh models in Settings.')
   if (reasoning && !modelReasoning(model, catalog?.models ?? []).includes(reasoning)) throw new Error(`${model} does not take that reasoning level.`)
 }
-export function conversationReasoning(scope: AIScope, model: string) {
-  const { provider } = profileFor(scope)
+export function conversationReasoning(scope: AIScope, model: string, pinned?: AIProvider) {
+  const { provider } = profileFor(scope, pinned)
   return modelReasoning(model, cachedCatalog(identity(provider))?.models ?? [])
 }
 /** Snapshot the selected connection's metadata so every round uses the same limits. */
@@ -192,8 +206,8 @@ export async function prepareTitleRequest(fallback: TitleGenerationConfig & { ke
   if (currentUserId() !== owner || epoch !== revision) throw new Error('The AI connection changed. Try again.')
   return { ...config, key }
 }
-async function resolveAIRequest<T extends ChatDefaults & { provider?: AIProvider }>(scope: AIScope, original: T): Promise<{ chat: T & { provider: AIProvider }; key: string }> {
-  const owner = requireUser(), epoch = revision, snapshot = profileFor(scope)
+async function resolveAIRequest<T extends Conversation>(scope: AIScope, original: T): Promise<{ chat: T & { provider: AIProvider }; key: string }> {
+  const owner = requireUser(), epoch = revision, snapshot = profileFor(scope, original.pinnedProvider)
   if (!connectionStatus(snapshot.provider).ready) throw new Error(connectionStatus(snapshot.provider).message)
   // Legacy API-only users keep their existing behavior. Configured profiles and
   // subscriptions additionally check the account's current catalog.
@@ -209,12 +223,12 @@ async function resolveAIRequest<T extends ChatDefaults & { provider?: AIProvider
     if (chat.reasoning !== null && !modelReasoning(chat.model, catalog.models).includes(chat.reasoning)) throw new Error('Choose a supported reasoning level for this model.')
   }
   const chat = effectiveConversation(original, snapshot.provider, snapshot.profile)
-  validateConversationModel(scope, chat.model, chat.reasoning)
+  validateConversationModel(scope, chat.model, chat.reasoning, original.pinnedProvider)
   const key = snapshot.provider === 'apiKey' ? readKey() : await subscriptionAccessToken(subscriptionIdentity()?.id)
   if (currentUserId() !== owner || epoch !== revision) throw new Error('The AI connection changed. Try sending again.')
   return { chat, key }
 }
-export async function prepareAIRequest<T extends ChatDefaults & { provider?: AIProvider }>(scope: AIScope, original: T, signal?: AbortSignal): Promise<{ chat: T & { provider: AIProvider }; key: string }> {
+export async function prepareAIRequest<T extends Conversation>(scope: AIScope, original: T, signal?: AbortSignal): Promise<{ chat: T & { provider: AIProvider }; key: string }> {
   signal?.throwIfAborted()
   const request = resolveAIRequest(scope, original)
   if (!signal) return request
@@ -228,11 +242,13 @@ export async function prepareAIRequest<T extends ChatDefaults & { provider?: AIP
     })
   } finally { signal.removeEventListener('abort', abort) }
 }
-export async function aiPickerModels(scope: AIScope) {
-  const settings = await getAIModelSettings(scope)
-  if (settings.selectedProvider !== settings.provider) throw new Error('The AI connection changed. Reopen the model picker.')
+/** The picker's list for Settings' connection - or, for a conversation pinned to another, for that one. */
+export async function aiPickerModels(scope: AIScope, provider?: AIProvider) {
+  if (provider !== undefined) checkProvider(provider)
+  const settings = await getAIModelSettings(scope, provider)
+  if (provider === undefined && settings.selectedProvider !== settings.provider) throw new Error('The AI connection changed. Reopen the model picker.')
   return { models: permittedModels(settings.models, settings.profile), source: settings.source, defaults: profileDefaults(settings.profile),
-    error: settings.error, provider: settings.provider, connection: settings.connection, webSearch: settings.webSearch }
+    error: settings.error, provider: settings.provider, defaultProvider: settings.selectedProvider, connection: settings.connection, webSearch: settings.webSearch }
 }
 export function smokeCatalogs(): void {
   if (!process.env['OPENCOURSE_SMOKE'] && !process.env['OPENCOURSE_SHOTS']) throw new Error('Smoke catalogs are unavailable.')

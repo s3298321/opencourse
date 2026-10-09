@@ -4,7 +4,6 @@ import type { ChatMessage, ChatQuote, QuoteSource, ReasoningEffort } from '@core
 import { modelReasoning } from '@core/ai'
 import { CHATGPT_USAGE_URL } from './AISettings'
 import ConnectionIcon, { PROVIDER_LABELS } from './ConnectionIcon'
-import Tooltip from './Tooltip'
 import { atBottom } from '@core/coach/scroll'
 import { citeAnswer, shortTitle, type CitedSource } from '@core/sidechat/citations'
 import { REASONING_LABELS, webSearchFor } from '@core/sidechat/models'
@@ -565,7 +564,27 @@ export default function ChatPanelView({
               it: what answers is a property of the message you are writing,
               and a picker in the header read as a setting of the panel. */}
           <div className="sidechat-actions">
-            <Tooltip label={connectionLabel}><span className="sidechat-connection" role="img" aria-label={connectionLabel} tabIndex={0}><ConnectionIcon provider={provider} /></span></Tooltip>
+            {/* Which connection answers this conversation. Choosing here is for
+                this conversation alone; Settings' default stays as it is. */}
+            <Menu
+              className="sidechat-connection"
+              panelClassName="connection-menu"
+              disabled={answering}
+              title={`${connectionLabel}. Choose another connection for this chat.`}
+              ariaLabel={`Connection for this chat: ${connectionLabel}`}
+              align="left"
+              side="above"
+              heading="This chat uses"
+              label={<ConnectionIcon provider={provider} />}
+              items={(['apiKey', 'chatgpt'] as const).map((choice) => ({
+                id: choice,
+                label: PROVIDER_LABELS[choice],
+                icon: <ConnectionIcon provider={choice} />,
+                checked: choice === provider,
+                hint: choice === panel.defaultProvider ? 'Default' : panel.connections[choice]?.ready === false ? 'Not set up' : '',
+                onSelect: () => void panel.setProvider(choice)
+              }))}
+            />
             {model !== null && (
               <Menu
                 className="sidechat-model"

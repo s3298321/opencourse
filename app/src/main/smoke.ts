@@ -666,6 +666,51 @@ const SCRIPT = `(async () => {
     return 'refused with no-key, nothing stored'
   })
 
+  await step('the connection icon opens a menu above it, and a choice is this chat\\'s alone', async () => {
+    const trigger = () => document.querySelector('.sidechat-connection')
+    const before = (await window.opencourse.getAIModelSettings('chat')).selectedProvider
+    trigger().click()
+    const panel = await waitFor('.menu-panel.connection-menu')
+    await sleep(50)
+    const under = trigger().getBoundingClientRect(), menu = panel.getBoundingClientRect()
+    assert(menu.bottom <= under.top + 1, 'the menu is not above the icon: ' + Math.round(menu.bottom) + ' > ' + Math.round(under.top))
+    assert(/this chat uses/i.test(panel.querySelector('.menu-heading')?.textContent ?? ''), 'the menu does not say what it chooses')
+    const items = [...panel.querySelectorAll('.menu-item')]
+    assert(items.map((b) => b.querySelector('.menu-item-label').textContent).join('|') === 'OpenAI API key|ChatGPT subscription', 'the menu offers ' + items.map((b) => b.textContent).join('|'))
+    const checked = items.filter((b) => b.getAttribute('aria-checked') === 'true')
+    assert(checked.length === 1, checked.length + ' connections are ticked')
+    const other = items.find((b) => b.getAttribute('aria-checked') !== 'true')
+    assert(checked[0].textContent.includes('Default'), 'the ticked connection is not marked as the default')
+    const otherLabel = other.querySelector('.menu-item-label').textContent
+    other.click()
+    await until(() => !document.querySelector('.connection-menu') && trigger().getAttribute('aria-label').includes(otherLabel), 'the icon to show ' + otherLabel)
+    // Models belong to a connection: the picker now offers the other one's.
+    const model = document.querySelector('.sidechat-model .sidechat-picker-label')?.textContent ?? ''
+    const offered = (await window.opencourse.listChatModels('chat', before === 'apiKey' ? 'chatgpt' : 'apiKey')).models.map((m) => m.id)
+    assert(offered.includes(model), 'the model ' + model + ' is not one of the other connection\\'s')
+    assert((await window.opencourse.getAIModelSettings('chat')).selectedProvider === before, 'choosing for one chat changed the default')
+    // A new tab follows the default, not the last tab's choice.
+    document.querySelector('.sidechat-new').click()
+    await sleep(300)
+    assert(!trigger().getAttribute('aria-label').includes(otherLabel), 'a new chat took the other tab\\'s connection')
+    document.querySelectorAll('.sidechat-tab')[1].querySelector('.sidechat-tab-close').click()
+    await sleep(300)
+    // And a stored chat keeps its choice in main, until it is set back.
+    const stored = await window.fixtureAPI.createChat('python-asyncio', { moduleId: 'coroutines-and-tasks', lessonId: 'await-and-tasks' })
+    const pinned = await window.opencourse.setChatProvider(stored.id, before === 'apiKey' ? 'chatgpt' : 'apiKey')
+    assert(pinned.pinnedProvider && pinned.provider === pinned.pinnedProvider && pinned.provider !== before, 'the stored chat was not pinned: ' + JSON.stringify(pinned))
+    assert((await window.opencourse.getAIModelSettings('chat')).selectedProvider === before, 'pinning a stored chat changed the default')
+    const unpinned = await window.opencourse.setChatProvider(stored.id, before)
+    assert(!unpinned.pinnedProvider && unpinned.provider === before, 'choosing the default did not unpin it')
+    await window.fixtureAPI.deleteChat(stored.id)
+    // Put the draft back on the default for the checks after this one.
+    trigger().click()
+    const again = await waitFor('.menu-panel.connection-menu')
+    ;[...again.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Default')).click()
+    await until(() => !trigger().getAttribute('aria-label').includes(otherLabel), 'the icon to come back to the default')
+    return 'menu above, ' + otherLabel + ' for this chat only, default ' + before
+  })
+
   await step('a second tab opens and closes, and neither tab registers a chat', async () => {
     document.querySelector('.sidechat-new').click()
     await sleep(500)
@@ -701,7 +746,7 @@ const SCRIPT = `(async () => {
       methods.join(',') ===
         'cancelChat,createChat,deleteChat,getChat,getChatModelSettings,getChatSourceIcons,getChatWebSearch,' +
           'listChatModels,listChats,onChatActivity,onChatDelta,onChatDone,onChatError,onChatTitle,sendChatMessage,' +
-          'setChatDefaults,setChatModel,setChatReasoning,setChatWebSearch,setEnabledChatModels',
+          'setChatDefaults,setChatModel,setChatProvider,setChatReasoning,setChatWebSearch,setEnabledChatModels',
       'the side chat surface changed: ' + methods.join(', ')
     )
     return methods.length + ' methods'
@@ -2509,7 +2554,7 @@ async function projectChecks(win: BrowserWindow): Promise<Result[]> {
   })()`)
   await inspect('project chat stays out of lesson chat history', `(async () => {
     const methods = Object.keys(window.opencourse).filter(k => /ProjectChat/.test(k)).sort();
-    const expected = ['cancelProjectChat','createProjectChat','deleteProjectChat','getProjectChat','listProjectChats','onProjectChatActivity','onProjectChatDelta','onProjectChatDone','onProjectChatError','onProjectChatTitle','setProjectChatModel','setProjectChatReasoning'];
+    const expected = ['cancelProjectChat','createProjectChat','deleteProjectChat','getProjectChat','listProjectChats','onProjectChatActivity','onProjectChatDelta','onProjectChatDone','onProjectChatError','onProjectChatTitle','setProjectChatModel','setProjectChatProvider','setProjectChatReasoning'];
     if (methods.join(',') !== expected.sort().join(',') || typeof window.fixtureAPI.sendProjectMessage !== 'function') throw new Error('Unexpected project chat bridge');
     const target = { courseId: 'opencourse-example', moduleId: 'build-a-course-project' };
     if ((await window.fixtureAPI.listProjectChats(target)).length) throw new Error('The untouched project tab registered a chat');
@@ -2623,9 +2668,12 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
       for(let n=0;n<100 && !/ChatGPT subscription/.test(document.querySelector('.sidechat-connection')?.getAttribute('aria-label'));n++)await sleep(25);
       const indicator=document.querySelector('.sidechat-connection');
       if(!/ChatGPT subscription/.test(indicator?.getAttribute('aria-label')) || !indicator.querySelector('svg'))throw new Error('Composer connection icon stale');
-      indicator.focus(); const tooltip=await wait('[role="tooltip"]');
-      if(!/ChatGPT subscription/.test(tooltip.textContent))throw new Error('Composer connection tooltip stale');
-      indicator.blur();
+      // The icon is a menu of this chat's connection now; it ticks the default the chat follows.
+      if(!/ChatGPT subscription/.test(indicator.getAttribute('title')||''))throw new Error('Composer connection title stale');
+      indicator.click(); const connections=await wait('.menu-panel.connection-menu');
+      const ticked=connections.querySelector('.menu-item[aria-checked="true"]');
+      if(!/ChatGPT subscription/.test(ticked?.textContent||'')||!/Default/.test(ticked?.textContent||''))throw new Error('Composer connection menu stale: '+(ticked?.textContent||'nothing ticked'));
+      connections.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); await sleep(100);
       return 'Four profiles; editing preserves routing; mixed providers reflected in composer';
     })()`)
     await check('simulated subscription streams lesson text through the real main transport', `(async () => {

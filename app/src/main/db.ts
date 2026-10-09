@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 12
+export const SCHEMA_VERSION = 13
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -253,6 +253,13 @@ function migrate(d: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS flashcard_reviews_by_card ON flashcard_reviews(card_id, at);
   `)
+  // v13: a connection chosen for one conversation, overriding Settings' default
+  // for it alone. NULL - every row before this - follows the default.
+  if (from < 13) {
+    addColumn(d, 'chats', 'pinned_provider')
+    addColumn(d, 'course_project_chats', 'pinned_provider')
+    addColumn(d, 'authoring_chats', 'pinned_provider')
+  }
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 

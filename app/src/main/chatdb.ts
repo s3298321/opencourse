@@ -28,6 +28,7 @@ function chatSummary(row: Record<string, unknown>): ChatSummary {
     courseId: String(row['course_slug']),
     model: String(row['model']),
     provider: row['provider'] === 'chatgpt' ? 'chatgpt' : 'apiKey',
+    ...(isAIProvider(row['pinned_provider']) ? { pinnedProvider: row['pinned_provider'] } : {}),
     reasoning: isReasoningEffort(row['reasoning']) ? row['reasoning'] : null,
     startedIn: row['course_id'] && !row['start_lesson_id'] ? null : { moduleId: String(row['module_slug']), lessonId: String(row['lesson_slug']) },
     title: typeof row['generated_title'] === 'string' ? row['generated_title'] : typeof row['opener'] === 'string' ? row['opener'] : '',
@@ -198,6 +199,13 @@ export function updateChatModel(id: string, model: string, reasoning: ReasoningE
   db()
     .prepare('UPDATE chats SET model = ?, reasoning = ?, provider = COALESCE(?, provider), updated_at = ? WHERE id = ?')
     .run(model, reasoning, provider ?? null, new Date().toISOString(), id)
+}
+
+/** A conversation's own connection (null: follow Settings), with the model and level that go with it. */
+export function pinChatProvider(id: string, pinned: AIProvider | null, provider: AIProvider, model: string, reasoning: ReasoningEffort | null): void {
+  db()
+    .prepare('UPDATE chats SET pinned_provider = ?, provider = ?, model = ?, reasoning = ?, updated_at = ? WHERE id = ?')
+    .run(pinned, provider, model, reasoning, new Date().toISOString(), id)
 }
 
 export function updateChatReasoning(id: string, reasoning: ReasoningEffort | null): void {

@@ -17,9 +17,13 @@
  * created, with whatever model and reasoning the draft was given, and if main
  * refuses that first message the chat goes again. Creating on open left an
  * empty "A new chat" in the history every time the last tab was closed.
+ *
+ * Each conversation can use its own connection - the key or the subscription -
+ * chosen from the composer, without changing Settings' default. So the panel
+ * keeps the model list of both, and shows the one the active tab uses.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AIConnection, AIProvider, AIScope, ChatDefaults, ChatSendResult, ChatLessonRef, ChatModel, ChatQuote, ChatSummary, ChatMessage, ReasoningEffort } from '@core/types'
+import type { AIConnection, AIProvider, AIScope, ChatDefaults, ChatPickerModels, ChatSendResult, ChatLessonRef, ChatModel, ChatQuote, ChatSummary, ChatMessage, ReasoningEffort } from '@core/types'
 import { modelReasoning } from '@core/ai'
 
 /** Fast enough to read as typing, slow enough to cost nothing. */
@@ -44,8 +48,13 @@ export interface ChatPanel {
   /** Whether Settings lets a question search the web. The model decides whether it does. */
   webSearch: boolean
   ready: boolean
+  /** The connection the active tab uses: its own choice, or the default. */
   provider: AIProvider
   connection: AIConnection
+  /** Settings' connection for this feature, which a tab follows unless it chose another. */
+  defaultProvider: AIProvider
+  /** Both connections, so the menu can say which is set up. */
+  connections: Partial<Record<AIProvider, AIConnection>>
   loading: boolean
   activity: string | null
   sendBlocked?: boolean
@@ -61,6 +70,8 @@ export interface ChatPanel {
   setModel: (model: string) => Promise<void>
   /** Null is the model's own default. */
   setReasoning: (reasoning: ReasoningEffort | null) => Promise<void>
+  /** Use this connection for the active conversation only; Settings stays as it is. */
+  setProvider: (provider: AIProvider) => Promise<void>
 }
 
 export interface ChatTransport {
@@ -72,6 +83,8 @@ export interface ChatTransport {
   cancel: (id: string) => Promise<void>
   setModel: (id: string, model: string) => Promise<PanelSummary>
   setReasoning: (id: string, reasoning: ReasoningEffort | null) => Promise<PanelSummary>
+  /** Null follows Settings' default again. */
+  setProvider: (id: string, provider: AIProvider | null) => Promise<PanelSummary>
   onDelta: (handler: (id: string, chunk: string) => void) => () => void
   onDone: (handler: (id: string) => void) => () => void
   onTitle: (handler: (id: string, title: string) => void) => () => void
@@ -92,14 +105,14 @@ export function useChatPanel(courseId: string, lesson?: ChatLessonRef, projectMo
       list: () => api.listProjectChats(target), get: api.getProjectChat,
       create: () => api.createProjectChat(target), remove: api.deleteProjectChat,
       send: api.sendProjectMessage, cancel: api.cancelProjectChat,
-      setModel: api.setProjectChatModel, setReasoning: api.setProjectChatReasoning,
+      setModel: api.setProjectChatModel, setReasoning: api.setProjectChatReasoning, setProvider: api.setProjectChatProvider,
       onDelta: api.onProjectChatDelta, onDone: api.onProjectChatDone, onTitle: api.onProjectChatTitle, onError: api.onProjectChatError,
       onActivity: api.onProjectChatActivity
     } : {
       list: () => api.listChats(courseId), get: api.getChat,
       create: () => api.createChat(courseId, lesson!), remove: api.deleteChat,
       send: (id: string, text: string, quote?: ChatQuote, _review?: boolean) => api.sendChatMessage(id, text, quote, lesson!),
-      cancel: api.cancelChat, setModel: api.setChatModel, setReasoning: api.setChatReasoning,
+      cancel: api.cancelChat, setModel: api.setChatModel, setReasoning: api.setChatReasoning, setProvider: api.setChatProvider,
       onDelta: api.onChatDelta, onDone: api.onChatDone, onTitle: api.onChatTitle, onError: api.onChatError,
       onActivity: api.onChatActivity
     }
@@ -118,9 +131,11 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   const [streaming, setStreaming] = useState<string | null>(null)
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const [models, setModels] = useState<ChatModel[]>([])
+  // The picker list of each connection: the default's, and the other one's for
+  // a conversation pinned to it.
+  const [catalogs, setCatalogs] = useState<Partial<Record<AIProvider, ChatPickerModels>>>({})
+  const [defaultProvider, setDefaultProvider] = useState<AIProvider>('apiKey')
   const [webSearch, setWebSearch] = useState(false)
-  const [connection, setConnection] = useState<AIConnection>({ provider: 'apiKey', ready: false })
   const [version, setVersion] = useState(0)
   const [loading, setLoading] = useState(true)
   // Tabs with no history entry yet: drafts, and a draft's chat while its first
@@ -161,14 +176,26 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
 
   const refreshKey = useCallback(async (): Promise<void> => {
     const result = await window.opencourse.listChatModels(scope)
-    setConnection(result.connection ?? { provider: 'apiKey', ready: false })
-    setModels(result.models); setWebSearch(result.webSearch)
+    const provider = result.defaultProvider ?? result.connection?.provider ?? result.provider ?? 'apiKey'
+    const other: AIProvider = provider === 'apiKey' ? 'chatgpt' : 'apiKey'
+    // The other connection's list is only for a conversation pinned to it, so
+    // trouble reaching it is that conversation's to report, not the panel's.
+    const second = await window.opencourse.listChatModels(scope, other).catch(() => null)
+    const lists: Partial<Record<AIProvider, ChatPickerModels>> = { [provider]: result, ...(second ? { [other]: second } : {}) }
+    setCatalogs(lists); setDefaultProvider(provider); setWebSearch(result.webSearch)
     // What main would give a chat created now. A draft keeps a model it was
-    // given only while that model is still offered, as a stored chat does.
-    const provider = result.connection?.provider ?? result.provider ?? 'apiKey'
+    // given only while its connection still offers that model, as a stored chat does.
     defaults.current = { ...(result.defaults ?? { model: '', reasoning: null }), provider }
     keepUnlisted(next => {
-      for (const [id, chat] of next) if (isDraft(id) && !(chat.model && chat.provider === provider && result.models.some(m => m.id === chat.model))) next.set(id, { ...chat, ...defaults.current })
+      for (const [id, chat] of next) {
+        if (!isDraft(id)) continue
+        const own = chat.pinnedProvider ?? provider
+        const list = lists[own]
+        if (chat.model && chat.provider === own && list?.models.some(m => m.id === chat.model)) continue
+        next.set(id, chat.pinnedProvider && list
+          ? { ...chat, ...(list.defaults ?? { model: '', reasoning: null }), provider: own }
+          : { ...chat, ...defaults.current, pinnedProvider: undefined })
+      }
     })
     await refreshList()
     if (activeRef.current) await loadThread(activeRef.current)
@@ -347,6 +374,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   const materialize = useCallback(async (draft: PanelSummary): Promise<PanelSummary> => {
     let chat = await transport.create()
     try {
+      if (draft.pinnedProvider) chat = await transport.setProvider(chat.id, draft.pinnedProvider)
       if (draft.model && draft.model !== chat.model) chat = await transport.setModel(chat.id, draft.model)
       if (draft.reasoning !== chat.reasoning) chat = await transport.setReasoning(chat.id, draft.reasoning)
     } catch (err) { await transport.remove(chat.id).catch(() => {}); throw err }
@@ -419,6 +447,17 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     if (activeId && !isDraft(activeId)) void transport.cancel(activeId)
   }, [activeId, transport])
 
+  // What the active tab uses: its own connection's models, or the default's.
+  const activeSummary = activeId ? (unlisted.get(activeId) ?? chats.find((chat) => chat.id === activeId) ?? (thread?.chat.id === activeId ? thread.chat : undefined)) : undefined
+  const activeProvider: AIProvider = activeSummary?.provider ?? defaultProvider
+  const models = useMemo(() => catalogs[activeProvider]?.models ?? [], [catalogs, activeProvider])
+  const connection: AIConnection = catalogs[activeProvider]?.connection ?? { provider: activeProvider, ready: false }
+  const connections = useMemo(() => {
+    const found: Partial<Record<AIProvider, AIConnection>> = {}
+    for (const [provider, list] of Object.entries(catalogs) as [AIProvider, ChatPickerModels][]) if (list.connection) found[provider] = list.connection
+    return found
+  }, [catalogs])
+
   /** A draft's settings are its own until it has a chat to keep them in. */
   const configureDraft = useCallback((id: string, model: string, reasoning: ReasoningEffort | null): void => {
     keepUnlisted(next => { const draft = next.get(id); if (draft) next.set(id, { ...draft, model, reasoning: reasoning && modelReasoning(model, models).includes(reasoning) ? reasoning : null }) })
@@ -450,6 +489,33 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     [activeId, refreshList, transport, loadThread, configureDraft]
   )
 
+  /**
+   * Choosing the default unpins the conversation, so it follows Settings from
+   * then on; choosing the other connection pins it. Either way it takes that
+   * connection's default model with it, since models belong to a connection.
+   */
+  const setProvider = useCallback(
+    async (provider: AIProvider): Promise<void> => {
+      if (!activeId) return
+      const pinned = provider === defaultProvider ? null : provider
+      setError(null)
+      if (isDraft(activeId)) {
+        const chosen = catalogs[provider]?.defaults ?? { model: '', reasoning: null }
+        keepUnlisted(next => {
+          const draft = next.get(activeId)
+          if (!draft) return
+          const { pinnedProvider: _previous, ...rest } = draft
+          next.set(activeId, { ...rest, ...chosen, provider, ...(pinned ? { pinnedProvider: pinned } : {}) })
+        })
+        return
+      }
+      try { await transport.setProvider(activeId, pinned) } catch (err) { setError((err as Error).message); return }
+      await refreshList()
+      await loadThread(activeId)
+    },
+    [activeId, defaultProvider, catalogs, keepUnlisted, transport, refreshList, loadThread]
+  )
+
   const tabs = useMemo(
     () => tabIds.map((id) => chats.find((c) => c.id === id) ?? unlisted.get(id)).filter((c): c is PanelSummary => c !== undefined),
     [tabIds, chats, unlisted]
@@ -468,8 +534,10 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     models,
     webSearch,
     ready: connection.ready,
-    provider: connection.provider,
+    provider: activeProvider,
     connection,
+    defaultProvider,
+    connections,
     loading,
     activity,
     setActive: open,
@@ -481,6 +549,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     send,
     stop,
     setModel,
-    setReasoning
+    setReasoning,
+    setProvider
   }
 }

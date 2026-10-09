@@ -1,5 +1,5 @@
 import { authoringEvents, authoringRunState, cancelCourseAuthoring } from './authoring-state'
-import { cancelAllAuthoringChats, cancelAuthoringChat, createAuthoringChat, deleteAuthoringChat, getAuthoringChat, listAuthoringChats, sendAuthoringMessage, setAuthoringChatModel, setAuthoringChatReasoning } from './authoring-chat'
+import { cancelAllAuthoringChats, cancelAuthoringChat, createAuthoringChat, deleteAuthoringChat, getAuthoringChat, listAuthoringChats, sendAuthoringMessage, setAuthoringChatModel, setAuthoringChatProvider, setAuthoringChatReasoning } from './authoring-chat'
 import type { AuthoringTarget } from '../core/types'
 import { assertCourseAvailable } from './course-busy'
 import { findLesson } from '../core/manifest'
@@ -13,7 +13,7 @@ import { deletePublishedVersion, previewPublish, publishCourse, publishedCourse,
 import { checkUsername, completeRegistration, finishPasswordReset, forgetServerSessions, listConnections, probeServer, removeConnection, resendRegistrationCode, serverResult, setActiveServer, signIn, signOut, startPasswordReset, startRegistration, verifyRegistration } from './servers'
 import type { AttachmentKind } from './course-authoring'
 import type { CourseManifest } from '../core/types'
-import { cancelAllProjectChats, cancelProjectChat, createProjectChat, deleteProjectChat, getProjectChat, listProjectChats, sendProjectMessage, setProjectChatModel, setProjectChatReasoning } from './projectchat'
+import { cancelAllProjectChats, cancelProjectChat, createProjectChat, deleteProjectChat, getProjectChat, listProjectChats, sendProjectMessage, setProjectChatModel, setProjectChatProvider, setProjectChatReasoning } from './projectchat'
 import { openCourseProject, openProjectEditor, requireCourseProject, revealProject } from './courseprojects'
 /** Typed IPC surface. Everything the renderer can ask the main process to do. */
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electron'
@@ -75,6 +75,7 @@ import {
   sendChatMessage,
   setChatModel,
   setChatDefaults,
+  setChatProvider,
   setChatReasoning,
   setEnabledChatModels,
   getChatWebSearch,
@@ -277,9 +278,10 @@ export function registerIpc(): void {
     return getTitleGenerationSettings(provider, refresh)
   })
   ipcMain.handle('ai:setTitleSettings', (_e, config: TitleGenerationConfig | null) => setTitleGenerationSettings(config))
-  ipcMain.handle('ai:models', (_e, scope: AIScope) => {
+  // `provider` is a pinned conversation's own connection; absent is Settings' default.
+  ipcMain.handle('ai:models', (_e, scope: AIScope, provider?: AIProvider) => {
     if (process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS']) smokeCatalogs()
-    return aiPickerModels(scope)
+    return aiPickerModels(scope, provider === 'apiKey' || provider === 'chatgpt' ? provider : undefined)
   })
   ipcMain.handle('subscription:status', subscriptionStatus)
   ipcMain.handle('subscription:connect', (_e, id?: string) => connectSubscription(id))
@@ -376,6 +378,8 @@ export function registerIpc(): void {
   ipcMain.handle('authoringChat:cancel', (_e, id: string) => cancelAuthoringChat(id))
   ipcMain.handle('authoringChat:model', (_e, id: string, model: string) => setAuthoringChatModel(id, model))
   ipcMain.handle('authoringChat:reasoning', (_e, id: string, reasoning: ReasoningEffort | null) => setAuthoringChatReasoning(id, reasoning))
+  // A connection for this conversation alone; null follows Settings again.
+  ipcMain.handle('authoringChat:provider', (_e, id: string, provider: AIProvider | null) => setAuthoringChatProvider(id, provider === 'apiKey' || provider === 'chatgpt' ? provider : null))
   ipcMain.handle('authoringChat:send', (e, id: string, text: string, target: AuthoringTarget, revision: number, draftVersion: number, quote?: ChatQuote) => sendAuthoringMessage(e.sender, id, text, target, revision, draftVersion, quote))
   // A new course is invisible to the library until its first save, so creating
   // one changes nothing anybody else is showing.
@@ -579,6 +583,7 @@ export function registerIpc(): void {
   ipcMain.handle('projectChat:cancel', (_e, id: string) => cancelProjectChat(id))
   ipcMain.handle('projectChat:model', (_e, id: string, model: string) => setProjectChatModel(id, model))
   ipcMain.handle('projectChat:reasoning', (_e, id: string, reasoning: ReasoningEffort | null) => setProjectChatReasoning(id, reasoning))
+  ipcMain.handle('projectChat:provider', (_e, id: string, provider: AIProvider | null) => setProjectChatProvider(id, provider === 'apiKey' || provider === 'chatgpt' ? provider : null))
   ipcMain.handle('projectChat:send', (e, id: string, text: string, quote?: ChatQuote, review = false) => sendProjectMessage(e.sender, id, text, quote, review === true))
 
   ipcMain.handle('progress:get', (_e, courseId: string): CourseProgress => readProgress(courseId))
@@ -901,6 +906,7 @@ export function registerIpc(): void {
     createChat(courseId, lesson, model)
   )
   ipcMain.handle('chat:setModel', (_e, chatId: string, model: string) => setChatModel(chatId, model))
+  ipcMain.handle('chat:setProvider', (_e, chatId: string, provider: AIProvider | null) => setChatProvider(chatId, provider === 'apiKey' || provider === 'chatgpt' ? provider : null))
   ipcMain.handle('chat:setReasoning', (_e, chatId: string, reasoning: ReasoningEffort | null) =>
     setChatReasoning(chatId, reasoning)
   )

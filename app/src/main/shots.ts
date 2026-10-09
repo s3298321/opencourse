@@ -187,8 +187,20 @@ const NAV = `(async (target) => {
     await sleep(100)
     click(document.querySelector('.reading-size-larger'))
     await sleep(300)
+  } else if (target === 'reading-type') {
+    // The size being typed: press it, and the field takes the keys.
+    click(await waitFor('.reading-size-value'))
+    const typing = await waitFor('.reading-size-field')
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(typing, '130')
+    typing.dispatchEvent(new Event('input', { bubbles: true }))
+    await sleep(200)
   } else if (target === 'reading-reset') {
-    click(await waitFor('.reading-size-reset'))
+    // Typed, the way a reader sets an exact size.
+    if (!document.querySelector('.reading-size-field')) click(await waitFor('.reading-size-value'))
+    const field = await waitFor('.reading-size-field')
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, '100')
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await sleep(200)
   } else if (target === 'update-available') {
     // Main has set the status; the button shows its menu.
@@ -202,6 +214,17 @@ const NAV = `(async (target) => {
   } else if (target === 'update-clear') {
     click(document.querySelector('.titlebar .crumbs a'))
     await waitFor('.lesson-head h1')
+  } else if (target === 'sidechat-connection') {
+    // This chat's connection, chosen from the composer. The reasoning list is
+    // still open from the step before; its own trigger closes it.
+    if (document.querySelector('.menu-panel')) click(document.querySelector('.sidechat-reasoning'))
+    await sleep(150)
+    click(await waitFor('.sidechat-connection'))
+    await waitFor('.connection-menu')
+    await sleep(250)
+  } else if (target === 'sidechat-connection-close') {
+    document.querySelector('.connection-menu')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await sleep(150)
   } else if (target === 'viz') {
     document.querySelector('.viz-frame').scrollIntoView({ block: 'center' })
     await sleep(1500)
@@ -587,6 +610,7 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     ...['library', 'course', 'lesson'].map((target) => ({ target, photo: true })),
     // The reader's text size, and an update of the app waiting in the titlebar.
     { target: 'reading-larger', photo: true },
+    { target: 'reading-type', photo: true },
     { target: 'reading-reset', photo: false },
     { target: 'update-available', photo: true },
     { target: 'update-settings', photo: true },
@@ -596,6 +620,8 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     { target: 'sidechat-answer-quote', photo: true },
     { target: 'sidechat-model', photo: true },
     { target: 'sidechat-reasoning', photo: true },
+    { target: 'sidechat-connection', photo: true },
+    { target: 'sidechat-connection-close', photo: false },
     { target: 'sidechat-close', photo: false },
     ...['viz', 'quiz', 'exercise', 'workbench', 'workbench-terminal', 'workbench-run', 'workbench-pass'].map(
       (target) => ({ target, photo: true })

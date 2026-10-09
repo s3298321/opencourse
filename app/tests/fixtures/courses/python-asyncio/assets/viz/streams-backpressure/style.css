@@ -1,0 +1,5 @@
+body { margin: 0; padding: 14px 18px; font: 14px/1.45 -apple-system, sans-serif; color: #1d1d1f; background: #f7f8fa; }
+h1 { font-size: 15px; margin: 0 0 10px; }
+.buffer { position: relative; height: 26px; background: #e7eaef; border-radius: 6px; margin: 12px 0; overflow: hidden; }
+#level { height: 100%; width: 0; background: #2f6fd8; transition: width 0.2s linear; }
+.mark { position: absolute; top: 0; bottom: 0; left: 70%; width: 2px; background: #c0392b; }

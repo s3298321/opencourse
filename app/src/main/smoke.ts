@@ -2,7 +2,7 @@ import { editorSmoke } from './editor-smoke'
 import { themeChecks } from './theme-smoke'
 import { readingSizeChecks } from './reading-smoke'
 import { appUpdateChecks } from './update-smoke'
-import { FIXTURE_API, fixtureCourse } from './fixture-identities'
+import { FIXTURE_API, fixtureCourse, fixtureCoursesDir } from './fixture-identities'
 /**
  * Headless smoke check: boots the real window, drives the real renderer, and
  * writes a pass/fail report. Run with `npm run smoke`. Dev-only - main imports
@@ -695,7 +695,8 @@ const SCRIPT = `(async () => {
   })
 
   await step('the side chat surface is exactly what the bridge means to expose', async () => {
-    const methods = Object.keys(window.opencourse).filter((k) => /Chat/.test(k) && !/ProjectChat/.test(k)).sort()
+    // The project and course-editor chats are surfaces of their own.
+    const methods = Object.keys(window.opencourse).filter((k) => /Chat/.test(k) && !/ProjectChat|AuthoringChat/.test(k)).sort()
     assert(
       methods.join(',') ===
         'cancelChat,createChat,deleteChat,getChat,getChatModelSettings,getChatSourceIcons,getChatWebSearch,' +
@@ -714,8 +715,13 @@ const SCRIPT = `(async () => {
     assert(lessonWithExercise, 'no lesson with an exercise in the sidebar')
     lessonWithExercise.click()
     assert(document.querySelector('.sidechat'), 'the chat did not survive the lesson change')
+    // Navigating scrolls the column to the top once the route has changed, which
+    // is a moment after the click: scroll before that and it undoes the offset.
+    await until(() => /await, create_task/i.test(document.querySelector('.lesson-head h1')?.textContent ?? ''), 'the exercise lesson')
+    await sleep(300)
     const content = await waitFor('.content')
     content.scrollTop = 240
+    await sleep(100)
     const wasAt = content.scrollTop
     assert(wasAt > 0, 'the lesson would not scroll, so there is nothing to restore')
 
@@ -1060,7 +1066,8 @@ const SCRIPT = `(async () => {
   })
 
   await step('the user bridge is exactly what it means to expose', async () => {
-    const methods = Object.keys(window.opencourse).filter((k) => /User/.test(k)).sort()
+    // Not /User/: checkServerUsername is about a catalog account's name, not a local user.
+    const methods = Object.keys(window.opencourse).filter((k) => /User(?!name)/.test(k)).sort()
     // renameUser takes a name and no id: main resolves who it applies to from
     // the session, because it rewrites a path main builds. This pins that.
     assert(
@@ -2428,8 +2435,9 @@ async function protocolChecks(win: BrowserWindow): Promise<Result[]> {
 
 /**
  * The archives the run imports. The example ships with the app; the asyncio
- * course is zipped from the repo checkout, so the checks below still run
- * against the content they were written for even though the app ships none.
+ * course is the committed fixture in tests/fixtures/courses, zipped here, so
+ * the checks below run against the course they were written for on any
+ * checkout - content/ is authoring input and is never read.
  */
 function buildFixtures(): { example: string; asyncio: string; notACourse: string } {
   const dir = mkdtempSync(join(tmpdir(), 'opencourse-smoke-zips-'))
@@ -2442,7 +2450,7 @@ function buildFixtures(): { example: string; asyncio: string; notACourse: string
     '-k',
     '--norsrc',
     '--noextattr',
-    join(process.env['OPENCOURSE_SMOKE_CONTENT'] || join(app.getAppPath(), '..', 'content'), 'python-asyncio'),
+    join(fixtureCoursesDir(), 'python-asyncio'),
     asyncio
   ])
 
@@ -2990,10 +2998,6 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
       ...answerResults,
       ...coachFileResults,
       ...(await coachChecks()),
-      // Brings the example course and leaves a lesson at 100%; the theme suite
-      // starts from the library whatever it is shown.
-      ...(await readingSizeChecks(win)),
-      ...(await appUpdateChecks(win)),
       // Themes go on and come off again inside their own suite, which ends in
       // the library on the app's own look - where projectChecks starts anyway,
       // and the suites after that depend on the screen it leaves.
@@ -3001,7 +3005,11 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
       ...(await projectChecks(win)),
       ...(await motionChecks(win)),
       ...(await subscriptionChecks(win)),
-      ...(await editorSmoke(win))
+      ...(await editorSmoke(win)),
+      // Last: they bring the example course and a side chat of their own, and
+      // nothing after them should have to account for either.
+      ...(await readingSizeChecks(win)),
+      ...(await appUpdateChecks(win))
     ]
     clearTimeout(watchdog)
     const failed = results.filter((r) => !r.ok)

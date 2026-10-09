@@ -107,6 +107,7 @@ export async function appUpdateChecks(win: BrowserWindow): Promise<Result[]> {
     `)
 
     await ensureExampleCourse(win)
+    win.setSize(1240, 860)
     await run('(setup) a lesson, with its Ask chip', `
       ${OPEN_EXAMPLE_LESSON}
       await wait('.titlebar .chat-chip');

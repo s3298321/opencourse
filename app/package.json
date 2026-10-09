@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate:content": "vitest run tests/content.test.ts",
+    "validate:content": "OPENCOURSE_VALIDATE_CONTENT=1 vitest run tests/content.test.ts",
     "check:exercises": "OPENCOURSE_CHECK_EXERCISES=1 vitest run tests/exercises-gate.test.ts",
     "check": "npm run typecheck && npm run test",
     "smoke": "npm run build:resources && electron-vite build && ELECTRON_OVERRIDE_DIST_PATH=\"$(node scripts/electron-dist.mjs)\" OPENCOURSE_SMOKE=1 electron .",

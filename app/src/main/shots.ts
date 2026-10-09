@@ -1,4 +1,4 @@
-import { FIXTURE_API, fixtureCourse, fixtureProject } from './fixture-identities'
+import { FIXTURE_API, fixtureCourse, fixtureCoursesDir, fixtureProject } from './fixture-identities'
 /**
  * Dev-only: capture the app's own screens to PNGs with `OPENCOURSE_SHOTS=<dir>`.
  * Uses webContents.capturePage, so it needs no screen-recording permission.
@@ -411,7 +411,7 @@ function buildArchives(): { zips: Record<string, string>; drop: () => void } {
     const zip = join(dir, `${slug}.zip`)
     execFileSync('ditto', [
       '-c', '-k', '--norsrc', '--noextattr',
-      join(process.env['OPENCOURSE_SHOTS_CONTENT'] || join(app.getAppPath(), '..', 'content'), slug),
+      join(fixtureCoursesDir(), slug),
       zip
     ])
     zips[slug] = zip

@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.5",
+  "slug": "intro-to-c",
+  "title": "Introduction to C, in two lessons",
+  "version": "1.0.0",
+  "description": "Compiling a program and following a pointer. A short course kept with the app's source for its own screenshots and tests, in a second language.",
+  "author": "OpenCourse",
+  "difficulty": "beginner",
+  "estimated_hours": 1,
+  "subject": "Programming",
+  "runtime": {
+    "language": "c",
+    "version": ">=c17",
+    "flags": [
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ]
+  },
+  "prerequisites": [
+    "The Xcode Command Line Tools - run `xcode-select --install`."
+  ],
+  "tags": [
+    "c",
+    "pointers"
+  ],
+  "cover_image": "assets/cover.svg",
+  "modules": [
+    {
+      "slug": "basics",
+      "title": "Basics",
+      "lessons": [
+        {
+          "slug": "hello-c",
+          "title": "Hello, C",
+          "estimated_minutes": 10,
+          "objectives": [
+            "Compile and run a C program.",
+            "Name the parts of main.",
+            "Print a line with puts."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "hello-c",
+              "content": "# Hello, C\n\nA C program is compiled to machine code before it runs. Every program starts in `main`, and what `main` returns is the program's exit status:\n\n```c\n#include <stdio.h>\n\nint main(void) {\n    puts(\"Hello, C\");\n    return 0;\n}\n```\n\n`puts` writes a string and a newline to standard output. Returning 0 tells the shell that all went well."
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- C is compiled before it runs.\n- `main` is where a program starts, and its return value is the exit status."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-hello-c-1",
+              "id": "q-hello-c-1",
+              "kind": "single",
+              "question": "What does returning 0 from main mean?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "The program failed.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "The program succeeded.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "Nothing at all.",
+                  "correct": false
+                }
+              ],
+              "explanation": "Zero is the conventional exit status for success; anything else reports a failure."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "arrays-strings-pointers",
+      "title": "Arrays, strings and pointers",
+      "lessons": [
+        {
+          "slug": "pointers",
+          "title": "Pointers are addresses",
+          "estimated_minutes": 15,
+          "objectives": [
+            "Take the address of a variable with &.",
+            "Read and write through a pointer with *.",
+            "Change a caller's variables from inside a function."
+          ],
+          "blocks": [
+            {
+              "type": "markdown",
+              "slug": "pointers",
+              "content": "# Pointers are addresses\n\nEvery variable lives somewhere in memory, and that somewhere has an address. A pointer is a variable that holds one:\n\n```c\nint x = 7;\nint *p = &x;   /* p holds the address of x */\n*p = 42;       /* write 42 to wherever p points: x is now 42 */\n```\n\n`&x` is \"the address of x\"; `*p` is \"the int at the address in p\". Step through the three lines below."
+            },
+            {
+              "type": "visualization",
+              "slug": "memory",
+              "src": "assets/viz/memory/index.html",
+              "title": "A pointer is an address",
+              "height": 240
+            },
+            {
+              "type": "markdown",
+              "slug": "passing-pointers",
+              "content": "## Changing a caller's variables\n\nC passes arguments by value: a function gets copies. To let a function change the caller's variables, pass their addresses instead, and write through them."
+            },
+            {
+              "type": "markdown",
+              "slug": "key-takeaways",
+              "content": "## Key takeaways\n\n- A pointer holds an address; `&` takes one and `*` follows one.\n- Passing an address lets a function change the caller's variable."
+            },
+            {
+              "type": "quiz",
+              "slug": "q-ptr-1",
+              "id": "q-ptr-1",
+              "kind": "single",
+              "question": "After int *p = &x; *p = 5; what is x?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "Unchanged.",
+                  "correct": false
+                },
+                {
+                  "id": "b",
+                  "text": "5.",
+                  "correct": true
+                },
+                {
+                  "id": "c",
+                  "text": "The address of p.",
+                  "correct": false
+                }
+              ],
+              "explanation": "Writing through p writes to the int it points at, which is x."
+            },
+            {
+              "type": "exercise",
+              "slug": "ex-ptr-1",
+              "id": "ex-ptr-1",
+              "title": "Swap two ints through pointers",
+              "prompt": "Implement `swap` so that after `swap(&a, &b)` the two variables have traded values. `exercise.h` declares it and the checks call it.",
+              "extra_files": [
+                {
+                  "path": "exercise.h",
+                  "content": "#ifndef EXERCISE_H\n#define EXERCISE_H\n\n/* Exchanges the ints at a and b. */\nvoid swap(int *a, int *b);\n\n#endif\n"
+                }
+              ],
+              "starter_code": "#include \"exercise.h\"\n\nvoid swap(int *a, int *b) {\n    /* your code here */\n    (void)a;\n    (void)b;\n}\n",
+              "solution": "#include \"exercise.h\"\n\nvoid swap(int *a, int *b) {\n    int kept = *a;\n    *a = *b;\n    *b = kept;\n}\n",
+              "tests": "#include <assert.h>\n#include <stdio.h>\n\n#include \"exercise.h\"\n\nint main(void) {\n    int a = 1, b = 2;\n    swap(&a, &b);\n    assert(a == 2 && b == 1);\n    int c = -5, d = 9;\n    swap(&c, &d);\n    assert(c == 9 && d == -5);\n    int e = 3;\n    swap(&e, &e);\n    assert(e == 3);\n    puts(\"3 checks passed\");\n    return 0;\n}\n",
+              "verification_instructions": "The build must be warning-free and all three checks must pass.",
+              "hints": [
+                "Keep one of the two values somewhere before you overwrite it."
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

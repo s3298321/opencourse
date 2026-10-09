@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { detectIndentUnit } from '@core/indent'
 import { getToolchain } from '@core/toolchains'
-import { skipWithoutContent } from './helpers/content'
+import { fixtureCourseDir, readManifest } from './helpers/courses'
 
 describe('detectIndentUnit', () => {
   it('reads four spaces off a C body', () => {
@@ -38,11 +36,11 @@ describe('detectIndentUnit', () => {
     expect(detectIndentUnit('{\n    a;\n    b;\n\tc;\n}\n')).toBe('    ')
   })
 
-  it.skipIf(skipWithoutContent('intro-to-c', 'python-asyncio'))('reads every starter in content/ as the toolchain default', () => {
+  it('reads every starter in the fixture courses as the toolchain default', () => {
     // The fallback and the files agree today; if a course ever changes style,
     // the editor follows the file, and this says so.
     for (const slug of ['intro-to-c', 'python-asyncio']) {
-      const course = JSON.parse(readFileSync(join(__dirname, '../../content', slug, 'course.json'), 'utf8'))
+      const course = readManifest(fixtureCourseDir(slug))
       const fallback = getToolchain(course.runtime?.language).indentUnit
       for (const mod of course.modules) {
         for (const lesson of mod.lessons ?? []) {

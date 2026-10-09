@@ -1,0 +1,14 @@
+body { margin: 0; padding: 16px 20px; font: 14px/1.4 -apple-system, sans-serif; color: #1d1d1f; background: #f7f8fa; }
+h1 { font-size: 15px; margin: 0 0 14px; }
+.row { display: grid; grid-template-columns: 140px 1fr 40px; align-items: center; gap: 10px; margin-bottom: 12px; }
+.track { position: relative; height: 54px; background: #e7eaef; border-radius: 6px; }
+.bar { position: absolute; height: 14px; border-radius: 4px; width: 0; }
+.bar.a { top: 4px; background: #2f6fd8; }
+.bar.b { top: 20px; background: #d8822f; }
+.bar.c { top: 36px; background: #2fa66f; }
+.seq.a { left: 0; } .seq.b { left: 33.3%; } .seq.c { left: 66.6%; }
+.par { left: 0; }
+.run .bar { transition: width 0.9s linear; width: 33.3%; }
+.run .seq.b { transition-delay: 0.9s; } .run .seq.c { transition-delay: 1.8s; }
+.total { font-weight: 600; text-align: right; }
+button { font: inherit; padding: 4px 12px; }

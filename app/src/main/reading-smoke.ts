@@ -155,8 +155,15 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
     return course.title
   })
 
+  // A known starting point, whatever the suites before left: the window at its
+  // usual size, and the side chat closed - it narrows the column, and the chip
+  // pressed later toggles it.
+  win.setSize(1240, 860)
   await run('a lesson opens at the app\'s own size, with the control at the column\'s foot', `
     ${OPEN_EXAMPLE_LESSON}
+    const close = document.querySelector('.sidechat-close');
+    if (close) { close.click(); await until(() => !document.querySelector('.sidechat'), 'the side chat to close'); }
+    await sleep(200);
     await wait('.content .reading-size');
     if (label() !== '100%') throw new Error('the control reads ' + label());
     const box = pill().getBoundingClientRect();

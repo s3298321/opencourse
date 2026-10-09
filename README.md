@@ -29,11 +29,9 @@ progress, exercise files, environments, coaches and their transcripts — lives 
 one app-managed directory.
 
 ```
-content/python-asyncio/     a course, for authoring and the test gates
-content/intro-to-c/         a second one, in a second language
-content/intro-to-llvm/      hand-written LLVM IR plus Python and llvmlite, in one course
-                            (both shipped with the repo, not with the app)
+content/                    courses you are authoring (gitignored; the content gates check them)
 content-zip/                importable .zip of each course (generated, ignored)
+app/tests/fixtures/courses/ the committed courses every test, smoke run and screenshot uses
 app/                        the Electron app (TypeScript, React)
 app/src/core/toolchains/    one descriptor per language; nothing else names one
 app/src/core/coach/         the pure half of Coach: prompt, tools, event reducer
@@ -297,12 +295,14 @@ npm run check:exercises     # exercises actually work, in every language they us
 ```
 
 Both run in CI-friendly, non-interactive mode and are the two gates a course
-has to pass.
+has to pass. They check every course in `content/`, plus the committed example
+and test fixtures; `npm test` checks only the committed ones, so it passes or
+fails the same on every machine.
 
 To see your changes in the app, pack the course and import it:
 
 ```bash
-cd app && npm run zip:course python-asyncio   # → content-zip/python-asyncio.zip
+cd app && npm run zip:course <slug>   # → content-zip/<slug>.zip
 ```
 
 Then **Library ▸ Import course…**. Every import creates a new library course,
@@ -485,8 +485,8 @@ and the website and the server's web app use the `design/` copies. Generated
 assets are checked in, so ordinary builds do not require image generation.
 
 To smoke-test a packaged app with a disposable profile, set `OPENCOURSE_SMOKE=1`
-and `OPENCOURSE_SMOKE_CONTENT` to the checkout's absolute `content/` path before
-launching its executable. `OPENCOURSE_SMOKE_PYTHON=1` includes real Python runs;
+and `OPENCOURSE_FIXTURE_COURSES` to the checkout's absolute
+`app/tests/fixtures/courses` path before launching its executable. `OPENCOURSE_SMOKE_PYTHON=1` includes real Python runs;
 `OPENCOURSE_SMOKE_OUT` selects the JSON report path. This uses an isolated profile and never reads or writes your learning data.
 
 

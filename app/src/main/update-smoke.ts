@@ -145,13 +145,13 @@ export async function appUpdateChecks(win: BrowserWindow): Promise<Result[]> {
   await run('its menu installs in one press, and points at what is new and at Settings', `
     const panel = await wait('.menu-panel.update-menu');
     const items = [...panel.querySelectorAll('.menu-item')].map((b) => b.querySelector('.menu-item-label').textContent);
-    const expected = ['Install OpenCourse 9.9.9 and restart', 'What’s new', 'Update settings…'];
+    const expected = ['Install OpenCourse 9.9.9 and restart', 'What’s new', 'Update settings'];
     if (items.join('|') !== expected.join('|')) throw new Error(items.join('|'));
     const hint = panel.querySelector('.menu-item-hint').textContent;
     if (hint !== '152 MB') throw new Error('size hint ' + hint);
     return items.join(' / ');
   `)
-  await run('Update settings… opens Settings at the update', `
+  await run('Update settings opens Settings at the update', `
     [...document.querySelectorAll('.update-menu .menu-item')].find((b) => /Update settings/.test(b.textContent)).click();
     const section = await wait('.settings-updates');
     await sleep(150);

@@ -1067,7 +1067,7 @@ const SCRIPT = `(async () => {
     const panel = await waitFor('.menu-panel')
     assert(chip.getAttribute('aria-expanded') === 'true', 'the chip did not report the menu open')
     const items = [...panel.querySelectorAll('.menu-item')].map((b) => b.textContent.trim())
-    assert(items.join(' | ') === 'Settings… | Logs | Switch user', 'the menu offers ' + items.join(' | '))
+    assert(items.join(' | ') === 'Settings | Logs | Switch user', 'the menu offers ' + items.join(' | '))
     ;[...panel.querySelectorAll('.menu-item')].find((b) => /Switch user/.test(b.textContent)).click()
     await waitFor('.user-card.add')
     // A shared class name once gave the New user avatar 96px of padding, so

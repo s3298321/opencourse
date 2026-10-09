@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AIConnection, AIProvider, AIScope, ChatDefaults, ChatPickerModels, ChatSendResult, ChatLessonRef, ChatModel, ChatQuote, ChatSummary, ChatMessage, ReasoningEffort } from '@core/types'
 import { modelReasoning } from '@core/ai'
 import { MAX_MESSAGE_CHARS } from '@core/sidechat/thread'
+import { REVIEW_REQUEST } from '@core/projects/prompt'
 
 /** Fast enough to read as typing, slow enough to cost nothing. */
 const TICK_MS = 100
@@ -408,7 +409,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
 
   const send = useCallback(
     async (text: string, quote?: ChatQuote, review = false): Promise<boolean> => {
-      text = text.trim().slice(0, MAX_MESSAGE_CHARS)
+      text = (review ? REVIEW_REQUEST : text).trim().slice(0, MAX_MESSAGE_CHARS)
       if (!activeId || sending.current || buffers.current.has(activeId) || !text) return false
       setError(null)
       const draft = isDraft(activeId) ? unlistedRef.current.get(activeId) : undefined

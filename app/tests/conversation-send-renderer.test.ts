@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useConversationPanel, type ChatPanel, type ChatTransport, type PanelThread } from '../src/renderer/sidechat/useChat'
 import type { AIScope, ChatSendResult } from '../src/core/types'
+import { REVIEW_REQUEST } from '../src/core/projects/prompt'
 
 let root: Root | undefined
 afterEach(async () => {
@@ -60,7 +61,21 @@ async function fixture(scope: AIScope) {
   return { panel: () => panel, create, send, commit, stored, events, container }
 }
 
+it('sends a project review from an empty composer and shows the review request', async () => {
+  const f = await fixture('project')
+  await act(async () => { expect(await f.panel().send('', undefined, true)).toBe(true) })
+  expect(f.send).toHaveBeenCalledWith('saved', REVIEW_REQUEST, undefined, true)
+  expect(f.panel().thread?.messages).toMatchObject([{ role: 'user', text: REVIEW_REQUEST }])
+})
+
 describe.each(['chat', 'project', 'authoring'] as const)('%s immediate send feedback', scope => {
+  it('rejects an empty ordinary message without creating a chat', async () => {
+    const f = await fixture(scope)
+    await act(async () => { expect(await f.panel().send('  ')).toBe(false) })
+    expect(f.create).not.toHaveBeenCalled()
+    expect(f.send).not.toHaveBeenCalled()
+    expect(f.panel().busy.size).toBe(0)
+  })
   it('shows the first question and title before creation or send resolves, then replaces the local message once', async () => {
     const f = await fixture(scope)
     const originalCreate = f.create.getMockImplementation()!

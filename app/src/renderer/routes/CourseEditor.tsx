@@ -80,7 +80,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
     const api = window.opencourse
     return { list: () => api.listAuthoringChats(courseId), get: api.getAuthoringChat, create: () => api.createAuthoringChat(courseId),
       remove: api.deleteAuthoringChat, send: (id, text, quote) => request.current(id, text, quote), cancel: api.cancelAuthoringChat,
-      setModel: api.setAuthoringChatModel, setReasoning: api.setAuthoringChatReasoning, onDelta: api.onAuthoringChatDelta,
+      setModel: api.setAuthoringChatModel, setReasoning: api.setAuthoringChatReasoning, setProvider: api.setAuthoringChatProvider, onDelta: api.onAuthoringChatDelta,
       onDone: api.onAuthoringChatDone, onTitle: api.onAuthoringChatTitle, onError: api.onAuthoringChatError, onActivity: api.onAuthoringChatActivity }
   }, [courseId])
   const panel = useConversationPanel(transport, 'authoring', mode === 'ai', `${storageKey}:tabs`)

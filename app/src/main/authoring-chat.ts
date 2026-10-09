@@ -8,13 +8,13 @@ import { runProjectAgent, type ResponseInput } from '../core/projects/agent'
 import { scrubSecrets } from '../core/coach/key'
 import { getAuthoringCourse, noteAuthoringChat } from './course-authoring'
 import { readDocument } from './course-store'
-import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, prepareAIRequest, validateConversationModel } from './ai'
+import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
 import { currentUserId, requireUser } from './users'
 import { db } from './db'
 import { streamChat } from './openai'
 import { runAuthoringTool } from './authoring-tools'
 import { beginAuthoringTurn, authoringRunState } from './authoring-state'
-import { appendAuthoringMessage, insertAuthoringChat, recordAuthoringTool, selectAuthoringChat, selectAuthoringChats, selectAuthoringMessages, updateAuthoringChat } from './authoring-chatdb'
+import { appendAuthoringMessage, insertAuthoringChat, pinAuthoringChatProvider, recordAuthoringTool, selectAuthoringChat, selectAuthoringChats, selectAuthoringMessages, updateAuthoringChat } from './authoring-chatdb'
 import { cancelChatTitles, generateChatTitle } from './chattitles'
 import { log } from './log'
 import { whenSenderGone } from './senders'
@@ -47,14 +47,22 @@ export function cancelAllAuthoringChats(provider?: AIProvider): void {
 export function deleteAuthoringChat(id: string): void { requireChat(id); cancelAuthoringChat(id); db().prepare('DELETE FROM authoring_chats WHERE id=?').run(id) }
 export function setAuthoringChatModel(id: string, model: string): ChatSummary {
   if (running.has(id)) throw new Error('Wait for this response before changing its model.')
-  const chat = requireChat(id); validateConversationModel('authoring', model)
-  updateAuthoringChat(id, model, chat.reasoning && conversationReasoning('authoring', model).includes(chat.reasoning) ? chat.reasoning : null, chat.provider)
+  const chat = requireChat(id); validateConversationModel('authoring', model, undefined, chat.pinnedProvider)
+  updateAuthoringChat(id, model, chat.reasoning && conversationReasoning('authoring', model, chat.pinnedProvider).includes(chat.reasoning) ? chat.reasoning : null, chat.provider)
   return requireChat(id)
 }
 export function setAuthoringChatReasoning(id: string, reasoning: ReasoningEffort | null): ChatSummary {
   if (running.has(id)) throw new Error('Wait for this response before changing its reasoning.')
-  const chat = requireChat(id); validateConversationModel('authoring', chat.model, reasoning)
+  const chat = requireChat(id); validateConversationModel('authoring', chat.model, reasoning, chat.pinnedProvider)
   updateAuthoringChat(id, chat.model, reasoning, chat.provider); return requireChat(id)
+}
+/** This conversation's own connection; Settings' default is untouched. See setChatProvider. */
+export function setAuthoringChatProvider(id: string, provider: AIProvider | null): ChatSummary {
+  if (running.has(id)) throw new Error('Wait for this response before changing its connection.')
+  requireChat(id)
+  const next = pinnedConversation('authoring', provider)
+  pinAuthoringChatProvider(id, next.pinned, next.provider, next.model, next.reasoning)
+  return requireChat(id)
 }
 app.on('before-quit', () => cancelAllAuthoringChats())
 
@@ -152,7 +160,7 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
         }
       })
       finish(result.stopped ? 'stopped' : 'complete')
-      if (!result.stopped && !controller.signal.aborted && currentUserId() === owner && answered.trim()) void generateChatTitle({ scope: 'authoring', chatId: id, courseId: chat.courseId, owner, sender, key, provider: chat.provider!, model: chat.model, reasoningEfforts: conversationReasoning('authoring', chat.model), prompt: asked, response: answered })
+      if (!result.stopped && !controller.signal.aborted && currentUserId() === owner && answered.trim()) void generateChatTitle({ scope: 'authoring', chatId: id, courseId: chat.courseId, owner, sender, key, provider: chat.provider!, model: chat.model, reasoningEfforts: conversationReasoning('authoring', chat.model, chat.pinnedProvider), prompt: asked, response: answered })
     } catch (error) { finish(controller.signal.aborted ? 'stopped' : 'failed', controller.signal.aborted ? undefined : (error as Error).message) }
   })() })
   return { status: 'ok', seq }

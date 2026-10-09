@@ -1,6 +1,6 @@
 import { getCourse } from './courses'
 import { app, type WebContents } from 'electron'
-import type { ChatQuote, ChatSendResult, ProjectChatSummary, ProjectTarget, ReasoningEffort } from '../core/types'
+import type { AIProvider, ChatQuote, ChatSendResult, ProjectChatSummary, ProjectTarget, ReasoningEffort } from '../core/types'
 import { newChatId } from '../core/sidechat/ids'
 import { MAX_MESSAGE_CHARS, MAX_QUOTE_CHARS } from '../core/sidechat/thread'
 import { PROJECT_INSTRUCTIONS, REVIEW_REQUEST } from '../core/projects/prompt'
@@ -13,10 +13,10 @@ import { scrubSecrets } from '../core/coach/key'
 import { streamChat } from './openai'
 import { db } from './db'
 import { requireUser } from './users'
-import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, prepareAIRequest, profileFor, validateConversationModel } from './ai'
+import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
 import { currentUserId } from './users'
 import { updateProgress } from './progress'
-import { appendProjectMessage, deleteProjectChatRow, insertProjectChat, recordProjectTool, selectProjectChat, selectProjectChats, selectProjectMessages, updateProjectChat } from './projectchatdb'
+import { appendProjectMessage, deleteProjectChatRow, insertProjectChat, pinProjectChatProvider, recordProjectTool, selectProjectChat, selectProjectChats, selectProjectMessages, updateProjectChat } from './projectchatdb'
 import { cancelChatTitles, generateChatTitle } from './chattitles'
 import { log } from './log'
 import { whenSenderGone } from './senders'
@@ -64,15 +64,23 @@ export function deleteProjectChat(id: string): void { requireChat(id); cancelPro
 export function setProjectChatModel(id: string, model: string): ProjectChatSummary {
   if (inflight.has(id) || preparing.has(id)) throw new Error('Wait for the current response before changing its model.')
   const chat = requireChat(id)
-  validateConversationModel('project', model)
-  updateProjectChat(id, model, chat.reasoning && conversationReasoning('project', model).includes(chat.reasoning) ? chat.reasoning : null, chat.provider)
+  validateConversationModel('project', model, undefined, chat.pinnedProvider)
+  updateProjectChat(id, model, chat.reasoning && conversationReasoning('project', model, chat.pinnedProvider).includes(chat.reasoning) ? chat.reasoning : null, chat.provider)
   return requireChat(id)
 }
 export function setProjectChatReasoning(id: string, reasoning: ReasoningEffort | null): ProjectChatSummary {
   if (inflight.has(id) || preparing.has(id)) throw new Error('Wait for the current response before changing its reasoning.')
   const chat = requireChat(id)
-  validateConversationModel('project', chat.model, reasoning)
+  validateConversationModel('project', chat.model, reasoning, chat.pinnedProvider)
   updateProjectChat(id, chat.model, reasoning, chat.provider)
+  return requireChat(id)
+}
+/** This conversation's own connection; Settings' default is untouched. See setChatProvider. */
+export function setProjectChatProvider(id: string, provider: AIProvider | null): ProjectChatSummary {
+  if (inflight.has(id) || preparing.has(id)) throw new Error('Wait for the current response before changing its connection.')
+  requireChat(id)
+  const next = pinnedConversation('project', provider)
+  pinProjectChatProvider(id, next.pinned, next.provider, next.model, next.reasoning)
   return requireChat(id)
 }
 
@@ -82,7 +90,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
   if (inflight.has(id) || preparing.has(id)) return { status: 'busy' }
   const asked = review ? REVIEW_REQUEST : String(text ?? '').trim().slice(0, MAX_MESSAGE_CHARS)
   if (!asked) return { status: 'failed', message: 'There is nothing to ask.' }
-  if (profileFor('project').provider === 'apiKey' && !readKey()) return { status: 'no-key' }
+  if (chat.provider === 'apiKey' && !readKey()) return { status: 'no-key' }
   let key: string
   const preparation = new AbortController(), stopPreparation = (): void => preparation.abort()
   preparing.set(id, { controller: preparation, provider: chat.provider ?? 'apiKey' })
@@ -131,7 +139,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
   }
   input.push(...kept)
   const controller = new AbortController()
-  const titleReasoning = conversationReasoning('project', chat.model)
+  const titleReasoning = conversationReasoning('project', chat.model, chat.pinnedProvider)
   let answered = ''
   let finalized = false
   let toolCalls = 0

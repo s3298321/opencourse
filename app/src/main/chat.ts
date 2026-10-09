@@ -48,10 +48,12 @@ import type {
   ChatThread,
   ReasoningEffort
 } from '../core/types'
+import type { AIProvider } from '../core/types'
 import {
   appendMessage,
   deleteChatRow,
   insertChat,
+  pinChatProvider,
   selectChat,
   selectChats,
   selectMessageCitations,
@@ -63,7 +65,7 @@ import { getCourse } from './courses'
 import { iconsFor } from './favicons'
 import { OpenAIError, listChatModels, streamChat, type ChatSearchEvent } from './openai'
 import { readPreferences, writePreferences } from './preferences'
-import { conversationConfig, conversationReasoning, newAIConversation, prepareAIRequest, profileFor, validateConversationModel } from './ai'
+import { conversationConfig, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
 import { aiPickerModels, getAIModelSettings, notifyAIChanged } from './ai'
 import { aiSettings, profileDefaults } from '../core/ai'
 import { requireUser, currentUserId } from './users'
@@ -199,10 +201,10 @@ export function createChat(courseId: string, lesson: ChatLessonRef, model?: stri
 export function setChatModel(chatId: string, model: string): ChatSummary {
   if (isAnswering(chatId)) throw new Error('Wait for the current response before changing its model.')
   const chat = requireChat(chatId)
-  validateConversationModel('chat', model)
+  validateConversationModel('chat', model, undefined, chat.pinnedProvider)
   // A level the new model cannot take would turn the next question into a 400,
   // so it goes back to the model's own default rather than coming along.
-  const reasoning = chat.reasoning && conversationReasoning('chat', model).includes(chat.reasoning) ? chat.reasoning : null
+  const reasoning = chat.reasoning && conversationReasoning('chat', model, chat.pinnedProvider).includes(chat.reasoning) ? chat.reasoning : null
   updateChatModel(chatId, model, reasoning, chat.provider)
   return requireChat(chatId)
 }
@@ -211,8 +213,21 @@ export function setChatModel(chatId: string, model: string): ChatSummary {
 export function setChatReasoning(chatId: string, reasoning: ReasoningEffort | null): ChatSummary {
   if (isAnswering(chatId)) throw new Error('Wait for the current response before changing its reasoning.')
   const chat = requireChat(chatId)
-  validateConversationModel('chat', chat.model, reasoning)
+  validateConversationModel('chat', chat.model, reasoning, chat.pinnedProvider)
   updateChatModel(chatId, chat.model, reasoning, chat.provider)
+  return requireChat(chatId)
+}
+
+/**
+ * The connection for this chat alone - the composer's connection menu. Settings'
+ * default is untouched; choosing the default again unpins the chat, so it
+ * follows Settings from then on.
+ */
+export function setChatProvider(chatId: string, provider: AIProvider | null): ChatSummary {
+  if (isAnswering(chatId)) throw new Error('Wait for the current response before changing its connection.')
+  requireChat(chatId)
+  const next = pinnedConversation('chat', provider)
+  pinChatProvider(chatId, next.pinned, next.provider, next.model, next.reasoning)
   return requireChat(chatId)
 }
 
@@ -389,7 +404,7 @@ export async function sendChatMessage(
   if (!asked) return { status: 'failed', message: 'there is nothing to ask' }
   if (isAnswering(chatId)) return { status: 'busy' }
 
-  if (profileFor('chat').provider === 'apiKey' && !readKey()) return { status: 'no-key' }
+  if (chat.provider === 'apiKey' && !readKey()) return { status: 'no-key' }
   let key: string
   const preparation = new AbortController()
   watchSender(sender)
@@ -440,7 +455,7 @@ export async function sendChatMessage(
   })
 
   const controller = new AbortController()
-  const titleReasoning = conversationReasoning('chat', chat.model)
+  const titleReasoning = conversationReasoning('chat', chat.model, chat.pinnedProvider)
   const started = Date.now()
   const about = (): Record<string, unknown> => ({ model: chat.model, provider: chat.provider ?? 'apiKey', reasoning: chat.reasoning ?? null, ms: Date.now() - started, chars: answered.length })
   let answered = ''

@@ -701,7 +701,14 @@ export interface TitleGenerationSettings {
 
 export interface ChatSummary {
   historyLabel?: string
+  /** The connection this conversation uses: its own choice, or Settings' default. */
   provider?: AIProvider
+  /**
+   * Set when the learner chose a connection for this conversation alone, from
+   * the composer. Absent means it follows Settings - and changing Settings
+   * moves it. A pinned conversation never changes the default.
+   */
+  pinnedProvider?: AIProvider
   id: string
   courseId: string
   model: string
@@ -762,6 +769,8 @@ export interface ChatModelSettings {
 /** What the side chat's pickers are filled from. */
 export interface ChatPickerModels {
   provider?: AIProvider
+  /** Settings' connection for the feature, which a conversation follows unless it is pinned to another. */
+  defaultProvider?: AIProvider
   connection?: AIConnection
   models: ChatModel[]
   source: 'api' | 'cache' | 'fallback'

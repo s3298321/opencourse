@@ -11,6 +11,9 @@ files:
 # ship is the format bundle, so an author can get the spec, the schema and a
 # working example out of the app itself.
 extraResources:
+  - from: resources/python
+    to: python
+    filter: ['**/*', '.opencourse-runtime']
   - from: resources/icon.png
     to: icon.png
   - from: resources/spec
@@ -41,6 +44,8 @@ mac:
   # does not cover the bundle is "damaged" on Apple silicon rather than merely
   # unverified.
   identity: null
+  # @electron/osx-sign walks Resources too, signing the standalone interpreter,
+  # dylibs and native extension modules before sealing the app bundle.
   # The dev Electron binary carries its own NSMicrophoneUsageDescription, so
   # `npm run dev` prompts correctly whether or not this is here. The packaged
   # app has its own bundle id and its own Info.plist, and without this line it

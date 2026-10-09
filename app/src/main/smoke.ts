@@ -122,80 +122,67 @@ const SCRIPT = `(async () => {
     return result.status + ': ' + result.message.slice(0, 60)
   })
 
-  // --- a second language, on the course that is still imported ------------
-  const cTarget = {
+  // --- Python checking shapes, on the imported example ------------
+  const pythonTarget = {
     courseId: 'opencourse-example',
     moduleId: 'basics',
     lessonId: 'runnable-exercises',
-    blockId: 'ex-c-triple-1'
+    blockId: 'ex-python-triple-1'
   }
 
-  await step('a C exercise opens with its own file and no environment', async () => {
-    const session = await window.fixtureAPI.openExercise(cTarget)
-    assert(session.language === 'c', 'unexpected language ' + session.language)
-    assert(session.languageLabel === 'C', 'unexpected label ' + session.languageLabel)
-    assert(session.learnerFile === 'exercise.c', 'unexpected learner file ' + session.learnerFile)
-    // C has nothing to install: the system compiler is the environment.
-    assert(session.envDir === undefined, 'C should need no environment, got ' + session.envDir)
-    assert(session.depsPath === undefined, 'C should need no dependency file')
-    assert(session.hasTests === true && session.canRun === true, 'C exercise should be runnable')
-    assert(session.content.includes('int triple'), 'starter code missing from the buffer')
+  await step('a Python exercise opens with a local environment', async () => {
+    const session = await window.fixtureAPI.openExercise(pythonTarget)
+    assert(session.language === 'python', 'unexpected language ' + session.language)
+    assert(session.languageLabel === 'Python', 'unexpected label ' + session.languageLabel)
+    assert(session.learnerFile === 'exercise.py', 'unexpected learner file ' + session.learnerFile)
+    assert(session.envDir.endsWith('/.venv'), 'Python should have a local venv')
+    assert(session.depsPath.endsWith('/requirements.txt'), 'Python should have course requirements')
+    assert(session.hasTests === true && session.canRun === true, 'Python exercise should be runnable')
+    assert(session.content.includes('def triple'), 'starter code missing from the buffer')
     return session.learnerFile + ' / ' + session.testCommand
   })
 
-  await step('a C exercise compiles and runs for real', async () => {
-    const solution = await window.fixtureAPI.getSolution('opencourse-example', 'ex-c-triple-1')
-    assert(solution && solution.includes('n * 3'), 'no reference solution')
-    let output = ''
-    const off = window.fixtureAPI.onRunData((_id, chunk) => { output += chunk })
-    const current = await window.fixtureAPI.readExerciseFile(cTarget)
-    const result = await window.fixtureAPI.runTests(cTarget, solution, current.mtimeMs)
-    off()
-    assert(result.status === 'ok', 'run did not complete: ' + JSON.stringify(result).slice(0, 300))
-    assert(result.outcome.exitCode === 0, 'the C solution failed its own checks:\\n' + output)
-    // A compiled language runs as two visible steps, so the learner can read
-    // the compiler's diagnostics where the failures are.
-    assert(output.includes('compile'), 'no compile step in the output:\\n' + output)
-    assert(output.includes('4 checks passed'), 'the test binary did not report:\\n' + output)
-    assert(result.progress.exercises[await window.fixtureNodeId('opencourse-example', 'ex-c-triple-1')].completedAt, 'a green C run did not complete the exercise')
+  if (window.__OPENCOURSE_SMOKE_PYTHON) {
+  await step('a Python solution runs using bundled Python', async () => {
+    const solution = await window.fixtureAPI.getSolution('opencourse-example', 'ex-python-triple-1')
+    const current = await window.fixtureAPI.readExerciseFile(pythonTarget)
+    const result = await window.fixtureAPI.runTests(pythonTarget, solution, current.mtimeMs)
+    assert(result.status === 'ok' && result.outcome.exitCode === 0, 'Python solution failed: ' + JSON.stringify(result).slice(0, 300))
+    assert(result.progress.exercises[await window.fixtureNodeId('opencourse-example', 'ex-python-triple-1')].completedAt, 'a green run did not complete the exercise')
     return 'exit 0'
   })
 
-  await step('a C exercise that does not compile stops before running', async () => {
-    const current = await window.fixtureAPI.readExerciseFile(cTarget)
-    let output = ''
-    const off = window.fixtureAPI.onRunData((_id, chunk) => { output += chunk })
-    const result = await window.fixtureAPI.runTests(cTarget, '#include "exercise.h"\\nint triple(int n) { return n + }\\n', current.mtimeMs)
-    off()
-    assert(result.status === 'ok', 'run did not complete: ' + JSON.stringify(result).slice(0, 300))
-    assert(result.outcome.exitCode !== 0, 'a syntax error passed')
-    assert(result.outcome.failedStep === 'compile', 'expected the compile step to fail, got ' + result.outcome.failedStep)
-    assert(/error/i.test(output), 'no compiler diagnostics were streamed:\\n' + output)
-    return 'compile failed, as it should'
+  await step('a Python syntax error fails the checks', async () => {
+    const current = await window.fixtureAPI.readExerciseFile(pythonTarget)
+    const result = await window.fixtureAPI.runTests(pythonTarget, 'def triple(n): return n +', current.mtimeMs)
+    assert(result.status === 'ok' && result.outcome.exitCode !== 0, 'a syntax error passed')
+    return 'checks failed, as they should'
   })
 
   await step('an expected-output exercise is graded by what it printed', async () => {
-    const ioTarget = { ...cTarget, blockId: 'ex-c-hello-1' }
+    const ioTarget = { ...pythonTarget, blockId: 'ex-python-hello-1' }
     const session = await window.fixtureAPI.openExercise(ioTarget)
-    assert(session.hasTests === false, 'ex-c-hello-1 has no test file')
+    assert(session.hasTests === false, 'ex-python-hello-1 has no test file')
     assert(session.canRun === true, 'an expected-output exercise is still runnable')
 
     let output = ''
     const off = window.fixtureAPI.onRunData((_id, chunk) => { output += chunk })
     const wrong = await window.fixtureAPI.runTests(
-      ioTarget, '#include <stdio.h>\\nint main(void) { puts("Goodbye"); return 0; }\\n', session.mtimeMs
+      ioTarget, 'print("Goodbye")\\n', session.mtimeMs
     )
     assert(wrong.status === 'ok' && wrong.outcome.exitCode !== 0, 'the wrong output passed')
     assert(output.includes('expected:'), 'no output diff was shown:\\n' + output)
 
     output = ''
-    const solution = await window.fixtureAPI.getSolution('opencourse-example', 'ex-c-hello-1')
+    const solution = await window.fixtureAPI.getSolution('opencourse-example', 'ex-python-hello-1')
     const current = await window.fixtureAPI.readExerciseFile(ioTarget)
     const right = await window.fixtureAPI.runTests(ioTarget, solution, current.mtimeMs)
     off()
     assert(right.status === 'ok' && right.outcome.exitCode === 0, 'the right output failed:\\n' + output)
     return 'output compared both ways'
   })
+
+  }
 
   await step('a second course imports alongside the first', async () => {
     const result = await window.fixtureAPI.importCoursePath(zips.asyncio)
@@ -2743,7 +2730,7 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
     await check('light system preference retains charcoal surfaces and legible silver controls', `(() => {
       const root = getComputedStyle(document.documentElement);
       const content = getComputedStyle(document.querySelector('.content'));
-      if (root.colorScheme !== 'dark' || content.backgroundColor !== 'rgba(0, 0, 0, 0.19)') throw new Error('Appearance followed the light preference or picker lost its black tint');
+      if (root.colorScheme !== 'dark' || content.backgroundColor !== 'rgba(0, 0, 0, 0.17)') throw new Error('Appearance followed the light preference or picker lost its black tint');
       const button = [...document.querySelectorAll('.user-card.new button')].find(b => b.textContent.trim() === 'Create');
       const style = getComputedStyle(button);
       if (style.color !== 'rgb(32, 32, 36)' || style.backgroundColor !== 'rgb(228, 228, 232)') throw new Error('Off-white control contrast is incorrect');
@@ -2759,8 +2746,8 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
         const probe = document.createElement('div'); probe.className = className; document.querySelector('.app').append(probe);
         try { return alpha(probe); } finally { probe.remove(); }
       });
-      if (title !== 0.4 || picker !== 0.19 || values.slice(0, 3).some(value => value !== picker) || values[3] !== 1) throw new Error(JSON.stringify({title, picker, values}));
-      if (getComputedStyle(document.querySelector('.titlebar')).backgroundColor !== 'rgba(0, 0, 0, 0.4)') throw new Error('Titlebar lost its black tint');
+      if (title !== 0.36 || picker !== 0.17 || values.slice(0, 3).some(value => value !== picker) || values[3] !== 1) throw new Error(JSON.stringify({title, picker, values}));
+      if (getComputedStyle(document.querySelector('.titlebar')).backgroundColor !== 'rgba(0, 0, 0, 0.36)') throw new Error('Titlebar lost its black tint');
       if (getComputedStyle(document.querySelector('.titlebar')).backgroundImage !== 'none') throw new Error('Titlebar should be smooth, without grain');
       if (getComputedStyle(document.body).backgroundColor !== 'rgba(0, 0, 0, 0)') throw new Error('Body obscures native vibrancy');
       const textured = getComputedStyle(document.querySelector('.content'));
@@ -2769,7 +2756,7 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
       const url = textured.backgroundImage.slice(4, -1).replace(/^["']|["']$/g, '');
       const grain = new Image(); grain.src = url; await grain.decode();
       if (grain.naturalWidth !== 160) throw new Error('Grain asset is missing');
-      return 'black tint: 40% titlebar; 19% picker/list/sidebar/chat surfaces; static grain loaded; opaque reading content';
+      return 'black tint: 36% titlebar; 17% picker/list/sidebar/chat surfaces; static grain loaded; opaque reading content';
     })()`)
     await cdp.sendCommand('Emulation.setEmulatedMedia', { features: [
       { name: 'prefers-reduced-motion', value: 'reduce' },

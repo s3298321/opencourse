@@ -5,8 +5,6 @@
  * the scaffolder, the runner, the workbench, the gates - asks for a descriptor
  * by id and never names a language itself.
  */
-import { cToolchain } from './c'
-import { llvmIrToolchain } from './llvm'
 import { pythonToolchain } from './python'
 import { DEFAULT_MATCH } from './output'
 import type { CourseManifest, CourseView, ExerciseBlock } from '../types'
@@ -16,9 +14,7 @@ import type { OutputMatch, ResolvedRuntime, RuntimeSpec, Toolchain } from './typ
 export const DEFAULT_LANGUAGE = 'python'
 
 const REGISTRY: Record<string, Toolchain> = {
-  [pythonToolchain.id]: pythonToolchain,
-  [cToolchain.id]: cToolchain,
-  [llvmIrToolchain.id]: llvmIrToolchain
+  [pythonToolchain.id]: pythonToolchain
 }
 
 export const TOOLCHAIN_IDS = Object.keys(REGISTRY)
@@ -34,7 +30,7 @@ export function hasToolchain(id: string): boolean {
  */
 export function getToolchain(id: string | undefined): Toolchain {
   const toolchain = REGISTRY[id ?? DEFAULT_LANGUAGE]
-  if (!toolchain) throw new Error(`unknown language: ${id}`)
+  if (!toolchain) throw new Error(`Only Python exercises are supported (got ${id})`)
   return toolchain
 }
 
@@ -99,7 +95,7 @@ export function outputMatch(exercise: ExerciseBlock): OutputMatch {
   return exercise.match ?? DEFAULT_MATCH
 }
 
-export { cToolchain, llvmIrToolchain, pythonToolchain }
+export { pythonToolchain }
 export * from './types'
 export { compareOutput, DEFAULT_MATCH } from './output'
 export { SHELL_METACHARACTERS, safeFlags, safeLibs, tokenizeCommand } from './argv'

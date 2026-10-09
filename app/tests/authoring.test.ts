@@ -68,7 +68,7 @@ describe('authoring draft tools and permanent identities', () => {
     expect(await saveCourse(courseId, 0, draft.draftVersion)).toMatchObject({ status: 'ok' })
     closeDb()
     const reopened = getAuthoringCourse(courseId).document.manifest!
-    expect(portableManifest(reopened)).toEqual({ ...course, schema_version: '1.5', version: '0.1.0' })
+    expect(portableManifest(reopened)).toEqual({ ...course, schema_version: '1.6', version: '0.1.0' })
     expect(reopened.modules[0].lessons![0].blocks.map(block => block.type)).toEqual(['markdown', 'quiz', 'exercise', 'image', 'video', 'visualization'])
     expect(courseNodes(reopened).every(node => UUID.test(node.id))).toBe(true)
   })
@@ -86,7 +86,7 @@ describe('authoring draft tools and permanent identities', () => {
     expect(getAuthoringChat(chat.id).messages[0].authoring?.target).toEqual({ kind: 'lesson', ref: saved.nodeRefMap![ref] })
     const after = getAuthoringCourse(courseId)
     expect(courseNodes(after.document.manifest).every(n => UUID.test(n.id))).toBe(true)
-    expect(portableManifest(after.document.manifest!)).toEqual({ ...manifest(), schema_version: '1.5', version: '0.1.0' })
+    expect(portableManifest(after.document.manifest!)).toEqual({ ...manifest(), schema_version: '1.6', version: '0.1.0' })
     await tool(courseId, 'set_course', { course: { ...authoringManifest(after.draft.manifest), title: 'Renamed' } })
     await saveCourse(courseId, 1, getAuthoringCourse(courseId).draft.draftVersion)
     expect(courseNodes(getAuthoringCourse(courseId).document.manifest).map(n => n.id)).toEqual(courseNodes(after.document.manifest).map(n => n.id))
@@ -244,7 +244,7 @@ describe('authoring conversation context and lifecycle', () => {
     cancelAuthoringChat(chat.id); resume(); await new Promise(r => setImmediate(r))
     expect(getAuthoringCourse(courseId).draft.manifest.title).toBe('AI revised')
     expect(getAuthoringChat(chat.id).messages.at(-1)).toMatchObject({ text: 'Partial response', status: 'stopped' })
-    expect(authoringRunState(courseId).chatId).toBeNull(); expect(mocked.title).not.toHaveBeenCalled()
+    expect(authoringRunState(courseId).chatId).toBeNull(); expect(mocked.title).toHaveBeenCalledOnce()
   })
   it('rejects stale versions/missing targets without model requests and deletes new-draft chats on discard', async () => {
     const { courseId } = fixture(), chat = createAuthoringChat(courseId)

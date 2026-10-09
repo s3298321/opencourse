@@ -9,11 +9,11 @@ const icons: Record<string, 'graduation-cap' | 'file-text' | 'palette' | 'server
 }
 const resources = Object.values(DOC_RESOURCES).flat()
 ---
-<Docs title="Documentation" description="Everything about OpenCourse: getting started, the course and theme formats, the server API and hosting your own catalog.">
+<Docs title="Documentation" description="OpenCourse guides for getting started, course and theme formats, the server API and hosting a catalog.">
   <header class="docs-hero oc-enter">
     <span class="oc-eyebrow">Documentation</span>
-    <h1>Learn, write and host with OpenCourse</h1>
-    <p>These pages are the repository's own <a href={`${SITE.repoUrl}/tree/master/docs`} rel="noopener noreferrer"><code>docs/</code></a>, published on every change - so they always describe the code as it is.</p>
+    <h1>Using OpenCourse</h1>
+    <p>Guides to studying, creating courses, customizing themes and hosting a catalog. These pages are built from the <a href={`${SITE.repoUrl}/tree/master/docs`} rel="noopener noreferrer">documentation in the repository</a>.</p>
   </header>
   {docGroups().map((group) => (
     <section class="docs-index-group">

@@ -15,7 +15,7 @@ export const EXAMPLE_COURSE_DIR = join(REPO, 'docs', 'example-course')
 export const FIXTURE_COURSES_DIR = join(__dirname, '..', 'fixtures', 'courses')
 export const CONTENT_DIR = join(REPO, 'content')
 
-/** A fixture course's folder: `python-asyncio` or `intro-to-c`. */
+/** A fixture course's folder: `python-asyncio` or `intro-to-python`. */
 export function fixtureCourseDir(slug: string): string {
   return join(FIXTURE_COURSES_DIR, slug)
 }

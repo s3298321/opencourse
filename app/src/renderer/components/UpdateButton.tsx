@@ -34,7 +34,7 @@ export default function UpdateButton({ openSettings }: { openSettings?: () => vo
   }
   const notes = 'notesUrl' in status ? status.notesUrl : undefined
   if (notes) items.push({ id: 'notes', label: 'What’s new', onSelect: () => void window.opencourse.openExternal(notes) })
-  if (openSettings) items.push({ id: 'settings', label: 'Update settings…', onSelect: openSettings })
+  if (openSettings) items.push({ id: 'settings', label: 'Update settings', onSelect: openSettings })
 
   // In a narrow window the words give way to the arrow (and a download's
   // percentage), so the titlebar's controls still fit beside its way back.
@@ -67,7 +67,7 @@ function chipLabel(status: AppUpdateStatus): string | null {
     case 'downloading':
       return `Updating ${Math.floor((status.received / Math.max(1, status.total)) * 100)}%`
     case 'verifying':
-      return 'Updating…'
+      return 'Updating'
     case 'ready':
       return 'Restart to update'
     case 'error':

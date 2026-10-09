@@ -25,7 +25,7 @@ interface Props {
   noindex?: boolean
 }
 const { title, description = SITE.description, active, jsonLd, noindex = false } = Astro.props
-const fullTitle = title ? `${title} · OpenCourse` : 'OpenCourse: courses that teach back'
+const fullTitle = title ? `${title} · OpenCourse` : 'OpenCourse · Courses on your Mac'
 const canonical = new URL(Astro.url.pathname.replace(/\/$/, '') || '/', SITE.url).toString()
 const image = new URL('/og.png', SITE.url).toString()
 const year = new Date().getFullYear()
@@ -42,7 +42,9 @@ const year = new Date().getFullYear()
   <link rel="canonical" href={canonical} />
   {noindex && <meta name="robots" content="noindex" />}
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png" />
   <link rel="sitemap" href="/sitemap-index.xml" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="OpenCourse" />
@@ -63,7 +65,7 @@ const year = new Date().getFullYear()
       <nav class="header-nav" aria-label="Main">
         <a href="/#features" aria-current={active === 'features' ? 'page' : undefined}>Features</a>
         <a href="/docs" aria-current={active === 'docs' ? 'page' : undefined}>Docs</a>
-        <a href={SITE.catalogUrl}>Catalog<Icon name="arrow-up-right" size={13} /></a>
+        <a href={SITE.catalogUrl} target="_blank" rel="noopener noreferrer">Catalog<Icon name="arrow-up-right" size={13} /></a>
         <a href="/download" aria-current={active === 'download' ? 'page' : undefined}>Download</a>
       </nav>
       <div class="header-end">
@@ -79,7 +81,7 @@ const year = new Date().getFullYear()
     <nav id="mobile-nav" class="mobile-nav" aria-label="Main" data-menu hidden>
       <a href="/#features">Features</a>
       <a href="/docs">Documentation</a>
-      <a href={SITE.catalogUrl}>Course catalog</a>
+      <a href={SITE.catalogUrl} target="_blank" rel="noopener noreferrer">Course catalog</a>
       <a href="/download">Download</a>
       <a href={SITE.repoUrl} rel="noopener noreferrer">GitHub</a>
     </nav>
@@ -93,14 +95,14 @@ const year = new Date().getFullYear()
     <div class="oc-wrap footer-grid">
       <div class="footer-brand">
         <Brand />
-        <p>Courses on any subject, on your Mac. Free and open source.</p>
+        <p>A free, open-source Mac app for studying and creating courses.</p>
         <GitHubButton label="Star" />
       </div>
       <nav aria-label="Product">
         <h2>Product</h2>
         <a href="/download">Download</a>
         <a href="/#features">Features</a>
-        <a href={SITE.catalogUrl}>Course catalog</a>
+        <a href={SITE.catalogUrl} target="_blank" rel="noopener noreferrer">Course catalog</a>
         <a href={SITE.releasesUrl} rel="noopener noreferrer">Releases</a>
       </nav>
       <nav aria-label="Documentation">
@@ -121,7 +123,7 @@ const year = new Date().getFullYear()
     </div>
     <div class="oc-wrap footer-legal">
       <span>© {year} OpenCourse contributors · <a href={`${SITE.repoUrl}/blob/master/LICENSE`} rel="noopener noreferrer">MIT License</a></span>
-      <span>Made for learners, on a Mac.</span>
+      <span>For macOS · Apple silicon</span>
     </div>
   </footer>
   <script>

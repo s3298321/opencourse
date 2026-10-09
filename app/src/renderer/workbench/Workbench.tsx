@@ -23,6 +23,7 @@ type Tab = 'tests' | 'terminal'
 type Status =
   | { kind: 'idle' }
   | { kind: 'busy'; message: string }
+  | { kind: 'ready'; message: string }
   | { kind: 'passed'; message: string }
   | { kind: 'failed'; message: string }
   | { kind: 'error'; message: string; detail?: string }
@@ -65,6 +66,7 @@ export default function Workbench({
   // runs - so it must not sit on the critical path of every open, for a pane
   // most runs never look at. Once started it stays mounted across tab switches.
   const [terminalStarted, setTerminalStarted] = useState(false)
+  const [terminalStarting, setTerminalStarting] = useState(false)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [dirty, setDirty] = useState(false)
   const [conflict, setConflict] = useState<{ content: string; mtimeMs: number } | null>(null)
@@ -168,8 +170,8 @@ export default function Workbench({
     })
     const offEnv = window.opencourse.onEnvProgress((id, progress) => {
       if (id !== target.blockId) return
-      setStatus({ kind: 'busy', message: progress.message })
-      if (progress.stage !== 'ready') tests.current?.write(`\x1b[2m${progress.message}\x1b[0m\r\n`)
+      setStatus({ kind: progress.stage === 'ready' ? 'ready' : 'busy', message: progress.message })
+      tests.current?.write(`\x1b[2m${progress.message}\x1b[0m\r\n`)
     })
     return () => {
       offRun()
@@ -362,7 +364,7 @@ export default function Workbench({
 
         <div className="workbench-actions">
           <button onClick={() => void run()} disabled={!session || running || !session.canRun}>
-            {running ? 'Running…' : 'Run checks'}
+            {running ? 'Running' : 'Run checks'}
           </button>
           {running && (
             <button className="secondary" onClick={() => void window.opencourse.cancelRun()}>Stop</button>
@@ -381,9 +383,18 @@ export default function Workbench({
             <button className={tab === 'tests' ? 'active' : ''} onClick={() => setTab('tests')}>Checks</button>
             <button
               className={tab === 'terminal' ? 'active' : ''}
-              onClick={() => {
-                setTerminalStarted(true)
-                setTab('terminal')
+              disabled={!session || terminalStarting}
+              onClick={async () => {
+                if (terminalStarted) { setTab('terminal'); return }
+                setTerminalStarting(true)
+                try {
+                  const environment = await window.opencourse.ensureEnv(target)
+                  if (!environment.ok) { setStatus({ kind: 'error', message: environment.message }); return }
+                  setStatus({ kind: 'ready', message: `Ready · Python ${environment.toolVersion}` })
+                  setTerminalStarted(true)
+                  setTab('terminal')
+                } catch (error) { setStatus({ kind: 'error', message: (error as Error).message }) }
+                finally { setTerminalStarting(false) }
               }}
             >
               Terminal

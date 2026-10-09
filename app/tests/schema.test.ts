@@ -56,12 +56,12 @@ describe('validateManifest', () => {
     return m
   }
 
-  it('accepts a per-exercise runtime in another language', () => {
+  it('rejects a per-exercise runtime in another language', () => {
     expect(
       validateManifest(
-        withExercise({ runtime: { language: 'c', version: '>=c17', packages: ['m'], flags: ['-Wall'] } })
+        withExercise({ runtime: { language: 'c' } })
       )
-    ).toEqual([])
+    ).toContain('/modules/0/lessons/0/blocks/0/runtime/language: Only Python exercises are supported')
   })
 
   it('rejects a language the app has no toolchain for', () => {

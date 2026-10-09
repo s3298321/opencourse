@@ -8,6 +8,7 @@
 import { Menu, nativeTheme, type BrowserWindow, type MenuItem } from 'electron'
 import { join } from 'node:path'
 import { specResourcesDir } from './paths'
+import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
 
 interface Result { name: string; ok: boolean; detail: string }
 
@@ -104,7 +105,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
         grain: css('.content', 'background-image')
       };
       await openSettings();
-      const own = card('OpenCourse');
+      const own = card('OpenCourse Dark');
       if (!own || own.querySelector('.theme-choose').getAttribute('aria-pressed') !== 'true') throw new Error('the app\\'s own look is not shown as chosen');
       if (own.querySelector('.theme-remove')) throw new Error('the app\\'s own look offers to be removed');
       return 'no stylesheet, no appearance, own look chosen';
@@ -117,13 +118,39 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       return methods;
     `)
 
+    await run('built-in White applies from Settings and preserves the logo and typography', `
+      const white = card('OpenCourse White');
+      if (!white || white.querySelector('.theme-remove')) throw new Error('White is missing or removable');
+      white.querySelector('.theme-choose').click();
+      await until(() => document.documentElement.dataset.appearance === 'light', 'White to apply');
+      if (token('--bg') !== '#ffffff') throw new Error('White reading surface ' + token('--bg'));
+      if (css(document.documentElement, 'color-scheme') !== 'light') throw new Error('native controls stayed dark');
+      await library();
+      const mark = document.querySelector('.titlebar .brand img');
+      await mark.decode();
+      if (mark.src !== window.__themeBaseline.mark) throw new Error('White changed the logo');
+      if (family('.titlebar .brand') !== window.__themeBaseline.brand.replace(/"/g, '')) throw new Error('White changed the wordmark font');
+      return 'white surfaces, same logo and type';
+    `)
+    await inMain('White sets the native window to light', () => {
+      if (nativeTheme.themeSource !== 'light') throw new Error('White did not update the native window');
+      return nativeTheme.themeSource
+    })
+    await run('Dark restores the default from built-in White', `
+      await window.opencourse.applyTheme(null);
+      await until(() => !themed(), 'dark to return');
+      if (token('--bg') !== '#111110') throw new Error('default palette was not restored');
+      await openSettings();
+      return 'default dark palette restored';
+    `)
+
     await run('a theme archive imports through the real path and is listed after the app\'s own look', `
       const result = await window.opencourse.importThemePath(${JSON.stringify(zips.example)});
       if (result.status !== 'ok') throw new Error(JSON.stringify(result));
       if (result.theme.active) throw new Error('importing applied the theme');
       await until(() => card('Paper & Ink'), 'the imported theme card');
       const names = [...document.querySelectorAll('.settings-appearance .theme-name')].map((n) => n.textContent);
-      if (names[0] !== 'OpenCourse' || names[1] !== 'Paper & Ink') throw new Error(names.join(', '));
+      if (names.join('|') !== 'OpenCourse Dark|OpenCourse White|Paper & Ink') throw new Error(names.join(', '));
       const preview = card('Paper & Ink').querySelector('img.theme-preview');
       await preview.decode();
       if (preview.naturalWidth !== 480) throw new Error('the preview did not load: ' + preview.naturalWidth);
@@ -202,7 +229,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       const theme = view?.submenu?.items.find((item: MenuItem) => item.label === 'Theme')
       const items = (theme?.submenu?.items ?? []).filter((item: MenuItem) => item.type === 'radio')
       const labels = items.map((item: MenuItem) => `${item.checked ? '✓' : ' '}${item.label}`)
-      if (labels.join('|') !== ' OpenCourse (no theme)|✓Paper & Ink') throw new Error(labels.join('|'))
+      if (labels.join('|') !== ' OpenCourse Dark (default)| OpenCourse White|✓Paper & Ink') throw new Error(labels.join('|'))
       return labels.join(', ')
     })
 
@@ -237,6 +264,10 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       view.dataset.smoke = marker;
       if (css(editor, 'background-color') !== 'rgb(239, 232, 218)') throw new Error('editor under the theme ' + css(editor, 'background-color'));
       if (!family(editor.querySelector('.cm-scroller')).startsWith('Menlo')) throw new Error('editor font ' + family(editor.querySelector('.cm-scroller')));
+      await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)});
+      await until(() => css(editor, 'background-color') === 'rgb(247, 247, 249)', 'the editor to take White colours');
+      if (!editor.isConnected || editor.querySelector('.cm-content').dataset.smoke !== marker) throw new Error('White recreated the editor');
+      if (!terminal.isConnected) throw new Error('White recreated the terminal');
       await window.opencourse.applyTheme(null);
       await until(() => !themed(), 'the theme to come off');
       await until(() => css(editor, 'background-color') === 'rgb(29, 29, 33)', 'the editor to take the app\\'s own colours');
@@ -288,7 +319,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       await until(() => document.querySelector('.titlebar .brand img').src === window.__themeBaseline.mark, 'the app\\'s own mark');
       if (token('--bg') !== '#111110') throw new Error('--bg ' + token('--bg'));
       if ([...document.fonts].some((f) => f.family.replace(/"/g, '') === 'Ledger Dots')) throw new Error('the theme font stayed');
-      if ((await window.opencourse.listThemes()).length) throw new Error('a theme is still installed');
+      if ((await window.opencourse.listThemes()).filter((theme) => !theme.builtin).length) throw new Error('a theme is still installed');
       return 'own look, own mark, no theme fonts';
     `)
 

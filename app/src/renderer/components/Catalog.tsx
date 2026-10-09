@@ -165,7 +165,7 @@ function CatalogCard({ serverId, course, inLibrary, adding, canAdd, onOpen, onAd
       <div className="catalog-card-action" onClick={(e) => e.stopPropagation()}>
         {inLibrary
           ? <button className="secondary" onClick={onOpenInLibrary}>In your library</button>
-          : <button disabled={adding || !canAdd} onClick={onAdd}>{adding ? 'Adding…' : 'Add'}</button>}
+          : <button disabled={adding || !canAdd} onClick={onAdd}>{adding ? 'Adding' : 'Add'}</button>}
       </div>
     </div>
   )

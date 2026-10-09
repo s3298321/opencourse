@@ -2,19 +2,19 @@
  * Finding a language's tool, preparing its environment, and running the checks.
  *
  * The planning half lives in src/core/toolchains/; everything here touches the
- * filesystem or spawns processes. Nothing in this file names a language: it
- * consumes descriptors, so adding one is a change in core alone.
+ * filesystem or spawns processes. Python exercises always use the bundled runtime.
  */
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, openSync, closeSync, mkdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
-import { childEnv, mergePath } from '../core/runner'
+import { childEnv } from '../core/runner'
 import { compareOutput } from '../core/toolchains'
+import { BUNDLED_PYTHON_ID, BUNDLED_PYTHON_VERSION, bundledPythonDir, bundledPythonPath } from './bundled-python'
 import type { RunStep, Toolchain, VersionFloor } from '../core/toolchains/types'
 import type { EnvProgress, EnvResult, RunOutcome } from '../core/types'
 
-const PROBE_TIMEOUT_MS = 5_000
+// macOS may verify a freshly installed signed runtime on its first execution.
+const PROBE_TIMEOUT_MS = 15_000
 const LOGIN_PATH_TIMEOUT_MS = 4_000
 const CREATE_TIMEOUT_MS = 180_000
 const INSTALL_TIMEOUT_MS = 300_000
@@ -37,7 +37,7 @@ function run(
     const child = execFile(
       file,
       args,
-      { cwd: opts.cwd, env: opts.env, timeout: opts.timeout, signal: opts.signal, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+      { cwd: opts.cwd, env: opts.env ?? childEnv({ base: process.env, extra: { PYTHONHOME: null, PYTHONPATH: null, VIRTUAL_ENV: null, PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' } }), timeout: opts.timeout, signal: opts.signal, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
       (err, stdout, stderr) => {
         const timedOut = Boolean(err && (err as { killed?: boolean }).killed)
         const code = err && typeof (err as { code?: unknown }).code === 'number' ? ((err as { code: number }).code) : err ? 1 : 0
@@ -79,78 +79,33 @@ export function resolveLoginPath(): Promise<string> {
   return loginPathPromise
 }
 
-let cltPromise: Promise<boolean> | null = null
-
-/**
- * Invoking anything under /usr/bin that is a Command Line Tools shim - `python3`,
- * `cc` - without the tools installed pops Apple's "install developer tools"
- * dialog, attributed to this app. Only touch those once we know it will not.
- */
-export function hasCommandLineTools(): Promise<boolean> {
-  cltPromise ??= run('/usr/bin/xcode-select', ['-p'], { timeout: PROBE_TIMEOUT_MS }).then((r) => r.code === 0)
-  return cltPromise
-}
-
-/* -------------------------------------------------------------------------- */
-/* tool discovery                                                              */
-/* -------------------------------------------------------------------------- */
-
 export interface FoundTool {
   path: string
   version: string
 }
 
-/** Every shim lives here, so this is the prefix the CLT check guards. */
-const SHIM_PREFIX = '/usr/bin/'
-
+/** Only the bundled interpreter is eligible, regardless of PATH or installed tools. */
 export async function findTool(
   toolchain: Toolchain,
   floor: VersionFloor
-): Promise<{ found?: FoundTool; tried: string[] }> {
-  const loginPath = await resolveLoginPath()
-  const env = { ...process.env, PATH: mergePath([], loginPath) }
-  const { names, fallbackNames, searchDirs, probeArgs, probeInput, versionArgs, needsCommandLineTools } =
-    toolchain.discovery
-
-  const probe = probeArgs(floor)
-  const input = probeInput?.(floor)
-  const clt = needsCommandLineTools ? await hasCommandLineTools() : true
-  const tried: string[] = []
-
-  const check = async (candidate: string): Promise<FoundTool | undefined> => {
-    tried.push(candidate)
-    const res = await run(candidate, probe, { env, timeout: PROBE_TIMEOUT_MS, input })
-    if (res.code !== 0) return undefined
-    const v = await run(candidate, versionArgs, { env, timeout: PROBE_TIMEOUT_MS })
-    // A compiler's --version is a banner; the first line is the useful part.
-    return { path: candidate, version: (v.stdout.trim().split('\n')[0] ?? '').trim() }
+): Promise<{ found?: FoundTool; tried: string[]; message?: string }> {
+  const path = bundledPythonPath()
+  const tried = [path]
+  if (toolchain.id !== 'python') return { tried, message: 'Only Python exercises are supported.' }
+  const version = await run(path, toolchain.discovery.versionArgs, { timeout: PROBE_TIMEOUT_MS })
+  if (version.code !== 0 || version.stdout.trim() !== BUNDLED_PYTHON_VERSION) {
+    return { tried, message: 'The bundled Python runtime is missing or damaged. Reinstall OpenCourse.' }
   }
-
-  for (const dir of searchDirs(homedir())) {
-    for (const name of names) {
-      const candidate = `${dir}/${name}`
-      if (!existsSync(candidate)) continue
-      if (!clt && candidate.startsWith(SHIM_PREFIX)) continue
-      const found = await check(candidate)
-      if (found) return { found, tried }
-    }
-  }
-
-  if (clt) {
-    for (const candidate of [...names, ...fallbackNames]) {
-      const found = await check(candidate)
-      if (found) return { found, tried }
-    }
-  }
-
-  return { tried }
+  const probe = await run(path, toolchain.discovery.probeArgs(floor), { timeout: PROBE_TIMEOUT_MS })
+  if (probe.code !== 0) return { tried, message: `This exercise requires Python ${floor.label} or newer; OpenCourse bundles Python ${BUNDLED_PYTHON_VERSION}. Update OpenCourse.` }
+  return { tried, found: { path, version: version.stdout.trim() } }
 }
 
 /* -------------------------------------------------------------------------- */
 /* the course environment                                                      */
 /* -------------------------------------------------------------------------- */
 
-function noTool(toolchain: Toolchain, floor: VersionFloor, tried: string[]): EnvResult {
+function noTool(toolchain: Toolchain, floor: VersionFloor, tried: string[], message?: string): EnvResult {
   return {
     ok: false,
     code: 'no-tool',
@@ -158,18 +113,25 @@ function noTool(toolchain: Toolchain, floor: VersionFloor, tried: string[]): Env
     floorLabel: floor.label,
     tried,
     hint: toolchain.installHint(floor),
-    message: `OpenCourse needs ${toolchain.versionLabel(floor)} or newer and could not find it.`
+    message: message ?? `This exercise requires Python ${floor.label} or newer; OpenCourse bundles Python ${BUNDLED_PYTHON_VERSION}. Update OpenCourse.`
   }
 }
 
-/** A dangling exe survives a Homebrew upgrade underneath a virtualenv. Ask it. */
+const RUNTIME_STAMP = '.opencourse-runtime.json'
+function runtimeStamp(): string {
+  return JSON.stringify({ identity: BUNDLED_PYTHON_ID, location: bundledPythonDir() })
+}
+
+/** Check provenance as well as liveness: a working system-created venv is not eligible. */
 async function envIsHealthy(toolchain: Toolchain, envDir: string, signal?: AbortSignal): Promise<boolean> {
-  const provision = toolchain.provision
-  if (!provision) return true
-  const exe = provision.exe(envDir)
+  const exe = toolchain.provision!.exe(envDir)
   if (!existsSync(exe)) return false
-  const res = await run(exe, provision.health, { timeout: PROBE_TIMEOUT_MS, signal })
-  return res.code === 0
+  const health = await run(exe, ['-c', 'import sys, os, json; print(json.dumps([os.path.realpath(sys.base_prefix), "%d.%d.%d" % sys.version_info[:3]]))'], { timeout: PROBE_TIMEOUT_MS, signal })
+  try {
+    const [base, version] = JSON.parse(health.stdout) as string[]
+    const expected = await run(bundledPythonPath(), ['-c', 'import sys, os; print(os.path.realpath(sys.prefix))'], { timeout: PROBE_TIMEOUT_MS, signal })
+    return health.code === 0 && expected.code === 0 && base === expected.stdout.trim() && version === BUNDLED_PYTHON_VERSION
+  } catch { return false }
 }
 
 function acquireLock(courseDir: string): (() => void) | null {
@@ -200,8 +162,7 @@ function acquireLock(courseDir: string): (() => void) | null {
 
 const inFlight = new Map<string, Promise<EnvResult>>()
 const envControllers = new Map<string, AbortController>()
-/** Only successes: a user who installs the missing tool must be able to retry. */
-const systemTools = new Map<string, EnvResult>()
+const envRequests = new Map<string, string>()
 
 export interface EnsureEnvOptions {
   toolchain: Toolchain
@@ -221,35 +182,26 @@ export interface EnsureEnvOptions {
  */
 export function ensureCourseEnv(options: EnsureEnvOptions): Promise<EnvResult> {
   const { toolchain, envDir, floor } = options
-
-  // Nothing to build: the system tool *is* the environment, and the probe that
-  // found it already proved it works. Cached for the process lifetime.
-  if (!toolchain.provision || !envDir) {
-    const key = `${toolchain.id}:${floor.label}`
-    const cached = systemTools.get(key)
-    if (cached) return Promise.resolve(cached)
-    const existing = inFlight.get(key)
-    if (existing) return existing
-    const task = (async (): Promise<EnvResult> => {
-      options.onProgress?.({ stage: 'looking', message: `Looking for ${toolchain.label}…` })
-      const { found, tried } = await findTool(toolchain, floor)
-      if (!found) return noTool(toolchain, floor, tried)
-      const result: EnvResult = { ok: true, tool: found.path, toolVersion: found.version }
-      systemTools.set(key, result)
-      options.onProgress?.({ stage: 'ready', message: 'Ready' })
-      return result
-    })().finally(() => inFlight.delete(key))
-    inFlight.set(key, task)
-    return task
+  if (toolchain.id !== 'python') return Promise.resolve({ ok: false, code: 'failed', message: 'Only Python exercises are supported.' })
+  if (!envDir || !toolchain.provision) return Promise.resolve({ ok: false, code: 'failed', message: 'Python exercises require a local course environment.' })
+  // Validate every caller before sharing a setup: a higher exercise minimum cannot reuse a lower one.
+  const [major, minor, patch] = BUNDLED_PYTHON_VERSION.split('.').map(Number)
+  if (floor.kind !== 'semver' || major! < floor.major || (major === floor.major && (minor! < floor.minor || (minor === floor.minor && patch! < (floor.patch ?? 0))))) {
+    return Promise.resolve(noTool(toolchain, floor, [bundledPythonPath()]))
   }
-
+  const request = JSON.stringify([floor.label, options.deps, options.depsPath, bundledPythonDir()])
   const existing = inFlight.get(envDir)
-  if (existing) return existing
+  if (existing) {
+    if (envRequests.get(envDir) === request) return existing
+    return existing.then(() => ensureCourseEnv(options))
+  }
+  envRequests.set(envDir, request)
   const controller = new AbortController()
   envControllers.set(envDir, controller)
   const task = provisionEnv(options, envDir, controller.signal).finally(() => {
     inFlight.delete(envDir)
     envControllers.delete(envDir)
+    envRequests.delete(envDir)
   })
   inFlight.set(envDir, task)
   return task
@@ -267,15 +219,16 @@ async function provisionEnv(options: EnsureEnvOptions, envDir: string, signal: A
   }
 
   try {
-    let healthy = await envIsHealthy(toolchain, envDir, signal)
+    notify('looking', 'Checking bundled Python…')
+    const { found, tried, message } = await findTool(toolchain, floor)
+    signal.throwIfAborted()
+    if (!found) return noTool(toolchain, floor, tried, message)
+    const stamp = join(envDir, RUNTIME_STAMP)
+    const matches = existsSync(stamp) && readFileSync(stamp, 'utf8') === runtimeStamp()
+    let healthy = matches && await envIsHealthy(toolchain, envDir, signal)
     signal.throwIfAborted()
 
     if (!healthy) {
-      notify('looking', `Looking for ${toolchain.label}…`)
-      const { found, tried } = await findTool(toolchain, floor)
-      signal.throwIfAborted()
-      if (!found) return noTool(toolchain, floor, tried)
-
       notify('creating', `Setting up the course environment with ${toolchain.label} ${found.version}…`)
       const created = await run(found.path, provision.create(envDir), { timeout: CREATE_TIMEOUT_MS, signal })
       signal.throwIfAborted()
@@ -292,6 +245,7 @@ async function provisionEnv(options: EnsureEnvOptions, envDir: string, signal: A
       if (!healthy) {
         return { ok: false, code: 'failed', message: 'The course environment was created but does not run.' }
       }
+      writeFileSync(stamp, runtimeStamp())
     }
 
     const exe = provision.exe(envDir)
@@ -302,7 +256,7 @@ async function provisionEnv(options: EnsureEnvOptions, envDir: string, signal: A
       notify('installing', 'Installing the test requirements…')
       const env = childEnv({
         base: process.env,
-        pathDirs: [provision.binDir(envDir), await resolveLoginPath()],
+        pathDirs: [provision.binDir(envDir)],
         extra: toolchain.extraEnv({ envDir })
       })
       signal.throwIfAborted()
@@ -323,13 +277,18 @@ async function provisionEnv(options: EnsureEnvOptions, envDir: string, signal: A
     // trip the loose wall-clock assertions the course format asks exercises to use.
     if (provision.warm) {
       notify('warming', 'Warming up…')
-      await run(exe, provision.warm, { timeout: PROBE_TIMEOUT_MS * 4, signal })
+      const warmed = await run(exe, provision.warm, { timeout: PROBE_TIMEOUT_MS * 4, signal })
+      if (warmed.code !== 0) {
+        if (existsSync(stampPath)) unlinkSync(stampPath)
+        return { ok: false, code: 'failed', message: 'The course test requirements do not run. Retry setup.', detail: warmed.stderr || warmed.stdout }
+      }
       signal.throwIfAborted()
     }
 
     const version = await run(exe, toolchain.discovery.versionArgs, { timeout: PROBE_TIMEOUT_MS, signal })
     signal.throwIfAborted()
-    notify('ready', 'Ready')
+    if (version.code !== 0) return { ok: false, code: 'failed', message: 'The course interpreter does not run. Retry setup.' }
+    notify('ready', `Ready · Python ${found.version}`)
     return { ok: true, envDir, tool: exe, toolVersion: (version.stdout.trim().split('\n')[0] ?? '').trim() }
   } catch (err) {
     if (signal.aborted) return { ok: false, code: 'failed', message: 'Course environment setup was cancelled.' }
@@ -461,8 +420,7 @@ export async function runSteps(key: number, options: RunStepsOptions): Promise<R
       pathDirs: [
         ...(options.envDir && options.toolchain.provision
           ? [options.toolchain.provision.binDir(options.envDir)]
-          : []),
-        await resolveLoginPath()
+          : [])
       ],
       extra: {
         ...options.toolchain.extraEnv({ envDir: options.envDir }),

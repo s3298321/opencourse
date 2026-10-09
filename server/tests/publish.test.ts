@@ -79,7 +79,12 @@ describe('publishing versions', () => {
     const valid = publishedManifest(local, courseId)
 
     const old = { ...valid, schema_version: '1.4' }
-    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.5')
+    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.6')
+    const unsupported = structuredClone(valid)
+    unsupported.runtime = { language: 'c' }
+    const rejected = await send(archive(server.dir, unsupported))
+    expect(rejected.statusCode).toBe(400)
+    expect(rejected.json().error.errors.join(' ')).toContain('Only Python exercises are supported')
     const noUid = structuredClone(valid); delete noUid.modules[0].uid
     expect((await send(archive(server.dir, noUid))).json().error.errors[0]).toContain('missing or invalid uid')
     const other = publishedManifest(local, randomUUID())

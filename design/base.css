@@ -213,9 +213,17 @@ code, kbd, pre, samp { font-family: var(--font-mono); }
 
 /* ---------- decoration ---------- */
 .oc-sparkle {
-  display: inline-block; width: 1em; height: 1em; flex: none;
+  position: relative; display: inline-block; width: 1em; height: 1em; flex: none;
+}
+.oc-sparkle::before {
+  content: ''; position: absolute; inset: 0;
   background: var(--silver);
   -webkit-mask: var(--sparkle) center / contain no-repeat; mask: var(--sparkle) center / contain no-repeat;
+}
+/* The halo extends past the rays without being cropped to the star's mask. */
+.oc-twinkle::after {
+  content: ''; position: absolute; inset: -65%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(234, 240, 255, 0.24), rgba(210, 224, 255, 0.08) 28%, transparent 65%);
 }
 /* The silver aurora that sits behind heroes: three soft lights over the grain. */
 .oc-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
@@ -242,7 +250,7 @@ code, kbd, pre, samp { font-family: var(--font-mono); }
   background-size: 300% 100%;
   animation: oc-shimmer 1.6s ease-in-out infinite;
 }
-.oc-spinner { width: 1.1em; height: 1.1em; animation: oc-spin-star 1.4s var(--ease) infinite; }
+.oc-spinner { width: 1.1em; height: 1.1em; animation: oc-spin-star 2.4s linear infinite; }
 
 /* ---------- prose: course descriptions and documentation ---------- */
 .oc-prose { font-size: 15.5px; line-height: 1.7; color: var(--fg); overflow-wrap: anywhere; }

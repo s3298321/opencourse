@@ -1,6 +1,6 @@
 # Every push to master and every pull request: the three packages, each with
 # its own checks. The app runs on macOS - its resources are zipped with `ditto`
-# and its toolchains are Apple's. content/ is not in the repository, and no
+# and its exercises use bundled Python. content/ is not in the repository, and no
 # test reads it: they use the committed courses in app/tests/fixtures/courses
 # and docs/example-course. Only the content gates look in content/.
 name: CI
@@ -40,6 +40,15 @@ jobs:
       - run: npm run typecheck
       - run: npm run build:resources
       - run: npm test
+      - run: npm run prepare:python
+      - name: Bundled Python integration
+        run: npx vitest run tests/python-runtime.test.ts
+        env:
+          OPENCOURSE_TEST_PYTHON: '1'
+      - name: Committed exercise gate
+        run: npm run check:exercises
+        env:
+          OPENCOURSE_COMMITTED_ONLY: '1'
 
   server:
     runs-on: ubuntu-24.04

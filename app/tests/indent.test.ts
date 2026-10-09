@@ -39,7 +39,7 @@ describe('detectIndentUnit', () => {
   it('reads every starter in the fixture courses as the toolchain default', () => {
     // The fallback and the files agree today; if a course ever changes style,
     // the editor follows the file, and this says so.
-    for (const slug of ['intro-to-c', 'python-asyncio']) {
+    for (const slug of ['intro-to-python', 'python-asyncio']) {
       const course = readManifest(fixtureCourseDir(slug))
       const fallback = getToolchain(course.runtime?.language).indentUnit
       for (const mod of course.modules) {

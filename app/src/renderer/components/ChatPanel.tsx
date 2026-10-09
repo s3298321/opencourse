@@ -279,6 +279,7 @@ export default function ChatPanelView({
   const [draft, setDraft] = useState(() => { try { return storageKey ? localStorage.getItem(`${storageKey}:composer`) ?? '' : '' } catch { return '' } })
   useEffect(() => { if (storageKey) { try { localStorage.setItem(`${storageKey}:composer`, draft) } catch { /* Optional. */ } } }, [storageKey, draft])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const submitting = useRef(false)
 
   const scroller = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLTextAreaElement | null>(null)
@@ -384,12 +385,16 @@ export default function ChatPanelView({
 
   const submit = useCallback(async (): Promise<void> => {
     const text = draft.trim()
-    if (!text || answering || panel.sendBlocked) return
+    if (!text || answering || panel.sendBlocked || submitting.current) return
     const attached = quote ?? undefined
-    if (await panel.send(text, attached)) {
-      setDraft('')
-      if (attached) onQuoteUsed()
-    }
+    submitting.current = true
+    setDraft('')
+    try {
+      if (await panel.send(text, attached)) {
+        if (attached) onQuoteUsed()
+      } else setDraft(current => current || text)
+    } catch { setDraft(current => current || text) }
+    finally { submitting.current = false }
   }, [draft, answering, quote, onQuoteUsed, panel])
 
   return (

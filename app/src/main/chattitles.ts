@@ -12,6 +12,7 @@ import { log } from './log'
 import { whenSenderGone } from './senders'
 
 const TABLES: Record<AIScope, string> = { chat: 'chats', project: 'course_project_chats', authoring: 'authoring_chats' }
+const MESSAGES: Record<AIScope, string> = { chat: 'chat_messages', project: 'course_project_messages', authoring: 'authoring_messages' }
 const pending = new Map<string, { controller: AbortController; scope: AIScope; chatId: string; provider: AIProvider; courseId: string; senderId: number }>()
 aiEvents.on('changed', () => { cancelChatTitles('chat'); cancelChatTitles('project'); cancelChatTitles('authoring') })
 
@@ -28,7 +29,6 @@ export function cancelChatTitles(scope: AIScope, filter: { chatId?: string; prov
 export async function generateChatTitle(options: {
   scope: AIScope; chatId: string; courseId: string; owner: string; sender: WebContents
   key: string; provider: AIProvider; model: string; reasoningEfforts: readonly ReasoningEffort[]
-  prompt: string; response: string
 }): Promise<void> {
   const { scope, chatId, courseId, owner, sender, provider } = options
   const courseRevision = () => scope === 'authoring' ? readDocument(courseId).revision : getCourse(courseId)?.revision
@@ -45,6 +45,11 @@ export async function generateChatTitle(options: {
     const table = TABLES[scope]
     const row = db().prepare(`SELECT generated_title FROM ${table} WHERE id = ?`).get(chatId) as { generated_title: string | null } | undefined
     if (!row || row.generated_title !== null) return
+    // A retry after a naming failure still names the first user message, even
+    // if the conversation has moved on while the title request was pending.
+    const messages = MESSAGES[scope]
+    const prompt = db().prepare(`SELECT text FROM ${messages} WHERE chat_id = ? AND role = 'user' ORDER BY seq LIMIT 1`).get(chatId) as { text: string } | undefined
+    if (!prompt) return
     const task = { controller, scope, chatId, provider, courseId, senderId: sender.id }
     pending.set(id, task)
     const unbind = whenSenderGone(sender, () => controller.abort('window'))
@@ -61,7 +66,7 @@ export async function generateChatTitle(options: {
       key: config.key, provider: config.provider, model: config.model, ...(config.reasoning !== null ? { reasoning: config.reasoning } : {}),
       input: [
         { role: 'system', content: TITLE_INSTRUCTIONS },
-        { role: 'user', content: JSON.stringify({ prompt: options.prompt.slice(0, 4_000), response: options.response.slice(0, 12_000) }) }
+        { role: 'user', content: JSON.stringify({ prompt: prompt.text.slice(0, 4_000) }) }
       ],
       signal: controller.signal, onDelta: () => {}
     })
@@ -79,7 +84,7 @@ export async function generateChatTitle(options: {
     const saved = db().prepare(`UPDATE ${table} SET generated_title = ? WHERE id = ? AND generated_title IS NULL`).run(title, chatId)
     if (Number(saved.changes)) sender.send(scope === 'chat' ? 'chat:title' : scope === 'project' ? 'projectChat:title' : 'authoringChat:title', chatId, title)
   } catch (error) {
-    // Naming failures leave the prompt title in place; the completed answer remains successful.
+    // Naming failures leave the prompt title in place; answering is unaffected.
     if (controller.signal.aborted) return cancelled()
     logger.warn('Naming a chat failed', { message: scrubSecrets(error instanceof Error ? error.message : 'Unknown error') })
   } finally { cleanup() }

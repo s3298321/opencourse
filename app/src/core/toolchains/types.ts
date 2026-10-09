@@ -15,7 +15,7 @@
  * so the floor is a union and each descriptor narrows its own kind.
  */
 export type VersionFloor =
-  | { kind: 'semver'; major: number; minor: number; label: string }
+  | { kind: 'semver'; major: number; minor: number; patch?: number; label: string }
   | { kind: 'std'; std: string; label: string }
 
 /** How an expected-output contract is compared against what the program printed. */
@@ -186,7 +186,7 @@ export interface Toolchain {
   /** Absent means there is nothing to build per course. */
   provision?: ProvisionSpec
 
-  /** '>=3.11' / '>=c17' -> a floor. Must never throw; fall back to a default. */
+  /** Parse a validated minimum requirement. Invalid syntax throws; omission uses the default. */
   parseFloor(spec: string | undefined): VersionFloor
   /**
    * The complete human name of a floor: "Python 3.11", "C17". Only the

@@ -32,9 +32,9 @@
   --code-bg: #1d1d21;
   --scrollbar: rgba(222, 222, 227, 0.18);
   --scrollbar-hover: rgba(222, 222, 227, 0.36);
-  --chrome: rgba(0, 0, 0, 0.4);
-  --glass: rgba(0, 0, 0, 0.19);
-  --popover: rgba(0, 0, 0, 0.72);
+  --chrome: rgba(0, 0, 0, 0.36);
+  --glass: rgba(0, 0, 0, 0.17);
+  --popover: rgba(0, 0, 0, 0.65);
   --err-fg: #fff;
   --overlay: rgba(0, 0, 0, 0.35);
   --shadow-rgb: 0 0 0;

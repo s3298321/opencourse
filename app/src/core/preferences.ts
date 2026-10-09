@@ -8,6 +8,7 @@ import { isRealtimeModelId } from './coach/models'
 import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
+import { WHITE_THEME_ID } from './theme/builtin-ids'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -43,8 +44,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   // Only a literal true turns search on. It costs money on every use, so a
   // hand-edited "yes" or 1 reads as the default - off - rather than as consent.
   const webSearch = (raw as Record<string, unknown>)['webSearch'] === true
-  // A theme is named by its app-local UUID; anything else is a hand-edit that
-  // means nothing, and reads as "no theme" rather than as an error.
+  // Themes use an installed UUID or a reserved built-in id.
   const theme = values['theme']
   const readingScale = normalizeReadingScale(values['readingScale'])
   const kept: Preferences = {
@@ -56,7 +56,7 @@ export function normalizePreferences(raw: unknown): Preferences {
       ? { defaultCoachModel: coachModel } : {}),
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
-    ...(typeof theme === 'string' && UUID.test(theme) ? { theme } : {}),
+    ...(typeof theme === 'string' && (UUID.test(theme) || theme === WHITE_THEME_ID) ? { theme } : {}),
     ...(typeof values['activeServer'] === 'string' && UUID.test(values['activeServer']) ? { activeServer: values['activeServer'] } : {}),
     ...(readingScale !== DEFAULT_READING_SCALE ? { readingScale } : {})
   }

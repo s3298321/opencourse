@@ -5,6 +5,6 @@ dist/
 public/brand/
 public/downloads/
 public/featured/
-public/favicon-32.png
-public/apple-touch-icon.png
+public/favicon-*.png
+public/apple-touch-icon*.png
 src/data/generated.json

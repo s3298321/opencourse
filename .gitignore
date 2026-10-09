@@ -28,3 +28,7 @@ server/playwright-report/
 # local themes and their importable archives
 themes/
 themes-zip/
+
+# Verified standalone Python build resources
+app/resources/python/
+app/.cache/python/

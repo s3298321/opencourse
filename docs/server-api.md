@@ -136,7 +136,7 @@ An archive is accepted when all of these hold:
 
 - It passes the app's archive policy: no paths escaping the archive, no
   symlinks, only allowed file types, at most 200 MB packed and 1 GB unpacked.
-- Its `course.json` is valid against the course schema at `schema_version` `"1.5"`.
+- Its `course.json` is valid against the course schema at `schema_version` `"1.6"`.
 - Every element, and the course itself, carries a lowercase UUID v4 `uid`. No
   uid appears twice, and the course's `uid` equals `:id`.
 - `version` is higher than every version ever published for this course.

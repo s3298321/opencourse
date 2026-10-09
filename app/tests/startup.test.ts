@@ -26,6 +26,7 @@ vi.mock('../src/main/protocol', () => ({ registerProtocolHandler: vi.fn(), regis
 vi.mock('../src/main/updates', () => ({ quitVetoed: vi.fn(), runPendingInstall: vi.fn(), startUpdates: vi.fn() }))
 vi.mock('electron', () => ({
   app: {
+    commandLine: { appendSwitch: vi.fn() },
     setName: fake.setName, setPath: fake.setPath, getPath: fake.getPath,
     setAboutPanelOptions: fake.about, quit: fake.quit, on: vi.fn(),
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(),

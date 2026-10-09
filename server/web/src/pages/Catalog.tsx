@@ -124,7 +124,7 @@ export function CatalogPageView() {
           </EmptyState>
         ) : (
           <EmptyState title="No courses here yet" actions={<a className="oc-btn" href={server.appUrl}><Download aria-hidden />Get OpenCourse</a>}>
-            Courses are published from the OpenCourse app: open a course in its editor and choose <strong>Publish</strong>. The first one will appear right here.
+            To publish a course from the OpenCourse app, open it in the editor and choose <strong>Publish</strong>.
           </EmptyState>
         )}
 
@@ -151,12 +151,12 @@ function HowItWorks() {
     <section className="how oc-reveal" aria-labelledby="how-title">
       <div className="how-head">
         <span className="oc-eyebrow">How it works</span>
-        <h2 id="how-title">Learn any of these in the OpenCourse app</h2>
+        <h2 id="how-title">Open a course in the app</h2>
       </div>
       <ol className="how-steps">
-        <li className="oc-panel oc-edge"><span className="how-n">1</span><h3>Get OpenCourse</h3><p>A free Mac app for courses on any subject: lessons, quizzes, flashcards and exercises that grade themselves.</p><a href={server.appUrl} className="how-link">Download<ArrowRight aria-hidden /></a></li>
-        <li className="oc-panel oc-edge"><span className="how-n">2</span><h3>Connect to this server</h3><p>In <strong>Settings ▸ Servers</strong>, add <code>{address}</code> and sign in - or create an account right in the app.</p></li>
-        <li className="oc-panel oc-edge"><span className="how-n">3</span><h3>Add a course</h3><p>Pick it from the <strong>Course catalog</strong> tab. Your progress stays on your Mac, and updates keep it.</p></li>
+        <li className="oc-panel oc-edge"><span className="how-n">1</span><h3>Install OpenCourse</h3><p>A free, open-source Mac app for studying courses with lessons, quizzes, flashcards and coding exercises.</p><a href={server.appUrl} className="how-link">Download<ArrowRight aria-hidden /></a></li>
+        <li className="oc-panel oc-edge"><span className="how-n">2</span><h3>Connect to this server</h3><p>In <strong>Settings ▸ Servers</strong>, add <code>{address}</code> and sign in.{server.registration === 'open' ? ' You can also create an account in the app.' : ' This server is not accepting new accounts.'}</p></li>
+        <li className="oc-panel oc-edge"><span className="how-n">3</span><h3>Add a course</h3><p>Choose a course in the <strong>Course catalog</strong> tab and select <strong>Add</strong>. The course and your progress are stored on your Mac.</p></li>
       </ol>
     </section>
   )

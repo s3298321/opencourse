@@ -44,10 +44,9 @@ function Source({ label, name, value, language, docKey, onChange }: { label: str
 function Runtime({ value, onChange }: { value?: RuntimeSpec; onChange: (v: RuntimeSpec | undefined) => void }): JSX.Element {
   const set = (fields: Partial<RuntimeSpec>): void => onChange({ ...value, ...fields })
   return <Scope path="runtime"><details className="author-section"><summary>Runtime settings</summary>
-    <Field label="Language" name="language"><select aria-label="Language" value={value?.language ?? ''} onChange={(e) => set({ language: e.target.value || undefined })}><option value="">Use default</option>{TOOLCHAIN_IDS.map((id) => <option key={id} value={id}>{getToolchain(id).label}</option>)}</select></Field>
-    <TextField label="Minimum tool version" name="version" value={value?.version} onChange={(v) => set({ version: v || undefined })} />
-    <Lines label="Packages / libraries" name="packages" value={value?.packages} onChange={(packages) => set({ packages })} />
-    <Lines label="Compiler flags" name="flags" value={value?.flags} onChange={(flags) => set({ flags })} />
+    <Field label="Language" name="language"><span>Python (bundled with OpenCourse)</span></Field>
+    <TextField label="Minimum Python version" name="version" value={value?.version} onChange={(v) => set({ version: v || undefined })} />
+    <Lines label="Python packages" name="packages" value={value?.packages} onChange={(packages) => set({ packages })} />
     <button className="ghost" onClick={() => onChange(undefined)}>Clear runtime override</button>
   </details></Scope>
 }
@@ -75,7 +74,7 @@ function AttachmentField({ courseId, name, value, kind, onChange }: { courseId: 
   }
   return <Field label={name === 'cover_image' ? 'Cover image' : name === 'poster' ? 'Video poster' : 'Attachment'} name={name}>
     <span className="attachment-current">{value || 'No attachment selected'}</span>
-    <span className="actions"><button type="button" className="secondary" disabled={state.busy} onClick={() => void upload(false)}>{value ? 'Replace attachment…' : 'Upload attachment…'}</button>{kind === 'visualization' && <button type="button" className="secondary" disabled={state.busy} onClick={() => void upload(true)}>Upload folder…</button>}{value && <button className="ghost" onClick={() => onChange('')}>Clear</button>}</span>
+    <span className="actions"><button type="button" className="secondary" disabled={state.busy} onClick={() => void upload(false)}>{value ? 'Replace attachment' : 'Upload attachment'}</button>{kind === 'visualization' && <button type="button" className="secondary" disabled={state.busy} onClick={() => void upload(true)}>Upload folder</button>}{value && <button className="ghost" onClick={() => onChange('')}>Clear</button>}</span>
     {kind === 'visualization' && value && entries.length > 1 && <select aria-label="HTML entry point" value={value} onChange={(e) => onChange(e.target.value)}>{entries.map((entry) => <option key={entry}>{entry}</option>)}</select>}
     {state.error && <span className="error" role="alert">{state.error}</span>}
   </Field>

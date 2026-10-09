@@ -184,7 +184,7 @@ export default function CoachSession({
           </div>
         ) : (
           <button disabled={starting} onClick={() => void start()}>
-            {starting ? 'Starting…' : 'Start a session'}
+            {starting ? 'Starting' : 'Start a session'}
           </button>
         )}
       </div>

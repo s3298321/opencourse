@@ -86,7 +86,7 @@ export function SignInPage() {
         <TextField label="Email or username" name="username" autoComplete="username" autoFocus required value={login} onChange={(e) => setLogin(e.target.value)} />
         <PasswordField label="Password" name="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         <Link className="forgot-link" to="/forgot" viewTransition>Forgot password?</Link>
-        <button type="submit" className="oc-btn lg block" disabled={busy || !login.trim() || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        <button type="submit" className="oc-btn lg block" disabled={busy || !login.trim() || !password}>{busy ? 'Signing in' : 'Sign in'}</button>
       </form>
     </AuthCard>
   )
@@ -141,7 +141,7 @@ export function SignUpPage() {
         <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void run(async () => { await sendCode(); setStep('code') }) }}>
           <FormError message={error} />
           <TextField label="Email" type="email" name="email" autoComplete="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} error={problem} hint="We send a 6-digit code to confirm it. Nothing else." />
-          <button type="submit" className="oc-btn lg block" disabled={busy || !email.trim() || Boolean(problem)}>{busy ? 'Sending…' : <>Continue<ArrowRight aria-hidden /></>}</button>
+          <button type="submit" className="oc-btn lg block" disabled={busy || !email.trim() || Boolean(problem)}>{busy ? 'Sending' : <>Continue<ArrowRight aria-hidden /></>}</button>
         </form>
       </AuthCard>
     )
@@ -153,7 +153,7 @@ export function SignUpPage() {
         <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void run(async () => { const r = await api.registerVerify(email.trim(), code); setTicket(r.ticket); setStep('details') }) }}>
           <FormError message={error} />
           <div className="code-row"><Mail aria-hidden className="code-icon" /><CodeInput value={code} onChange={(c) => { setCode(c); setError(null) }} autoFocus invalid={Boolean(error)} disabled={busy} /></div>
-          <button type="submit" className="oc-btn lg block" disabled={busy || !isCode(code)}>{busy ? 'Checking…' : 'Confirm'}</button>
+          <button type="submit" className="oc-btn lg block" disabled={busy || !isCode(code)}>{busy ? 'Checking' : 'Confirm'}</button>
           <div className="auth-row">
             <button type="button" className="link-button" onClick={() => { setStep('email'); setCode(''); setError(null) }}><ArrowLeft aria-hidden />Different address</button>
             <Resend onResend={() => run(sendCode)} />
@@ -184,7 +184,7 @@ export function SignUpPage() {
           hint={nameState?.ok && nameState.name === username ? <span className="ok-text"><Check aria-hidden />Available</span> : 'Lowercase letters, digits, - and _.'}
         />
         <PasswordField label="Password" name="new-password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} error={passwordIssue} hint={<PasswordStrength password={password} />} />
-        <button type="submit" className="oc-btn lg block" disabled={busy || !ready}>{busy ? 'Creating…' : 'Create account'}</button>
+        <button type="submit" className="oc-btn lg block" disabled={busy || !ready}>{busy ? 'Creating' : 'Create account'}</button>
       </form>
     </AuthCard>
   )
@@ -227,7 +227,7 @@ export function ForgotPage() {
         <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void run(async () => { await api.forgot(email.trim()); setStep('reset') }) }}>
           <FormError message={error} />
           <TextField label="Email" type="email" name="email" autoComplete="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} />
-          <button type="submit" className="oc-btn lg block" disabled={busy || !email.trim() || Boolean(emailProblem(email.trim()))}>{busy ? 'Sending…' : 'Send the code'}</button>
+          <button type="submit" className="oc-btn lg block" disabled={busy || !email.trim() || Boolean(emailProblem(email.trim()))}>{busy ? 'Sending' : 'Send the code'}</button>
         </form>
       </AuthCard>
     )
@@ -247,7 +247,7 @@ export function ForgotPage() {
         <FormError message={error} />
         <div className="oc-field"><span className="oc-label">Code from the email</span><CodeInput value={code} onChange={setCode} autoFocus disabled={busy} /></div>
         <PasswordField label="New password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} error={passwordIssue} hint={<PasswordStrength password={password} />} />
-        <button type="submit" className="oc-btn lg block" disabled={busy || code.length !== CODE_LENGTH || !password || Boolean(passwordIssue)}>{busy ? 'Saving…' : 'Set the new password'}</button>
+        <button type="submit" className="oc-btn lg block" disabled={busy || code.length !== CODE_LENGTH || !password || Boolean(passwordIssue)}>{busy ? 'Saving' : 'Set the new password'}</button>
         <div className="auth-row"><button type="button" className="link-button" onClick={() => setStep('email')}><ArrowLeft aria-hidden />Different address</button><Resend onResend={() => api.forgot(email.trim()).then(() => undefined)} /></div>
       </form>
     </AuthCard>

@@ -455,7 +455,6 @@ export async function sendChatMessage(
   })
 
   const controller = new AbortController()
-  const titleReasoning = conversationReasoning('chat', chat.model, chat.pinnedProvider)
   const started = Date.now()
   const about = (): Record<string, unknown> => ({ model: chat.model, provider: chat.provider ?? 'apiKey', reasoning: chat.reasoning ?? null, ms: Date.now() - started, chars: answered.length })
   let answered = ''
@@ -472,6 +471,10 @@ export async function sendChatMessage(
   }
   inflight.set(chatId, { controller, senderId: sender.id, chat, stop })
   watchSender(sender)
+  void generateChatTitle({
+    scope: 'chat', chatId, courseId: chat.courseId, owner, sender,
+    key, provider: chat.provider ?? 'apiKey', model: chat.model, reasoningEfforts: conversationReasoning('chat', chat.model, chat.pinnedProvider)
+  })
 
   // Search is offered when Settings allows it and the model can take it; the
   // model then decides, question by question, whether to use it.
@@ -523,11 +526,6 @@ export async function sendChatMessage(
       }
       logger.info(result.aborted ? 'Answer stopped' : 'Answer complete', { ...about(), webSearch, citations: result.citations.length })
       push(sender, 'chat:done', chatId, { stopped: result.aborted })
-      if (!result.aborted && answered.trim() && !controller.signal.aborted) void generateChatTitle({
-        scope: 'chat', chatId, courseId: chat.courseId, owner, sender,
-        key, provider: chat.provider ?? 'apiKey', model: chat.model, reasoningEfforts: titleReasoning,
-        prompt: asked, response: answered
-      })
     } catch (err) {
       if (finalized || !valid()) return
       // Keeping the partial must not cost the error report. By the time a

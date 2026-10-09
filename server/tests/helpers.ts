@@ -63,7 +63,7 @@ export function richCourse(): CourseManifest {
         blocks: [
           { type: 'markdown', slug: 'intro', content: 'SSA means every value is assigned once.' },
           { type: 'quiz', slug: 'check', id: 'check', kind: 'single', question: 'How often is an SSA value assigned?', options: [{ id: 'once', text: 'Exactly once', correct: true }, { id: 'many', text: 'Any number of times', correct: false }], explanation: 'SECRET-EXPLANATION' },
-          { type: 'exercise', slug: 'ex', id: 'ex', title: 'Write IR', prompt: 'Return 42.', runtime: { language: 'llvm-ir' }, starter_code: 'define i32 @main() { ret i32 0 }', solution: 'SECRET-SOLUTION', expected_output: 'SECRET-OUTPUT', verification_instructions: 'Run it', hints: ['SECRET-HINT'] }
+          { type: 'exercise', slug: 'ex', id: 'ex', title: 'Model an IR value in Python', prompt: 'Return 42.', runtime: { language: 'python' }, starter_code: 'print(0)', solution: 'SECRET-SOLUTION', expected_output: 'SECRET-OUTPUT', verification_instructions: 'Run it', hints: ['SECRET-HINT'] }
         ],
         flashcards: [{ id: 'card', question: 'What is SSA?', answer: 'SECRET-ANSWER' }]
       }]

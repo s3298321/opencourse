@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { applyScaffold, planScaffold } from '@core/scaffold'
+import { validateManifest } from '@core/schema'
 import { getToolchain, outputMatch, resolveRuntime } from '@core/toolchains'
 import type { Toolchain } from '@core/toolchains'
 import type { CourseManifest, ExerciseBlock } from '@core/types'
@@ -36,11 +37,13 @@ interface Found {
 
 /** Whatever is in content/, and the committed courses - the example and the test fixtures - always. */
 function courseDirs(): string[] {
-  return [...contentCourseDirs(), ...committedCourseDirs()]
+  return [...(process.env['OPENCOURSE_COMMITTED_ONLY'] ? [] : contentCourseDirs()), ...committedCourseDirs()]
 }
 
 function load(dir: string): Found {
   const manifest = JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest
+  const errors = validateManifest(manifest)
+  if (errors.length) throw new Error(`${dir}: ${errors.join('; ')}`)
   const exercises: Found['exercises'] = []
   for (const mod of manifest.modules) {
     for (const lesson of mod.lessons ?? []) {
@@ -66,7 +69,7 @@ const envs = new Map<string, Promise<string>>()
 
 function toolFor(workspaceRoot: string, courseId: string, manifest: CourseManifest, toolchain: Toolchain, exercise: ExerciseBlock): Promise<string> {
   const courseDir = join(workspaceRoot, courseId)
-  const key = `${courseDir}:${toolchain.id}`
+  const key = `${courseDir}:${toolchain.id}:${resolveRuntime(manifest, exercise).version ?? ''}`
   const existing = envs.get(key)
   if (existing) return existing
 

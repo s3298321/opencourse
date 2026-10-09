@@ -1,0 +1,9 @@
+body { margin: 0; padding: 14px 18px; font: 14px/1.45 -apple-system, sans-serif; color: #1d1d1f; background: #f7f8fa; }
+h1 { font-size: 15px; margin: 0 0 12px; }
+.cells { display: flex; gap: 10px; }
+.cell { background: #fff; border: 1px solid #d9dde3; border-radius: 8px; padding: 8px 12px; min-width: 96px; }
+.cell b { display: block; font-family: ui-monospace, monospace; }
+.cell small { color: #666; font-family: ui-monospace, monospace; }
+.cell.hot { border-color: #2f6fd8; box-shadow: 0 0 0 2px #cfe0fb; }
+#note { font-family: ui-monospace, monospace; min-height: 1.5em; }
+button { font: inherit; padding: 4px 12px; }

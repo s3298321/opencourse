@@ -59,6 +59,31 @@ function draft(courseId: string, change: (manifest: CourseManifest) => CourseMan
 }
 
 describe('local course identities and drafts', () => {
+  it('rejects non-Python imports and saves without changing the installed course', async () => {
+    const unsupported = { ...manifest(), runtime: { language: 'c' } }
+    const zip = makeZip(join(root, `unsupported-${serial}.zip`), [{ name: 'course.json', content: JSON.stringify(unsupported) }])
+    expect(await importCourseZip(zip)).toMatchObject({ status: 'invalid', message: expect.stringContaining('Only Python exercises are supported') })
+    expect(listCourses()).toEqual([])
+    const course = installCourseFixture(manifest()), before = readDocument(course.courseId)
+    const saved = draft(course.courseId, (m) => ({ ...m, runtime: { language: 'llvm-ir' } }))
+    expect(await saveCourse(course.courseId, before.revision, saved.draftVersion)).toMatchObject({ status: 'invalid', errors: expect.arrayContaining([expect.stringContaining('Only Python exercises are supported')]) })
+    expect(readDocument(course.courseId)).toEqual(before)
+    expect(getCourse(course.courseId)).toBeDefined()
+  })
+  it('reports an installed non-Python course without deleting its learner data', () => {
+    const course = installCourseFixture({ ...manifest(), runtime: { language: 'c' } })
+    const source = join(userWorkspaceRoot(userId), course.courseId, 'main.c')
+    write(source, 'learner source')
+    const progress = { ...emptyProgress(course.courseId), completedLessons: ['old-lesson'] }
+    writeProgress(progress)
+    const before = readDocument(course.courseId)
+    reloadCourses()
+    expect(getCourse(course.courseId)).toBeUndefined()
+    expect(listCourses().find((entry) => entry.courseId === course.courseId)?.error).toContain('Only Python exercises are supported')
+    expect(readDocument(course.courseId)).toEqual(before)
+    expect(readFileSync(source, 'utf8')).toBe('learner source')
+    expect(readProgress(course.courseId).completedLessons).toEqual(['old-lesson'])
+  })
   it('imports identical ZIPs independently and excludes local fields from the portable projection', async () => {
     const zip = makeZip(join(root, `import-${serial}.zip`), [{ name: 'course.json', content: JSON.stringify(manifest()) }])
     const a = await importCourseZip(zip), b = await importCourseZip(zip)
@@ -119,7 +144,7 @@ describe('local course identities and drafts', () => {
     expect(await saveCourse(id, 0, saved.draftVersion)).toMatchObject({ status: 'ok' })
     const reopened = getAuthoringCourse(id)
     expect(reopened.document.manifest!.modules[0].lessons![0].blocks.map((b) => b.type)).toEqual(['markdown', 'quiz', 'exercise', 'image', 'video', 'visualization'])
-    expect(portableManifest(reopened.document.manifest!)).toEqual({ ...portableManifest(content), schema_version: '1.5', version: '0.1.0' })
+    expect(portableManifest(reopened.document.manifest!)).toEqual({ ...portableManifest(content), schema_version: '1.6', version: '0.1.0' })
     expect(getCourse(id)?.modules[0].lessons![0].blocks[2]).toMatchObject({ id: exercise.nodeId, nodeId: exercise.nodeId })
     const edited = draft(id, (m) => ({ ...m, author: 'Updated author' }))
     expect(await saveCourse(id, 1, edited.draftVersion)).toMatchObject({ status: 'ok', revision: 2 })
@@ -282,7 +307,7 @@ describe('attachments and portable export', () => {
     const archive = join(root, `card-export-${serial}.zip`), destination = join(root, `card-extract-${serial}`)
     await exportCourseZipPath(id, archive); mkdirSync(destination); await extractArchive(archive, destination)
     const exported = JSON.parse(readFileSync(join(destination, 'course.json'), 'utf8'))
-    expect(exported).toMatchObject({ schema_version: '1.5', version: '0.1.0' })
+    expect(exported).toMatchObject({ schema_version: '1.6', version: '0.1.0' })
     expect(exported.modules[0].lessons[0].flashcards[0]).toEqual({ id: 'card', question: 'Question?', answer: '**Answer**', image: { src: upload.attachment.entry, alt: 'Card image' } })
     expect(existsSync(join(destination, upload.attachment.entry))).toBe(true)
     const imported = await importCourseZip(archive)

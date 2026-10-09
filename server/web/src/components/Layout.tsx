@@ -118,7 +118,7 @@ function Footer() {
           <p>{server.description || 'Courses shared by the people who use this server.'}</p>
         </div>
         <div className="site-footer-connect">
-          <span className="oc-eyebrow">Learn with OpenCourse</span>
+          <span className="oc-eyebrow">Connect from the app</span>
           <p>Open the app, go to <strong>Settings ▸ Servers</strong> and connect to <code>{server.publicUrl.replace(/^https?:\/\//, '')}</code>.</p>
         </div>
         <nav className="site-footer-links" aria-label="More">

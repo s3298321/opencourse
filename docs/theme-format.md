@@ -6,8 +6,13 @@ titlebar - and never what it does. It is a zip archive with a `theme.json` and
 the pictures and fonts that file names. Import one from **Settings →
 Appearance**; choose it there, or from **View → Theme** in the menu bar.
 
-The app's own look is not a theme. It is what you see when no theme is
-applied, and choosing **OpenCourse (no theme)** goes back to it. The same look
+The app ships **OpenCourse Dark** (the default) and **OpenCourse White**.
+Choose either in Settings or View → Theme; neither can be removed. White
+keeps the same typography, layout and logo, with white surfaces and pale glass.
+Each user keeps their own choice.
+
+The default dark look is what you see when no theme is
+applied, and choosing **OpenCourse Dark (default)** goes back to it. The same look
 is written out as a theme in `opencourse-default-theme.zip` - start from that
 copy when you make your own.
 

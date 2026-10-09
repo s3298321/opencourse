@@ -6,7 +6,7 @@ import { readDocument } from './course-store'
 
 /**
  * The committed courses smoke and shots import - `python-asyncio` and
- * `intro-to-c`, kept in tests/fixtures/courses. Never content/: that is
+ * `intro-to-python`, kept in tests/fixtures/courses. Never content/: that is
  * authoring input, gitignored, and a run must not depend on what is in it.
  * A packaged app has no tests/ inside it, so smoking one names the folder
  * with OPENCOURSE_FIXTURE_COURSES.

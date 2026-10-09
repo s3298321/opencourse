@@ -99,13 +99,13 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
     writeFileSync(join(tmpdir(), 'opencourse-course-editor.png'), image.toPNG())
     await run('editor: learn, edit, rename and preserve progress', `
       document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.library'));
-      [...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')).click(); await wait(()=>document.querySelector('.detail'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>document.querySelector('.detail'));
       document.querySelector('.lesson-row').click(); await wait(()=>document.querySelector('.lesson-head'));
       if(!document.querySelector('.lesson-head').parentElement.textContent.includes('Stable identities')) throw new Error('Saved content not readable');
       button('Mark lesson completed').click(); await wait(()=>button('✓ Lesson completed'));
       const before=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID); window.__EDITOR_SMOKE_LESSON=before.document.manifest.modules[0].lessons[0].nodeId;
       document.querySelector('.titlebar [data-section="courses"]').click(); await wait(()=>document.querySelector('.library'));
-      [...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       [...document.querySelectorAll('.outline-row')].find(b=>b.textContent.includes('First lesson')).click(); await field('Lesson title','Renamed lesson'); await field('Lesson slug','renamed-lesson');
       button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved'));
       const after=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID);

@@ -10,7 +10,7 @@ import type { Extension } from '@codemirror/state'
 import { tags } from '@lezer/highlight'
 import { indentation } from './indentation'
 import { llvmIr } from './llvm-mode'
-import { highlightColors, type WorkbenchTheme } from './theme'
+import { EDITOR_FONT_PX, highlightColors, type WorkbenchTheme } from './theme'
 
 /**
  * Which npm package supplies a mode. This is a renderer concern - it is not the
@@ -43,7 +43,7 @@ function themeExtensions(theme: WorkbenchTheme): Extension {
     syntaxHighlighting(highlight),
     EditorView.theme(
       {
-        '&': { height: '100%', fontSize: `${12.5 * theme.codeScale}px`, backgroundColor: theme.bg, color: theme.fg },
+        '&': { height: '100%', fontSize: `${EDITOR_FONT_PX}px`, backgroundColor: theme.bg, color: theme.fg },
         '.cm-scroller': { fontFamily: theme.mono, lineHeight: '1.55' },
         '.cm-gutters': { backgroundColor: theme.bg, color: theme.muted, border: 'none' },
         '.cm-activeLine': { backgroundColor: theme.activeLine },

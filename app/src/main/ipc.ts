@@ -81,7 +81,8 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getDefaultCoachModel, setDefaultCoachModel } from './preferences'
+import { getDefaultCoachModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { appUpdateInfo, checkForAppUpdate, installAppUpdate, setAppUpdateAutomatic, updateEvents } from './updates'
 import type { ChatDefaults, ThemeImportResult } from '../core/types'
 import { closeDb } from './db'
 import {
@@ -259,6 +260,7 @@ function holdEditor(sender: WebContents): number {
 
 export function registerIpc(): void {
   aiEvents.on('changed', () => broadcast('ai:changed'))
+  updateEvents.on('changed', () => broadcast('appUpdate:changed', appUpdateInfo()))
   authoringEvents.on('draft', (...args) => { broadcast('authoring:draftChanged', ...args); syncDocumentEdited() })
   authoringEvents.on('run', (...args) => broadcast('authoring:runState', ...args))
   subscriptionEvents.on('changed', notifyAIConnectionChanged)
@@ -492,6 +494,23 @@ export function registerIpc(): void {
 
   ipcMain.handle('spec:save', () => saveSpecBundle())
   ipcMain.handle('spec:saveTheme', () => saveThemeSpecBundle())
+
+  /* --- updates of the app itself --------------------------------------------
+     App-wide, and off unless turned on (main/updates.ts). The renderer can ask
+     to check and to install "the update"; which release that is, and where it
+     comes from, stays in main. */
+
+  ipcMain.handle('appUpdate:state', () => appUpdateInfo())
+  ipcMain.handle('appUpdate:check', () => checkForAppUpdate(true))
+  ipcMain.handle('appUpdate:install', () => installAppUpdate())
+  ipcMain.handle('appUpdate:setAutomatic', (_e, on: boolean) => setAppUpdateAutomatic(on === true))
+
+  /* --- the reader's text size ----------------------------------------------
+     Per user, in preferences.json, and not a theme's to set: see
+     core/reading-scale.ts. Snapped to a step on the way in. */
+
+  ipcMain.handle('reading:scale', () => getReadingScale())
+  ipcMain.handle('reading:setScale', (_e, scale: number) => setReadingScale(scale))
 
   /* --- themes --------------------------------------------------------------
      A theme is values for the stylesheet's tokens and nothing else

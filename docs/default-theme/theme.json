@@ -5,11 +5,11 @@
   "name": "OpenCourse",
   "version": "1.0.0",
   "author": "OpenCourse",
-  "description": "The app's own look, written out as a theme: neutral charcoal surfaces, silver controls and lightly grained glass over the window. Copy it to start your own.",
+  "description": "The app's own look, written out as a theme: near-black surfaces, silver controls and grained glass over the window. Copy it to start your own.",
   "appearance": "dark",
 
   "palette": {
-    "background": "#18181b",
+    "background": "#111110",
     "text": "#dedee3",
     "accent": "#e4e4e8",
     "muted": "#a5a5af",
@@ -20,8 +20,8 @@
   "tokens": {
     "fg": "#dedee3",
     "muted": "#a5a5af",
-    "bg": "#18181b",
-    "card": "#202024",
+    "bg": "#111110",
+    "card": "#232323",
     "accent": "#e4e4e8",
     "accent-fg": "#202024",
     "border": "#393940",
@@ -39,14 +39,14 @@
     "err-border": "#563036",
     "accent-ring": "rgba(196, 196, 205, 0.15)",
     "code-bg": "#1d1d21",
-    "bubble": "#2e2e34",
+    "bubble": "#232323",
     "bubble-border": "#42424a",
-    "composer-bg": "#28282d",
+    "composer-bg": "#232323",
     "scrollbar": "rgba(222, 222, 227, 0.18)",
     "scrollbar-hover": "rgba(222, 222, 227, 0.36)",
-    "chrome": "rgba(0, 0, 0, 0.52)",
-    "glass": "rgba(0, 0, 0, 0.25)",
-    "popover": "rgba(36, 36, 41, 0.94)",
+    "chrome": "rgba(0, 0, 0, 0.4)",
+    "glass": "rgba(0, 0, 0, 0.19)",
+    "popover": "rgba(0, 0, 0, 0.72)",
     "overlay": "rgba(0, 0, 0, 0.35)",
     "shadow": "#000000",
     "hover-ring": "rgba(238, 238, 239, 0.12)",
@@ -56,8 +56,8 @@
 
   "reducedTransparency": {
     "chrome": "#1c1c20",
-    "glass": "#18181b",
-    "popover": "#242429"
+    "glass": "#111110",
+    "popover": "#232323"
   },
 
   "increasedContrast": {
@@ -68,29 +68,27 @@
 
   "window": {
     "material": "vibrancy",
-    "color": "#18181b"
+    "color": "#111110"
   },
 
   "grain": {
-    "amount": 0.12,
+    "amount": 0.2,
     "scale": 1
   },
 
   "surfaces": {
     "titlebar": { "grain": 0 },
-    "sidebar": { "grain": 0.12 },
-    "list": { "grain": 0.12 },
-    "sidechat": { "grain": 0.12 },
-    "popover": { "grain": 0.12, "blur": 20 },
+    "sidebar": { "grain": 0.2 },
+    "list": { "grain": 0.2 },
+    "sidechat": { "grain": 0.2 },
+    "popover": { "grain": 0.2, "blur": 20 },
     "reading": { "grain": 0 }
   },
 
   "fonts": {
     "faces": [],
-    "ui": { "size": 15, "lineHeight": 1.55 },
-    "reading": { "size": 15 },
+    "ui": { "lineHeight": 1.55 },
     "heading": { "weight": 700 },
-    "code": { "size": 12.5 },
     "brand": { "weight": 600, "letterSpacing": -0.025 }
   },
 

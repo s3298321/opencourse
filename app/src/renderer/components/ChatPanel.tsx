@@ -26,6 +26,8 @@ interface Props {
   onClose?: () => void
   /** Takes you to settings. The panel never learns what a Route is. */
   onAddKey: () => void
+  /** The reader's text size, when a lesson screen sets one: the composer refits to it. */
+  textScale?: number
 }
 
 const MIN_WIDTH = 320
@@ -233,7 +235,7 @@ function Message({ message, fresh, chatId }: { message: ChatMessage; fresh: bool
   if (message.role === 'context') {
     return (
       <div className={`chat-context${fresh ? ' enter' : ''}`} title={message.authoring ? "The current course selection was supplied to the assistant here" : message.project ? "The project requirements were given to the assistant here" : "The lesson was given to the assistant here"}>
-        {message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lesson ? `Now reading: ${message.lesson.lessonId.replace(/-/g, ' ')}` : 'Lesson context'}
+        {message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lessonTitle ? `Now reading: ${message.lessonTitle}` : 'Lesson context'}
       </div>
     )
   }
@@ -266,7 +268,8 @@ export default function ChatPanelView({
   onQuoteUsed,
   onClose,
   onAddKey,
-  storageKey
+  storageKey,
+  textScale = 1
 }: Props): JSX.Element {
   // The lesson column and the sidebar are the only things it has to leave
   // room for: the editor takes the whole workspace, so the two are never
@@ -281,7 +284,7 @@ export default function ChatPanelView({
   const scroller = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLTextAreaElement | null>(null)
   const twin = useRef<HTMLTextAreaElement | null>(null)
-  useAutoGrow(field, twin, draft)
+  useAutoGrow(field, twin, draft, textScale)
 
   const answering = panel.activeId !== null && panel.busy.has(panel.activeId)
 
@@ -443,7 +446,7 @@ export default function ChatPanelView({
               <div>
                 <div>{chat.title || 'A new chat'}</div>
                 <div className="meta">
-                  {chat.historyLabel ?? chat.startedIn?.lessonId.replace(/-/g, ' ') ?? 'Project'} · {chat.messages} message
+                  {chat.historyLabel ?? (chat.startedIn ? 'Conversation' : 'Project')} · {chat.messages} message
                   {chat.messages === 1 ? '' : 's'}
                 </div>
               </div>

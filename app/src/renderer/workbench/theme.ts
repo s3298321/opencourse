@@ -23,9 +23,14 @@ export interface WorkbenchTheme {
   selection: string
   /** The code font stack, from --font-mono. */
   mono: string
-  /** --code-scale: the editor is 12.5px and the terminal 12px at 1. */
-  codeScale: number
 }
+
+/**
+ * The editor's and the terminal's type size. Not a token: a theme does not set
+ * how large text is, and the reader's text size is for reading, not for code.
+ */
+export const EDITOR_FONT_PX = 12.5
+export const TERMINAL_FONT_PX = 12
 
 /** The editor and terminal must use a stack that is always present offline. */
 export const MONO_STACK = 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace'
@@ -33,7 +38,6 @@ export const MONO_STACK = 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier
 export function readWorkbenchTheme(): WorkbenchTheme {
   const style = getComputedStyle(document.documentElement)
   const token = (name: string, fallback: string): string => style.getPropertyValue(name).trim() || fallback
-  const scale = Number.parseFloat(token('--code-scale', '1'))
   return {
     dark: document.documentElement.dataset['appearance'] !== 'light',
     fg: token('--fg', '#dedee3'),
@@ -47,8 +51,7 @@ export function readWorkbenchTheme(): WorkbenchTheme {
     scrollbarHover: token('--scrollbar-hover', 'rgba(222, 222, 227, 0.36)'),
     activeLine: token('--editor-active-line', 'rgba(255, 255, 255, 0.04)'),
     selection: token('--terminal-selection', 'rgba(196, 196, 205, 0.18)'),
-    mono: token('--font-mono', MONO_STACK),
-    codeScale: Number.isFinite(scale) && scale > 0 ? scale : 1
+    mono: token('--font-mono', MONO_STACK)
   }
 }
 

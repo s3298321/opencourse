@@ -16,8 +16,8 @@ sees none of them.
 
 ## What a theme can't do
 
-A theme is values, never rules. It sets colours, sizes, pictures and font
-names for a fixed list of the app's style tokens; it cannot name a selector, add
+A theme is values, never rules. It sets colours, pictures and font names for
+a fixed list of the app's style tokens; it cannot name a selector, add
 CSS, hide or move a control, run a script or reach the network. The app reads
 every value itself - a colour is parsed and written out again, a picture is a
 path the app checks is in the archive - so nothing in `theme.json` reaches the
@@ -161,14 +161,16 @@ opaque where a surface must be.
 
 ### grain
 
-The fine static noise on glass surfaces.
+The fine static noise on glass surfaces: dark and light specks, weighted for
+the theme's `appearance` so the texture shows without greying the surface
+beneath it.
 
 ```json
 "grain": { "amount": 0.12, "scale": 1, "texture": "images/paper-grain.png" }
 ```
 
-- `amount`: 0-0.4, the noise's strength. 0.12 is the app's own; 0 turns it off
-  everywhere.
+- `amount`: 0-0.4, the noise's strength; 0.12 if you leave it out. The app's
+  own is 0.2; 0 turns it off everywhere.
 - `scale`: 0.5-3; larger is coarser.
 - `texture`: a tileable picture to use instead of the generated noise -
   paper, linen, film. Draw it with transparency: at `amount` 0.12 it is drawn
@@ -220,10 +222,10 @@ picture.
 ```json
 "fonts": {
   "faces": [{ "family": "Ledger Dots", "src": "fonts/ledger-dots.ttf", "weight": 400, "style": "normal" }],
-  "ui": { "family": ["Avenir Next", "Helvetica Neue"], "size": 14.5 },
-  "reading": { "family": ["Charter", "Georgia", "serif"], "size": 17, "lineHeight": 1.65 },
+  "ui": { "family": ["Avenir Next", "Helvetica Neue"] },
+  "reading": { "family": ["Charter", "Georgia", "serif"], "lineHeight": 1.65 },
   "heading": { "family": ["Charter", "Georgia", "serif"], "weight": 700, "letterSpacing": -0.01 },
-  "code": { "family": ["Menlo"], "size": 12.5 },
+  "code": { "family": ["Menlo"] },
   "brand": { "family": ["Ledger Dots"], "weight": 400, "letterSpacing": 0.02 }
 }
 ```
@@ -236,16 +238,22 @@ the theme goes.
 
 | Slot | Where | Takes |
 |---|---|---|
-| `ui` | everything not listed below | `family`, `size` (12-18 px), `lineHeight` |
-| `reading` | lesson text and chat answers | `family`, `size` (13-22 px), `lineHeight` |
+| `ui` | everything not listed below | `family`, `lineHeight` |
+| `reading` | lesson text and chat answers | `family`, `lineHeight` |
 | `heading` | every heading | `family`, `weight`, `letterSpacing` (em) |
-| `code` | code everywhere, the editor and terminal | `family`, `size` (10-18 px; the editor's size, the rest scale with it) |
+| `code` | code everywhere, the editor and terminal | `family` |
 | `brand` | the OpenCourse wordmark | `family`, `weight`, `letterSpacing` (em) |
 
 A `family` may be one name or a list, tried in order; the app's own fonts are
 always the last resort. Names are letters, digits, spaces, `.`, `_` and `-`.
 Leave a slot out and it keeps the app's font; leave `heading.family` out and
 headings use whatever font surrounds them.
+
+A theme does not set how large text is. That is the reader's choice, made with
+the text size control beside a lesson, and a theme that changed it would undo
+it. An earlier version of the format had a `size` on `ui`, `reading` and
+`code`; it is still accepted, so such a theme loads, but it is ignored and the
+theme's card says so.
 
 ### logo
 

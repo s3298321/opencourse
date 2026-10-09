@@ -106,7 +106,7 @@ function pictureLayer(picture: Picture, options: CompileOptions): Layer {
 }
 
 /**
- * A grain texture at a strength: drawn as authored at the app's own 0.12, and
+ * A grain texture at a strength: drawn as authored at 0.12, and
  * with its opacity scaled for any other amount. CSS cannot fade one background
  * layer, so the renderer does it on a canvas (theme/ThemeProvider.tsx), reading
  * the strength off this URL - in its sandbox, where the picture is decoded anyway.
@@ -196,7 +196,7 @@ export function compileTheme(theme: Theme, options: CompileOptions): CompiledThe
     values['--glass-grain'] = grain.amount > 0 ? textureImage(grain.texture, grain.amount, options) : 'none'
     values['--grain-size'] = `${px(w * grain.scale)} ${px(h * grain.scale)}`
   } else {
-    values['--glass-grain'] = grain.amount > 0 ? svgUrl(grainSvg(grain.amount)) : 'none'
+    values['--glass-grain'] = grain.amount > 0 ? svgUrl(grainSvg(grain.amount, theme.appearance)) : 'none'
     values['--grain-size'] = `${px(GRAIN_TILE * grain.scale)} ${px(GRAIN_TILE * grain.scale)}`
   }
   values['--select-chevron'] = svgUrl(chevronSvg(colorCss(opaqueOver(flat(tokens.fg), windowColor))))
@@ -216,7 +216,7 @@ export function compileTheme(theme: Theme, options: CompileOptions): CompiledThe
       // The theme's own grain is referenced, not copied, so it switches off
       // with --glass-grain under reduced transparency.
       const image = amount === grain.amount ? 'var(--glass-grain)'
-        : grain.texture ? textureImage(grain.texture, amount, options) : svgUrl(grainSvg(amount))
+        : grain.texture ? textureImage(grain.texture, amount, options) : svgUrl(grainSvg(amount, theme.appearance))
       layers.push({ image, size: 'var(--grain-size)', position: '0% 0%', repeat: 'repeat' })
     }
     if (spec.image?.tint) layers.push(tintLayer(spec.image.tint))
@@ -244,16 +244,13 @@ export function compileTheme(theme: Theme, options: CompileOptions): CompiledThe
   // Type.
   const fonts = theme.fonts
   if (fonts.ui?.family) values['--font-ui'] = families(fonts.ui.family, DEFAULT_UI_STACK)
-  if (fonts.ui?.size !== undefined) values['--ui-size'] = px(fonts.ui.size)
   if (fonts.ui?.lineHeight !== undefined) values['--ui-line-height'] = num(fonts.ui.lineHeight)
   if (fonts.reading?.family) values['--font-reading'] = families(fonts.reading.family, DEFAULT_UI_STACK)
-  if (fonts.reading?.size !== undefined) values['--reading-size'] = px(fonts.reading.size)
   if (fonts.reading?.lineHeight !== undefined) values['--reading-line-height'] = num(fonts.reading.lineHeight)
   if (fonts.heading?.family) values['--font-heading'] = families(fonts.heading.family, DEFAULT_UI_STACK)
   if (fonts.heading?.weight !== undefined) values['--heading-weight'] = String(fonts.heading.weight)
   if (fonts.heading?.letterSpacing !== undefined) values['--heading-letter-spacing'] = `${num(fonts.heading.letterSpacing)}em`
   if (fonts.code?.family) values['--font-mono'] = families(fonts.code.family, DEFAULT_MONO_STACK)
-  if (fonts.code?.size !== undefined) values['--code-scale'] = num(fonts.code.size / 12.5)
   if (fonts.brand?.family) values['--font-brand'] = families(fonts.brand.family, DEFAULT_UI_STACK)
   if (fonts.brand?.weight !== undefined) values['--brand-weight'] = String(fonts.brand.weight)
   if (fonts.brand?.letterSpacing !== undefined) values['--brand-letter-spacing'] = `${num(fonts.brand.letterSpacing)}em`

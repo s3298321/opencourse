@@ -14,10 +14,24 @@ later: exercises, the AI features, writing a course and sharing one.
 OpenCourse is not signed with an Apple Developer ID yet, so the first time you
 open it macOS says it cannot verify the app. Close that message, open **System
 Settings ▸ Privacy & Security**, scroll to the note about OpenCourse and choose
-**Open Anyway**. You do this once for each version you download.
+**Open Anyway**. You do this once for each version you download yourself;
+a version the app installs for you (below) opens without it.
 
 The first time you open OpenCourse it asks for a name, so that several people
 can share one Mac with separate libraries and progress. Nothing leaves your Mac.
+
+## Keep it up to date
+
+OpenCourse can update itself. In **Settings ▸ Updates**, press **Check for
+updates**, or turn on **Check for updates automatically** - it is off until you
+do, and while it is off the app never contacts GitHub on its own. When a new
+version is available, an **Update** button appears at the top right of the
+window. **Install and restart** downloads it, checks that it is the release
+that was published, and restarts into it.
+
+If you have unsaved edits to a course or a Coach session is live, the update
+waits until you have saved them or ended it. OpenCourse 0.1.0 cannot update
+itself yet: install the next version by hand once, and it can from then on.
 
 ## Get a course
 

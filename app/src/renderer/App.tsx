@@ -39,6 +39,11 @@ export default function App(): JSX.Element {
   // Same reason, for the reading position: a ref inside Lesson would not
   // outlive the unmount that opening settings causes.
   const lessonScroll = useRef({ key: '', top: 0 })
+  // And the reader's text size, for the same reason and one more: the lesson
+  // restores its scroll offset as soon as it has a course to show, so the size
+  // has to be known by then - fetched by a remounting lesson, it would arrive
+  // after the offset and move the text out from under it. Null until read.
+  const [readingScale, setReadingScale] = useState<number | null>(null)
 
   // The course editor that is open - mounted, or parked under Settings or Logs.
   // Leaving it is the one navigation that can lose work, so every way out goes
@@ -197,6 +202,20 @@ export default function App(): JSX.Element {
   )
 
   const user = session?.user ?? null
+  const userId = user?.id ?? null
+  // Per user: read again whenever the user changes, and nothing to read before one is picked.
+  useEffect(() => {
+    let alive = true
+    setReadingScale(null)
+    if (userId) void window.opencourse.getReadingScale().then((scale) => { if (alive) setReadingScale(scale) })
+    return () => { alive = false }
+  }, [userId])
+  const changeReadingScale = useCallback((scale: number) => {
+    setReadingScale(scale)
+    // Main snaps it to a step and says what it kept; a failed write keeps the
+    // size on screen for this session rather than taking it back.
+    void window.opencourse.setReadingScale(scale).then(setReadingScale).catch(() => {})
+  }, [])
   // Kept mounted, hidden, under an overlay - a project's draft and a review's
   // place survive a trip to Settings or Logs.
   const underneath = screenOf(route)
@@ -233,6 +252,8 @@ export default function App(): JSX.Element {
             chatOpen={chatOpen}
             setChatOpen={setChatOpen}
             scrollRef={lessonScroll}
+            readingScale={readingScale}
+            setReadingScale={changeReadingScale}
           />
         )}
         {projectRoute && <div className="project-screen" hidden={route.name !== 'project'}>

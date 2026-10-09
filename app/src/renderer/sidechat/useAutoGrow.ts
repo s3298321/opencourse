@@ -24,11 +24,17 @@ function fit(el: HTMLTextAreaElement, twin: HTMLTextAreaElement): void {
 export function useAutoGrow(
   field: RefObject<HTMLTextAreaElement | null>,
   twin: RefObject<HTMLTextAreaElement | null>,
-  value: string
+  value: string,
+  /**
+   * The reader's text size. A larger font rewraps the same text into a taller
+   * box, but the twin's height is pinned to zero, so no observer sees it -
+   * the field kept its old pixel height and clipped the new lines.
+   */
+  textScale = 1
 ): void {
   useLayoutEffect(() => {
     if (field.current && twin.current) fit(field.current, twin.current)
-  }, [field, twin, value])
+  }, [field, twin, value, textScale])
 
   // Dragging the panel narrower rewraps the text without changing it. The
   // twin's height is pinned, so only a change of width reaches this.

@@ -9,6 +9,7 @@ interface Props {
   onQuoteUsed: () => void
   onClose: () => void
   onAddKey: () => void
+  textScale: number
 }
 export default function SideChat({ courseId, lesson, ...props }: Props): JSX.Element {
   const panel = useChatPanel(courseId, lesson)

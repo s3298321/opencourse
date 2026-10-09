@@ -111,10 +111,12 @@ export const THEME_PROPERTIES: ReadonlySet<string> = new Set([
   '--window-bg', '--window-image', '--window-image-size', '--window-image-position',
   '--window-image-repeat', '--window-filter', '--window-bleed',
   '--glass-grain', '--grain-size', '--popover-blur',
-  '--font-ui', '--ui-size', '--ui-line-height',
-  '--font-reading', '--reading-size', '--reading-line-height',
+  // No type size: how large text reads is the reader's choice (the text size
+  // control beside a lesson), and a theme that changed it would fight them.
+  '--font-ui', '--ui-line-height',
+  '--font-reading', '--reading-line-height',
   '--font-heading', '--heading-weight', '--heading-letter-spacing',
-  '--font-mono', '--code-scale',
+  '--font-mono',
   '--font-brand', '--brand-weight', '--brand-letter-spacing',
   '--color-scheme', '--select-chevron'
 ])

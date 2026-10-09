@@ -2,8 +2,10 @@ import type { ResponseInput } from '../core/projects/agent'
 import { responseRequest, subscriptionModels } from '../core/ai-request'
 import type { AIProvider, ModelContextMetadata } from '../core/types'
 /**
- * Everything the app says to OpenAI. The only other network call is
- * favicons.ts, which fetches the icons of pages a side chat answer cited.
+ * Everything the app says to OpenAI. The other network calls are favicons.ts,
+ * which fetches the icons of pages a side chat answer cited, server requests
+ * (serverclient.ts) and, when asked, the app's own update check and download
+ * (updates.ts).
  *
  * It lives in main, and it stays in main: the renderer's CSP is
  * `connect-src 'self'` and nothing here should make anyone want to widen it.

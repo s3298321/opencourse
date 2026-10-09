@@ -17,7 +17,7 @@ import type { ThemeSummary } from '@core/types'
  * values (--bg, --card, --accent, --fg) - read here as literals because the
  * page around the card may be wearing a theme at the time.
  */
-const DEFAULT_SWATCH = ['#18181b', '#202024', '#e4e4e8', '#dedee3']
+const DEFAULT_SWATCH = ['#111110', '#232323', '#e4e4e8', '#dedee3']
 
 function Swatch({ colors }: { colors: string[] }): JSX.Element {
   const [bg, card, accent, fg] = colors

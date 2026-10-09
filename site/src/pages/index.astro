@@ -21,7 +21,7 @@ const faq = [
   { q: 'Do I need an account?', a: `No. OpenCourse works entirely on your Mac. An account is only for a catalog server, and only if you want to add courses from it or publish your own. The public catalog, ${catalogHost}, is not taking new accounts for now: anyone can browse it, and anyone can run their own.` },
   { q: 'Where do courses come from?', a: `Three places: a catalog server you connect to, a course archive (.zip) someone sends you, or the editor built into the app, where you write your own. The format is documented and open, so any tool can produce one.` },
   { q: 'Is it only for programming?', a: 'No - a course can be about anything. Lessons, pictures, interactive visualizations, quizzes and flashcards work for any subject. Programming courses additionally get exercises that run and grade your code, in Python, C or LLVM IR.' },
-  { q: 'What happens to my data?', a: 'Your courses, progress, notes and chats stay on your Mac. The app sends nothing anywhere unless you use an AI feature (which talks to OpenAI with your key) or a catalog server you chose. There are no analytics.' },
+  { q: 'What happens to my data?', a: 'Your courses, progress, notes and chats stay on your Mac. The app sends nothing anywhere unless you use an AI feature (which talks to OpenAI with your key), a catalog server you chose, or ask it to check GitHub for a new version of itself. There are no analytics.' },
   { q: 'Can I run my own catalog?', a: 'Yes. The catalog server is part of the same open-source project: run it with Docker on any machine, for a class, a team or a community. The documentation explains how.' }
 ]
 const jsonLd = {
@@ -252,7 +252,7 @@ const jsonLd = {
         <div class="privacy-points">
           <p><Icon name="hard-drive" size={18} /><span><strong>Everything stays on your Mac.</strong> Courses, progress, notes and chats live in your user folder - no account, no cloud, works offline.</span></p>
           <p><Icon name="key-round" size={18} /><span><strong>Your key, in your keychain.</strong> AI features use your own OpenAI account; the key is sealed by macOS and only ever sent to OpenAI.</span></p>
-          <p><Icon name="shield-check" size={18} /><span><strong>No analytics. None.</strong> The app does not phone home, and neither does this website.</span></p>
+          <p><Icon name="shield-check" size={18} /><span><strong>No analytics. None.</strong> The app does not phone home - it asks GitHub for a new version only if you tell it to - and neither does this website.</span></p>
         </div>
       </div>
     </div>

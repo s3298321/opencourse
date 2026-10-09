@@ -24,13 +24,26 @@ export function usersFile(): string {
 }
 
 /**
- * The app's log - main/logdb.ts. The one thing under userData that is not per
- * user, because some lines belong to nobody: startup, a crash, anything before
- * the picker. Each row carries the user it was written under, and the Logs page
- * only ever reads that user's rows and the general ones.
+ * The app's log - main/logdb.ts. Not per user, because some lines belong to
+ * nobody: startup, a crash, anything before the picker. Each row carries the
+ * user it was written under, and the Logs page only ever reads that user's rows
+ * and the general ones.
  */
 export function logDbFile(): string {
   return join(dataRoot(), 'logs.db')
+}
+
+/**
+ * Updates of the app itself - main/updates.ts. Not per user either: every user
+ * here runs the one copy of the app. updates.json says whether to check on its
+ * own; updates/ holds a download in progress, the swap helper and its result.
+ */
+export function appUpdatesFile(): string {
+  return join(dataRoot(), 'updates.json')
+}
+
+export function appUpdatesDir(): string {
+  return join(dataRoot(), 'updates')
 }
 
 /** Everything one user owns, in one deletable directory. */

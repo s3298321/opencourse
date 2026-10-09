@@ -407,6 +407,24 @@ describe('when the lesson changes under a chat', () => {
     expect(sent).toContain('SALAMANDERS')
   })
 
+  it('names each lesson the chat was given by its title, never by its id', async () => {
+    // Lesson ids are UUIDs, and "Now reading" printed one with its dashes
+    // turned into spaces. The title is read at read time and never stored.
+    stream = { frames: [textFrame('ok')] }
+    const chat = createChat(courseId, L1)
+    await sendChatMessage(asSender(), chat.id, 'about the first', undefined, L1)
+    await settle()
+    pushed = []
+    stream = { frames: [textFrame('ok again')] }
+    await sendChatMessage(asSender(), chat.id, 'about the second', undefined, L2)
+    await settle()
+
+    const contexts = getChat(chat.id)!.messages.filter((m) => m.role === 'context')
+    expect(contexts.map((m) => m.lessonTitle)).toEqual(['Lesson One', 'Lesson Two'])
+    expect(getChat(chat.id)!.messages.filter((m) => m.role !== 'context').some((m) => 'lessonTitle' in m)).toBe(false)
+    expect(selectMessages(chat.id).some((m) => 'lessonTitle' in m)).toBe(false)
+  })
+
   it('does not send the lesson twice while the learner stays put', async () => {
     stream = { frames: [textFrame('ok')] }
     const chat = createChat(courseId, L1)

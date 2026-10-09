@@ -22,6 +22,8 @@ vi.mock('../src/main/ipc', () => ({ registerIpc: vi.fn() }))
 vi.mock('../src/main/menu', () => ({ buildMenu: vi.fn() }))
 vi.mock('../src/main/mic', () => ({ wantsMic: () => false }))
 vi.mock('../src/main/protocol', () => ({ registerProtocolHandler: vi.fn(), registerSchemePrivileges: vi.fn() }))
+// Spawns the install helper and reaches the network; startup only wires it in.
+vi.mock('../src/main/updates', () => ({ quitVetoed: vi.fn(), runPendingInstall: vi.fn(), startUpdates: vi.fn() }))
 vi.mock('electron', () => ({
   app: {
     setName: fake.setName, setPath: fake.setPath, getPath: fake.getPath,

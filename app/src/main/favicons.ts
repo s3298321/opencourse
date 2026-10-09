@@ -1,8 +1,8 @@
 /**
  * Favicons for the pages a side chat answer cites.
  *
- * The second thing in main that talks to the network, after openai.ts, and the
- * only one that talks to hosts nobody configured: the cited sites themselves.
+ * One of the few things in main that talk to the network (see openai.ts), and
+ * the only one that talks to hosts nobody configured: the cited sites themselves.
  * The renderer cannot - `connect-src 'self'`, and `img-src` has no https: - so
  * main fetches, and an icon crosses as a `data:` URL, which `img-src` already
  * allows. Nothing about the policy had to change for this.

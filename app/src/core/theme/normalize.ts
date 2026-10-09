@@ -49,23 +49,25 @@ export const RANGES = {
   windowDim: { min: 0, max: 1, fallback: 0 },
   popoverBlur: { min: 0, max: 40, fallback: 20 },
   opacity: { min: 0, max: 1, fallback: 1 },
-  uiSize: { min: 12, max: 18, fallback: 15 },
-  readingSize: { min: 13, max: 22, fallback: 15 },
-  codeSize: { min: 10, max: 18, fallback: 12.5 },
   lineHeight: { min: 1, max: 2.2, fallback: 1.55 },
   weight: { min: 100, max: 900, fallback: 400 },
   letterSpacing: { min: -0.1, max: 0.3, fallback: 0 }
 } as const
 
 const SLOT_FIELDS: Record<FontSlotName, ReadonlyArray<keyof FontSlot>> = {
-  ui: ['family', 'size', 'lineHeight'],
-  reading: ['family', 'size', 'lineHeight'],
+  ui: ['family', 'lineHeight'],
+  reading: ['family', 'lineHeight'],
   heading: ['family', 'weight', 'letterSpacing'],
-  code: ['family', 'size'],
+  code: ['family'],
   brand: ['family', 'weight', 'letterSpacing']
 }
 
-const SIZE_RANGE: Partial<Record<FontSlotName, keyof typeof RANGES>> = { ui: 'uiSize', reading: 'readingSize', code: 'codeSize' }
+/**
+ * Slots that had a `size` in the first version of the format. It is still
+ * accepted - a theme written then must not fail - but read as nothing: text
+ * size belongs to the reader, who sets it beside the lesson.
+ */
+const RETIRED_SIZE: ReadonlySet<FontSlotName> = new Set(['ui', 'reading', 'code'])
 
 type Raw = Record<string, unknown>
 const isObject = (value: unknown): value is Raw => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -306,6 +308,7 @@ function readFonts(read: Reader, raw: unknown): Theme['fonts'] {
     }
     fonts.faces.push(entry)
   }
+  let sized = false
   for (const slot of FONT_SLOTS) {
     const value = raw[slot]
     if (value === undefined) continue
@@ -315,13 +318,14 @@ function readFonts(read: Reader, raw: unknown): Theme['fonts'] {
       continue
     }
     const fields = SLOT_FIELDS[slot]
-    read.only(where, value, fields as string[])
+    // Taken out before the unknown-key check, so a size is one plain note for
+    // the whole theme rather than "not part of the format" once per slot.
+    const { size, ...rest } = value
+    if (size !== undefined && RETIRED_SIZE.has(slot)) sized = true
+    read.only(where, RETIRED_SIZE.has(slot) ? rest : value, fields as string[])
     const out: FontSlot = {}
     const family = fields.includes('family') ? read.families(`${where}.family`, value['family']) : undefined
     if (family) out.family = family
-    const sizeRange = SIZE_RANGE[slot]
-    const size = sizeRange ? read.number(`${where}.size`, value['size'], RANGES[sizeRange]) : undefined
-    if (size !== undefined) out.size = size
     const weight = fields.includes('weight') ? read.number(`${where}.weight`, value['weight'], RANGES.weight) : undefined
     if (weight !== undefined) out.weight = Math.round(weight)
     const lineHeight = fields.includes('lineHeight') ? read.number(`${where}.lineHeight`, value['lineHeight'], RANGES.lineHeight) : undefined
@@ -330,6 +334,7 @@ function readFonts(read: Reader, raw: unknown): Theme['fonts'] {
     if (spacing !== undefined) out.letterSpacing = spacing
     if (Object.keys(out).length) fonts[slot] = out
   }
+  if (sized) read.warn('Text size is set by the reader, so the font sizes in this theme are ignored.')
   return fonts
 }
 

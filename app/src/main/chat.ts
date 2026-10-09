@@ -157,7 +157,17 @@ export function listChats(courseId: string): ChatSummary[] {
 
 export function getChat(chatId: string): ChatThread | null {
   const chat = selectChat(chatId)
-  return chat ? { chat: requireChat(chatId), messages: selectMessages(chatId) } : null
+  if (!chat) return null
+  // A context row is shown as "Now reading: <lesson>", and the row only knows
+  // the lesson's IDs. Its title is looked up now, so a renamed lesson reads
+  // as it is called today and a removed one simply has none.
+  const course = getCourse(chat.courseId)
+  const messages = selectMessages(chatId).map((message) => {
+    if (message.role !== 'context' || !message.lesson || !course) return message
+    const title = findLesson(course, message.lesson.moduleId, message.lesson.lessonId)?.lesson.title
+    return title ? { ...message, lessonTitle: title } : message
+  })
+  return { chat: requireChat(chatId), messages }
 }
 
 /**

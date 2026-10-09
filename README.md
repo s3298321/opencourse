@@ -218,6 +218,8 @@ the permission outright at any other time.
   ~/Library/Application Support/opencourse/
   ├── users.json
   ├── logs.db                   the app's log - each line names its user, or none
+  ├── updates.json              whether to check for app updates on its own (off unless turned on)
+  ├── updates/                  a download in progress, the swap helper and its result
   └── users/<user-id>/
       ├── courses/<course-uuid>/    document.json, package/ (a server course's uuid is the server's)
       ├── progress/<course-uuid>.json  one file per course

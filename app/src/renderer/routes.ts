@@ -23,7 +23,10 @@ export type Screen =
   | { name: 'coachProject'; projectId: string }
   | { name: 'coachSession'; projectId: string; sessionId: string }
 
-export type Overlay = { name: 'settings'; from: Screen } | { name: 'logs'; from: Screen }
+export type Overlay =
+  /** `section` scrolls Settings to one part of it, for a control elsewhere that is about that part. */
+  | { name: 'settings'; from: Screen; section?: 'updates' }
+  | { name: 'logs'; from: Screen }
 
 export type Route = Screen | Overlay
 

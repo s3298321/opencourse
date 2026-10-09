@@ -87,6 +87,11 @@ export function isSessionDirty(session: EditSession): boolean {
   return session.uploads.length > 0 || canonicalJSON(session.manifest) !== session.baseline
 }
 
+/** Whether any user has unsaved course edits - which quitting now would lose. */
+export function anySessionDirty(): boolean {
+  return [...sessions.values()].some(isSessionDirty)
+}
+
 export function readJournal(courseRoot: string): EditJournal | null {
   const path = join(courseRoot, SESSION_JOURNAL)
   if (!existsSync(path)) return null

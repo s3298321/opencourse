@@ -618,6 +618,12 @@ export interface ChatMessage {
   citations?: ChatCitation[]
   /** Which lesson this was sent from. Absent on nothing the app writes. */
   lesson?: ChatLessonRef
+  /**
+   * That lesson's title as the course has it now, on a lesson's context row
+   * only. Filled in by main when the chat is read, never stored: the IDs in
+   * `lesson` are UUIDs, and a learner reading "Now reading" wants the title.
+   */
+  lessonTitle?: string
   project?: { moduleId: string; fingerprint: string }
   authoring?: { target: AuthoringTarget; label: string; draftVersion: number }
   status?: 'complete' | 'stopped' | 'failed'
@@ -795,6 +801,11 @@ export interface Preferences {
    * users/<id>/servers/servers.json. Absent, or naming one that is gone: none.
    */
   activeServer?: string
+  /**
+   * The reader's text size on a lesson screen, one of READING_SCALES
+   * (core/reading-scale.ts). Absent means 1 - the app's own size.
+   */
+  readingScale?: number
 }
 
 /**
@@ -894,3 +905,31 @@ export type ThemeImportResult =
   | { status: 'ok'; theme: ThemeSummary; replaced: boolean }
   | { status: 'cancelled' }
   | { status: 'rejected'; message: string }
+
+/**
+ * Where an update of the app itself stands (main/updates.ts). The display half
+ * only: the release it is about stays in main, so the renderer can ask to
+ * install "the update" but never name what to download.
+ */
+export type AppUpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'current' }
+  | { state: 'available'; version: string; size: number; notesUrl: string; installable: boolean; reason?: string }
+  | { state: 'downloading'; version: string; received: number; total: number }
+  | { state: 'verifying'; version: string }
+  | { state: 'ready'; version: string }
+  /** Something open would be lost by quitting now; `reason` says what. Nothing was downloaded. */
+  | { state: 'blocked'; version: string; size: number; notesUrl: string; reason: string }
+  | { state: 'error'; message: string; version?: string; notesUrl?: string }
+
+export interface AppUpdateInfo {
+  status: AppUpdateStatus
+  /** Off unless turned on: while it is off the app never contacts GitHub on its own. */
+  automatic: boolean
+  currentVersion: string
+  /** When the last check finished, successfully or not; null before any. */
+  checkedAt: number | null
+  /** Where to get the new version by hand, when this copy cannot replace itself. */
+  downloadUrl: string
+}

@@ -19,6 +19,7 @@ import { updateProgress } from './progress'
 import { appendProjectMessage, deleteProjectChatRow, insertProjectChat, recordProjectTool, selectProjectChat, selectProjectChats, selectProjectMessages, updateProjectChat } from './projectchatdb'
 import { cancelChatTitles, generateChatTitle } from './chattitles'
 import { log } from './log'
+import { whenSenderGone } from './senders'
 
 const inflight = new Map<string, { controller: AbortController; chat: ProjectChatSummary; finish: (status: 'complete' | 'stopped' | 'failed', error?: string) => void }>()
 const preparing = new Map<string, { controller: AbortController; provider: import('../core/types').AIProvider }>()
@@ -85,7 +86,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
   let key: string
   const preparation = new AbortController(), stopPreparation = (): void => preparation.abort()
   preparing.set(id, { controller: preparation, provider: chat.provider ?? 'apiKey' })
-  sender.once('destroyed', stopPreparation); sender.once('render-process-gone', stopPreparation); sender.once('did-start-loading', stopPreparation)
+  const unbindPreparation = whenSenderGone(sender, stopPreparation)
   const logger = log.child('project', { userId: owner, data: { chatId: id, courseId: chat.courseId, moduleId: chat.moduleId } })
   try { ({ chat, key } = await prepareAIRequest('project', chat, preparation.signal)) }
   catch (error) {
@@ -95,7 +96,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
   }
   finally {
     preparing.delete(id)
-    sender.removeListener('destroyed', stopPreparation); sender.removeListener('render-process-gone', stopPreparation); sender.removeListener('did-start-loading', stopPreparation)
+    unbindPreparation()
   }
   if (preparation.signal.aborted) return { status: 'failed', message: 'Message stopped before sending.' }
   if (currentUserId() !== owner) return { status: 'failed', message: 'The local user changed.' }
@@ -142,9 +143,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
     finalized = true
     clearTimeout(turnTimer)
     inflight.delete(id)
-    sender.removeListener('destroyed', lost)
-    sender.removeListener('render-process-gone', lost)
-    sender.removeListener('did-start-loading', lost)
+    unbindLost()
     let assistantSeq = -1
     const valid = currentUserId() === owner && getCourse(chat.courseId)?.revision === revision && !!selectProjectChat(id, database)
     if (answered && valid) assistantSeq = appendProjectMessage(id, { role: 'assistant', text: answered, status,
@@ -165,9 +164,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
     })
   }
   const lost = (): void => { controller.abort(); finish('stopped') }
-  sender.once('destroyed', lost)
-  sender.once('render-process-gone', lost)
-  sender.once('did-start-loading', lost)
+  const unbindLost = whenSenderGone(sender, lost)
   inflight.set(id, { controller, finish, chat })
   const budget = { bytes: 0, signal: controller.signal }
   turnTimer = setTimeout(() => {

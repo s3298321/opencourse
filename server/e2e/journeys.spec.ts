@@ -53,7 +53,7 @@ test('the catalog: search, a course, and how to add it', async ({ page }) => {
   await page.getByRole('button', { name: 'Add in OpenCourse' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add this course in OpenCourse' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByText('Settings ▸ Servers ▸ Connect to a server…')).toBeVisible()
+  await expect(dialog.getByText('Settings ▸ Servers ▸ Connect to a server', { exact: true })).toBeVisible()
   await shot(page, 'course-dialog')
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()

@@ -27,8 +27,7 @@ export function EmptyState({ title, children, actions }: { title: string; childr
   return (
     <div className="empty-state oc-enter">
       <div className="empty-art" aria-hidden="true">
-        <img src="/mark-stars.svg" alt="" width={64} height={64} />
-        <Sparkles count={5} />
+        <Sparkles count={9} />
       </div>
       <h2>{title}</h2>
       {children && <div className="empty-text">{children}</div>}

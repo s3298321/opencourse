@@ -27,7 +27,7 @@ interface Props {
 const { title, description = SITE.description, active, jsonLd, noindex = false } = Astro.props
 const fullTitle = title ? `${title} · OpenCourse` : 'OpenCourse · Courses on your Mac'
 const canonical = new URL(Astro.url.pathname.replace(/\/$/, '') || '/', SITE.url).toString()
-const image = new URL('/og.png', SITE.url).toString()
+const image = new URL('/og.png?v=book', SITE.url).toString()
 const year = new Date().getFullYear()
 ---
 <!doctype html>
@@ -41,10 +41,10 @@ const year = new Date().getFullYear()
   <meta name="description" content={description} />
   <link rel="canonical" href={canonical} />
   {noindex && <meta name="robots" content="noindex" />}
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
-  <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=book" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png?v=book" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png?v=book" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png?v=book" />
   <link rel="sitemap" href="/sitemap-index.xml" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="OpenCourse" />

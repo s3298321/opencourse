@@ -39,12 +39,15 @@ const files = (dir) => readdirSync(dir).flatMap((name) => {
   return statSync(path).isDirectory() ? files(path) : [path]
 })
 // A fixed timestamp: the same docs make byte-identical zips, so a deploy only uploads what changed.
-const zipDir = (dir, name) => {
+const zipDir = (dir, name, overrides = {}) => {
   const entries = Object.fromEntries(files(dir).map((file) => [relative(dir, file).split('\\').join('/'), [readFileSync(file), { mtime: new Date('2026-01-01T00:00:00Z') }]]))
+  for (const [path, bytes] of Object.entries(overrides)) entries[path] = [bytes, { mtime: new Date('2026-01-01T00:00:00Z') }]
   writeFileSync(join(downloads, name), zipSync(entries, { level: 9 }))
 }
 zipDir(join(repo, 'docs', 'example-course'), 'opencourse-example-course.zip')
-zipDir(join(repo, 'docs', 'default-theme'), 'opencourse-default-theme.zip')
+// The public theme download follows the web brand even before the app's
+// own theme export is committed or released.
+zipDir(join(repo, 'docs', 'default-theme'), 'opencourse-default-theme.zip', { 'images/mark.png': readFileSync(join(brand, 'mark-128.png')) })
 zipDir(join(repo, 'docs', 'example-theme'), 'opencourse-example-theme.zip')
 cpSync(join(repo, 'app', 'src', 'core', 'course-schema.json'), join(downloads, 'course-schema.json'))
 cpSync(join(repo, 'app', 'src', 'core', 'theme', 'theme-schema.json'), join(downloads, 'theme-schema.json'))

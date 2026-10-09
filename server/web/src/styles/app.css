@@ -155,8 +155,7 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .back-link:hover { color: var(--fg); gap: 0.5rem; }
 .back-link svg { width: 15px; height: 15px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.75rem; padding: 4rem 1rem; }
-.empty-art { position: relative; width: 140px; height: 110px; display: grid; place-items: center; margin-bottom: 0.5rem; }
-.empty-art img { width: 64px; height: 64px; filter: drop-shadow(0 0 12px rgba(228, 234, 255, 0.3)) drop-shadow(0 0 30px rgba(210, 222, 255, 0.15)); }
+.empty-art { position: relative; width: 140px; height: 110px; margin-bottom: 0.5rem; }
 .empty-state h2 { font-size: var(--text-xl); }
 .empty-text { color: var(--muted); max-width: 520px; }
 .empty-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin-top: 0.75rem; }
@@ -193,11 +192,16 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .sparkles > :nth-child(6) { top: 48%; left: 92%; width: 11px; height: 11px; }
 .sparkles > :nth-child(7) { top: 80%; left: 40%; width: 8px; height: 8px; }
 .sparkles > :nth-child(8) { top: 38%; left: 3%; width: 8px; height: 8px; }
-.empty-art .sparkles > :nth-child(1) { top: 6%; left: 14%; }
-.empty-art .sparkles > :nth-child(2) { top: 70%; left: 8%; }
-.empty-art .sparkles > :nth-child(3) { top: 4%; left: 78%; width: 16px; height: 16px; }
-.empty-art .sparkles > :nth-child(4) { top: 72%; left: 86%; }
-.empty-art .sparkles > :nth-child(5) { top: 40%; left: 96%; }
+/* An irregular scatter across the whole illustration, with no central mark. */
+.empty-art .sparkles > :nth-child(1) { top: 9%; left: 18%; width: 15px; height: 15px; }
+.empty-art .sparkles > :nth-child(2) { top: 67%; left: 6%; width: 8px; height: 8px; }
+.empty-art .sparkles > :nth-child(3) { top: 3%; left: 73%; width: 11px; height: 11px; }
+.empty-art .sparkles > :nth-child(4) { top: 76%; left: 81%; width: 12px; height: 12px; }
+.empty-art .sparkles > :nth-child(5) { top: 38%; left: 89%; width: 7px; height: 7px; }
+.empty-art .sparkles > :nth-child(6) { top: 34%; left: 45%; width: 18px; height: 18px; }
+.empty-art .sparkles > :nth-child(7) { top: 82%; left: 38%; width: 9px; height: 9px; }
+.empty-art .sparkles > :nth-child(8) { top: 44%; left: 11%; width: 6px; height: 6px; }
+.empty-art .sparkles > :nth-child(9) { top: 57%; left: 63%; width: 10px; height: 10px; }
 
 /* ---------- covers ---------- */
 .cover { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: var(--chip-bg); }

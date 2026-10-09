@@ -20,7 +20,7 @@ const html = (dir) => readdirSync(dir).flatMap((name) => {
 })
 const pages = new Map(html(dist).map((file) => [file, readFileSync(file, 'utf8')]))
 const pageFor = (pathname) => {
-  const clean = decodeURIComponent(pathname).replace(/\/$/, '')
+  const clean = decodeURIComponent(pathname.split('?')[0]).replace(/\/$/, '')
   for (const candidate of [join(dist, clean, 'index.html'), join(dist, `${clean}.html`), join(dist, clean)]) {
     if (existsSync(candidate) && statSync(candidate).isFile()) return candidate
   }

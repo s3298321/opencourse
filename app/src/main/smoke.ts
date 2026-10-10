@@ -730,8 +730,9 @@ const SCRIPT = `(async () => {
   })
 
   await step('the side chat surface is exactly what the bridge means to expose', async () => {
-    // The project and course-editor chats are surfaces of their own.
-    const methods = Object.keys(window.opencourse).filter((k) => /Chat/.test(k) && !/ProjectChat|AuthoringChat/.test(k)).sort()
+    // The project and course-editor chats are surfaces of their own; the
+    // document chat is pinned on its own line below.
+    const methods = Object.keys(window.opencourse).filter((k) => /Chat/.test(k) && !/ProjectChat|AuthoringChat|DocumentChat/.test(k)).sort()
     assert(
       methods.join(',') ===
         'cancelChat,createChat,deleteChat,getChat,getChatModelSettings,getChatSourceIcons,getChatWebSearch,' +
@@ -739,7 +740,15 @@ const SCRIPT = `(async () => {
           'setChatDefaults,setChatModel,setChatProvider,setChatReasoning,setChatWebSearch,setEnabledChatModels',
       'the side chat surface changed: ' + methods.join(', ')
     )
-    return methods.length + ' methods'
+    const documentMethods = Object.keys(window.opencourse).filter((k) => /DocumentChat/.test(k)).sort()
+    assert(
+      documentMethods.join(',') ===
+        'cancelDocumentChat,createDocumentChat,deleteDocumentChat,getDocumentChat,listDocumentChats,' +
+          'onDocumentChatActivity,onDocumentChatDelta,onDocumentChatDone,onDocumentChatError,onDocumentChatTitle,' +
+          'setDocumentChatModel,setDocumentChatProvider,setDocumentChatReasoning',
+      'the document chat surface changed: ' + documentMethods.join(', ')
+    )
+    return methods.length + ' + ' + documentMethods.length + ' methods'
   })
 
   await step('the editor opens beside the exercise brief and retains its Ask chat', async () => {
@@ -2636,7 +2645,8 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>
     requests.push(body)
     const input = body.input as Record<string, unknown>[]
-    const hasTools = Array.isArray(body.tools) && body.tools.some((tool: { type?: string }) => tool.type === 'namespace')
+    // Side chat brings its own `course` tools now; only project review reads files.
+    const hasTools = Array.isArray(body.tools) && body.tools.some((tool: { type?: string; name?: string }) => tool.type === 'namespace' && tool.name === 'project')
     const continued = input.some(item => item.type === 'function_call_output')
     const output = hasTools && !continued ? [{ type: 'reasoning', encrypted_content: 'simulated-reasoning', summary: [] },
       { type: 'function_call', namespace: 'project', name: 'read_project_file', call_id: 'smoke-file', arguments: '{"path":"README.md","start_line":1,"max_lines":100}' }] : []
@@ -2953,7 +2963,9 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
         if (document.querySelector(headingSelector).getAnimations().length) throw new Error('Heading still rises on navigation');
         return headingSelector + ': immediately visible';
       };
-      document.querySelector('.titlebar .crumbs a').click(); await wait('.library');
+      // A lesson's back link is its course overview, and the overview's is All courses.
+      for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+      await wait('.library');
       for (let n = 0; n < 150 && !document.querySelector('.course-card'); n++) await sleep(8);
       [...document.querySelectorAll('.course-card')].find(card => /The OpenCourse example course/.test(card.textContent)).click();
       const course = await verify('.detail h1');

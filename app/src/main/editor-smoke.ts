@@ -116,9 +116,11 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>document.querySelector('.detail'));
       document.querySelector('.lesson-row').click(); await wait(()=>document.querySelector('.lesson-head'));
       if(!document.querySelector('.lesson-head').parentElement.textContent.includes('Stable identities')) throw new Error('Saved content not readable');
-      button('Mark lesson completed').click(); await wait(()=>button('✓ Lesson completed'));
+      button('Mark lesson completed').click(); await wait(()=>button('Lesson completed'));
       const before=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID); window.__EDITOR_SMOKE_LESSON=before.document.manifest.modules[0].lessons[0].nodeId;
-      document.querySelector('.titlebar [data-section="courses"]').click(); await sleep(100); if (!document.querySelector('.library')) document.querySelector('.titlebar .crumbs a')?.click(); await wait(()=>document.querySelector('.library'));
+      // A lesson's back link is its course overview, and the overview's is All courses.
+      for (let n=0;n<3 && !document.querySelector('.library');n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+      await wait(()=>document.querySelector('.library'));
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       [...document.querySelectorAll('.outline-row')].find(b=>b.textContent.includes('First lesson')).click(); await field('Lesson title','Renamed lesson'); await field('Lesson slug','renamed-lesson');
       button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved'));

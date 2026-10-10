@@ -73,7 +73,9 @@ export const OPEN_EXAMPLE_LESSON = `
   if (document.querySelector('.settings') || document.querySelector('.logs')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
   document.querySelector('.titlebar [data-section="courses"]').click();
   await sleep(100);
-  if (!document.querySelector('.library')) document.querySelector('.titlebar .crumbs a')?.click();
+  // The courses switch restores the last courses screen. A lesson's back link
+  // is its course overview, and the overview's is All courses.
+  for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a')?.click(); await sleep(250); }
   await wait('.library');
   const card = await (async () => {
     for (let n = 0; n < 160; n++) {

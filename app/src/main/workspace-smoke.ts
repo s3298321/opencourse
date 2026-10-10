@@ -66,7 +66,7 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
   `)
   await run('workspaces: exercise and Ask remain mounted with drafts and selected panes', `
     const open = [...document.querySelectorAll('.exercise button')].find(b => /Open editor/i.test(b.textContent)); assert(open, 'No example exercise'); open.click();
-    const editor = await wait('.cm-editor'), brief = find('.workbench-brief');
+    const editor = await wait('.workbench-editor .cm-editor'), brief = find('.workbench-brief');
     const ask = await wait('.titlebar .chat-chip'); if (ask.getAttribute('aria-pressed') !== 'true') ask.click();
     const field = await wait('.sidechat-input'), panel = find('.sidechat');
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;

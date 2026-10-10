@@ -73,6 +73,7 @@ export function newBlock(type: Block['type'], uuid: () => string, siblings: read
   const suffix = nodeId.replace(/[^a-z0-9]/gi, '').slice(-12)
   const slug = availableBlockSlug(type, siblings.map((block) => block.slug))
   switch (type) {
+    case 'python-cell': return { nodeId, slug, type, content: '' }
     case 'markdown': return { nodeId, slug, type, content: '' }
     case 'image': return { nodeId, slug, type, src: '', alt: '' }
     case 'video': return { nodeId, slug, type, src: '' }

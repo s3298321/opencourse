@@ -30,7 +30,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
   }
   try {
     await run('editor: a new course is unsaved until Save, and leaving asks first', `
-      (await wait(()=>document.querySelector('.titlebar [data-section="courses"]'))).click(); await wait(()=>document.querySelector('.library'));
+      (await wait(()=>document.querySelector('.titlebar [data-section="courses"]'))).click(); await sleep(100); if (!document.querySelector('.library')) document.querySelector('.titlebar .crumbs a')?.click(); await wait(()=>document.querySelector('.library'));
       button('Create course').click(); await wait(()=>document.querySelector('.course-editor'));
       const state=await wait(()=>document.querySelector('.author-save-state'));
       if(state.textContent!=='Not saved yet') throw new Error('A new course does not say it is unsaved: '+state.textContent);
@@ -45,7 +45,21 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
       await sleep(300);
       if((await window.opencourse.listCourses()).some(c=>c.title==='Editor smoke course')) throw new Error('An unsaved course reached the library');
-      document.querySelector('.course-editor').parentElement.querySelector('.crumbs a').click();
+      const parkedEditor = document.querySelector('.course-editor');
+      document.querySelector('.titlebar [data-section="coach"]').click();
+      await wait(()=>document.querySelector('.titlebar [data-section="coach"]').getAttribute('aria-checked')==='true');
+      if(document.querySelector('.dialog')) throw new Error('Switching halves asked to discard the parked draft');
+      document.dispatchEvent(new Event('authoring:save')); await sleep(100);
+      if((await window.opencourse.listCourses()).some(c=>c.title==='Editor smoke course')) throw new Error('Hidden editor handled Save');
+      const windowUnload = new Event('beforeunload', {cancelable:true}); window.dispatchEvent(windowUnload);
+      if(!windowUnload.defaultPrevented) throw new Error('Parked dirty editor did not guard window close');
+      document.querySelector('.titlebar .user-chip').click();
+      const userMenu=await wait(()=>document.querySelector('.user-menu'));
+      [...userMenu.querySelectorAll('.menu-item')].find(b=>/Switch user/.test(b.textContent)).click();
+      await wait(()=>document.querySelector('.dialog')); document.querySelector('.dialog-cancel').click(); await sleep(50);
+      document.querySelector('.titlebar [data-section="courses"]').click(); await sleep(100);
+      if(document.querySelector('.course-editor')!==parkedEditor) throw new Error('Parked editor was remounted');
+      document.querySelector('.titlebar .crumbs a').click();
       const dialog=await wait(()=>document.querySelector('.dialog'));
       if(!dialog.textContent.includes('Discard unsaved changes?')) throw new Error('Leaving did not warn');
       document.querySelector('.dialog-cancel').click(); await sleep(80);
@@ -104,7 +118,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       if(!document.querySelector('.lesson-head').parentElement.textContent.includes('Stable identities')) throw new Error('Saved content not readable');
       button('Mark lesson completed').click(); await wait(()=>button('✓ Lesson completed'));
       const before=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID); window.__EDITOR_SMOKE_LESSON=before.document.manifest.modules[0].lessons[0].nodeId;
-      document.querySelector('.titlebar [data-section="courses"]').click(); await wait(()=>document.querySelector('.library'));
+      document.querySelector('.titlebar [data-section="courses"]').click(); await sleep(100); if (!document.querySelector('.library')) document.querySelector('.titlebar .crumbs a')?.click(); await wait(()=>document.querySelector('.library'));
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       [...document.querySelectorAll('.outline-row')].find(b=>b.textContent.includes('First lesson')).click(); await field('Lesson title','Renamed lesson'); await field('Lesson slug','renamed-lesson');
       button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved'));

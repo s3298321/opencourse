@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useEffect, useId, useState } from 'react'
 import type { JSX } from 'react'
 import type { Block, CourseManifest, ExerciseBlock, Flashcard, Lesson, ProjectDefinition } from '@core/types'
@@ -85,6 +86,7 @@ export function BlockPreview({ block, courseId, ...editing }: PreviewEditing & {
   const src = useAuthoringAsset(courseId, 'src' in block ? block.src : undefined)
   const poster = useAuthoringAsset(courseId, block.type === 'video' ? block.poster : undefined)
   switch (block.type) {
+    case 'python-cell': return <div className="python-cell panel"><p className="meta">Python cell · Preview only</p><pre>{block.content}</pre></div>
     case 'markdown': return <MarkdownBlock content={block.content} />
     case 'image': return src ? <ImageBlockView block={{ ...block, src }} /> : <p className="meta">Upload an image to preview it.</p>
     case 'video': return src ? <VideoBlockView block={{ ...block, src, poster }} /> : <p className="meta">Upload a video to preview it.</p>
@@ -110,7 +112,7 @@ export function FlashcardPreview({ card, courseId }: { card: Flashcard; courseId
   return <div className="flashcard-preview panel">
     <span className="review-label">Flashcard · {card.id}</span><Html className="prose" source={card.question} />
     {src && <img className="review-image" src={src} alt={card.image?.alt ?? ''} />}
-    <button className="secondary" onClick={() => setRevealed(value => !value)}>{revealed ? 'Hide answer' : 'Reveal answer'}</button>
+    <ActionButton icon="eye" className="secondary" onClick={() => setRevealed(value => !value)}>{revealed ? 'Hide answer' : 'Reveal answer'}</ActionButton>
     {revealed && <div className="review-answer"><Html className="prose" source={card.answer} /></div>}
     <p className="meta">Preview only · Does not change review progress</p>
   </div>

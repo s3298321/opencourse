@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { CourseOverview } from '@core/catalog/api'
@@ -39,7 +40,7 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
     } finally { setBusy(false) }
   }
 
-  const back = { label: 'Course catalog', onClick: () => navigate({ name: 'library', tab: 'catalog' }) }
+  const back = { label: 'Add courses', onClick: () => navigate({ name: 'catalog', serverId }) }
   if (!course) {
     return <>
       <TitleBar user={user} navigate={navigate} route={route} back={back} />
@@ -70,9 +71,9 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
 
           <div className="actions catalog-detail-actions">
             {inLibrary
-              ? <button onClick={() => navigate({ name: 'course', courseId })}>Open in my courses</button>
-              : <button disabled={busy} onClick={() => void add()}>{busy ? 'Adding' : 'Add to my courses'}</button>}
-            {course.ownedByYou && <button className="secondary" onClick={() => navigate({ name: 'publication', serverId, courseId })}>Manage publication</button>}
+              ? <ActionButton icon="book" onClick={() => navigate({ name: 'course', courseId })}>Open in my courses</ActionButton>
+              : <ActionButton icon="plus" disabled={busy} onClick={() => void add()}>{busy ? 'Adding' : 'Add to my courses'}</ActionButton>}
+            {course.ownedByYou && <ActionButton icon="settings" className="secondary" onClick={() => navigate({ name: 'publication', serverId, courseId })}>Manage publication</ActionButton>}
           </div>
           {note && <p className={`import-note${note.error ? ' error' : ''}`} role="status">{note.text}</p>}
 

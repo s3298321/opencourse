@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { buildCourse, referencedAssets, summarize } from '../core/manifest'
-import { summarizeProgress } from '../core/progress'
+import { summarizeLibraryProgress } from '../core/progress'
 import { makeAssetResolver } from './assets'
 import { validateManifest } from '../core/schema'
 import type { Course, CourseManifest, CourseSummary } from '../core/types'
@@ -121,7 +121,7 @@ export function listCourses(): CourseSummary[] {
       version: course.version ?? DEFAULT_COURSE_VERSION,
       ...(origin ? { origin: { server: origin.server, serverName: origin.serverName, role: origin.role, publisher: origin.publisher } } : {}),
       ...(document.recoveryNotes?.length ? { recoveryNotice: 'Some older progress or messages could not be linked to course elements. Their original data is retained; details are in the .course-migration recovery folder.' } : {}),
-      progressPercent: summarizeProgress(course, readProgress(course.courseId)).percent
+      ...summarizeLibraryProgress(course, readProgress(course.courseId))
     }
   })
   summaries.sort((a, b) => a.title.localeCompare(b.title))

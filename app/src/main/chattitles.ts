@@ -1,5 +1,6 @@
 import { getCourse } from './courses'
 import { readDocument } from './course-store'
+import { getDocument } from './documents'
 import type { WebContents } from 'electron'
 import type { AIProvider, AIScope, ReasoningEffort } from '../core/types'
 import { normalizeChatTitle, titleWordCount, TITLE_INSTRUCTIONS } from '../core/sidechat/title'
@@ -11,12 +12,13 @@ import { aiEvents, prepareTitleRequest } from './ai'
 import { log } from './log'
 import { whenSenderGone } from './senders'
 
-const TABLES: Record<AIScope, string> = { chat: 'chats', project: 'course_project_chats', authoring: 'authoring_chats' }
-const MESSAGES: Record<AIScope, string> = { chat: 'chat_messages', project: 'course_project_messages', authoring: 'authoring_messages' }
-const pending = new Map<string, { controller: AbortController; scope: AIScope; chatId: string; provider: AIProvider; courseId: string; senderId: number }>()
-aiEvents.on('changed', () => { cancelChatTitles('chat'); cancelChatTitles('project'); cancelChatTitles('authoring') })
+type TitleScope = AIScope | 'document'
+const TABLES: Record<TitleScope, string> = { chat: 'chats', project: 'course_project_chats', authoring: 'authoring_chats', document: 'document_chats' }
+const MESSAGES: Record<TitleScope, string> = { chat: 'chat_messages', project: 'course_project_messages', authoring: 'authoring_messages', document: 'document_messages' }
+const pending = new Map<string, { controller: AbortController; scope: TitleScope; chatId: string; provider: AIProvider; courseId: string; senderId: number }>()
+aiEvents.on('changed', () => { cancelChatTitles('chat'); cancelChatTitles('project'); cancelChatTitles('authoring'); cancelChatTitles('document') })
 
-export function cancelChatTitles(scope: AIScope, filter: { chatId?: string; provider?: AIProvider; courseId?: string; senderId?: number } = {}): void {
+export function cancelChatTitles(scope: TitleScope, filter: { chatId?: string; provider?: AIProvider; courseId?: string; senderId?: number } = {}): void {
   for (const [id, task] of pending) {
     if (task.scope === scope && Object.entries(filter).every(([key, value]) => task[key as keyof typeof task] === value)) {
       task.controller.abort('cancelled')
@@ -27,11 +29,12 @@ export function cancelChatTitles(scope: AIScope, filter: { chatId?: string; prov
 
 /** A separate, best-effort request: it never holds up the answer or writes into its transcript. */
 export async function generateChatTitle(options: {
-  scope: AIScope; chatId: string; courseId: string; owner: string; sender: WebContents
+  scope: TitleScope; chatId: string; courseId?: string; documentId?: string; owner: string; sender: WebContents
   key: string; provider: AIProvider; model: string; reasoningEfforts: readonly ReasoningEffort[]
 }): Promise<void> {
-  const { scope, chatId, courseId, owner, sender, provider } = options
-  const courseRevision = () => scope === 'authoring' ? readDocument(courseId).revision : getCourse(courseId)?.revision
+  const { scope, chatId, owner, sender, provider } = options
+  const courseId = options.documentId ?? options.courseId!
+  const courseRevision = () => scope === 'document' ? getDocument(courseId).fingerprint : scope === 'authoring' ? readDocument(courseId).revision : getCourse(courseId)?.revision
   const revision = courseRevision()
   const id = `${scope}:${chatId}`
   const logger = log.child('chat.title', { userId: owner, data: { scope, chatId } })
@@ -82,7 +85,7 @@ export async function generateChatTitle(options: {
       return
     }
     const saved = db().prepare(`UPDATE ${table} SET generated_title = ? WHERE id = ? AND generated_title IS NULL`).run(title, chatId)
-    if (Number(saved.changes)) sender.send(scope === 'chat' ? 'chat:title' : scope === 'project' ? 'projectChat:title' : 'authoringChat:title', chatId, title)
+    if (Number(saved.changes)) sender.send(scope === 'document' ? 'documentChat:title' : scope === 'chat' ? 'chat:title' : scope === 'project' ? 'projectChat:title' : 'authoringChat:title', chatId, title)
   } catch (error) {
     // Naming failures leave the prompt title in place; answering is unaffected.
     if (controller.signal.aborted) return cancelled()

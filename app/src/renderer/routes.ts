@@ -11,21 +11,27 @@ import type { CourseItemRef, ReviewSession } from '@core/types'
  */
 export type Screen =
   | { name: 'users' }
-  | { name: 'library'; tab?: 'mine' | 'catalog' }
+  | { name: 'library'; source?: string }
+  | { name: 'catalog'; serverId: string }
+  | { name: 'documents' }
+  | { name: 'document'; documentId: string }
   | { name: 'catalogCourse'; serverId: string; courseId: string }
   | { name: 'publication'; serverId: string; courseId: string }
   | { name: 'courseEditor'; courseId: string }
   | { name: 'course'; courseId: string }
   | { name: 'review'; session: ReviewSession }
   | { name: 'lesson'; courseId: string; moduleId: string; lessonId: string }
+  | { name: 'notebook'; courseId: string }
   | { name: 'project'; courseId: string; moduleId: string }
   | { name: 'coach' }
   | { name: 'coachProject'; projectId: string }
   | { name: 'coachSession'; projectId: string; sessionId: string }
 
+export type SettingsSection = 'profile' | 'appearance' | 'connections' | 'ai' | 'coach' | 'servers' | 'updates' | 'about'
+
 export type Overlay =
-  /** `section` scrolls Settings to one part of it, for a control elsewhere that is about that part. */
-  | { name: 'settings'; from: Screen; section?: 'updates' }
+  /** Optional category to open directly from a control elsewhere. */
+  | { name: 'settings'; from: Screen; section?: SettingsSection }
   | { name: 'logs'; from: Screen }
 
 export type Route = Screen | Overlay
@@ -35,25 +41,30 @@ export function screenOf(route: Route): Screen {
   return route.name === 'settings' || route.name === 'logs' ? route.from : route
 }
 
-/** Which half of the app a route belongs to, for the titlebar's switch. */
-export function sectionOf(route: Route): 'courses' | 'coach' | null {
+/** Which workspace a route belongs to, for the titlebar's switch. */
+export function sectionOf(route: Route): 'courses' | 'documents' | 'coach' | null {
   switch (route.name) {
     case 'library':
+    case 'catalog':
     case 'catalogCourse':
     case 'publication':
     case 'courseEditor':
     case 'course':
     case 'review':
     case 'lesson':
+    case 'notebook':
     case 'project':
       return 'courses'
     case 'coach':
     case 'coachProject':
     case 'coachSession':
       return 'coach'
+    case 'documents':
+    case 'document':
+      return 'documents'
     case 'users':
       return null
-    // An overlay borrows the half it was opened from, so the switch stays where
+    // An overlay borrows the workspace it was opened from, so the switch stays where
     // it was and going back is the only thing that moved.
     case 'settings':
     case 'logs':

@@ -10,11 +10,11 @@
 @keyframes oc-pop { from { opacity: 0; transform: scale(0.96); } }
 @keyframes oc-dialog { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
 @keyframes oc-toast { from { opacity: 0; transform: translateY(16px) scale(0.98); } }
-/* A gentle breath and a few pixels of drift. Keep the rays upright and close
-   to full size so the small silhouettes don't collapse into chunky pixels. */
+/* Pulse the light, keeping the tiny ray silhouettes fixed. Scaling or drifting
+   a 6–22px mask makes its antialiased edges shimmer between device pixels. */
 @keyframes oc-twinkle {
-  0%, 100% { opacity: 0.35; transform: translate3d(0, 2px, 0) scale(0.88); }
-  50% { opacity: 0.9; transform: translate3d(0, -2px, 0) scale(1); }
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
 }
 @keyframes oc-aurora {
   0% { transform: translate3d(0, 0, 0) scale(1); }
@@ -56,14 +56,14 @@
   }
 }
 
-/* Keep the ray and halo static; composite only transform and opacity.
+/* Keep the ray and halo static; composite only their opacity.
    Negative phases keep a newly opened page from pulsing in unison. */
 .oc-twinkle { animation: oc-twinkle 6.8s ease-in-out -2.4s infinite; }
 .oc-twinkle:nth-child(2n) { animation-duration: 8.2s; animation-delay: -5.1s; }
 .oc-twinkle:nth-child(3n) { animation-duration: 7.6s; animation-delay: -1.3s; }
 .oc-twinkle:nth-child(5n) { animation-duration: 9.4s; animation-delay: -6.7s; }
 @media (prefers-reduced-motion: no-preference) {
-  .oc-twinkle { will-change: transform, opacity; }
+  .oc-twinkle { transform: translateZ(0); will-change: opacity; }
 }
 .oc-float { animation: oc-float 7s ease-in-out infinite; }
 

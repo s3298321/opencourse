@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { useScreenActive } from '../screen-activity'
 import { TERMINAL_FONT_PX, xtermTheme, type WorkbenchTheme } from './theme'
 
 export interface XtermHandle {
@@ -21,8 +22,11 @@ export interface XtermHandle {
 
 export function useXterm(
   theme: WorkbenchTheme,
-  options: { onData?: (data: string) => void; onResize?: (cols: number, rows: number) => void }
+  options: { textScale?: number; onData?: (data: string) => void; onResize?: (cols: number, rows: number) => void }
 ): XtermHandle {
+  const active = useScreenActive()
+  const activeRef = useRef(active)
+  activeRef.current = active
   const term = useRef<Terminal | null>(null)
   const fitAddon = useRef<FitAddon | null>(null)
   const node = useRef<HTMLDivElement | null>(null)
@@ -35,6 +39,7 @@ export function useXterm(
 
   const fit = useCallback((): { cols: number; rows: number } | null => {
     const host = node.current
+    if (!activeRef.current) return null
     if (!host || !term.current || !fitAddon.current) return null
     if (host.clientWidth === 0 || host.clientHeight === 0) return null
     const proposed = fitAddon.current.proposeDimensions()
@@ -57,7 +62,7 @@ export function useXterm(
     const initial = (applied.current = themeRef.current)
     const terminal = new Terminal({
       fontFamily: initial.mono,
-      fontSize: TERMINAL_FONT_PX,
+      fontSize: TERMINAL_FONT_PX * (callbacks.current.textScale ?? 1),
       lineHeight: 1.2,
       cursorBlink: Boolean(options.onData),
       convertEol: false,
@@ -112,6 +117,21 @@ export function useXterm(
     const size = fit()
     if (size) callbacks.current.onResize?.(size.cols, size.rows)
   }, [theme, fit])
+
+  useEffect(() => {
+    const terminal = term.current
+    const fontSize = TERMINAL_FONT_PX * (options.textScale ?? 1)
+    if (!terminal || terminal.options.fontSize === fontSize) return
+    terminal.options.fontSize = fontSize
+    const size = fit()
+    if (size) callbacks.current.onResize?.(size.cols, size.rows)
+  }, [options.textScale, fit])
+
+  useEffect(() => {
+    if (!active) return
+    const frame = requestAnimationFrame(() => { const size = fit(); if (size) callbacks.current.onResize?.(size.cols, size.rows) })
+    return () => cancelAnimationFrame(frame)
+  }, [active, fit])
 
   const write = useCallback((data: string) => term.current?.write(data), [])
   const clear = useCallback(() => term.current?.clear(), [])

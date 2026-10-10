@@ -11,6 +11,18 @@ afterEach(async () => { await server.close() })
 const get = (url: string, token?: string) => server.app.inject({ method: 'GET', url, headers: token ? auth(token) : {} })
 
 describe('publishing versions', () => {
+  it('publishes format 1.7 Python cells and notebook templates through shared validation', async () => {
+    const author = await signUp(server, 'notebook-author')
+    const { courseId, local } = localCourse()
+    local.notebook = { cells: [{ content: 'print("starter")' }] }
+    local.modules[0].lessons![0].blocks.push({ type: 'python-cell', slug: 'calculate', nodeId: randomUUID(), content: '6 * 7' })
+    expect((await publish(server, author.token, courseId, local, '0.1.0')).statusCode).toBe(201)
+    const unsupported = structuredClone(local)
+    Object.assign(unsupported.notebook!, { requirements: ['numpy'] })
+    const rejected = await publish(server, author.token, courseId, unsupported, '0.2.0')
+    expect(rejected.statusCode).toBe(400)
+    expect(rejected.json().error.errors.join(' ')).toContain('requirements')
+  })
   it('creates a course, then only accepts higher versions - deleted ones included', async () => {
     const author = await signUp(server, 'author')
     const { courseId, local } = localCourse()
@@ -79,7 +91,7 @@ describe('publishing versions', () => {
     const valid = publishedManifest(local, courseId)
 
     const old = { ...valid, schema_version: '1.4' }
-    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.6')
+    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.7')
     const unsupported = structuredClone(valid)
     unsupported.runtime = { language: 'c' }
     const rejected = await send(archive(server.dir, unsupported))

@@ -1,10 +1,12 @@
-import type { AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
+import type { CellTarget, CellRunRequest, NotebookDocument, NotebookEvent, NotebookSaveResult, NotebookStatus, CellExecution } from '../core/notebook/types'
+import type { AppInfo, AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
+import type { DocumentChatSummary, DocumentChatThread, DocumentImportResult, DocumentSearch, DocumentSummary, DocumentView } from '../core/documents/types'
 import type { AuthoringCourse, CourseDraft, SaveCourseResult, SavePreview } from '../core/course-document'
 import type { AttachmentKind, AttachmentUpload } from '../main/course-authoring'
 import type { CourseManifest } from '../core/types'
 import type { ReviewAnswer, ReviewCount, ReviewRating, ReviewSession, ReviewSummary } from '../core/types'
 import type { LogPage, LogQuery } from '../core/logging/query'
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { BRAND } from '../core/brand'
 import type {
   ActiveTheme,
@@ -21,7 +23,7 @@ import type {
   ProjectWorkspace,
   ProjectChatSummary,
   ProjectChatThread,
-  ChatLessonRef,
+  ChatContextRef,
   ChatDefaults,
   ChatModelSettings,
   ChatPickerModels,
@@ -82,6 +84,44 @@ export interface QuizVerdict extends GradeResult {
 export type { NavAction }
 
 const api = {
+  getNotebookStatus: (courseId: string): Promise<NotebookStatus> => ipcRenderer.invoke('notebook:status', courseId),
+  ensureNotebook: (courseId: string, retry = false): Promise<NotebookStatus> => ipcRenderer.invoke('notebook:ensure', courseId, retry),
+  rebuildNotebook: (courseId: string): Promise<NotebookStatus> => ipcRenderer.invoke('notebook:rebuild', courseId),
+  getNotebook: (courseId: string): Promise<NotebookDocument> => ipcRenderer.invoke('notebook:get', courseId),
+  saveNotebook: (courseId: string, revision: number, cells: { id: string; content: string }[]): Promise<NotebookSaveResult> => ipcRenderer.invoke('notebook:save', courseId, revision, cells),
+  clearNotebookOutput: (courseId: string, cellId: string): Promise<NotebookDocument> => ipcRenderer.invoke('notebook:clear', courseId, cellId),
+  runPythonCell: (target: CellRunRequest, code?: string): Promise<CellExecution> => ipcRenderer.invoke('notebook:run', target, code),
+  stopLessonCell: (target: CellTarget): Promise<void> => ipcRenderer.invoke('notebook:stopLesson', target),
+  stopNotebook: (courseId: string, restart = false): Promise<NotebookStatus> => ipcRenderer.invoke('notebook:stop', courseId, restart),
+  onNotebookEvent: (handler: (event: NotebookEvent) => void): (() => void) => subscribe('notebook:event', handler),
+  // PDF bytes and indexes are resolved by document ID in main, never by renderer paths.
+  listDocuments: (): Promise<DocumentSummary[]> => ipcRenderer.invoke('documents:list'),
+  getDocument: (id: string): Promise<DocumentView> => ipcRenderer.invoke('documents:get', id),
+  importDocument: (): Promise<DocumentImportResult> => ipcRenderer.invoke('documents:import'),
+  importDroppedDocument: (file: File): Promise<DocumentImportResult> => ipcRenderer.invoke('documents:importDrop', webUtils.getPathForFile(file)),
+  removeDocument: (id: string): Promise<void> => ipcRenderer.invoke('documents:remove', id),
+  setDocumentCompleted: (id: string, completed: boolean): Promise<DocumentView> => ipcRenderer.invoke('documents:completed', id, completed),
+  renameDocument: (id: string, title: string): Promise<DocumentView> => ipcRenderer.invoke('documents:rename', id, title),
+  readDocumentRange: (id: string, begin: number, end: number): Promise<Uint8Array> => ipcRenderer.invoke('documents:range', id, begin, end),
+  readPdfResource: (kind: string, filename: string): Promise<Uint8Array> => ipcRenderer.invoke('documents:resource', kind, filename),
+  searchDocument: (id: string, query: string, cursor = 0): Promise<DocumentSearch> => ipcRenderer.invoke('documents:search', id, query, cursor),
+  retryDocumentIndex: (id: string, password?: string): Promise<void> => ipcRenderer.invoke('documents:retryIndex', id, password),
+  onDocumentsChanged: (handler: (id: string) => void): (() => void) => subscribe('documents:changed', handler),
+  listDocumentChats: (id: string): Promise<DocumentChatSummary[]> => ipcRenderer.invoke('documentChat:list', id),
+  getDocumentChat: (id: string): Promise<DocumentChatThread | null> => ipcRenderer.invoke('documentChat:get', id),
+  createDocumentChat: (id: string, page: number): Promise<DocumentChatSummary> => ipcRenderer.invoke('documentChat:create', id, page),
+  deleteDocumentChat: (id: string): Promise<void> => ipcRenderer.invoke('documentChat:delete', id),
+  sendDocumentMessage: (id: string, text: string, quote: ChatQuote | undefined, page: number): Promise<ChatSendResult> => ipcRenderer.invoke('documentChat:send', id, text, quote, page),
+  cancelDocumentChat: (id: string): Promise<void> => ipcRenderer.invoke('documentChat:cancel', id),
+  setDocumentChatModel: (id: string, model: string): Promise<DocumentChatSummary> => ipcRenderer.invoke('documentChat:setModel', id, model),
+  setDocumentChatReasoning: (id: string, reasoning: ReasoningEffort | null): Promise<DocumentChatSummary> => ipcRenderer.invoke('documentChat:setReasoning', id, reasoning),
+  setDocumentChatProvider: (id: string, provider: AIProvider | null): Promise<DocumentChatSummary> => ipcRenderer.invoke('documentChat:setProvider', id, provider),
+  getDocumentSourceIcons: (id: string, seq: number): Promise<Record<string, string | null>> => ipcRenderer.invoke('documentChat:sourceIcons', id, seq),
+  onDocumentChatDelta: (handler: (id: string, chunk: string) => void): (() => void) => subscribe('documentChat:delta', handler),
+  onDocumentChatDone: (handler: (id: string, info?: { stopped: boolean }) => void): (() => void) => subscribe('documentChat:done', handler),
+  onDocumentChatError: (handler: (id: string, error: string) => void): (() => void) => subscribe('documentChat:error', handler),
+  onDocumentChatTitle: (handler: (id: string, title: string) => void): (() => void) => subscribe('documentChat:title', handler),
+  onDocumentChatActivity: (handler: (id: string, activity: string) => void): (() => void) => subscribe('documentChat:activity', handler),
   getReviewSummary: (courseId: string): Promise<ReviewSummary> => ipcRenderer.invoke('review:summary', courseId),
   startReviewSession: (courseId: string, count: ReviewCount): Promise<ReviewSession> => ipcRenderer.invoke('review:start', courseId, count),
   revealReviewAnswer: (sessionId: string, cardId: string): Promise<ReviewAnswer> => ipcRenderer.invoke('review:reveal', sessionId, cardId),
@@ -162,6 +202,7 @@ const api = {
     ipcRenderer.invoke('themes:importPath', zipPath, onDuplicate),
 
   // --- updates of the app itself: app-wide, off unless turned on ---
+  getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke('app:info'),
   getAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:state'),
   /** A press of "Check for updates": unlike an automatic check, it reports a failure. */
   checkForAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:check'),
@@ -175,6 +216,7 @@ const api = {
   setReadingScale: (scale: number): Promise<number> => ipcRenderer.invoke('reading:setScale', scale),
 
   getProgress: (courseId: string): Promise<CourseProgress> => ipcRenderer.invoke('progress:get', courseId),
+  touchCourse: (courseId: string): Promise<CourseProgress> => ipcRenderer.invoke('progress:touchCourse', courseId),
   toggleLesson: (courseId: string, moduleId: string, lessonId: string): Promise<CourseProgress> =>
     ipcRenderer.invoke('progress:toggleLesson', courseId, moduleId, lessonId),
   touchLesson: (courseId: string, moduleId: string, lessonId: string): Promise<CourseProgress> =>
@@ -314,7 +356,7 @@ const api = {
   // connection because `connect-src 'self'` means this side cannot open it.
   listChats: (courseId: string): Promise<ChatSummary[]> => ipcRenderer.invoke('chat:list', courseId),
   getChat: (chatId: string): Promise<ChatThread | null> => ipcRenderer.invoke('chat:get', chatId),
-  createChat: (courseId: string, lesson: ChatLessonRef, model?: string): Promise<ChatSummary> =>
+  createChat: (courseId: string, lesson: ChatContextRef, model?: string): Promise<ChatSummary> =>
     ipcRenderer.invoke('chat:create', courseId, lesson, model),
   setChatModel: (chatId: string, model: string): Promise<ChatSummary> =>
     ipcRenderer.invoke('chat:setModel', chatId, model),
@@ -329,7 +371,7 @@ const api = {
     chatId: string,
     text: string,
     quote: ChatQuote | undefined,
-    lesson: ChatLessonRef
+    lesson: ChatContextRef
   ): Promise<ChatSendResult> => ipcRenderer.invoke('chat:send', chatId, text, quote, lesson),
   // What the picker offers - already narrowed to what Settings left on.
   listChatModels: (scope: AIScope = 'chat', provider?: AIProvider): Promise<ChatPickerModels> => ipcRenderer.invoke('ai:models', scope, provider),

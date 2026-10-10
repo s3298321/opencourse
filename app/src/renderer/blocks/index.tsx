@@ -1,3 +1,4 @@
+import LessonPythonCell from '../notebook/PythonCell'
 import type { JSX } from 'react'
 import type { Block, CourseProgress, QuizAttempt } from '@core/types'
 import MarkdownBlock from './Markdown'
@@ -7,6 +8,8 @@ import QuizBlockView from './Quiz'
 import ExerciseBlockView from './Exercise'
 
 export interface BlockContext {
+  textScale?: number
+  pythonCellsActive?: boolean
   courseId: string
   moduleId: string
   lessonId: string
@@ -19,6 +22,8 @@ export interface BlockContext {
 
 export function renderBlock(block: Block, index: number, ctx: BlockContext): JSX.Element | null {
   switch (block.type) {
+    case 'python-cell':
+      return <LessonPythonCell key={block.nodeId ?? index} block={block} courseId={ctx.courseId} textScale={ctx.textScale} sessionActive={ctx.pythonCellsActive} />
     case 'markdown':
       return <MarkdownBlock key={block.nodeId ?? index} content={block.content} />
     case 'image':

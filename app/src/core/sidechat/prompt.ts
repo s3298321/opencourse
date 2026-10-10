@@ -11,7 +11,7 @@
  * whole point of having a tutor beside the lesson - so the instruction is to
  * work them towards it rather than either stonewall or hand it over.
  */
-const instructions = (lookItUp: string): string => `You are a tutor sitting beside someone working through a course in OpenCourse, a desktop course reader. The lesson they are reading is given to you as a message marked as lesson context; when they move to another lesson you are given that one too, and the earlier ones stay in the conversation.
+const instructions = (lookItUp: string): string => `You are a tutor sitting beside someone working through a course in OpenCourse, a desktop course reader. The current lesson is supplied as lesson context. Earlier reading positions remain in the conversation; retrieve their content with course tools when needed.
 
 How to be useful here:
 
@@ -31,7 +31,7 @@ A few specifics about this app:
 Write in markdown. Use code fences with a language when you show code. Be brief by default - a few sentences and an example beats an essay - and expand when they ask for more.`
 
 /** The one line that differs, and the only thing the switch in Settings changes. */
-const NO_SEARCH = 'You have no way to look anything up.'
+const NO_SEARCH = 'You cannot search the web. Local course retrieval remains available.'
 
 /**
  * Search is a tool the model may reach for, not one it should reach for by

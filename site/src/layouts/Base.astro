@@ -25,9 +25,9 @@ interface Props {
   noindex?: boolean
 }
 const { title, description = SITE.description, active, jsonLd, noindex = false } = Astro.props
-const fullTitle = title ? `${title} · OpenCourse` : 'OpenCourse · Courses on your Mac'
+const fullTitle = title ? `${title} · OpenCourse` : 'OpenCourse · Learn anything, locally'
 const canonical = new URL(Astro.url.pathname.replace(/\/$/, '') || '/', SITE.url).toString()
-const image = new URL('/og.png?v=book', SITE.url).toString()
+const image = new URL('/og.png?v=learn-locally', SITE.url).toString()
 const year = new Date().getFullYear()
 ---
 <!doctype html>

@@ -101,6 +101,14 @@ export function buildMenu(): void {
       ]
     },
     {
+      label: 'Documents',
+      submenu: [
+        { label: 'Document Library', accelerator: 'CmdOrCtrl+Shift+D', click: () => send('documents') },
+        { label: 'Import PDF', accelerator: 'CmdOrCtrl+Shift+I', click: () => send('importDocument') },
+        { label: 'Find in Document', click: () => send('search') }
+      ]
+    },
+    {
       label: 'Coach',
       submenu: [
         { label: 'Coaches', accelerator: 'CmdOrCtrl+Shift+C', click: () => send('coach') },

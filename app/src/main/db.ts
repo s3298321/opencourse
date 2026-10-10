@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 13
+export const SCHEMA_VERSION = 16
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -259,6 +259,45 @@ function migrate(d: DatabaseSync): void {
     addColumn(d, 'chats', 'pinned_provider')
     addColumn(d, 'course_project_chats', 'pinned_provider')
     addColumn(d, 'authoring_chats', 'pinned_provider')
+  }
+  if (from < 14) {
+    d.exec(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, bytes INTEGER NOT NULL,
+        fingerprint TEXT NOT NULL UNIQUE, pages INTEGER NOT NULL DEFAULT 0,
+        indexed_pages INTEGER NOT NULL DEFAULT 0, searchable_pages INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'indexing', error TEXT, completed INTEGER NOT NULL DEFAULT 0,
+        sections TEXT NOT NULL DEFAULT '[]', index_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS document_pages (
+        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        page INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY(document_id, page)
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS document_search USING fts5(document_id UNINDEXED, page UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');
+      CREATE TRIGGER IF NOT EXISTS document_pages_delete AFTER DELETE ON document_pages BEGIN
+        DELETE FROM document_search WHERE document_id=old.document_id AND page=old.page;
+      END;
+      CREATE TABLE IF NOT EXISTS document_chats (
+        id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        started_on INTEGER NOT NULL, model TEXT NOT NULL, reasoning TEXT, provider TEXT NOT NULL,
+        pinned_provider TEXT, generated_title TEXT, next_seq INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS document_chats_by_document ON document_chats(document_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS document_messages (
+        chat_id TEXT NOT NULL REFERENCES document_chats(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, payload TEXT NOT NULL,
+        PRIMARY KEY(chat_id, seq)
+      );
+    `)
+    addColumn(d, 'chat_messages', 'local_sources')
+  }
+  // Keep user-assigned PDF titles separate from metadata rebuilt by the indexer.
+  if (from < 15) addColumn(d, 'documents', 'title_override')
+  if (from < 16) {
+    addColumn(d, 'chats', 'start_source')
+    addColumn(d, 'chat_messages', 'source_kind')
+    addColumn(d, 'chat_messages', 'quote_metadata')
   }
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }

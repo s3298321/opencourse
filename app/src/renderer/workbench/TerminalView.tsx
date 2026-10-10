@@ -9,6 +9,7 @@ interface Props {
   envDir?: string
   language: string
   theme: WorkbenchTheme
+  textScale?: number
   /** The pane is kept mounted while hidden, so re-fit when it comes back. */
   visible: boolean
   onExit: (exitCode: number) => void
@@ -19,11 +20,12 @@ interface Props {
  * The pty belongs to this mount: navigating away disposes it rather than
  * leaving a shell writing into a frame that no longer exists.
  */
-export default function TerminalView({ sessionId, cwd, envDir, language, theme, visible, onExit }: Props): JSX.Element {
+export default function TerminalView({ sessionId, cwd, envDir, language, theme, textScale = 1, visible, onExit }: Props): JSX.Element {
   const size = useRef<{ cols: number; rows: number }>({ cols: 80, rows: 24 })
   const ready = useRef(false)
 
   const term = useXterm(theme, {
+    textScale,
     onData: (data) => {
       if (ready.current) void window.opencourse.writePty(sessionId, data)
     },

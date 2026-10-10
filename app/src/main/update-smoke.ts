@@ -20,7 +20,7 @@ interface Result { name: string; ok: boolean; detail: string }
 
 const HELPERS = `
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const visible = (e) => e && e.getBoundingClientRect().width > 0;
+  const visible = (e) => e && e.checkVisibility({ visibilityProperty: true });
   const wait = async (selector, timeout = 8000) => {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
@@ -68,7 +68,7 @@ export async function appUpdateChecks(win: BrowserWindow): Promise<Result[]> {
   const press = async (name: string, selector: string): Promise<void> => {
     try {
       const box = await win.webContents.executeJavaScript(`(() => {
-        const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0);
+        const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.checkVisibility({ visibilityProperty: true }));
         if (!el) return null;
         const r = el.getBoundingClientRect();
         return { x: r.left + r.width / 2, y: r.top + r.height / 2 };

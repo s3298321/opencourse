@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton'
 import { useEffect, useState, type JSX } from 'react'
 import type { AIProvider, ReasoningEffort, TitleGenerationConfig, TitleGenerationSettings } from '@core/types'
 import { modelReasoning } from '@core/ai'
@@ -79,9 +80,9 @@ export default function TitleGenerationSection({ version }: { version: number })
           {config && levels.map(level => <option key={level} value={level}>{REASONING_LABELS[level]}</option>)}
         </select></label>
       </div>
-      {config && <div className="actions"><button className="secondary" disabled={busy} onClick={() => {
+      {config && <div className="actions"><ActionButton icon="refresh" className="secondary" disabled={busy} onClick={() => {
         void update(() => window.opencourse.getTitleGenerationSettings(config.provider, true))
-      }}>Refresh models</button></div>}
+      }}>Refresh models</ActionButton></div>}
     </>}
     {error && <p className="import-note error" role="alert">{error}</p>}
     {saved && <p className="import-note" role="status">Title settings saved.</p>}

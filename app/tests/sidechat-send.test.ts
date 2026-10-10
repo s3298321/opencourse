@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatQuote, CourseManifest } from '../src/core/types'
 import { TITLE_INSTRUCTIONS } from '../src/core/sidechat/title'
+import { COURSE_TOOLS } from '../src/core/reading/tools'
 
 const root = mkdtempSync(join(tmpdir(), 'opencourse-sidechat-send-'))
 let dataDir = join(root, 'data')
@@ -134,6 +135,8 @@ const {
 } = await import('../src/main/chat')
 const { STREAM_IDLE_MS, silenceBeforeAnswerMs } = await import('../src/main/openai')
 const { userPreferencesFile } = await import('../src/main/paths')
+const { notebookDirectory, stopAllNotebooks } = await import('../src/main/notebooks')
+const { initializeNotebook, saveNotebookCells, recordCellExecution } = await import('../src/main/notebook-store')
 const { DEFAULT_CHAT_MODEL } = await import('../src/core/sidechat/models')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -250,6 +253,7 @@ const COURSE: CourseManifest = {
 
 let n = 0
 beforeEach(async () => {
+  await stopAllNotebooks()
   closeDb()
   for (const user of listUsers()) deleteUser(user.id)
   n += 1
@@ -271,6 +275,55 @@ beforeEach(async () => {
 })
 
 describe('asking a question', () => {
+  it('shares lesson chat history with the notebook and refreshes only changed saved snapshots', async () => {
+    const course = installCourseFixture({ ...COURSE, schema_version: '1.7', version: '0.1.0', notebook: {} })
+    const owner = (await import('../src/main/users')).requireUser()
+    const path = join(notebookDirectory(owner, course.courseId), 'notebook.json')
+    let document = initializeNotebook(path, { cells: [{ content: 'value = 40' }] })
+    const cellId = document.cells[0]!.id
+    const lesson = { moduleId: course.modules[0].slug, lessonId: course.modules[0].lessons![0].slug }
+    const chat = createChat(course.courseId, lesson), target = { kind: 'notebook' as const }
+    await sendChatMessage(asSender(), chat.id, 'Explain this lesson', undefined, lesson); await settle()
+    pushed = []
+    await sendChatMessage(asSender(), chat.id, 'Explain my code', { text: 'value', from: 'notebook', notebook: { cellId } }, target); await settle()
+    let messages = selectMessages(chat.id)
+    expect(messages.filter(message => message.role === 'context')).toHaveLength(2)
+    expect(messages.find(message => message.notebook && message.role === 'context')!.text).toContain('value = 40')
+    expect(messages.find(message => message.text === 'Explain my code')).toMatchObject({ notebook: true, quote: { from: 'notebook', notebook: { cellId } } })
+    expect(listChats(course.courseId)).toHaveLength(1)
+    pushed = []
+    await sendChatMessage(asSender(), chat.id, 'Again', undefined, target); await settle()
+    expect(selectMessages(chat.id).filter(message => message.role === 'context')).toHaveLength(2)
+    const saved = saveNotebookCells(path, document.revision, [{ id: cellId, content: 'value + 2' }]); document = saved.document
+    recordCellExecution(path, cellId, { runId: 'run', generation: 'generation', code: 'value + 2', count: 1, status: 'complete', outputs: [{ kind: 'stdout', text: '42' }], at: '' })
+    pushed = []
+    await sendChatMessage(asSender(), chat.id, 'Explain the result', undefined, target); await settle()
+    messages = selectMessages(chat.id)
+    const snapshots = messages.filter(message => message.role === 'context')
+    expect(snapshots).toHaveLength(3); expect(snapshots.at(-1)!.text).toContain('42')
+    expect(JSON.stringify(JSON.parse(answerCalls().at(-1)!.body).input)).toContain('[notebook context]')
+    pushed = []
+    await sendChatMessage(asSender(), chat.id, 'Back to the lesson', undefined, lesson); await settle()
+    expect(selectMessages(chat.id).filter(message => message.role === 'context')).toHaveLength(4)
+  })
+  it('continues a real Responses stream through course search and a lesson read', async () => {
+    const call = (name: string, callId: string, args: unknown) => frame({ type: 'response.output_item.done', output_index: 0, item: { type: 'function_call', call_id: callId, name, arguments: JSON.stringify(args) } })
+    queue = [
+      { frames: [call('search_course', 'search', { query: 'AXOLOTLS', cursor: 0 })] },
+      { frames: [call('read_course_section', 'read', { module_id: L2.moduleId, lesson_id: L2.lessonId, offset: 0 })] },
+      { frames: [textFrame('Lesson Two explains axolotls.')] }
+    ]
+    const c = createChat(courseId, L1)
+    await sendChatMessage(asSender(), c.id, 'What does the course say about axolotls?', undefined, L1)
+    await settle()
+    const requests = answerCalls().map(call => JSON.parse(call.body))
+    expect(requests).toHaveLength(3)
+    expect(JSON.stringify(requests[0].input)).not.toContain('The second lesson is about AXOLOTLS')
+    expect(JSON.stringify(requests[1].input)).toContain('The second lesson is about AXOLOTLS')
+    expect(requests[2].input.filter((item: { type?: string }) => item.type === 'function_call_output')).toHaveLength(2)
+    expect(requests[2].input.at(-1).output).toContain('The second lesson is about AXOLOTLS')
+    expect(getChat(c.id)!.messages.at(-1)).toMatchObject({ text: 'Lesson Two explains axolotls.', status: 'complete', localSources: [{ kind: 'course', courseId, ...L2 }] })
+  })
   it('streams the answer back in order and keeps it', async () => {
     stream = { frames: [textFrame('An '), textFrame('event '), textFrame('loop.')] }
     const chat = createChat(courseId, L1)
@@ -380,7 +433,7 @@ describe('when the lesson changes under a chat', () => {
     expect(listChats(courseId)).toEqual([])
     expect(pushed.filter(event => event.channel !== 'chat:title').at(-1)?.channel).toBe('chat:done')
   })
-  it('sends the new lesson too, and keeps the old one in the conversation', async () => {
+  it('keeps old lesson snapshots locally but sends only the current lesson text', async () => {
     stream = { frames: [textFrame('ok')] }
     const chat = createChat(courseId, L1)
     await sendChatMessage(asSender(), chat.id, 'about the first', undefined, L1)
@@ -402,9 +455,10 @@ describe('when the lesson changes under a chat', () => {
       'assistant'
     ])
     const sent = calls.find((c) => c.url.includes('/responses'))!.body
-    // Both lessons are in the request: the earlier context is kept, not replaced.
+    // The transcript retains both snapshots; the model can retrieve older lessons.
+    expect(sent).toContain('Earlier lesson')
     expect(sent).toContain('AXOLOTLS')
-    expect(sent).toContain('SALAMANDERS')
+    expect(sent).not.toContain('SALAMANDERS')
   })
 
   it('names each lesson the chat was given by its title, never by its id', async () => {
@@ -744,8 +798,8 @@ describe('web search', () => {
     const chat = createChat(courseId, L1)
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
     await settle()
-    expect(sentBody()).not.toHaveProperty('tools')
-    expect(instructions()).toContain('You have no way to look anything up.')
+    expect(sentBody()['tools']).toEqual(COURSE_TOOLS)
+    expect(instructions()).toContain('You cannot search the web.')
   })
 
   it('offers the hosted tool once it is on, and tells the model when to use it', async () => {
@@ -754,11 +808,10 @@ describe('web search', () => {
     const chat = createChat(courseId, L1)
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
     await settle()
-    expect(sentBody()['tools']).toEqual([{ type: 'web_search' }])
+    expect(sentBody()['tools']).toEqual([...COURSE_TOOLS, { type: 'web_search' }])
     expect(instructions()).toContain('You can search the web')
-    // The function-tool settings belong to the project agent, not to this.
-    expect(sentBody()).not.toHaveProperty('store')
-    expect(sentBody()).not.toHaveProperty('max_output_tokens')
+    expect(sentBody()['store']).toBe(false)
+    expect(sentBody()['max_output_tokens']).toBe(12000)
   })
 
   it('does not offer it to a model that cannot take it', async () => {
@@ -767,8 +820,8 @@ describe('web search', () => {
     const chat = setChatModel(createChat(courseId, L1).id, 'gpt-4.1-nano')
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
     await settle()
-    expect(sentBody()).not.toHaveProperty('tools')
-    expect(instructions()).toContain('You have no way to look anything up.')
+    expect(sentBody()['tools']).toEqual(COURSE_TOOLS)
+    expect(instructions()).toContain('You cannot search the web.')
   })
 
   it('says what it is doing while it searches', async () => {
@@ -893,8 +946,8 @@ describe('web search', () => {
     await settle()
     const sent = answerCalls().map((c) => JSON.parse(c.body) as Record<string, unknown>)
     expect(sent).toHaveLength(2)
-    expect(sent[0]!['tools']).toEqual([{ type: 'web_search' }])
-    expect(sent[1]).not.toHaveProperty('tools')
+    expect(sent[0]!['tools']).toEqual([...COURSE_TOOLS, { type: 'web_search' }])
+    expect(sent[1]!['tools']).toEqual(COURSE_TOOLS)
     expect(pushed.some((p) => p.channel === 'chat:error')).toBe(false)
     expect(selectMessages(chat.id).at(-1)!.text).toBe('Answered anyway.')
   })

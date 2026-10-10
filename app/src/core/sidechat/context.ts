@@ -26,6 +26,8 @@ const ELIDED = '\n\n[…the rest of this lesson was too long to include…]'
 
 function blockText(block: Block): string | null {
   switch (block.type) {
+    case 'python-cell':
+      return `[Python cell]\n\n\`\`\`python\n${block.content}\n\`\`\``
     case 'markdown':
       return block.content
     case 'image':
@@ -59,7 +61,8 @@ export function lessonContextText(
   courseTitle: string,
   moduleTitle: string,
   lesson: Omit<Lesson, 'flashcards'>,
-  subject?: string
+  subject?: string,
+  maxChars = MAX_CONTEXT_CHARS
 ): string {
   const head = [
     `The learner is now reading this lesson.`,
@@ -78,8 +81,8 @@ export function lessonContextText(
     .join('\n\n')
 
   const full = `${head.join('\n')}\n\n--- the lesson itself ---\n\n${body}`
-  if (full.length <= MAX_CONTEXT_CHARS) return full
+  if (full.length <= maxChars) return full
   // Trim the tail rather than the head: the heading says which lesson this is,
   // and losing that would make every later message ambiguous.
-  return full.slice(0, MAX_CONTEXT_CHARS - ELIDED.length) + ELIDED
+  return full.slice(0, maxChars - ELIDED.length) + ELIDED
 }

@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { createContext, useContext, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { newDraftRef } from '@core/course-document'
@@ -57,7 +58,7 @@ function Files({ files, onChange, language, name }: { files?: ExtraFile[]; onCha
     <TextField label="Relative file path" name="path" value={file.path} onChange={(path) => update(i, { path })} />
     <Source label="File content" name="content" language={language} docKey={file.nodeId!} value={file.content} onChange={(content) => update(i, { content })} />
     <button className="ghost" onClick={() => onChange(entries.filter((_, index) => index !== i))}>Delete file</button>
-  </div></Scope>)}<button className="secondary" onClick={() => onChange([...entries, { nodeId: uuid(), path: 'support.txt', content: '' }])}>Add file</button></details>
+  </div></Scope>)}<ActionButton icon="plus" className="secondary" onClick={() => onChange([...entries, { nodeId: uuid(), path: 'support.txt', content: '' }])}>Add file</ActionButton></details>
 }
 function AttachmentField({ courseId, name, value, kind, onChange }: { courseId: string; name: string; value?: string; kind: 'image' | 'video' | 'visualization'; onChange: (v: string) => void }): JSX.Element {
   const [state, setState] = useState<{ busy: boolean; entries: string[]; error: string }>({ busy: false, entries: [], error: '' })
@@ -74,7 +75,7 @@ function AttachmentField({ courseId, name, value, kind, onChange }: { courseId: 
   }
   return <Field label={name === 'cover_image' ? 'Cover image' : name === 'poster' ? 'Video poster' : 'Attachment'} name={name}>
     <span className="attachment-current">{value || 'No attachment selected'}</span>
-    <span className="actions"><button type="button" className="secondary" disabled={state.busy} onClick={() => void upload(false)}>{value ? 'Replace attachment' : 'Upload attachment'}</button>{kind === 'visualization' && <button type="button" className="secondary" disabled={state.busy} onClick={() => void upload(true)}>Upload folder</button>}{value && <button className="ghost" onClick={() => onChange('')}>Clear</button>}</span>
+    <span className="actions"><ActionButton icon="upload" type="button" className="secondary" disabled={state.busy} onClick={() => void upload(false)}>{value ? 'Replace attachment' : 'Upload attachment'}</ActionButton>{kind === 'visualization' && <ActionButton icon="upload" type="button" className="secondary" disabled={state.busy} onClick={() => void upload(true)}>Upload folder</ActionButton>}{value && <button className="ghost" onClick={() => onChange('')}>Clear</button>}</span>
     {kind === 'visualization' && value && entries.length > 1 && <select aria-label="HTML entry point" value={value} onChange={(e) => onChange(e.target.value)}>{entries.map((entry) => <option key={entry}>{entry}</option>)}</select>}
     {state.error && <span className="error" role="alert">{state.error}</span>}
   </Field>
@@ -92,7 +93,7 @@ function QuizFields({ quiz, set }: { quiz: QuizBlock; set: (fields: Partial<Quiz
         <label className="correct-option"><input type="checkbox" checked={option.correct} onChange={(e) => set({ options: options.map((o, index) => ({ ...o, correct: index === i ? e.target.checked : quiz.kind === 'single' && e.target.checked ? false : o.correct })) })} />Correct</label>
         <button className="ghost" aria-label={`Move option ${i + 1} up`} disabled={i === 0} onClick={() => { const next = [...options]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; set({ options: next }) }}>↑</button>
         <button className="ghost" aria-label={`Delete option ${i + 1}`} onClick={() => set({ options: options.filter((_, index) => index !== i) })}>×</button>
-      </span></div></Scope>)}<button className="secondary" onClick={() => set({ options: [...options, { nodeId: uuid(), id: availableBlockSlug('option', options.map(o => o.id)), text: '', correct: false }] })}>Add option</button>
+      </span></div></Scope>)}<ActionButton icon="plus" className="secondary" onClick={() => set({ options: [...options, { nodeId: uuid(), id: availableBlockSlug('option', options.map(o => o.id)), text: '', correct: false }] })}>Add option</ActionButton>
     </Field>}
     <Markdown label="Explanation" name="explanation" value={quiz.explanation} onChange={(explanation) => set({ explanation })} />
   </>
@@ -107,7 +108,7 @@ function ProjectFields({ project, set, language }: { project: ProjectDefinition;
       <TextField label="Requirement archive ID" name="id" value={item.id} onChange={(id) => set({ requirements: project.requirements.map((r, index) => index === i ? { ...r, id } : r) })} />
       <Markdown label="Requirement" name="description" value={item.description} onChange={(description) => set({ requirements: project.requirements.map((r, index) => index === i ? { ...r, description } : r) })} />
       <button className="ghost" onClick={() => set({ requirements: project.requirements.filter((_, index) => index !== i) })}>Delete requirement</button>
-    </div></Scope>)}<button className="secondary" onClick={() => set({ requirements: [...project.requirements, { nodeId: uuid(), id: availableBlockSlug('requirement', project.requirements.map(r => r.id)), description: '' }] })}>Add requirement</button></details>
+    </div></Scope>)}<ActionButton icon="plus" className="secondary" onClick={() => set({ requirements: [...project.requirements, { nodeId: uuid(), id: availableBlockSlug('requirement', project.requirements.map(r => r.id)), description: '' }] })}>Add requirement</ActionButton></details>
     <details className="author-section" open><summary>Deliverables</summary>{project.deliverables.map((item, i) => {
       const update = (fields: Partial<typeof item>): void => set({ deliverables: project.deliverables.map((d, index) => index === i ? { ...d, ...fields } : d) })
       return <Scope key={item.nodeId} path={`deliverables/${i}`}><div className="author-list-item">
@@ -118,7 +119,7 @@ function ProjectFields({ project, set, language }: { project: ProjectDefinition;
         <Lines label="Acceptance criteria" name="acceptance_criteria" value={item.acceptance_criteria} onChange={(acceptance_criteria) => update({ acceptance_criteria: acceptance_criteria ?? [] })} />
         <button className="ghost" onClick={() => set({ deliverables: project.deliverables.filter((_, index) => index !== i) })}>Delete deliverable</button>
       </div></Scope>
-    })}<button className="secondary" onClick={() => set({ deliverables: [...project.deliverables, { nodeId: uuid(), id: availableBlockSlug('deliverable', project.deliverables.map(d => d.id)), title: '', description: '', acceptance_criteria: [''] }] })}>Add deliverable</button></details>
+    })}<ActionButton icon="plus" className="secondary" onClick={() => set({ deliverables: [...project.deliverables, { nodeId: uuid(), id: availableBlockSlug('deliverable', project.deliverables.map(d => d.id)), title: '', description: '', acceptance_criteria: [''] }] })}>Add deliverable</ActionButton></details>
     <Files name="starter_files" files={project.starter_files} language={language} onChange={(starter_files) => set({ starter_files })} />
   </Scope>
 }
@@ -141,6 +142,7 @@ function VersionField({ value, onChange, hint }: { value?: string; onChange: (va
 export function CourseFields({ manifest, set, courseId, versionHint }: { manifest: CourseManifest; set: (fields: Partial<CourseManifest>) => void; courseId: string; versionHint?: string }): JSX.Element {
   return <>
     <h2>Course details</h2>
+    <NotebookTemplates notebook={manifest.notebook} courseId={courseId} onChange={(notebook) => set({ notebook })} />
     <TextField label="Course title" name="title" value={manifest.title} onChange={(title) => set({ title })} />
     <TextField label="Course slug" name="slug" value={manifest.slug} onChange={(slug) => set({ slug })} />
     <VersionField value={manifest.version ?? DEFAULT_COURSE_VERSION} hint={versionHint} onChange={(version) => set({ version })} />
@@ -185,6 +187,7 @@ export function ElementFields({ element, manifest, courseId, set }: { element: O
   const block = element as Block
   return <><h2>{block.type === 'markdown' ? 'Lesson text' : block.type.charAt(0).toUpperCase() + block.type.slice(1)}</h2>
     <TextField label="Block slug" name="slug" value={block.slug} onChange={(slug) => set({ slug })} />
+    {block.type === 'python-cell' && <Source label="Python code" name="content" language="python" docKey={block.nodeId!} value={block.content} onChange={(content) => set({ content })} />}
     {block.type === 'markdown' && <Markdown label="Markdown content" name="content" value={block.content} onChange={(content) => set({ content })} />}
     {(block.type === 'image' || block.type === 'video' || block.type === 'visualization') && <AttachmentField courseId={courseId} name="src" kind={block.type} value={block.src} onChange={(src) => set({ src })} />}
     {block.type === 'image' && <TextField label="Alt text" name="alt" value={block.alt} onChange={(alt) => set({ alt })} />}
@@ -210,4 +213,18 @@ export function ElementFields({ element, manifest, courseId, set }: { element: O
       <Files name="extra_files" files={block.extra_files} language={language} onChange={(extra_files) => set({ extra_files })} />
     </>}
   </>
+}
+
+function NotebookTemplates({ notebook, onChange, courseId }: { notebook?: CourseManifest['notebook']; onChange: (value: CourseManifest['notebook']) => void; courseId: string }): JSX.Element {
+  const cells = notebook?.cells ?? []
+  return <details className="author-section"><summary>Notebook starter cells</summary>
+    <label><input type="checkbox" checked={notebook !== undefined} onChange={event => onChange(event.target.checked ? {} : undefined)} /> Enable course notebook</label>
+    <p className="meta">Python lesson cells also enable the notebook. Starter cells are copied once when a learner starts the course and never run automatically.</p>
+    {notebook && <>{cells.map((cell, index) => <div className="author-list-item" key={index}>
+      <Source label={`Notebook cell ${index + 1}`} name={`notebook/cells/${index}/content`} language="python" docKey={`${courseId}/notebook/${index}`} value={cell.content} onChange={content => onChange({ cells: cells.map((old, i) => i === index ? { content } : old) })} />
+      <button className="ghost" disabled={index === 0} onClick={() => { const next = [...cells]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; onChange({ cells: next }) }}>Move up</button>
+      <button className="ghost" disabled={index === cells.length - 1} onClick={() => { const next = [...cells]; [next[index + 1], next[index]] = [next[index]!, next[index + 1]!]; onChange({ cells: next }) }}>Move down</button>
+      <button className="ghost" onClick={() => onChange({ cells: cells.filter((_, i) => i !== index) })}>Delete cell</button>
+    </div>)}<button className="secondary" onClick={() => onChange({ cells: [...cells, { content: '' }] })}>Add starter cell</button></>}
+  </details>
 }

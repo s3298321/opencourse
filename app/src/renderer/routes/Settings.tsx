@@ -1,6 +1,7 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { AppUpdateInfo, CoachModel, Session, UserProfile } from '@core/types'
+import type { AppInfo, AppUpdateInfo, CoachModel, Session, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
@@ -8,77 +9,96 @@ import ThemeSection from '../components/ThemeSettings'
 import ServerSettings from '../components/ServerSettings'
 import ConnectionIcon from '../components/ConnectionIcon'
 import { formatDownloadSize, useAppUpdate } from '../components/useAppUpdate'
-import type { Route, Screen } from '../routes'
+import type { Route, Screen, SettingsSection } from '../routes'
 
 interface Props {
   user: UserProfile | null
   navigate: (r: Route, options?: { keepScroll?: boolean }) => void
-  route: { name: 'settings'; from: Screen; section?: 'updates' }
+  route: { name: 'settings'; from: Screen; section?: SettingsSection }
   onSession: (session: Session) => void
   onSessionChanged: (session: Session, user: UserProfile | null) => void
 }
 
-/**
- * Everything about *you*, in one place: your name, your OpenAI key, which of
- * the models it reaches the side chat offers, and the button that removes all
- * of it.
- *
- * The key used to be a modal reachable only from inside Coach, which made the
- * app's API credential look like a Coach feature - side chat can use the same
- * key and had to grow its own door to the same dialog. It lives here now, and
- * both of those places link to this screen instead.
- *
- * The key handling itself is unchanged and deliberately so: a password field,
- * cleared the moment it is submitted, checked with OpenAI before it is stored,
- * and never read back - `hasOpenAIKey` returns a boolean and four characters.
- */
+const CATEGORIES: Array<{ id: SettingsSection; label: string }> = [
+  { id: 'profile', label: 'Profile' }, { id: 'appearance', label: 'Appearance' },
+  { id: 'connections', label: 'Connections' }, { id: 'ai', label: 'AI & Chat' },
+  { id: 'coach', label: 'Coach' }, { id: 'servers', label: 'Course Servers' },
+  { id: 'updates', label: 'Updates' }, { id: 'about', label: 'About' }
+]
+const WEBSITE_LINKS = [
+  { label: 'Legal notice', href: 'https://opencourse.dev/legal' },
+  { label: 'Main website', href: 'https://opencourse.dev' },
+  { label: 'Course catalog', href: 'https://catalog.opencourse.dev' }
+]
+
 export default function Settings({ user, navigate, route, onSession, onSessionChanged }: Props): JSX.Element {
   const back = useCallback(() => navigate(route.from, { keepScroll: true }), [navigate, route.from])
-  // Bumped when the key is saved or forgotten: the model list is whatever the
-  // key reaches, so a new key is a new list.
+  const [section, setSection] = useState<SettingsSection>(route.section ?? 'profile')
+  const [visited, setVisited] = useState<Set<SettingsSection>>(() => new Set([route.section ?? 'profile']))
+  const select = useCallback((next: SettingsSection) => {
+    setSection(next)
+    setVisited(current => new Set([...current, next]))
+  }, [])
+  useEffect(() => { if (route.section) select(route.section) }, [route, select])
   const [keyVersion, setKeyVersion] = useState(0)
-  const onKeyChanged = useCallback(() => setKeyVersion((n) => n + 1), [])
+  const onKeyChanged = useCallback(() => setKeyVersion(n => n + 1), [])
   useEffect(() => window.opencourse.onAIChanged(onKeyChanged), [onKeyChanged])
 
-  return (
-    <>
-      <TitleBar
-        user={user}
-        navigate={navigate}
-        route={route}
-        back={{ label: 'Back', onClick: back }}
-      />
-      <div className="body">
-        <div className="content scroll">
-          <div className="settings">
-            <h1>Settings</h1>
-            {/* App derives the user from a session that is null until its mount
-                effect resolves, so this is a frame, not an error. */}
-            {!user ? (
-              <p className="meta">Loading…</p>
-            ) : (
-              <>
-                <NameSection user={user} onSession={onSession} />
-                <ThemeSection />
-                <ServerSettings />
-                <UpdatesSection focus={route.section === 'updates'} />
-                <h2>Connections</h2>
-                <KeySection onChanged={onKeyChanged} />
-                <SubscriptionSection />
-                <WebSearchSection />
-                <AIModelsSection scope="chat" version={keyVersion} />
-                <AIModelsSection scope="project" version={keyVersion} />
-                <AIModelsSection scope="authoring" version={keyVersion} />
-                <TitleGenerationSection version={keyVersion} />
-                <CoachDefaultsSection keyVersion={keyVersion} />
-                <DangerSection user={user} onSessionChanged={onSessionChanged} />
-              </>
-            )}
-          </div>
-        </div>
+  const content = (category: SettingsSection): JSX.Element => {
+    switch (category) {
+      case 'profile': return user ? <><NameSection user={user} onSession={onSession} /><DangerSection user={user} onSessionChanged={onSessionChanged} /></> : <p className="meta">Choose a user to edit their profile.</p>
+      case 'appearance': return <ThemeSection />
+      case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
+      case 'ai': return <><WebSearchSection /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
+      case 'coach': return <CoachDefaultsSection keyVersion={keyVersion} />
+      case 'servers': return <ServerSettings />
+      case 'updates': return <UpdatesSection focus={section === 'updates'} />
+      case 'about': return <AboutSection />
+    }
+  }
+  return <>
+    <TitleBar user={user} navigate={navigate} route={route} back={{ label: 'Back', onClick: back }} />
+    <div className="body settings-body">
+      <nav className="settings-nav scroll" aria-label="Settings categories">
+        {CATEGORIES.map(category => <button key={category.id} className="ghost settings-category" data-settings-category={category.id}
+          aria-current={section === category.id ? 'page' : undefined} aria-controls={`settings-${category.id}`} onClick={() => select(category.id)}>{category.label}</button>)}
+        <div className="settings-links">{WEBSITE_LINKS.map(link => <a key={link.href} href={link.href}>{link.label}<span aria-hidden="true">↗</span><span className="sr-only"> (opens in your browser)</span></a>)}</div>
+      </nav>
+      <div className="content settings-main">
+        <h1>Settings</h1>
+        {CATEGORIES.filter(category => visited.has(category.id)).map(category => <section key={category.id}
+          id={`settings-${category.id}`} className="settings settings-category-panel scroll" hidden={section !== category.id} aria-label={category.label}>
+          <h2 className="settings-category-heading">{category.label}</h2>{content(category.id)}
+        </section>)}
       </div>
-    </>
-  )
+    </div>
+  </>
+}
+
+function AboutSection(): JSX.Element {
+  const [info, setInfo] = useState<AppInfo | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    let alive = true
+    setError(null)
+    void window.opencourse.getAppInfo().then(value => { if (alive) setInfo(value) }).catch(err => { if (alive) setError((err as Error).message) })
+    return () => { alive = false }
+  }, [attempt])
+  return <section className="settings-section settings-about">
+    {error ? <><p className="error" role="alert">Could not load app information: {error}</p><ActionButton icon="refresh" className="secondary" onClick={() => setAttempt(n => n + 1)}>Retry</ActionButton></>
+      : !info ? <p className="meta" role="status">Loading app information…</p> : <>
+        <h2>{info.name}</h2><p className="meta">{info.description}</p>
+        <dl className="about-details">
+          <dt>App version</dt><dd>{info.version}</dd>
+          <dt>Bundled Python</dt><dd>{info.python?.version ?? 'Unavailable'}</dd>
+          <dt>Python distribution release</dt><dd>{info.python?.release ?? 'Unavailable'}</dd>
+          <dt>Electron</dt><dd>{info.electron}</dd><dt>Chromium</dt><dd>{info.chromium}</dd><dt>Node.js</dt><dd>{info.node}</dd>
+          <dt>Operating system</dt><dd>{info.platform === 'darwin' ? 'macOS' : info.platform}</dd><dt>Architecture</dt><dd>{info.architecture}</dd>
+          <dt>License</dt><dd>{info.license}</dd><dt>Website</dt><dd><a href={info.website}>opencourse.dev</a></dd>
+        </dl>
+      </>}
+  </section>
 }
 
 /* --- your name ----------------------------------------------------------- */
@@ -132,9 +152,9 @@ function NameSection({
             if (e.key === 'Enter') void save()
           }}
         />
-        <button disabled={!changed || busy} onClick={() => void save()}>
+        <ActionButton icon="save" disabled={!changed || busy} onClick={() => void save()}>
           {busy ? 'Saving' : 'Save'}
-        </button>
+        </ActionButton>
       </div>
       {note && <p className={`import-note${note.error ? ' error' : ''}`}>{note.text}</p>}
     </section>
@@ -231,13 +251,13 @@ function KeySection({ onChanged }: { onChanged: () => void }): JSX.Element {
       {note && <p className={`import-note${note.error ? ' error' : ''}`}>{note.text}</p>}
 
       <div className="actions">
-        <button disabled={busy || !key.trim()} onClick={() => void save()}>
+        <ActionButton icon="key" disabled={busy || !key.trim()} onClick={() => void save()}>
           {busy ? 'Checking' : stored?.has ? 'Replace key' : 'Save key'}
-        </button>
+        </ActionButton>
         {stored?.has && (
-          <button className="secondary" disabled={busy} onClick={() => void forget()}>
+          <ActionButton icon="trash" className="secondary" disabled={busy} onClick={() => void forget()}>
             Forget it
-          </button>
+          </ActionButton>
         )}
       </div>
 
@@ -333,15 +353,15 @@ function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
 
       <div className="actions">
         {(status.state === 'available' && status.installable) || status.state === 'blocked' ? (
-          <button className="settings-update-install" onClick={install}>Install and restart</button>
+          <ActionButton icon="refresh" className="settings-update-install" onClick={install}>Install and restart</ActionButton>
         ) : null}
-        {status.state === 'ready' && <button className="settings-update-install" onClick={install}>Restart to update</button>}
+        {status.state === 'ready' && <ActionButton icon="refresh" className="settings-update-install" onClick={install}>Restart to update</ActionButton>}
         {((status.state === 'available' && !status.installable) || (status.state === 'error' && status.version)) && (
-          <button onClick={download}>Download OpenCourse {status.version}</button>
+          <ActionButton icon="download" onClick={download}>Download OpenCourse {status.version}</ActionButton>
         )}
-        <button className="secondary settings-update-check" disabled={busy || status.state === 'ready'} onClick={check}>
+        <ActionButton icon="refresh" className="secondary settings-update-check" disabled={busy || status.state === 'ready'} onClick={check}>
           {status.state === 'checking' ? 'Checking' : 'Check for updates'}
-        </button>
+        </ActionButton>
       </div>
     </>
   )
@@ -381,7 +401,7 @@ function WebSearchSection(): JSX.Element {
       </label>
       <p className="meta">
         The model decides when a question needs it - a release date, a current version, documentation the
-        lesson does not quote. Searches use chat’s selected connection when supported. API-key searches
+        course or document does not quote. Searches use chat’s selected connection when supported. API-key searches
         add API charges; subscription searches use eligible plan usage. Answers that use the web list their sources.
       </p>
       {error && <p className="import-note error">{error}</p>}
@@ -490,9 +510,9 @@ function DangerSection({
         <>
           <p className="meta">Removes {user.name} and everything they own on this Mac.</p>
           <div className="actions">
-            <button className="secondary danger" onClick={() => setArming(true)}>
+            <ActionButton icon="trash" className="secondary danger" onClick={() => setArming(true)}>
               Delete
-            </button>
+            </ActionButton>
           </div>
         </>
       ) : (
@@ -500,6 +520,7 @@ function DangerSection({
           <p>This deletes, permanently and with no undo:</p>
           <ul className="meta">
             <li>every course {user.name} imported, and their progress through it</li>
+            <li>every PDF document they imported, its local search index and document chats</li>
             <li>every exercise file they wrote, and the virtualenvs built for them</li>
             <li>every coach, its sessions, its transcripts and the files it wrote</li>
             <li>every side chat and its messages</li>
@@ -520,10 +541,10 @@ function DangerSection({
                 if (e.key === 'Escape') setArming(false)
               }}
             />
-            <button className="danger" disabled={!ready || busy} onClick={() => void remove()}>
+            <ActionButton icon="trash" className="danger" disabled={!ready || busy} onClick={() => void remove()}>
               {busy ? 'Deleting' : 'Delete for good'}
-            </button>
-            <button
+            </ActionButton>
+            <ActionButton icon="close"
               className="secondary"
               disabled={busy}
               onClick={() => {
@@ -532,7 +553,7 @@ function DangerSection({
               }}
             >
               Cancel
-            </button>
+            </ActionButton>
           </div>
         </>
       )}

@@ -162,7 +162,9 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
       if (!verified.ok) throw new Error(verified.message);
       const done = await window.opencourse.completeServerSignUp(window.__flow, 'learner', 'another long password');
       if (!done.ok) throw new Error(done.message);
-      await press('Course catalog');
+      (await wait(() => [...document.querySelectorAll('.course-source-tabs button')].find(b => b.textContent.includes('Smoke server')), 'server source')).click();
+      await wait(() => document.querySelector('.add-courses'), 'add courses button');
+      await press('Add courses');
       const card = await wait(() => document.querySelector('.catalog-card'), 'catalog card');
       if (!card.textContent.includes('v0.1.0') || !card.textContent.includes('author')) throw new Error('Card lacks version or publisher: ' + card.textContent);
       return card.textContent;

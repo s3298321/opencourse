@@ -12,6 +12,7 @@ export interface TestPanelHandle {
 
 interface Props {
   theme: WorkbenchTheme
+  textScale?: number
   visible: boolean
   handleRef: Ref<TestPanelHandle>
 }
@@ -20,8 +21,8 @@ interface Props {
  * Where the checks report. A read-only xterm rather than a <pre>: pytest is run
  * with colour on, and this is the only thing in the tree that understands ANSI.
  */
-export default function TestPanel({ theme, visible, handleRef }: Props): JSX.Element {
-  const term = useXterm(theme, {})
+export default function TestPanel({ theme, textScale = 1, visible, handleRef }: Props): JSX.Element {
+  const term = useXterm(theme, { textScale })
   const { write, clear, fit, cols } = term
 
   useImperativeHandle(handleRef, () => ({ write, clear, cols }), [write, clear, cols])

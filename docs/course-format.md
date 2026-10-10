@@ -1,10 +1,10 @@
-# OpenCourse course archive format — v1.6
+# OpenCourse course archive format — v1.7
 
 This document is the source of truth for course authors. A OpenCourse course is a
 self-contained directory holding a `course.json` manifest plus its assets,
 distributed as a `.zip` of that directory. The desktop app ships no courses at
 all: you import an archive, or add a course from an OpenCourse server you have
-connected to, and the app validates it against the v1.6 JSON Schema and renders
+connected to, and the app validates it against the v1.7 JSON Schema and renders
 it directly.
 
 **A course can be about anything.** Nothing in the format is specific to
@@ -17,6 +17,12 @@ Python exercise for computing a Gini coefficient is a first-class course.
 You can get this document, the JSON Schema and a working example course out of
 the app itself — **Library ▸ Get the course format…**. The example imports
 as-is, so it doubles as a starting template.
+
+**What changed in v1.7:** Lessons can contain editable, runnable `python-cell`
+blocks. An optional `notebook` declaration enables a course notebook and supplies
+starter cells. The notebook and lesson cells share a persistent, initially empty
+venv separate from exercise environments. No code runs automatically and no
+course-specified packages are installed. Versions 1.0–1.6 remain importable.
 
 **What changed in v1.6:** Exercises are Python-only and use the interpreter bundled
 with OpenCourse. Each course still gets a local virtual environment. Projects can
@@ -107,7 +113,7 @@ and the import is refused as a whole — a course is never half-installed.
 
 | Field             | Type                | Required | Description |
 | ----------------- | ------------------- | -------- | ----------- |
-| `schema_version`  | string              | yes      | `"1.0"` to `"1.6"`. The app writes `"1.6"`. |
+| `schema_version`  | string              | yes      | `"1.0"` to `"1.7"`. The app writes `"1.7"`. |
 | `slug`            | string (kebab-case) | yes      | Portable kebab-case name. Every import creates a separate library course, even when slugs match. |
 | `title`           | string              | yes      | Course title shown in the catalog. |
 | `version`         | string              | from 1.5 | The course's own version: three numbers, `MAJOR.MINOR.PATCH`, such as `1.2.0`. No pre-release tags. A new course starts at `0.1.0`. |
@@ -117,6 +123,7 @@ and the import is refused as a whole — a course is never half-installed.
 | `difficulty`      | enum                | no       | `beginner` \| `intermediate` \| `advanced` (default: `beginner`). |
 | `estimated_hours` | integer             | no       | Hint to learners. Keep it consistent with the sum of `estimated_minutes`. |
 | `subject`         | string              | no       | Free text: `"Programming"`, `"Economics"`. Shown on the library card and the course page. |
+| `notebook`        | object              | no       | Enables a Python notebook; optional `cells` array of `{ content }` starter cells. Requires 1.7. |
 | `runtime`         | Runtime             | no       | Default runtime for every exercise in the course. Omit it entirely for a course with no exercises. |
 | `python_version`  | string              | no       | The v1.1 spelling of `runtime.version`. Still honoured; prefer `runtime`. |
 | `prerequisites`   | string[]            | no       | What a learner should already know or have installed. |
@@ -242,9 +249,9 @@ New blocks start as Markdown with a name such as `markdown` or `markdown-2`;
 change **Block slug** to give the block a meaningful name. Renaming a slug does
 not change its UUID, progress, chat attachments or learner workspace.
 
-The schema requires `slug` on all six block types, including imported courses.
+The schema requires `slug` on all seven block types, including imported courses.
 Missing, invalid or duplicate names fail validation. The app does not add slugs to
-existing courses; add them to `course.json` before importing. Exported format 1.6
+existing courses; add them to `course.json` before importing. Exported format 1.7
 ZIPs preserve the authored block slugs.
 
 #### `markdown`
@@ -489,7 +496,7 @@ Relative paths remain intact under `assets/viz/`. Replacement uploads receive ne
 immutable paths. Shared attachments stay until no saved or draft content uses them;
 imported supporting files are retained conservatively.
 
-**Export ZIP…** (on the course page) exports the last saved version in format 1.6, with `course.json` at
+**Export ZIP…** (on the course page) exports the last saved version in format 1.7, with `course.json` at
 the archive root and package assets included. Local IDs/documents, drafts, chats,
 progress, workspaces, environments and recovery data are excluded. Reimporting the
 export starts a new course with fresh identities and learner state.
@@ -502,13 +509,13 @@ before a course is exposed.
 
 ### OpenCourse identifiers
 
-The display name is OpenCourse. The current archive format version is 1.6;
+The display name is OpenCourse. The current archive format version is 1.7;
 course assets use `opencourse://`, and the visualization bridge uses
 `/__opencourse/viz-bridge.js` and `opencourse-viz`/`opencourse-app` messages.
 These are the only supported app identifiers; there are no old-brand aliases.
 Course manifests with ordinary relative asset paths remain importable.
 
-The published schema identity is `urn:opencourse:course:1.6`; this is an
+The published schema identity is `urn:opencourse:course:1.7`; this is an
 identifier, not a hosted schema URL. The bundled example uses the course slug
 `opencourse-example`. Keep unrelated course, module, lesson, quiz and exercise IDs
 stable when editing a course.
@@ -598,3 +605,69 @@ course-completion score. Rating logs and card states live in the local user's
 SQLite database and are excluded from course archives. Importing an exported
 course creates fresh identities and review progress. Review does not change
 lesson completion or the Continue destination.
+
+
+## Python cells and course notebook (v1.7)
+
+A lesson may contain an editable Python cell:
+
+```json
+{"type": "python-cell", "slug": "try-a-calculation", "content": "result = 6 * 7\nresult"}
+```
+
+Cells use ordinary Python. They display stdout, stderr, tracebacks and the final
+expression's text representation (unless it returns `None`). They have no tests,
+solutions or completion requirements. Each Run starts a fresh process, so variables
+do not survive rerunning a lesson cell or running another cell. Edits and outputs
+reset when the learner leaves the lesson; Settings and Logs preserve them.
+
+A course containing a Python cell automatically gets a **Notebook** button below
+its title in course navigation. Courses without lesson cells can explicitly enable
+it with `"notebook": {}`. Optional starter cells are declared as:
+
+```json
+"notebook": {"cells": [{"content": "message = 'Hello'\nmessage"}]}
+```
+
+The starter list is a template copied once, when the learner first enters a lesson
+or project. Cells receive learner-local IDs and can be edited, reordered or deleted.
+They never execute automatically. An empty template starts with one blank cell.
+Deleting all learner cells does not seed them again; changing the template or
+updating a course does not overwrite learner work. A saved learner notebook stays
+accessible if the course later removes its Python content.
+
+Notebook cells share one Python process and variables. **Stop kernel** ends it;
+**Restart kernel** creates a fresh namespace. Run after Stop starts a new process.
+Variables survive navigation but are not restored after app exit, user switching,
+or course save/update operations. Code, cell order and outputs autosave locally;
+saved output is marked outdated when the code changes. Notebook activity does not
+change lesson completion or the course's Continue destination.
+
+The environment is created automatically in the background using the interpreter
+bundled with the app. The button shows creation/failure status until ready. It is
+separate from exercise environments and contains only Python's standard library
+and pip initially—no pytest, IPython or Jupyter. Neither `python-cell` nor
+`notebook` accepts runtime overrides or requirements; course exercise runtime
+settings do not apply. Learners install packages explicitly using Python code:
+
+```python
+import subprocess, sys
+subprocess.check_call([sys.executable, "-m", "pip", "install", "package-name"])
+```
+
+Packages persist across reopening and are available to both notebook and lesson
+cells. Restart the notebook kernel after upgrading an already imported package.
+Repair never automatically clears an environment. An explicit rebuild retains a
+recovery backup but requires reinstalling packages in the new environment.
+
+Only Python cells and text output are supported: no IPython magics, shell syntax,
+rich image/HTML displays, top-level await or interactive stdin. Source and captured
+output are limited to 1 MiB per cell/run; extra output is drained and marked
+truncated. Notebook starter lists support up to 500 cells. Lesson runs have a
+120-second timeout; notebook runs continue until finished or stopped.
+
+The notebook's right-side chat shares the course's lesson conversations. It receives
+a bounded snapshot of saved notebook code and outputs, not live variables.
+Selecting code or output offers **Ask about this**, attaching it as a quotation.
+Notebook code, output and environments are learner data, excluded from exported
+archives and server publication. Reimporting a course starts fresh learner state.

@@ -29,6 +29,11 @@ export interface MarkdownBlock extends BlockNode {
   type: 'markdown'
   content: string
 }
+export interface PythonCellBlock extends BlockNode {
+  type: 'python-cell'
+  content: string
+}
+export interface NotebookDeclaration { cells?: { content: string }[] }
 export interface ImageBlock extends BlockNode {
   type: 'image'
   src: string
@@ -90,6 +95,7 @@ export interface ExerciseBlock extends BlockNode {
 
 export type Block =
   | MarkdownBlock
+  | PythonCellBlock
   | ImageBlock
   | VideoBlock
   | VisualizationBlock
@@ -194,6 +200,7 @@ export interface ProjectProgress {
 }
 
 export interface CourseManifest {
+  notebook?: NotebookDeclaration
   schema_version: string
   slug: string
   title: string
@@ -314,6 +321,8 @@ export interface RunOutcome {
   failedStep?: string
 }
 
+export type CourseProgressStatus = 'in-progress' | 'not-started' | 'completed'
+
 export interface CourseSummary {
   recoveryNotice?: string
   courseId: string
@@ -335,6 +344,9 @@ export interface CourseSummary {
   projectCount: number
   /** 0-100 for the current user, so the library can show where they left off. */
   progressPercent?: number
+  progressStatus?: CourseProgressStatus
+  /** When the learner last opened this course, a lesson, or a project. */
+  lastOpenedAt?: string
   /** Present when the manifest failed to load or validate. */
   error?: string
 }
@@ -356,6 +368,7 @@ export interface CourseProgress {
   lastItem?: { kind: 'lesson'; moduleId: string; lessonId: string } | { kind: 'project'; moduleId: string }
   projects: Record<string, ProjectProgress>
   lastAccessed?: string
+  lastOpenedAt?: string
   completedLessons: string[]
   quizAttempts: Record<string, QuizAttempt>
   /**
@@ -587,11 +600,15 @@ export interface ChatLessonRef {
  * told which, because "from the lesson" about words it wrote itself is a lie
  * it would then try to reconcile with the lesson.
  */
-export type QuoteSource = 'lesson' | 'answer' | 'preview'
+export type ChatContextRef = ChatLessonRef | { kind: 'notebook' }
+export type QuoteSource = 'lesson' | 'answer' | 'preview' | 'document' | 'notebook'
+export type { ReadingSource } from './documents/types'
 
 export interface ChatQuote {
+  notebook?: { cellId?: string }
   text: string
   from: QuoteSource
+  document?: { id: string; page: number }
 }
 
 /**
@@ -609,11 +626,14 @@ export interface ChatCitation {
 }
 
 export interface ChatMessage {
+  notebook?: boolean
   seq: number
   role: ChatRole
   text: string
   /** The passage the learner highlighted before asking, if they highlighted one. */
   quote?: ChatQuote
+  document?: { id: string; page: number }
+  localSources?: import('./documents/types').ReadingSource[]
   /** The pages an answer cited from a web search. Absent: it did not use the web. */
   citations?: ChatCitation[]
   /** Which lesson this was sent from. Absent on nothing the app writes. */
@@ -700,6 +720,7 @@ export interface TitleGenerationSettings {
 }
 
 export interface ChatSummary {
+  startedInNotebook?: boolean
   historyLabel?: string
   /** The connection this conversation uses: its own choice, or Settings' default. */
   provider?: AIProvider
@@ -843,6 +864,8 @@ export type NavAction =
   | 'courseNew'
   | 'import'
   | 'coach'
+  | 'documents'
+  | 'importDocument'
   | 'coachNew'
   | 'settings'
   | 'saveCourse'
@@ -933,6 +956,20 @@ export type AppUpdateStatus =
   /** Something open would be lost by quitting now; `reason` says what. Nothing was downloaded. */
   | { state: 'blocked'; version: string; size: number; notesUrl: string; reason: string }
   | { state: 'error'; message: string; version?: string; notesUrl?: string }
+
+export interface AppInfo {
+  name: string
+  description: string
+  version: string
+  python: { version: string; release: string | null } | null
+  electron: string
+  chromium: string
+  node: string
+  platform: string
+  architecture: string
+  license: string
+  website: string
+}
 
 export interface AppUpdateInfo {
   status: AppUpdateStatus

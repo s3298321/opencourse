@@ -1,6 +1,14 @@
 # OpenCourse logo master
 
-Edited with the built-in image generation tool on 2026-10-09. The inputs were the previous `master.png` (edit target) and the user's PNG of their vector redraw (star placement reference). The generated master retains alpha transparency. All shipped sizes are exported with `npm run build:icons`.
+The current master is the closed silver book with a bookmark-shaped cutout at the top right, selected by the user on 2026-10-09. Generated with the built-in image generation tool using the previous charcoal tile and silver-star logo as the material and lighting reference. The master retains alpha transparency. `npm run build:icons` exports the app icons, default-theme mark, and shared website/catalog assets.
+
+## Selected book prompt
+
+Use case: precise-object-edit. Asset: preview-only OpenCourse application logo concept. The attached existing logo is the authoritative reference for the dark tile, silver material and lighting. Preserve the charcoal rounded-square tile, subtle brushed surface texture, softly beveled perimeter, upper-left edge glint, front-facing square composition and transparent exterior. REMOVE ALL stars and replace them with ONE bold simple CLOSED BOOK emblem with a bookmark-shaped hollow cutout in its TOP RIGHT. Book: upright portrait-format closed book seen almost directly from the front, slightly sculpted shallow relief, centered on the tile, approximately 49% of tile width and 63% of tile height, softly rounded cover corners, an understated slightly thicker rounded spine on the left, and at most a subtle lower page-block edge. The book cover is broad silvery pearlescent metal matching the original stars' material. Key detail: near the top-right of the cover, a bookmark ribbon shape is CUT OUT of the silver cover, revealing the dark charcoal tile beneath as negative space. The cutout starts at and opens into the TOP EDGE of the book, descends vertically about 27% of book height, is about 17% of book width, and has the familiar bookmark swallowtail / inverted-V notch at its lower end. It is clearly the silhouette of a ribbon bookmark, not a plain rectangular slot. Position it with some intact silver cover remaining between the cutout and the right outer edge. The bookmark is a hollow void, NOT an added ribbon, NOT a dark painted symbol, NOT a protruding tab. Give the cutout edges a restrained clean bevel to make the negative space clear. Book cover uses the original logo's silvery satin pearlescent texture, gently dimensional beveled surfaces, bright upper-left highlights, muted silver-gray lower-right shading and subtle contact shadow. A clean highly readable icon silhouette at favicon sizes, balanced optical centering. No text, letters, stars, sparkles, cover illustration, thin decorative lines, extra objects, colored accents or watermark. Output ONE complete square logo PNG with genuine alpha transparency outside the charcoal tile. Preview only.
+
+## Previous star master
+
+The earlier master was edited using the previous `master.png` and the user's vector redraw as the placement reference. Its prompts are retained below for provenance.
 
 ## Initial arrangement prompt
 

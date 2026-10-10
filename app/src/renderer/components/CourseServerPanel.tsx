@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import type { UpdateState } from '@core/catalog/origin'
@@ -10,7 +11,7 @@ import type { Route } from '../routes'
  * Update and publish each open a panel that says exactly what will happen
  * before it happens.
  */
-export default function CourseServerPanel({ course, navigate, actions }: { course: CourseView; navigate: (r: Route) => void; actions?: ReactNode }): JSX.Element {
+export default function CourseServerPanel({ course, navigate, actions, trailingActions }: { course: CourseView; navigate: (r: Route) => void; actions?: ReactNode; trailingActions?: ReactNode }): JSX.Element {
   const [servers, setServers] = useState<ServerConnection[]>([])
   const [update, setUpdate] = useState<UpdateState | null>(null)
   const [panel, setPanel] = useState<'update' | 'publish' | null>(null)
@@ -29,19 +30,22 @@ export default function CourseServerPanel({ course, navigate, actions }: { cours
 
   return (
     <>
-      <div className="course-card-origin course-origin-line">
-        <span className={`origin-badge${origin ? ' from-server' : ''}`} title={origin?.server}>{origin ? origin.serverName : 'Local'}</span>
-        <span className="version-badge">v{course.version ?? '0.1.0'}</span>
-        {origin && <span className="meta">{origin.role === 'publisher' ? 'Published by you' : `Published by ${origin.publisher}`}</span>}
-        {update?.kind === 'unlisted' && <span className="update-badge muted">No longer published</span>}
-        {update?.kind === 'disconnected' && <span className="update-badge muted">{update.reason === 'not-connected' ? 'Server not connected' : 'Could not check for updates'}</span>}
-        {update?.kind === 'current' && <span className="meta">Up to date</span>}
-      </div>
-      <div className="actions course-server-actions">
-        {actions}
-        {updateOffered && <button onClick={() => setPanel(panel === 'update' ? null : 'update')}>{update.kind === 'update' ? `Update to v${update.version}` : `Switch to v${update.version}`}</button>}
-        {canPublish && <button className="secondary" onClick={() => setPanel(panel === 'publish' ? null : 'publish')}>{origin ? 'Publish a new version' : 'Publish'}</button>}
-        {origin?.role === 'publisher' && home && <button className="secondary" onClick={() => navigate({ name: 'publication', serverId: home.id, courseId: course.courseId })}>Manage publication</button>}
+      <div className="course-server-toolbar">
+        <div className="course-card-origin course-origin-line">
+          <span className={`origin-badge${origin ? ' from-server' : ''}`} title={origin?.server}>{origin ? origin.serverName : 'Local'}</span>
+          <span className="version-badge">v{course.version ?? '0.1.0'}</span>
+          {origin && <span className="meta">{origin.role === 'publisher' ? 'Published by you' : `Published by ${origin.publisher}`}</span>}
+          {update?.kind === 'unlisted' && <span className="update-badge muted">No longer published</span>}
+          {update?.kind === 'disconnected' && <span className="update-badge muted">{update.reason === 'not-connected' ? 'Server not connected' : 'Could not check for updates'}</span>}
+          {update?.kind === 'current' && <span className="meta">Up to date</span>}
+        </div>
+        <div className="actions course-server-actions">
+          {actions}
+          {updateOffered && <ActionButton icon="refresh" onClick={() => setPanel(panel === 'update' ? null : 'update')}>{update.kind === 'update' ? `Update to v${update.version}` : `Switch to v${update.version}`}</ActionButton>}
+          {canPublish && <ActionButton icon="upload" className="secondary" onClick={() => setPanel(panel === 'publish' ? null : 'publish')}>{origin ? 'Publish a new version' : 'Publish'}</ActionButton>}
+          {origin?.role === 'publisher' && home && <ActionButton icon="settings" className="secondary" onClick={() => navigate({ name: 'publication', serverId: home.id, courseId: course.courseId })}>Manage publication</ActionButton>}
+          {trailingActions}
+        </div>
       </div>
       {panel === 'update' && updateOffered && <UpdatePanel course={course} target={update.version} rolledBack={update.kind === 'switch'} onDone={() => { setPanel(null); refresh() }} />}
       {panel === 'publish' && <PublishPanel course={course} servers={servers} fixed={home} onDone={() => { setPanel(null); refresh() }} />}
@@ -86,8 +90,8 @@ function UpdatePanel({ course, target, rolledBack, onDone }: { course: CourseVie
       </>}
       {error && <p className="import-note error" role="alert">{error}</p>}
       <div className="actions">
-        <button disabled={!preview || busy} onClick={() => void install()}>{busy ? 'Installing' : rolledBack ? `Switch to v${target}` : `Install v${target}`}</button>
-        <button className="secondary" disabled={busy} onClick={onDone}>Cancel</button>
+        <ActionButton icon="download" disabled={!preview || busy} onClick={() => void install()}>{busy ? 'Installing' : rolledBack ? `Switch to v${target}` : `Install v${target}`}</ActionButton>
+        <ActionButton icon="close" className="secondary" disabled={busy} onClick={onDone}>Cancel</ActionButton>
       </div>
     </div>
   )
@@ -122,7 +126,7 @@ function PublishPanel({ course, servers, fixed, onDone }: { course: CourseView; 
   }
 
   if (!choices.length) {
-    return <div className="panel course-server-panel"><h2>Publish</h2><p className="meta">Connect to a server and sign in, in Settings → Servers, to publish this course.</p><div className="actions"><button className="secondary" onClick={onDone}>Close</button></div></div>
+    return <div className="panel course-server-panel"><h2>Publish</h2><p className="meta">Connect to a server and sign in, in Settings → Servers, to publish this course.</p><div className="actions"><ActionButton icon="close" className="secondary" onClick={onDone}>Close</ActionButton></div></div>
   }
   return (
     <div className="panel course-server-panel" role="region" aria-label="Publish">
@@ -144,8 +148,8 @@ function PublishPanel({ course, servers, fixed, onDone }: { course: CourseView; 
         {error && <p className="import-note error" role="alert">{error}</p>}
       </>}
       <div className="actions">
-        {!done && <button disabled={!preview || preview.problems.length > 0 || busy} onClick={() => void publish()}>{busy ? 'Publishing' : `Publish v${preview?.version ?? ''}`}</button>}
-        <button className="secondary" disabled={busy} onClick={onDone}>{done ? 'Close' : 'Cancel'}</button>
+        {!done && <ActionButton icon="upload" disabled={!preview || preview.problems.length > 0 || busy} onClick={() => void publish()}>{busy ? 'Publishing' : `Publish v${preview?.version ?? ''}`}</ActionButton>}
+        <ActionButton icon="close" className="secondary" disabled={busy} onClick={onDone}>{done ? 'Close' : 'Cancel'}</ActionButton>
       </div>
     </div>
   )

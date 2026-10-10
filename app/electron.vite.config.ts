@@ -6,7 +6,7 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
-      rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } }
+      rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts'), 'document-worker': resolve(__dirname, 'src/main/document-worker.ts') } }
     }
   },
   preload: {

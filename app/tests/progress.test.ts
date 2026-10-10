@@ -7,7 +7,9 @@ import {
   recordQuizAttempt,
   setExerciseDone,
   summarizeProgress,
+  summarizeLibraryProgress,
   toggleLesson,
+  touchCourse,
   touchLesson
 } from '@core/progress'
 import type { CourseManifest } from '@core/types'
@@ -48,6 +50,36 @@ describe('lesson completion', () => {
     const p = touchLesson(emptyProgress('demo'), 'm', 'b')
     expect(p.lastLesson).toEqual({ moduleId: 'm', lessonId: 'b' })
     expect(p.lastAccessed).toBeTypeOf('string')
+  })
+})
+
+describe('library activity', () => {
+  const at = new Date('2026-10-10T10:00:00Z')
+  it('records overview opens without starting the course, and retains the timestamp after loading', () => {
+    const opened = touchCourse(emptyProgress('demo'), at)
+    expect(summarizeLibraryProgress(course, opened)).toEqual({ progressPercent: 0, progressStatus: 'not-started', lastOpenedAt: at.toISOString() })
+    expect(normalizeProgress('demo', opened).lastOpenedAt).toBe(at.toISOString())
+    expect(normalizeProgress('demo', { lastOpenedAt: 123 }).lastOpenedAt).toBeUndefined()
+  })
+  it('counts opening a lesson at zero completion as in progress', () => {
+    const started = touchLesson(emptyProgress('demo'), 'm', 'a', at)
+    expect(summarizeLibraryProgress(course, started)).toEqual({ progressPercent: 0, progressStatus: 'in-progress', lastOpenedAt: at.toISOString() })
+    const completed = toggleLesson(toggleLesson(started, 'm', 'a', at), 'm', 'b', at)
+    expect(summarizeLibraryProgress(course, completed).progressStatus).toBe('completed')
+    // Completion updates do not replace the time the course was opened.
+    expect(summarizeLibraryProgress(course, toggleLesson(completed, 'm', 'b', new Date('2026-10-11'))).lastOpenedAt).toBe(at.toISOString())
+  })
+  it('uses legacy activity, ignores removed lessons and recognizes quiz/exercise attempts', () => {
+    expect(summarizeLibraryProgress(course, { ...emptyProgress('demo'), lastAccessed: at.toISOString(), lastLesson: { moduleId: 'm', lessonId: 'a' } })).toMatchObject({ progressStatus: 'in-progress', lastOpenedAt: at.toISOString() })
+    expect(summarizeLibraryProgress(course, { ...emptyProgress('demo'), completedLessons: ['m/removed'], lastItem: { kind: 'lesson', moduleId: 'm', lessonId: 'removed' } }).progressStatus).toBe('not-started')
+    expect(summarizeLibraryProgress(course, recordQuizAttempt(emptyProgress('demo'), 'q1', { submitted: [], isCorrect: false, at: at.toISOString() })).progressStatus).toBe('in-progress')
+    expect(summarizeLibraryProgress(course, recordExerciseRun(emptyProgress('demo'), 'e1', false, at)).progressStatus).toBe('in-progress')
+  })
+  it('requires every lesson for completion even if the percentage rounds up to 100', () => {
+    const many = buildCourse({ ...manifest, modules: [{ slug: 'm', title: 'M', lessons: Array.from({ length: 201 }, (_, index) => ({ slug: `lesson-${index}`, title: `Lesson ${index}`, blocks: [] })) }] }, '/tmp/demo')
+    const almost = { ...emptyProgress('demo'), completedLessons: many.flatLessons.slice(0, 200).map(item => `m/${item.lessonId}`) }
+    expect(summarizeLibraryProgress(many, almost)).toMatchObject({ progressPercent: 100, progressStatus: 'in-progress' })
+    expect(summarizeLibraryProgress(buildCourse({ ...manifest, modules: [] }, '/tmp/demo'), emptyProgress('demo')).progressStatus).toBe('not-started')
   })
 })
 

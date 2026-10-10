@@ -137,7 +137,7 @@ function createWindow(): BrowserWindow {
       defaultId: 1,
       cancelId: 1,
       message: 'Discard unsaved changes?',
-      detail: 'Your edits to this course have not been saved. Discarding them leaves the course as it was last saved.'
+      detail: 'Your latest edits have not been saved. Discarding them keeps the last saved version.'
     })
     if (choice === 0) event.preventDefault()
     // Kept editing: if this quit was an update's restart, it is not one any
@@ -219,6 +219,12 @@ app.whenReady().then(async () => {
   )
 
   // The one database handle the app holds, released the way pty.ts releases shells.
+  let notebooksStopped = false
+  app.on('before-quit', (event) => {
+    if (notebooksStopped) { notebooksStopped = false; return }
+    event.preventDefault()
+    void import('./notebooks').then(module => module.stopAllNotebooks()).finally(() => { notebooksStopped = true; app.quit() })
+  })
   app.on('before-quit', closeDb)
 
   createWindow()

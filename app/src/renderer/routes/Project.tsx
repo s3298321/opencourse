@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import { findProject, itemSiblings } from '@core/manifest'
@@ -79,7 +80,7 @@ export default function Project({ courseId, moduleId, user, navigate, route, act
       {course && progress && <Sidebar course={course} progress={progress} current={{ moduleId }} navigate={navigate} />}
       <div className="content project-brief scroll">
         <div className="content-inner">
-          {error && <div className="sidechat-error" role="alert">{error}<button className="secondary" onClick={() => setAttempt((n) => n + 1)}>Retry</button></div>}
+          {error && <div className="sidechat-error" role="alert">{error}<ActionButton icon="refresh" className="secondary" onClick={() => setAttempt((n) => n + 1)}>Retry</ActionButton></div>}
           {!module ? <p>{error ? 'The project could not be opened.' : 'Loading project…'}</p> : <>
             <div className="meta">Course project{module.project.estimated_minutes ? ` · about ${module.project.estimated_minutes} minutes` : ''}</div>
             <h1>{module.title}</h1>
@@ -94,7 +95,7 @@ export default function Project({ courseId, moduleId, user, navigate, route, act
             <section className="project-location panel"><h2>Your workspace</h2>
               {workspace ? <>
                 <code className="project-directory">{workspace.directory}</code>
-                {workspace.missing ? <><p>The project folder is missing. Recreate it to start again from the course files.</p><button onClick={() => void recreate()}>Recreate workspace</button></> : <>
+                {workspace.missing ? <><p>The project folder is missing. Recreate it to start again from the course files.</p><ActionButton icon="refresh" onClick={() => void recreate()}>Recreate workspace</ActionButton></> : <>
                   <div className="project-editor-actions">
                     {!!workspace.editors.length && <><Menu
                       className="project-editor-picker"
@@ -109,8 +110,8 @@ export default function Project({ courseId, moduleId, user, navigate, route, act
                         onSelect: () => setEditorId(editor.id)
                       }))}
                     />
-                      <button disabled={openingEditor || !editorId} onClick={() => void openEditor()}>{openingEditor ? 'Opening' : `Open in ${workspace.editors.find((e) => e.id === editorId)?.label ?? 'editor'}`}</button></>}
-                    <button className="secondary" onClick={() => void window.opencourse.revealProject(target).catch((err: Error) => setError(err.message))}>Reveal in Finder</button>
+                      <ActionButton icon="terminal" disabled={openingEditor || !editorId} onClick={() => void openEditor()}>{openingEditor ? 'Opening' : `Open in ${workspace.editors.find((e) => e.id === editorId)?.label ?? 'editor'}`}</ActionButton></>}
+                    <ActionButton icon="folder" className="secondary" onClick={() => void window.opencourse.revealProject(target).catch((err: Error) => setError(err.message))}>Reveal in Finder</ActionButton>
                   </div>
                   {!workspace.editors.length && <p className="meta">Install Zed, Visual Studio Code, Cursor or Sublime Text to open the folder directly.</p>}
                 </>}
@@ -127,7 +128,7 @@ export default function Project({ courseId, moduleId, user, navigate, route, act
           </>}
         </div>
       </div>
-      <ChatPanel variant="project" panel={panel} quote={null} onQuoteUsed={() => {}} onAddKey={() => navigate({ name: 'settings', from: route })} />
+      <ChatPanel variant="project" panel={panel} quote={null} onQuoteUsed={() => {}} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} />
     </div>
   </>
 }

@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { AIModelSettings, AIProfile, AIProvider, AIScope, ReasoningEffort, SubscriptionStatus } from '@core/types'
@@ -32,7 +33,7 @@ export function SubscriptionSection(): JSX.Element {
   const active = status?.accounts.find(account => account.id === status.activeId)
   return <section className="settings-section settings-subscription">
     <h2 className="settings-connection-heading"><ConnectionIcon provider="chatgpt" />ChatGPT subscription</h2>
-    <p className="meta">Use your ChatGPT plan for lesson chat, the project assistant, and course creation. Coach needs an OpenAI API key. Choose your ChatGPT workspace during browser sign-in.</p>
+    <p className="meta">Use your ChatGPT plan for course and document Ask, the project assistant, and course creation. Coach needs an OpenAI API key. Choose your ChatGPT workspace during browser sign-in.</p>
     <p role="status">{status === null ? 'Loading…' : active?.connected ? `Connected: ${active.label}` : 'No subscription connected.'}</p>
     {!!status?.accounts.length && <label className="settings-row"><span>Account / workspace registration</span>
       <select aria-label="ChatGPT account" value={status.activeId ?? ''} disabled={busy || status.pending} onChange={event => {
@@ -40,10 +41,10 @@ export function SubscriptionSection(): JSX.Element {
       }}>{status.accounts.map(account => <option key={account.id} value={account.id}>{account.label}{account.connected ? '' : ' (disconnected)'}</option>)}</select>
     </label>}
     <div className="actions">
-      <button className="settings-subscription-connect" disabled={busy || status?.pending} onClick={() => void connect(active?.id)}>Continue with ChatGPT</button>
-      {!!status?.accounts.length && <button className="secondary" disabled={busy || status.pending} onClick={() => void connect()}>Add account / workspace</button>}
-      {status?.pending && <button className="secondary" onClick={() => void window.opencourse.cancelSubscriptionLogin()}>Cancel sign-in</button>}
-      {active?.connected && <button className="secondary" disabled={busy} onClick={() => void disconnect()}>Disconnect</button>}
+      <ActionButton icon="connect" className="settings-subscription-connect" disabled={busy || status?.pending} onClick={() => void connect(active?.id)}>Continue with ChatGPT</ActionButton>
+      {!!status?.accounts.length && <ActionButton icon="plus" className="secondary" disabled={busy || status.pending} onClick={() => void connect()}>Add account / workspace</ActionButton>}
+      {status?.pending && <ActionButton icon="close" className="secondary" onClick={() => void window.opencourse.cancelSubscriptionLogin()}>Cancel sign-in</ActionButton>}
+      {active?.connected && <ActionButton icon="disconnect" className="secondary" disabled={busy} onClick={() => void disconnect()}>Disconnect</ActionButton>}
       <button className="ghost" onClick={() => void window.opencourse.openExternal(CHATGPT_USAGE_URL)}>Manage usage ↗</button>
     </div>
     {status?.volatile && <p className="meta">This Mac’s keychain is unavailable. The connection lasts until you quit.</p>}
@@ -53,7 +54,7 @@ export function SubscriptionSection(): JSX.Element {
 
 export function AIModelsSection({ scope, version }: { scope: AIScope; version: number }): JSX.Element {
   const title = scope === 'chat' ? 'Chat' : scope === 'project' ? 'Project assistant' : 'Course creation'
-  const purpose = scope === 'chat' ? 'lesson conversations' : scope === 'project' ? 'project questions and reviews' : 'course creation and editing'
+  const purpose = scope === 'chat' ? 'course and document conversations' : scope === 'project' ? 'project questions and reviews' : 'course creation and editing'
   const [provider, setProvider] = useState<AIProvider>('apiKey')
   const [settings, setSettings] = useState<AIModelSettings | null>(null)
   const [filter, setFilter] = useState('')
@@ -142,8 +143,8 @@ export function AIModelsSection({ scope, version }: { scope: AIScope; version: n
       </div>
       {settings.models.length > 8 && <input className="settings-key settings-filter" value={filter} placeholder="Filter models" onChange={event => setFilter(event.target.value)} />}
       <div className="actions" role="group" aria-label={`${scope} model selection`}>
-        <button className="secondary settings-models-select-all" disabled={busy || !settings.models.length || profile?.enabledModels === null} onClick={selectAll}>Select all</button>
-        <button className="secondary settings-models-unselect-all" disabled={busy || !offered.length} onClick={() => void save({ ...profile!, enabledModels: [], defaultModel: null, defaultReasoning: null })}>Unselect all</button>
+        <ActionButton icon="selectAll" className="secondary settings-models-select-all" disabled={busy || !settings.models.length || profile?.enabledModels === null} onClick={selectAll}>Select all</ActionButton>
+        <ActionButton icon="unselectAll" className="secondary settings-models-unselect-all" disabled={busy || !offered.length} onClick={() => void save({ ...profile!, enabledModels: [], defaultModel: null, defaultReasoning: null })}>Unselect all</ActionButton>
       </div>
       <div className="settings-models" role="group" aria-label={`${scope} allowed models`}>
         {settings.models.filter(model => `${model.id} ${model.label}`.toLowerCase().includes(filter.toLowerCase())).map(model => {
@@ -154,7 +155,7 @@ export function AIModelsSection({ scope, version }: { scope: AIScope; version: n
         })}
       </div>
       <p className="meta">{offered.length} of {settings.models.length} models allowed. {profile?.enabledModels === null ? 'New models are allowed automatically.' : 'New models stay off until you enable them.'}</p>
-      <div className="actions"><button className="secondary" disabled={busy} onClick={() => void refresh()}>Refresh models</button></div>
+      <div className="actions"><ActionButton icon="refresh" className="secondary" disabled={busy} onClick={() => void refresh()}>Refresh models</ActionButton></div>
     </>}
     </div>
     {error && <p className="import-note error">{error}</p>}{saved && <p className="import-note" role="status">Defaults saved.</p>}

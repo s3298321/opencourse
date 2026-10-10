@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton'
 /**
  * Settings → Appearance: the default dark look, built-in White, then imports.
  * Built-in looks cannot be removed. Dark is the stylesheet without overrides.
@@ -172,9 +173,9 @@ export default function ThemeSection(): JSX.Element {
         ))}
       </div>
       <div className="actions">
-        <button className="secondary settings-import-theme" disabled={busy} onClick={() => void importOne()}>
+        <ActionButton icon="upload" className="secondary settings-import-theme" disabled={busy} onClick={() => void importOne()}>
           {busy ? 'Importing' : 'Import Theme'}
-        </button>
+        </ActionButton>
         <button className="ghost" onClick={() => void window.opencourse.saveThemeSpec()}>Get the theme format</button>
       </div>
       {note && <p className={`import-note${note.error ? ' error' : ''}`}>{note.text}</p>}

@@ -1,23 +1,29 @@
+import ActionButton from './ActionButton'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { ChatMessage, ChatQuote, QuoteSource, ReasoningEffort } from '@core/types'
+import type { ReadingSource } from '@core/documents/types'
 import { modelReasoning } from '@core/ai'
 import { CHATGPT_USAGE_URL } from './AISettings'
 import ConnectionIcon, { PROVIDER_LABELS } from './ConnectionIcon'
-import { atBottom } from '@core/coach/scroll'
 import { citeAnswer, shortTitle, type CitedSource } from '@core/sidechat/citations'
 import { REASONING_LABELS, webSearchFor } from '@core/sidechat/models'
 import { MAX_MESSAGE_CHARS } from '@core/sidechat/thread'
 import Html from './Html'
 import { useAutoGrow } from '../sidechat/useAutoGrow'
+import { useChatScroll } from '../sidechat/useChatScroll'
 import type { ChatPanel } from '../sidechat/useChat'
 import Menu from './Menu'
+import { useScreenActive } from '../screen-activity'
 import ChatTabTitle from './ChatTabTitle'
 import ChatMessageMeta from './ChatMessageMeta'
 
 interface Props {
+  visible?: boolean
   panel: ChatPanel
-  variant?: 'lesson' | 'project' | 'authoring'
+  variant?: 'lesson' | 'project' | 'authoring' | 'document' | 'notebook'
+  onSource?: (source: ReadingSource) => void
+  sourceIcons?: (id: string, seq: number) => Promise<Record<string, string | null>>
   storageKey?: string
   /** What the learner highlighted - in the lesson or in an answer - waiting to be asked about. */
   quote: ChatQuote | null
@@ -36,7 +42,7 @@ const MIN_CONTENT = 320
 const COUNT_FROM = MAX_MESSAGE_CHARS * 0.8
 
 /** What an attached passage is called, by where it was highlighted. */
-const QUOTE_LABEL: Record<QuoteSource, string> = { lesson: 'From the lesson', answer: 'From an answer', preview: 'From the preview' }
+const QUOTE_LABEL: Record<QuoteSource, string> = { lesson: 'From the lesson', answer: 'From an answer', preview: 'From the preview', document: 'From the document', notebook: 'From the notebook' }
 
 /** Only the ends of the scale need saying; the middle explains itself. */
 const REASONING_HINTS: Partial<Record<ReasoningEffort, string>> = { none: 'fastest', xhigh: 'slowest' }
@@ -154,14 +160,13 @@ function SourceIcon({ host, icon }: { host: string; icon: string | null | undefi
  * the answer: these are the app's labels, not anything the model said.
  * A click opens the page in the browser, through App's handler for every link.
  */
-function Sources({ chatId, seq, sources }: { chatId: string; seq: number; sources: CitedSource[] }): JSX.Element {
+function Sources({ chatId, seq, sources, fetchIcons }: { chatId: string; seq: number; sources: CitedSource[]; fetchIcons?: Props['sourceIcons'] }): JSX.Element {
   const cacheKey = `${chatId}:${seq}`
   const [icons, setIcons] = useState<Record<string, string | null>>(() => sourceIcons.get(cacheKey) ?? {})
   useEffect(() => {
     if (sourceIcons.has(cacheKey)) return
     let cancelled = false
-    window.opencourse
-      .getChatSourceIcons(chatId, seq)
+    ;(fetchIcons ?? window.opencourse.getChatSourceIcons)(chatId, seq)
       .then((found) => {
         // All letter tiles may be an outage rather than an answer, so that is
         // not kept: the next time this answer comes up, it asks again.
@@ -174,7 +179,7 @@ function Sources({ chatId, seq, sources }: { chatId: string; seq: number; source
     return () => {
       cancelled = true
     }
-  }, [cacheKey, chatId, seq])
+  }, [cacheKey, chatId, seq, fetchIcons])
   return (
     <nav className="chat-sources" data-ask="none" aria-label="Sources">
       <div className="chat-sources-label">Sources</div>
@@ -200,7 +205,7 @@ function Sources({ chatId, seq, sources }: { chatId: string; seq: number; source
  * `data-ask` is on the answer's text alone, so a drag that runs on into the
  * sources is not offered as a quote of what the model said.
  */
-function AnswerTurn({ chatId, message }: { chatId: string | null; message: ChatMessage }): JSX.Element {
+function AnswerTurn({ chatId, message, onSource, sourceIcons: fetchIcons }: { chatId: string | null; message: ChatMessage; onSource?: Props['onSource']; sourceIcons?: Props['sourceIcons'] }): JSX.Element {
   const cited = useMemo(() => citeAnswer(message.text, message.citations), [message.text, message.citations])
   return (
     <div className="chat-turn assistant">
@@ -208,7 +213,8 @@ function AnswerTurn({ chatId, message }: { chatId: string | null; message: ChatM
         <Answer text={cited.markdown} />
       </div>
       {(message.status === 'stopped' || message.status === 'failed') && <p className="meta" data-ask="none">{message.status === 'stopped' ? 'Stopped · partial response' : 'Response failed · partial text preserved'}</p>}
-      {chatId && cited.sources.length > 0 && <Sources chatId={chatId} seq={message.seq} sources={cited.sources} />}
+      {!!message.localSources?.length && <nav className="chat-local-sources" data-ask="none" aria-label="Reading sources">{message.localSources.map((source, index) => <button className="ghost" key={index} onClick={() => onSource ? onSource(source) : window.dispatchEvent(new CustomEvent('reading:source', { detail: source }))}>{source.kind === 'document' ? `Page ${source.page}` : source.title}</button>)}</nav>}
+      {chatId && cited.sources.length > 0 && <Sources chatId={chatId} seq={message.seq} sources={cited.sources} fetchIcons={fetchIcons} />}
       <ChatMessageMeta message={message} />
     </div>
   )
@@ -227,14 +233,14 @@ function StopIcon(): JSX.Element {
  * than appears. `chatId` is the side chat's, for an answer's sources; a
  * project chat has none to show.
  */
-function Message({ message, fresh, chatId }: { message: ChatMessage; fresh: boolean; chatId: string | null }): JSX.Element | null {
+function Message({ message, fresh, chatId, onSource, sourceIcons }: { message: ChatMessage; fresh: boolean; chatId: string | null; onSource?: Props['onSource']; sourceIcons?: Props['sourceIcons'] }): JSX.Element | null {
   // A lesson snapshot is not something anyone said. It is shown as a divider so
   // the learner can see where the chat changed lesson, and nothing more - the
   // text itself is the whole lesson and would bury the conversation.
   if (message.role === 'context') {
     return (
       <div className={`chat-context${fresh ? ' enter' : ''}`} title={message.authoring ? "The current course selection was supplied to the assistant here" : message.project ? "The project requirements were given to the assistant here" : "The lesson was given to the assistant here"}>
-        {message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lessonTitle ? `Now reading: ${message.lessonTitle}` : 'Lesson context'}
+        {message.notebook ? 'Course notebook context' : message.document ? `Reading page ${message.document.page}` : message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lessonTitle ? `Now reading: ${message.lessonTitle}` : 'Lesson context'}
       </div>
     )
   }
@@ -242,7 +248,7 @@ function Message({ message, fresh, chatId }: { message: ChatMessage; fresh: bool
   // and fading in text that was already on screen reads as a flicker.
   // `data-ask` is what lets a passage of it be highlighted and asked about; the
   // lesson listens for that (routes/Lesson.tsx), and the partial never has it.
-  if (message.role === 'assistant') return <AnswerTurn chatId={chatId} message={message} />
+  if (message.role === 'assistant') return <AnswerTurn chatId={chatId} message={message} onSource={onSource} sourceIcons={sourceIcons} />
   // A bubble on the right, so scrolling back through a long answer you can
   // still find where each question was asked without reading for it.
   return (
@@ -263,16 +269,19 @@ function Message({ message, fresh, chatId }: { message: ChatMessage; fresh: bool
 export default function ChatPanelView({
   panel,
   variant = 'lesson',
+  visible = true,
   quote,
   onQuoteUsed,
   onClose,
   onAddKey,
   storageKey,
+  onSource,
+  sourceIcons: fetchIcons,
   textScale = 1
 }: Props): JSX.Element {
-  // The lesson column and the sidebar are the only things it has to leave
-  // room for: the editor takes the whole workspace, so the two are never
-  // open at once.
+  const screenActive = useScreenActive() && visible
+  // The lesson column leaves room for chat; the workbench uses its own dock
+  // or drawer layout while retaining this same panel.
   const [width, setWidth] = useState(() =>
     Math.max(MIN_WIDTH, Math.min(420, window.innerWidth - MIN_CONTENT - 268))
   )
@@ -281,7 +290,6 @@ export default function ChatPanelView({
   const [historyOpen, setHistoryOpen] = useState(false)
   const submitting = useRef(false)
 
-  const scroller = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLTextAreaElement | null>(null)
   const twin = useRef<HTMLTextAreaElement | null>(null)
   useAutoGrow(field, twin, draft, textScale)
@@ -337,35 +345,15 @@ export default function ChatPanelView({
   }, [panel])
 
   useEffect(() => {
-    field.current?.focus()
-  }, [panel.activeId, quote])
+    if (screenActive) field.current?.focus()
+  }, [panel.activeId, quote, visible])
 
-  // Follow the answer as it grows, the way a terminal follows output.
-  useEffect(() => {
-    const el = scroller.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [panel.thread, panel.streaming])
-
-  // The composer grows as you write, and it grows into this column from below.
-  // If you were reading the latest line, keep it in view rather than letting
-  // the box slide over it; if you had scrolled up, you asked to be left alone.
-  useEffect(() => {
-    const el = scroller.current
-    if (!el) return
-    let following = true
-    const onScroll = (): void => {
-      following = atBottom(el)
-    }
-    const observer = new ResizeObserver(() => {
-      if (following) el.scrollTop = el.scrollHeight
-    })
-    el.addEventListener('scroll', onScroll, { passive: true })
-    observer.observe(el)
-    return () => {
-      el.removeEventListener('scroll', onScroll)
-      observer.disconnect()
-    }
-  }, [])
+  // Include stored answers as well as the partial, so finishing a response
+  // respects the same reading position as each streaming update.
+  const answerPosition = JSON.stringify([thread?.chat.id, thread?.messages.map(message => [message.seq, message.text, message.status])])
+  const { scroller, content, following, onScroll, jumpToLatest } = useChatScroll(
+    panel.activeId, JSON.stringify([answerPosition, panel.streaming, panel.activity, panel.error]), screenActive
+  )
 
   const startWidthDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -402,7 +390,7 @@ export default function ChatPanelView({
       <div className="sidechat-grip" onPointerDown={startWidthDrag} role="separator" aria-orientation="vertical" />
 
       <div className="sidechat-head">
-        <strong>{variant === 'authoring' ? 'Course assistant' : variant === 'project' ? 'Project assistant' : 'Ask about this lesson'}</strong>
+        <strong>{variant === 'notebook' ? 'Ask about this notebook' : variant === 'document' ? 'Ask about this document' : variant === 'authoring' ? 'Course assistant' : variant === 'project' ? 'Project assistant' : 'Ask about this lesson'}</strong>
         {onClose && <button className="ghost sidechat-close" onClick={onClose} title="Close the side chat">
           ✕
         </button>}
@@ -472,44 +460,57 @@ export default function ChatPanelView({
       {!panel.ready && (
         <div className="sidechat-note">
           <span>{panel.connection.message ?? `Connect ${PROVIDER_LABELS[panel.provider]} in Settings.`}</span>
-          <button onClick={onAddKey}>Open Settings</button>
+          <ActionButton icon="settings" onClick={onAddKey}>Open Settings</ActionButton>
         </div>
       )}
 
-      <div className="sidechat-scroll scroll" ref={scroller}>
-        {/* Shown with or without a key: a panel that is blank and silent reads
-            as broken, and the guidance is true either way. */}
-        {thread?.messages.length === 0 && (
-          <div className="sidechat-empty">
-            <p>{variant === 'authoring' ? 'Describe the course you want, or ask to edit any part of this course.' : variant === 'project' ? 'Ask for clarification or feedback on your project.' : 'Ask anything about this lesson.'}</p>
-            <p className="meta">
-              {variant === 'authoring' ? 'Your selected block is included automatically. Changes appear in the preview as the assistant edits your draft.' : variant === 'project' ? 'The project definition and deliverables are included automatically. Files the assistant reads from this project folder are sent to OpenAI. The assistant can inspect text files and cannot run code.' : 'The whole lesson goes to the assistant with your first question. Highlight a passage first and it will be attached to what you ask.'}
-            </p>
-          </div>
-        )}
-        {displayedMessages?.map((message) => (
-          <Message
-            key={message.seq}
-            message={message}
-            fresh={settled?.chatId === thread!.chat.id && message.seq > settled.upTo}
-            chatId={variant === 'lesson' ? thread!.chat.id : null}
-          />
-        ))}
-        {panel.streaming !== null && (
-          <div className={`chat-turn assistant partial${panel.streaming === '' ? ' thinking' : ''}`}>
-            {panel.streaming ? (
-              <Answer text={panel.streaming} />
-            ) : (
-              <span className="chat-typing" role="status" aria-label="Thinking">
-                <i />
-                <i />
-                <i />
-              </span>
+      <div className="sidechat-transcript">
+        <div className="sidechat-scroll scroll" ref={scroller} onScroll={onScroll}>
+          <div ref={content}>
+            {/* Shown with or without a key: a panel that is blank and silent reads
+                as broken, and the guidance is true either way. */}
+            {thread?.messages.length === 0 && (
+              <div className="sidechat-empty">
+                <p>{variant === 'notebook' ? 'Ask anything about this notebook.' : variant === 'document' ? 'Ask anything about this document.' : variant === 'authoring' ? 'Describe the course you want, or ask to edit any part of this course.' : variant === 'project' ? 'Ask for clarification or feedback on your project.' : 'Ask anything about this lesson.'}</p>
+                <p className="meta">
+                  {variant === 'notebook' ? 'Saved code and outputs are included with your question. Ask can search the course and explain selected passages. It cannot inspect live Python variables.' : variant === 'document' ? 'Highlight a passage to attach it. Ask can search this PDF and read relevant pages; only selected and retrieved passages are sent to your AI connection.' : variant === 'authoring' ? 'Your selected block is included automatically. Changes appear in the preview as the assistant edits your draft.' : variant === 'project' ? 'The project definition and deliverables are included automatically. Files the assistant reads from this project folder are sent to OpenAI. The assistant can inspect text files and cannot run code.' : 'The current lesson is included with your question. Ask can search other sections when needed. Highlight a passage to attach it.'}
+                </p>
+              </div>
             )}
+            {displayedMessages?.map((message) => (
+              <Message
+                key={message.seq}
+                message={message}
+                fresh={settled?.chatId === thread!.chat.id && message.seq > settled.upTo}
+                chatId={variant === 'lesson' || variant === 'notebook' || variant === 'document' ? thread!.chat.id : null}
+                onSource={onSource}
+                sourceIcons={fetchIcons}
+              />
+            ))}
+            {panel.streaming !== null && (
+              <div className={`chat-turn assistant partial${panel.streaming === '' ? ' thinking' : ''}`}>
+                {panel.streaming ? (
+                  <Answer text={panel.streaming} />
+                ) : (
+                  <span className="chat-typing" role="status" aria-label="Thinking">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                )}
+              </div>
+            )}
+            {panel.activity && <div className={`project-tool-activity meta${panel.toolRunning ? ' running' : ''}`} role="status"><ToolIcon /><span>{panel.activity}</span></div>}
+            {panel.error && <div className="sidechat-error">{panel.error} <button className="ghost" onClick={onAddKey}>Settings</button>{panel.provider === 'chatgpt' && <button className="ghost" onClick={() => void window.opencourse.openExternal(CHATGPT_USAGE_URL)}>Manage usage ↗</button>}</div>}
           </div>
+        </div>
+        {!following && (
+          <button className="sidechat-latest" type="button" onClick={jumpToLatest} aria-label="Scroll to latest response" title="Scroll to latest response and resume following">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+              <path d="M10 4v12m-5-5 5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         )}
-        {panel.activity && <div className="project-tool-activity meta" role="status"><ToolIcon /><span>{panel.activity}</span></div>}
-        {panel.error && <div className="sidechat-error">{panel.error} <button className="ghost" onClick={onAddKey}>Settings</button>{panel.provider === 'chatgpt' && <button className="ghost" onClick={() => void window.opencourse.openExternal(CHATGPT_USAGE_URL)}>Manage usage ↗</button>}</div>}
       </div>
 
       <div className="sidechat-composer">
@@ -526,7 +527,7 @@ export default function ChatPanelView({
           {quote && (
             <div className="sidechat-quote">
               <div className="sidechat-quote-head">
-                <span className="sidechat-quote-label">{QUOTE_LABEL[quote.from]}</span>
+                <span className="sidechat-quote-label">{QUOTE_LABEL[quote.from]}{quote.document ? ` · Page ${quote.document.page}` : ''}</span>
                 <button className="ghost" title="Do not attach this" onClick={onQuoteUsed}>
                   ✕
                 </button>
@@ -542,7 +543,7 @@ export default function ChatPanelView({
               disabled={!active}
               rows={1}
               maxLength={MAX_MESSAGE_CHARS}
-              placeholder={quote ? 'Ask about the highlighted passage…' : variant === 'authoring' ? 'Create or edit this course…' : variant === 'project' ? 'Ask about your project…' : 'Ask about this lesson…'}
+              placeholder={quote ? 'Ask about the highlighted passage…' : variant === 'notebook' ? 'Ask about this notebook…' : variant === 'document' ? 'Ask about this document…' : variant === 'authoring' ? 'Create or edit this course…' : variant === 'project' ? 'Ask about your project…' : 'Ask about this lesson…'}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 // Enter sends, because this is a chat. A newline is still one
@@ -573,7 +574,7 @@ export default function ChatPanelView({
                 this conversation alone; Settings' default stays as it is. */}
             <Menu
               className="sidechat-connection"
-              panelClassName="connection-menu"
+              panelClassName="connection-menu chat-menu"
               disabled={answering}
               title={`${connectionLabel}. Choose another connection for this chat.`}
               ariaLabel={`Connection for this chat: ${connectionLabel}`}
@@ -593,6 +594,7 @@ export default function ChatPanelView({
             {model !== null && (
               <Menu
                 className="sidechat-model"
+                panelClassName="chat-menu"
                 disabled={answering}
                 title="Which model answers"
                 align="left"
@@ -608,6 +610,7 @@ export default function ChatPanelView({
             {model !== null && efforts.length > 0 && (
               <Menu
                 className="sidechat-reasoning"
+                panelClassName="chat-menu"
                 disabled={answering}
                 title="How hard it thinks before answering"
                 align="left"
@@ -635,7 +638,7 @@ export default function ChatPanelView({
                 ]}
               />
             )}
-            {variant === 'lesson' && panel.webSearch && model !== null && (
+            {(variant === 'lesson' || variant === 'notebook' || variant === 'document') && panel.webSearch && model !== null && (
               <span
                 className={`sidechat-web${searchable ? '' : ' off'}`}
                 role="img"

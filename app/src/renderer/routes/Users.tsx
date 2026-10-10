@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { Session, UserProfile } from '@core/types'
@@ -127,13 +128,13 @@ export default function Users({
                       }}
                     />
                     <div className="actions">
-                      <button disabled={busy || !name.trim()} onClick={() => void create()}>
+                      <ActionButton icon="plus" disabled={busy || !name.trim()} onClick={() => void create()}>
                         Create
-                      </button>
+                      </ActionButton>
                       {users.length > 0 && (
-                        <button className="secondary" disabled={busy} onClick={() => setNaming(false)}>
+                        <ActionButton icon="close" className="secondary" disabled={busy} onClick={() => setNaming(false)}>
                           Cancel
-                        </button>
+                        </ActionButton>
                       )}
                     </div>
                   </div>

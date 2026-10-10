@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, Dispatch, JSX, RefObject, SetStateAction } from 'react'
 import { findLesson, lessonKey, itemSiblings } from '@core/manifest'
@@ -18,13 +19,17 @@ import Workbench from '../workbench/Workbench'
 import SideChat from '../components/SideChat'
 import Sidebar from '../components/Sidebar'
 import TitleBar from '../components/TitleBar'
+import ChatToggle from '../components/ChatToggle'
+import ScreenPlaceholder from '../components/ScreenPlaceholder'
 import LessonHeader from '../components/LessonHeader'
 import ReadingSize from '../components/ReadingSize'
 import { AskProvider, type Ask, type AskOffer } from '../ask-context'
 import { itemRoute, type Route, type Screen } from '../routes'
+import { useScreenActive } from '../screen-activity'
 
 interface Props {
   courseId: string
+  pythonCellsActive?: boolean
   moduleId: string
   lessonId: string
   user: UserProfile | null
@@ -103,6 +108,7 @@ const OFFER_INSET = 64
 
 export default function LessonView({
   courseId,
+  pythonCellsActive = true,
   moduleId,
   lessonId,
   user,
@@ -121,6 +127,15 @@ export default function LessonView({
   // What the learner has highlighted - in the lesson or inside a visualization -
   // and where to float the button offering to ask about it. Cleared when it is
   // used, dismissed, or the selection goes.
+  const active = useScreenActive()
+  const [chatInitialized, setChatInitialized] = useState(chatOpen)
+  useEffect(() => { if (chatOpen) setChatInitialized(true) }, [chatOpen])
+  useEffect(() => {
+    if (!active || !chatOpen) return
+    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !event.defaultPrevented) { setChatOpen(false); event.preventDefault() } }
+    document.addEventListener('keydown', escape)
+    return () => document.removeEventListener('keydown', escape)
+  }, [active, chatOpen, setChatOpen])
   const [selection, setSelection] = useState<AskOffer | null>(null)
   const [quote, setQuote] = useState<ChatQuote | null>(null)
   // Whichever passage is marked as the attached quote, so the one that is
@@ -130,8 +145,7 @@ export default function LessonView({
   // its scroll offset has to be carried by hand. Chromium regenerates the box
   // on display:none and resets scrollTop to 0.
   const contentRef = useRef<HTMLDivElement | null>(null)
-  // Held by App, because this component unmounts on the way to settings and a
-  // ref of its own would take the reading position with it.
+  // Shared with App so returning to the same lesson can restore its offset.
   const lessonScroll = scrollRef
   const here = `${courseId}/${moduleId}/${lessonId}`
 
@@ -183,7 +197,7 @@ export default function LessonView({
 
   // ⌘[ / ⌘] from the Course menu.
   useEffect(() => {
-    if (!navSignal) return
+    if (!active || !navSignal) return
     go(navSignal.action === 'prev' ? neighbours.prev : neighbours.next)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navSignal?.n])
@@ -198,6 +212,7 @@ export default function LessonView({
    * outside the text still finishes a selection.
    */
   useEffect(() => {
+    if (!active) return
     const onUp = (event: MouseEvent): void => {
       // The release that presses the offer is not a new selection. Without this
       // the button unmounts between mouseup and click, and the click lands on
@@ -207,6 +222,9 @@ export default function LessonView({
       const text = found?.toString().trim() ?? ''
       if (!found || !text || found.rangeCount === 0) return setSelection(null)
       const range = found.getRangeAt(0)
+      const node = range.commonAncestorContainer
+      const element = node instanceof Element ? node : node.parentElement
+      if (element?.closest('.python-cell .cm-editor')) return
       const from = askableAs(range.commonAncestorContainer)
       if (!from) return setSelection(null)
       const box = range.getBoundingClientRect()
@@ -224,7 +242,7 @@ export default function LessonView({
     }
     document.addEventListener('mouseup', onUp)
     return () => document.removeEventListener('mouseup', onUp)
-  }, [])
+  }, [active])
 
   /**
    * Attach a passage and keep it marked while you write about it.
@@ -356,12 +374,11 @@ export default function LessonView({
     // element to scroll.
   }, [openExerciseId, course, progress, here, lessonScroll, readingScale === null])
 
-  if (!course || !progress || readingScale === null) return <div className="empty">Loading…</div>
-  if (!found) return <div className="empty">That lesson is not in this course.</div>
+  if (!course || !progress || readingScale === null) return <ScreenPlaceholder />
+  if (!found) return <ScreenPlaceholder>That lesson is not in this course.</ScreenPlaceholder>
 
   const { lesson, ref } = found
-  // The editor replaces the lesson column with the exercise's brief and the
-  // code, and the chat has no lesson on screen to be about while it is open.
+  // The exercise and the reader share the same lesson conversation.
   const editorOpen = openExercise !== undefined && workbenchTarget !== null
   const completed = progress.completedLessons.includes(lessonKey(moduleId, lessonId))
 
@@ -372,23 +389,13 @@ export default function LessonView({
         navigate={navigate}
         route={route}
         actions={
-          !editorOpen && (
-            <button
-              className={`ghost chat-chip${chatOpen ? ' on' : ''}`}
-              aria-pressed={chatOpen}
-              title={chatOpen ? 'Close the side chat' : 'Ask about this lesson'}
-              onClick={() => setChatOpen((open) => !open)}
-            >
-              Ask
-            </button>
-          )
+          <ChatToggle open={chatOpen} subject="lesson" onClick={() => setChatOpen((open) => !open)} />
         }
-        back={{ label: 'All courses', onClick: () => navigate({ name: 'library' }) }}
+        back={{ label: 'Course overview', onClick: () => navigate({ name: 'course', courseId }) }}
       />
-      {/* The reader's text size reaches everything on this screen that is read -
-          the lesson, the exercise brief, the side chat - by inheritance, and
-          nothing else in the app, which falls back to var(--reading-scale, 1). */}
-      <div className="body" style={{ '--reading-scale': readingScale } as CSSProperties}>
+      {/* The lesson, exercise brief and side chat inherit the shared text size.
+          The workbench also receives it for CodeMirror and xterm's font APIs. */}
+      <div className={`body lesson-body${editorOpen ? ' exercise-editor-open' : ''}${editorOpen && chatOpen ? ' exercise-chat-open' : ''}`} style={{ '--reading-scale': readingScale } as CSSProperties}>
         <Sidebar
           course={course}
           current={{ moduleId, lessonId }}
@@ -404,7 +411,7 @@ export default function LessonView({
           // is open, though - hiding the column resets scrollTop to 0 and
           // fires for it, which would erase the offset being saved.
           onScroll={(e) => {
-            if (!editorOpen) lessonScroll.current = { key: here, top: e.currentTarget.scrollTop }
+            if (active && !editorOpen) lessonScroll.current = { key: here, top: e.currentTarget.scrollTop }
           }}
         >
           <div className="content-inner lesson-inner" data-ask="lesson">
@@ -414,6 +421,8 @@ export default function LessonView({
             <AskProvider value={ask}>
               {lesson.blocks.map((block, i) =>
                 renderBlock(block, i, {
+                  textScale: readingScale,
+                  pythonCellsActive,
                   courseId: courseId,
                   moduleId,
                   lessonId,
@@ -427,12 +436,13 @@ export default function LessonView({
             </AskProvider>
 
             <div className="lesson-nav">
-              <button
+              <ActionButton
+                icon="check"
                 className={completed ? 'secondary' : ''}
                 onClick={() => void window.opencourse.toggleLesson(courseId, moduleId, lessonId).then(setProgress)}
               >
-                {completed ? '✓ Lesson completed' : 'Mark lesson completed'}
-              </button>
+                {completed ? 'Lesson completed' : 'Mark lesson completed'}
+              </ActionButton>
             </div>
 
             <div className="lesson-nav">
@@ -451,39 +461,42 @@ export default function LessonView({
           </div>
           <ReadingSize scale={readingScale} onChange={changeReadingScale} />
         </div>
-        {chatOpen && !editorOpen && (
-          <SideChat
-            courseId={courseId}
-            lesson={{ moduleId, lessonId }}
-            quote={quote}
-            onQuoteUsed={() => setQuote(null)}
-            onClose={() => setChatOpen(false)}
-            onAddKey={() => navigate({ name: 'settings', from: route })}
-            textScale={readingScale}
-          />
-        )}
         {editorOpen && openExercise && workbenchTarget && (
           <Workbench
             key={`${courseId}/${openExercise.id}`}
             target={workbenchTarget}
             title={openExercise.title}
+            readingScale={readingScale}
+            onReadingScaleChange={changeReadingScale}
             lastRun={progress.exercises[openExercise.id]?.lastRun}
             starterCode={openExercise.starter_code ?? '# your code here\n'}
             brief={
-              <ExerciseBlockView
+              <AskProvider value={ask}><div data-ask="lesson"><ExerciseBlockView
                 mode="brief"
                 courseId={courseId}
                 block={openExercise}
                 done={Boolean(progress.exercises[openExercise.id]?.completedAt)}
                 onToggleDone={onExerciseToggled}
-              />
+              /></div></AskProvider>
             }
             onClose={() => setOpenExerciseId(null)}
             onProgress={setProgress}
           />
         )}
+        {chatInitialized && (
+          <div className="lesson-chat-host" hidden={!chatOpen}><SideChat
+            visible={chatOpen}
+            courseId={courseId}
+            lesson={{ moduleId, lessonId }}
+            quote={quote}
+            onQuoteUsed={() => setQuote(null)}
+            onClose={() => setChatOpen(false)}
+            onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })}
+            textScale={readingScale}
+          /></div>
+        )}
       </div>
-      {selection && (
+      {active && selection && (
         <button
           className="ask-about"
           style={{

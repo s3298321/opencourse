@@ -1,3 +1,4 @@
+import { stopCourseNotebooks } from './notebooks'
 import { importedAttachments } from './assets'
 import { beginCourseMutation } from './course-busy'
 /**
@@ -133,6 +134,7 @@ export async function removeCourse(courseId: string): Promise<void> {
   cancelCourseChats(courseId)
   cancelCourseProjectChats(courseId)
   cancelCourseAuthoring(courseId)
+  await stopCourseNotebooks(userId, courseId)
   disposePtysInDirectory(join(userWorkspaceRoot(userId), courseId))
   await stopCourseWork(join(userWorkspaceRoot(userId), courseId))
   if (requireUser() !== userId) throw new Error('Course deletion was interrupted because the active user changed.')

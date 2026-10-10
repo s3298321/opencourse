@@ -1,6 +1,9 @@
+import ActionButton from './ActionButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { CoachProject } from '@core/types'
+import { useAppShell } from './AppShell'
+import { useScreenActive } from '../screen-activity'
 import { atBottom } from '@core/coach/scroll'
 import { MAX_SESSION_MS, RealtimeSession, type SessionView } from '../coach/realtime'
 
@@ -49,6 +52,8 @@ export default function CoachSession({
   project: CoachProject
   onSessionChanged: () => void
 }): JSX.Element {
+  const shell = useAppShell()
+  const active = useScreenActive()
   const session = useRef<RealtimeSession | null>(null)
   const dirty = useRef(false)
   const [view, setView] = useState<SessionView | null>(null)
@@ -72,15 +77,16 @@ export default function CoachSession({
 
   useEffect(() => {
     const el = scroller.current
-    if (el && followingNow.current) el.scrollTop = el.scrollHeight
-  }, [view, following])
+    if (active && el && followingNow.current) el.scrollTop = el.scrollHeight
+  }, [view, following, active])
 
   // Our own scroll above lands at the bottom and re-arms this, so the flag
   // stays true through every tick we caused.
   const onScroll = useCallback(() => {
+    if (!active) return
     const el = scroller.current
     if (el) follow(atBottom(el))
-  }, [follow])
+  }, [follow, active])
 
   // One timer, not one render per delta.
   useEffect(() => {
@@ -159,6 +165,8 @@ export default function CoachSession({
   }, [stopRequested, onSessionChanged])
 
   const running = view !== null && ['connecting', 'live', 'wrapping-up'].includes(view.status.kind)
+  useEffect(() => { shell?.reportCoachLive(starting || running) }, [shell, starting, running])
+  useEffect(() => () => shell?.reportCoachLive(false), [shell])
   const line = view ? statusLine(view) : { text: 'Ready when you are.', tone: '' as const }
   const nearCap = view ? view.elapsedMs > MAX_SESSION_MS * 0.9 : false
 
@@ -174,18 +182,18 @@ export default function CoachSession({
         {running ? (
           <div className="actions">
             {view?.status.kind === 'live' && (view.speaking || view.responding) && (
-              <button className="secondary coach-interrupt" onClick={() => session.current?.interrupt()}>
+              <ActionButton icon="stop" className="secondary coach-interrupt" onClick={() => session.current?.interrupt()}>
                 Stop speaking
-              </button>
+              </ActionButton>
             )}
-            <button className="secondary" onClick={() => void stop()}>
+            <ActionButton icon="stop" className="secondary" onClick={() => void stop()}>
               {stopRequested ? 'Stop now' : 'Finish session'}
-            </button>
+            </ActionButton>
           </div>
         ) : (
-          <button disabled={starting} onClick={() => void start()}>
+          <ActionButton icon="play" disabled={starting} onClick={() => void start()}>
             {starting ? 'Starting' : 'Start a session'}
-          </button>
+          </ActionButton>
         )}
       </div>
 

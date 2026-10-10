@@ -24,6 +24,7 @@ const SUMMARY_COLUMNS = `c.*,
 
 function chatSummary(row: Record<string, unknown>): ChatSummary {
   return {
+    startedInNotebook: row['start_source'] === 'notebook',
     id: String(row['id']),
     courseId: String(row['course_slug']),
     model: String(row['model']),
@@ -44,26 +45,28 @@ export function insertChat(chat: {
   model: string
   provider?: AIProvider
   reasoning?: ReasoningEffort | null
-  startedIn: ChatLessonRef
+  startedIn: ChatLessonRef | null
+  startedInNotebook?: boolean
   at: string
 }): void {
   db()
     .prepare(
-      `INSERT INTO chats (id, course_slug, model, reasoning, module_slug, lesson_slug, created_at, updated_at, provider, course_id, start_lesson_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO chats (id, course_slug, model, reasoning, module_slug, lesson_slug, created_at, updated_at, provider, course_id, start_lesson_id, start_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       chat.id,
       chat.courseId,
       chat.model,
       chat.reasoning ?? null,
-      chat.startedIn.moduleId,
-      chat.startedIn.lessonId,
+      chat.startedIn?.moduleId ?? '',
+      chat.startedIn?.lessonId ?? '',
       chat.at,
       chat.at,
       chat.provider ?? 'apiKey',
       registeredCourse(db(), chat.courseId),
-      registeredElement(db(), chat.courseId, chat.startedIn.lessonId)
+      chat.startedIn ? registeredElement(db(), chat.courseId, chat.startedIn.lessonId) : null,
+      chat.startedInNotebook ? 'notebook' : 'lesson'
     )
 }
 
@@ -95,7 +98,7 @@ export function selectChats(courseId: string): ChatSummary[] {
 export function selectMessages(chatId: string): ChatMessage[] {
   const rows = db()
     .prepare(
-      `SELECT seq, role, text, quote, quote_from, sources, module_slug, lesson_slug, status, generation, context_fingerprint, at
+      `SELECT seq, role, text, quote, quote_from, sources, local_sources, module_slug, lesson_slug, status, generation, context_fingerprint, source_kind, quote_metadata, at
        FROM chat_messages WHERE chat_id = ? ORDER BY seq`
     )
     .all(chatId) as Record<string, unknown>[]
@@ -106,14 +109,16 @@ export function selectMessages(chatId: string): ChatMessage[] {
     const citations = readCitations(row['sources'])
     const generation = readGeneration(row['generation'])
     return {
+      ...(row['source_kind'] === 'notebook' ? { notebook: true } : {}),
       seq: Number(row['seq']),
       role: role === 'user' || role === 'context' ? (role as 'user' | 'context') : 'assistant',
       text: String(row['text']),
       ...(row['status'] === 'complete' || row['status'] === 'stopped' || row['status'] === 'failed' ? { status: row['status'] } : {}),
       ...(typeof row['quote'] === 'string' && row['quote']
-        ? { quote: { text: row['quote'], from: row['quote_from'] === 'answer' ? 'answer' : 'lesson' } }
+        ? { quote: { text: row['quote'], from: row['quote_from'] === 'answer' ? 'answer' : row['quote_from'] === 'notebook' ? 'notebook' : 'lesson', ...(row['quote_from'] === 'notebook' ? { notebook: readNotebookQuote(row['quote_metadata']) } : {}) } }
         : {}),
       ...(citations.length ? { citations } : {}),
+      ...(typeof row['local_sources'] === 'string' ? { localSources: readLocalSources(row['local_sources']) } : {}),
       ...(generation ? { generation } : {}),
       ...(typeof row['context_fingerprint'] === 'string' ? { contextFingerprint: row['context_fingerprint'] } : {}),
       ...(typeof module === 'string' && typeof lesson === 'string'
@@ -151,6 +156,10 @@ function readGeneration(raw: unknown): ChatMessage['generation'] {
   } catch { return undefined }
 }
 
+function readLocalSources(raw: string): NonNullable<ChatMessage['localSources']> {
+  try { const value = JSON.parse(raw); return Array.isArray(value) ? value.filter(source => source?.kind === 'course' && typeof source.courseId === 'string' && typeof source.moduleId === 'string' && typeof source.title === 'string').slice(0, 100) : [] } catch { return [] }
+}
+
 /**
  * Appends one message and returns the seq it landed at.
  *
@@ -171,8 +180,8 @@ export function appendMessage(
     if (row.course_id && message.lesson && !lessonId) throw new Error('That lesson no longer exists.')
     d.prepare('UPDATE chats SET next_seq=next_seq+1 WHERE id=?').run(chatId)
     d.prepare(
-      `INSERT INTO chat_messages (chat_id, seq, role, text, quote, quote_from, sources, module_slug, lesson_slug, at, status, generation, lesson_id, context_fingerprint)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO chat_messages (chat_id, seq, role, text, quote, quote_from, sources, module_slug, lesson_slug, at, status, generation, lesson_id, context_fingerprint, local_sources, source_kind, quote_metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       chatId,
       seq,
@@ -187,7 +196,10 @@ export function appendMessage(
       message.status ?? null,
       message.generation ? JSON.stringify(message.generation) : null,
       lessonId,
-      message.contextFingerprint ?? null
+      message.contextFingerprint ?? null,
+      message.localSources?.length ? JSON.stringify(message.localSources) : null,
+      message.notebook ? 'notebook' : 'lesson',
+      message.quote?.notebook ? JSON.stringify(message.quote.notebook) : null
     )
     d.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(message.at, chatId)
     return seq
@@ -217,4 +229,8 @@ export function updateChatReasoning(id: string, reasoning: ReasoningEffort | nul
 /** Messages go with it - that is what the cascade is for. */
 export function deleteChatRow(id: string): void {
   db().prepare('DELETE FROM chats WHERE id = ?').run(id)
+}
+
+function readNotebookQuote(raw: unknown): { cellId?: string } {
+  try { const value = JSON.parse(String(raw)); return typeof value?.cellId === 'string' ? { cellId: value.cellId } : {} } catch { return {} }
 }

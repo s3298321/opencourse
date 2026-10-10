@@ -1,3 +1,4 @@
+import { stopCourseNotebooks } from './notebooks'
 import { beginCourseMutation, courseBusy } from './course-busy'
 import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -168,7 +169,7 @@ export async function stopCourseActivity(owner: string, courseId: string): Promi
   cancelCourseChats(courseId)
   cancelCourseProjectChats(courseId)
   disposePtysInDirectory(join(userWorkspaceRoot(owner), courseId))
-  await stopCourseWork(join(userWorkspaceRoot(owner), courseId))
+  await Promise.all([stopCourseNotebooks(owner, courseId), stopCourseWork(join(userWorkspaceRoot(owner), courseId))])
 }
 
 /**

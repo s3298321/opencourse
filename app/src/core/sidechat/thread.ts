@@ -62,7 +62,9 @@ export function needsContext(messages: readonly ChatMessage[], lesson: ChatLesso
 const QUOTED_FROM: Record<QuoteSource, string> = {
   lesson: 'From the lesson',
   preview: 'From the course preview',
-  answer: 'From one of your earlier answers'
+  answer: 'From one of your earlier answers',
+  document: 'From the document',
+  notebook: 'From the course notebook'
 }
 
 /** A quoted passage rides with the question it was attached to, as a quotation. */
@@ -72,7 +74,8 @@ function withQuote(message: ChatMessage): string {
     .split('\n')
     .map((line) => `> ${line}`)
     .join('\n')
-  return `${QUOTED_FROM[message.quote.from]}, I have highlighted this:\n\n${quoted}\n\nMy question about it:\n\n${message.text}`
+  const location = message.quote.document ? ` (page ${message.quote.document.page})` : ''
+  return `${QUOTED_FROM[message.quote.from]}${location}, I have highlighted this:\n\n${quoted}\n\nMy question about it:\n\n${message.text}`
 }
 
 function itemFor(message: ChatMessage): ChatInputItem {
@@ -82,7 +85,7 @@ function itemFor(message: ChatMessage): ChatInputItem {
   // set of instructions. A user-voiced, clearly-labelled block is the honest
   // shape - and it is what the system prompt tells the model to expect.
   if (message.role === 'context') {
-    return { role: 'user', content: `[lesson context]\n\n${message.text}` }
+    return { role: 'user', content: `[${message.document ? 'document' : message.notebook ? 'notebook' : 'lesson'} context]\n\n${message.text}` }
   }
   return { role: 'user', content: withQuote(message) }
 }
@@ -105,21 +108,25 @@ export function buildInput(
   if (!messages.length) return [head]
 
   const lastContext = messages.reduce<number>((found, m, i) => (m.role === 'context' ? i : found), -1)
+  // Keep snapshots in the local transcript, but send only the current source context.
+  const items = messages.map((message, index) => message.role === 'context' && index !== lastContext
+    ? { role: 'user' as const, content: message.document ? `[Earlier reading position: page ${message.document.page}]` : message.notebook ? '[Earlier notebook context. Current notebook content is supplied with notebook questions.]' : `[Earlier lesson: ${message.lesson?.moduleId ?? ''}/${message.lesson?.lessonId ?? ''}. Use course tools to retrieve its content.]` }
+    : itemFor(message))
   const required = new Set<number>([messages.length - 1])
   if (lastContext >= 0) required.add(lastContext)
 
   let budget = MAX_INPUT_CHARS - instructions.length
-  for (const i of required) budget -= messages[i]!.text.length
+  for (const i of required) budget -= items[i]!.content.length
 
   const keep = new Set(required)
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (keep.has(i)) continue
-    const cost = messages[i]!.text.length + (messages[i]!.quote?.text.length ?? 0)
+    const cost = items[i]!.content.length
     if (cost > budget) break
     budget -= cost
     keep.add(i)
   }
 
-  const body = messages.filter((_, i) => keep.has(i)).map(itemFor)
+  const body = items.filter((_, i) => keep.has(i))
   return [head, ...body]
 }

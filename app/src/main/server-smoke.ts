@@ -77,6 +77,8 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
         const type = async (selector, value) => { const input = await wait(() => document.querySelector(selector), selector); const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(40); };
         const field = label => [...document.querySelectorAll('.server-field')].find(l => l.textContent.trim().startsWith(label))?.querySelector('input, textarea, select');
         const typeField = async (label, value) => { const input = await wait(() => field(label), 'field ' + label); const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(40); };
+        // The library lists one source at a time: Local, then each server.
+        const serverTab = async () => { const tab = await wait(() => [...document.querySelectorAll('.course-source-tabs [role="tab"]')].find(t => t.textContent.startsWith('Smoke server')), 'server tab'); if (tab.getAttribute('aria-selected') !== 'true') tab.click(); };
         const pickUser = async name => { await wait(() => document.querySelector('.user-pick'), 'user picker'); [...document.querySelectorAll('.user-pick')].find(b => b.textContent.includes(name)).click(); await wait(() => document.querySelector('.library'), 'library'); };
         ${source}
       })()`)
@@ -97,8 +99,9 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
 
     nav('settings')
     await run('settings: the address is checked, then an account is offered', `
+      (await wait(() => document.querySelector('[data-settings-category="servers"]'), 'servers category')).click();
       await wait(() => document.querySelector('.server-settings'), 'servers section');
-      await press('Connect to a server…');
+      await press('Connect to a server');
       await typeField('Server address', ${JSON.stringify(base)});
       await press('Continue');
       await wait(() => document.querySelector('.server-connect-head h3')?.textContent === 'Smoke server', 'server name');
@@ -134,7 +137,7 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
       (await wait(() => [...document.querySelectorAll('.course-card')].find(c => c.textContent.includes('example course')), 'imported card')).click();
       await wait(() => document.querySelector('.course-origin-line'), 'origin line');
       if (!document.querySelector('.course-origin-line').textContent.includes('Local')) throw new Error('A local course does not say Local');
-      await press('Publish…');
+      await press('Publish');
       await wait(() => button('Publish v0.1.0') && !button('Publish v0.1.0').disabled, 'publish preview');
       await typeField('What changed', 'The first release.');
       return 'Ready to publish';
@@ -162,7 +165,9 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
       if (!verified.ok) throw new Error(verified.message);
       const done = await window.opencourse.completeServerSignUp(window.__flow, 'learner', 'another long password');
       if (!done.ok) throw new Error(done.message);
-      await press('Course catalog');
+      (await wait(() => [...document.querySelectorAll('.course-source-tabs button')].find(b => b.textContent.includes('Smoke server')), 'server source')).click();
+      await wait(() => document.querySelector('.add-courses'), 'add courses button');
+      await press('Add courses');
       const card = await wait(() => document.querySelector('.catalog-card'), 'catalog card');
       if (!card.textContent.includes('v0.1.0') || !card.textContent.includes('author')) throw new Error('Card lacks version or publisher: ' + card.textContent);
       return card.textContent;
@@ -182,14 +187,15 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
       await press('Open in my courses');
       const line = await wait(() => document.querySelector('.course-origin-line'), 'origin line');
       if (!line.textContent.includes('Smoke server') || !line.textContent.includes('v0.1.0') || !line.textContent.includes('Published by author')) throw new Error(line.textContent);
-      if (button('Publish…')) throw new Error('A learner is offered Publish');
+      if (button('Publish')) throw new Error('A learner is offered Publish');
       document.querySelector('.lesson-row').click();
       await wait(() => button('Mark lesson completed'), 'lesson'); await press('Mark lesson completed');
-      await wait(() => button('✓ Lesson completed'), 'completed');
+      await wait(() => button('Lesson completed'), 'completed');
       return line.textContent;
     `)
     nav('library')
     await run('learner: My courses shows the badges', `
+      await serverTab();
       await wait(() => document.querySelector('.origin-badge.from-server'), 'server badge');
       return [...document.querySelectorAll('.course-card-origin')].map(e => e.textContent).join(' | ');
     `)
@@ -198,6 +204,7 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
     nav('users')
     await run('author: raises the version in the editor and saves with the menu', `
       await pickUser('Author');
+      await serverTab();
       (await wait(() => [...document.querySelectorAll('.course-card')].find(c => c.textContent.includes('example course')), 'course card')).click();
       await press('Edit course');
       await wait(() => document.querySelector('.course-editor'), 'editor');
@@ -214,8 +221,9 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
     await run('author: publishes v0.2.0 from the course page', `
       await wait(() => document.querySelector('.author-save-state')?.textContent === 'All changes saved', 'saved');
       document.querySelector('.crumbs a').click();
+      await serverTab();
       (await wait(() => [...document.querySelectorAll('.course-card')].find(c => c.textContent.includes('revised')), 'revised card')).click();
-      await press('Publish a new version…');
+      await press('Publish a new version');
       await press('Publish v0.2.0');
       await wait(() => document.querySelector('.course-server-panel [role="status"]')?.textContent.includes('Published v0.2.0'), 'published');
       return 'v0.2.0';
@@ -224,9 +232,10 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
     nav('users')
     await run('learner: is offered the update, sees what it does, installs it', `
       await pickUser('Learner');
+      await serverTab();
       await wait(() => document.querySelector('.update-badge.update')?.textContent.includes('v0.2.0'), 'update badge');
       (await wait(() => [...document.querySelectorAll('.course-card')].find(c => c.querySelector('.origin-badge.from-server')), 'server card')).click();
-      await press('Update to v0.2.0…');
+      await press('Update to v0.2.0');
       await wait(() => button('Install v0.2.0') && !button('Install v0.2.0').disabled, 'update preview');
       return document.querySelector('.course-server-panel').textContent;
     `)
@@ -244,6 +253,7 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
     nav('users')
     await run('author: manages the publication and rolls back', `
       await pickUser('Author');
+      await serverTab();
       (await wait(() => [...document.querySelectorAll('.course-card')].find(c => c.textContent.includes('revised')), 'revised card')).click();
       await press('Manage publication');
       await wait(() => document.querySelectorAll('.publication-versions tbody tr').length === 2, 'two versions');

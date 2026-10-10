@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent } from 'react'
 import type { UserProfile } from '@core/types'
@@ -243,7 +244,7 @@ export default function Logs({ user, navigate, route }: Props): JSX.Element {
                 </label>
               </div>
               <div className="logs-actions">
-                <button className="secondary logs-refresh" onClick={refresh} disabled={loading}>Refresh</button>
+                <ActionButton icon="refresh" className="secondary logs-refresh" onClick={refresh} disabled={loading}>Refresh</ActionButton>
                 <button className="ghost logs-reset" onClick={reset} disabled={!filtered(query) && !search}>Reset filters</button>
               </div>
             </div>
@@ -315,13 +316,13 @@ export default function Logs({ user, navigate, route }: Props): JSX.Element {
                 {total ? `${first.toLocaleString()}–${last.toLocaleString()} of ${total.toLocaleString()}` : loading ? 'Loading…' : '0 lines'}
               </span>
               <div className="logs-pager">
-                <button className="secondary logs-prev" disabled={query.page <= 1 || loading} onClick={() => setQuery((q) => ({ ...q, page: q.page - 1 }))}>
-                  ← Previous
-                </button>
+                <ActionButton icon="left" className="secondary logs-prev" disabled={query.page <= 1 || loading} onClick={() => setQuery((q) => ({ ...q, page: q.page - 1 }))}>
+                  Previous
+                </ActionButton>
                 <span className="meta">Page {query.page} of {pages}</span>
-                <button className="secondary logs-next" disabled={query.page >= pages || loading} onClick={() => setQuery((q) => ({ ...q, page: q.page + 1 }))}>
-                  Next →
-                </button>
+                <ActionButton icon="right" className="secondary logs-next" disabled={query.page >= pages || loading} onClick={() => setQuery((q) => ({ ...q, page: q.page + 1 }))}>
+                  Next
+                </ActionButton>
               </div>
               <label className="logs-page-size meta">
                 Per page

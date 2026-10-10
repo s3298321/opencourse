@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { ManagedCourse, VersionEntry } from '@core/catalog/api'
@@ -55,12 +56,12 @@ export default function Publication({ serverId, courseId, user, navigate, route,
                     <td>{v.downloads ?? 0}</td>
                     <td><span className={`update-badge${v.status === 'current' ? ' update' : ''}`}>{STATUS[v.status]}</span></td>
                     <td><div className="publication-actions">
-                      {v.status !== 'current' && v.status !== 'deleted' && <button className="secondary" disabled={busy} onClick={() => void run(
+                      {v.status !== 'current' && v.status !== 'deleted' && <ActionButton icon="check" className="secondary" disabled={busy} onClick={() => void run(
                         { title: `Make v${v.version} current?`, detail: v.status === 'withdrawn' ? `v${v.version} becomes what learners get again.` : `Learners who add or update the course get v${v.version}. Newer versions stay, withdrawn, and can be made current again.`, confirmLabel: 'Make current', cancelLabel: 'Cancel' },
-                        () => window.opencourse.setCurrentPublishedVersion(serverId, courseId, v.version))}>Make current</button>}
-                      {v.status !== 'current' && v.status !== 'deleted' && <button className="secondary danger" disabled={busy} onClick={() => void run(
+                        () => window.opencourse.setCurrentPublishedVersion(serverId, courseId, v.version))}>Make current</ActionButton>}
+                      {v.status !== 'current' && v.status !== 'deleted' && <ActionButton icon="trash" className="secondary danger" disabled={busy} onClick={() => void run(
                         { title: `Delete v${v.version}?`, detail: `Its archive is deleted from the server. Learners who installed it keep their copy. The number v${v.version} can never be published again.`, confirmLabel: 'Delete version', cancelLabel: 'Cancel', danger: true },
-                        () => window.opencourse.deletePublishedVersion(serverId, courseId, v.version))}>Delete</button>}
+                        () => window.opencourse.deletePublishedVersion(serverId, courseId, v.version))}>Delete</ActionButton>}
                     </div></td>
                   </tr>
                 ))}
@@ -69,10 +70,10 @@ export default function Publication({ serverId, courseId, user, navigate, route,
             <p className="meta">To publish a change, edit the course, raise its version and choose Publish a new version on its page. The current version cannot be deleted; make another one current first, or unpublish the course.</p>
             <div className="actions">
               {course.listed
-                ? <button className="secondary danger" disabled={busy} onClick={() => void run(
+                ? <ActionButton icon="trash" className="secondary danger" disabled={busy} onClick={() => void run(
                     { title: 'Unpublish this course?', detail: 'It leaves the catalog and nobody can add it. Learners who have it keep their copy but get no updates. Nothing is deleted; you can list it again.', confirmLabel: 'Unpublish', cancelLabel: 'Cancel', danger: true },
-                    () => window.opencourse.unpublishCourse(serverId, courseId))}>Unpublish course</button>
-                : <button disabled={busy || !course.currentVersion} onClick={() => void run(null, () => window.opencourse.relistCourse(serverId, courseId))}>List in the catalog again</button>}
+                    () => window.opencourse.unpublishCourse(serverId, courseId))}>Unpublish course</ActionButton>
+                : <ActionButton icon="refresh" disabled={busy || !course.currentVersion} onClick={() => void run(null, () => window.opencourse.relistCourse(serverId, courseId))}>List in the catalog again</ActionButton>}
             </div>
           </>}
         </div>

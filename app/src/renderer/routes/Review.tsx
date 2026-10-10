@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { ReviewAnswer, ReviewRating, ReviewSession } from '@core/types'
@@ -76,11 +77,11 @@ export default function Review({ initialSession, navigate, active = true }: {
           <div className="review-ratings">{ratings.map((rating, index) => <button ref={index === 0 ? firstRating : undefined} key={rating} className={`secondary rating-${rating}`} disabled={busy} onClick={() => void rate(rating)}>
             <strong>{ratingLabels[rating]} <kbd>{index + 1}</kbd></strong><span>{ratingDescriptions[rating]}</span><small>{reviewTime(answer.intervals[rating])}</small>
           </button>)}</div>
-        </> : <div className="review-reveal"><button ref={primary} disabled={busy} onClick={() => void reveal()}>{busy ? 'Revealing' : 'Reveal answer'}</button><span className="meta">Think of your answer first · Space to reveal</span></div>}
+        </> : <div className="review-reveal"><ActionButton icon="eye" ref={primary} disabled={busy} onClick={() => void reveal()}>{busy ? 'Revealing' : 'Reveal answer'}</ActionButton><span className="meta">Think of your answer first · Space to reveal</span></div>}
       </div> : <div className="review-complete">
         <span className="review-label">Session complete</span><h1 ref={summaryHeading} tabIndex={-1}>Review complete</h1><p>You reviewed {session.reviewed} {session.reviewed === 1 ? 'card' : 'cards'}.</p>
         <div className="review-result-counts">{ratings.map(rating => <div key={rating}><strong>{session.ratings[rating]}</strong><span>{ratingLabels[rating]}</span></div>)}</div>
-        <p role="status">{reviewRecommendation(session.summary)}</p><button onClick={exit}>Back to course</button>
+        <p role="status">{reviewRecommendation(session.summary)}</p><ActionButton icon="left" onClick={exit}>Back to course</ActionButton>
       </div>}
     </div>
   </section>

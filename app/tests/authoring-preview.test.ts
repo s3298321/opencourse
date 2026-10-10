@@ -128,7 +128,8 @@ describe('course authoring previews', () => {
     await click('Show solution')
     expect(container.querySelector('details[open] code')?.textContent).toBe('AI replacement')
     await click('Mark completed')
-    expect(container.textContent).toContain('✓ Completed')
+    expect([...container.querySelectorAll('button')].find(button => button.textContent === 'Completed')?.classList.contains('secondary')).toBe(true)
+    expect(container.textContent).toContain('Completed')
     for (const mock of Object.values(learner)) expect(mock).not.toHaveBeenCalled()
   })
   it('uses exercise runtime file names and keeps same-ID quiz radio groups independent in a lesson', async () => {

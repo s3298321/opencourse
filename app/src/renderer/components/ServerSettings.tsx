@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { emailProblem, passwordProblem, usernameProblem, type ServerInfo } from '@core/catalog/api'
@@ -50,12 +51,12 @@ export default function ServerSettings(): JSX.Element {
               </label>
               <div className="actions">
                 {server.account
-                  ? <button className="secondary" onClick={() => void act(() => window.opencourse.signOutOfServer(server.id), `Signed out of ${server.name}.`)}>Sign out</button>
-                  : <button className="secondary" onClick={() => { setNote(null); setConnecting({ url: server.url, signIn: true }) }}>Sign in</button>}
-                <button className="secondary danger" onClick={() => {
+                  ? <ActionButton icon="signOut" className="secondary" onClick={() => void act(() => window.opencourse.signOutOfServer(server.id), `Signed out of ${server.name}.`)}>Sign out</ActionButton>
+                  : <ActionButton icon="signIn" className="secondary" onClick={() => { setNote(null); setConnecting({ url: server.url, signIn: true }) }}>Sign in</ActionButton>}
+                <ActionButton icon="trash" className="secondary danger" onClick={() => {
                   if (!window.confirm(`Remove ${server.name}?\n\nYou will be signed out. Courses you added from it stay in your library, but cannot be updated until you connect to it again.`)) return
                   void act(() => window.opencourse.removeServer(server.id), `Removed ${server.name}.`)
-                }}>Remove</button>
+                }}>Remove</ActionButton>
               </div>
             </li>
           ))}
@@ -67,7 +68,7 @@ export default function ServerSettings(): JSX.Element {
             setConnecting(null)
             if (connection) { setNote({ text: `Connected to ${connection.name} as ${connection.account?.username}.`, error: false }); refresh() }
           }} />
-        : <div className="actions"><button onClick={() => { setNote(null); setConnecting({}) }}>Connect to a server</button></div>}
+        : <div className="actions"><ActionButton icon="connect" onClick={() => { setNote(null); setConnecting({}) }}>Connect to a server</ActionButton></div>}
     </section>
   )
 }
@@ -148,15 +149,15 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
           <input autoFocus type="text" value={url} placeholder="courses.example.org" autoComplete="url" spellCheck={false} onChange={(e) => setUrl(e.target.value)} />
         </label>
         <p className="meta">The address of an OpenCourse server, as its operator gave it to you.</p>
-        <div className="actions"><button type="submit" disabled={busy || !url.trim()}>{busy ? 'Checking' : 'Continue'}</button></div>
+        <div className="actions"><ActionButton icon="right" type="submit" disabled={busy || !url.trim()}>{busy ? 'Checking' : 'Continue'}</ActionButton></div>
       </form>
       break
     case 'choose':
       body = <div>
         <p className="meta">{step.info.description}</p>
         <div className="actions">
-          <button autoFocus disabled={step.info.registration === 'closed'} onClick={() => setStep({ kind: 'email', url: step.url, info: step.info })}>Create an account</button>
-          <button className="secondary" onClick={() => setStep({ kind: 'signin', url: step.url, info: step.info })}>I have an account</button>
+          <ActionButton icon="plus" autoFocus disabled={step.info.registration === 'closed'} onClick={() => setStep({ kind: 'email', url: step.url, info: step.info })}>Create an account</ActionButton>
+          <ActionButton icon="signIn" className="secondary" onClick={() => setStep({ kind: 'signin', url: step.url, info: step.info })}>I have an account</ActionButton>
         </div>
         {step.info.registration === 'closed' && <p className="meta">This server is not accepting new accounts.</p>}
       </div>
@@ -167,7 +168,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
           <input autoFocus type="email" value={email} autoComplete="email" onChange={(e) => setEmail(e.target.value)} />
         </label>
         <p className="meta">{step.info.name} sends a 6-digit code to this address to confirm it is yours.</p>
-        <div className="actions"><button type="submit" disabled={busy || !email.trim() || Boolean(emailProblem(email.trim()))}>{busy ? 'Sending' : 'Send code'}</button></div>
+        <div className="actions"><ActionButton icon="mail" type="submit" disabled={busy || !email.trim() || Boolean(emailProblem(email.trim()))}>{busy ? 'Sending' : 'Send code'}</ActionButton></div>
       </form>
       break
     case 'code':
@@ -177,10 +178,10 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
           <input autoFocus className="server-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
         </label>
         <div className="actions">
-          <button type="submit" disabled={busy || code.length !== 6}>{busy ? 'Checking' : 'Confirm'}</button>
-          <button type="button" className="secondary" disabled={busy || resendIn > 0} onClick={() => void run(() => window.opencourse.resendServerCode(step.flowId), () => setResendIn(RESEND_AFTER_S))}>
+          <ActionButton icon="check" type="submit" disabled={busy || code.length !== 6}>{busy ? 'Checking' : 'Confirm'}</ActionButton>
+          <ActionButton icon="refresh" type="button" className="secondary" disabled={busy || resendIn > 0} onClick={() => void run(() => window.opencourse.resendServerCode(step.flowId), () => setResendIn(RESEND_AFTER_S))}>
             {resendIn > 0 ? `Send again in ${resendIn}s` : 'Send a new code'}
-          </button>
+          </ActionButton>
         </div>
       </form>
       break
@@ -193,7 +194,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
         <p className={`meta server-username-state${available?.available && available.name === username ? ' ok' : ''}`} role="status">
           {nameIssue ?? (available && available.name === username ? (available.available ? 'Available.' : available.reason ?? 'Not available.') : username ? 'Checking…' : 'Lowercase letters, digits, "-" and "_".')}
         </p>
-        <div className="actions"><button type="submit" disabled={busy || Boolean(nameIssue) || !(available?.available && available.name === username)}>Continue</button></div>
+        <div className="actions"><ActionButton icon="right" type="submit" disabled={busy || Boolean(nameIssue) || !(available?.available && available.name === username)}>Continue</ActionButton></div>
       </form>
       break
     case 'password':
@@ -211,7 +212,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
           <input type="password" value={confirm} autoComplete="new-password" onChange={(e) => setConfirm(e.target.value)} />
         </label>
         {(passwordIssue || mismatch) && <p className="meta error">{passwordIssue ?? 'The two passwords differ.'}</p>}
-        <div className="actions"><button type="submit" disabled={busy || !password || Boolean(passwordIssue) || confirm !== password}>{busy ? 'Creating' : 'Create account'}</button></div>
+        <div className="actions"><ActionButton icon="plus" type="submit" disabled={busy || !password || Boolean(passwordIssue) || confirm !== password}>{busy ? 'Creating' : 'Create account'}</ActionButton></div>
       </form>
       break
     case 'signin':
@@ -228,7 +229,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
           <input type="password" value={password} autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
         </label>
         <div className="actions">
-          <button type="submit" disabled={busy || !login.trim() || !password}>{busy ? 'Signing in' : 'Sign in'}</button>
+          <ActionButton icon="signIn" type="submit" disabled={busy || !login.trim() || !password}>{busy ? 'Signing in' : 'Sign in'}</ActionButton>
           <button type="button" className="ghost" onClick={() => { setEmail(login.includes('@') ? login : ''); setStep({ kind: 'reset-email', url: step.url, info: step.info }) }}>Forgot password?</button>
         </div>
       </form>
@@ -239,7 +240,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
           <input autoFocus type="email" value={email} autoComplete="email" onChange={(e) => setEmail(e.target.value)} />
         </label>
         <p className="meta">If this address has an account on {step.info.name}, it is sent a code to set a new password.</p>
-        <div className="actions"><button type="submit" disabled={busy || Boolean(emailProblem(email.trim()))}>{busy ? 'Sending' : 'Send code'}</button></div>
+        <div className="actions"><ActionButton icon="mail" type="submit" disabled={busy || Boolean(emailProblem(email.trim()))}>{busy ? 'Sending' : 'Send code'}</ActionButton></div>
       </form>
       break
     case 'reset':
@@ -260,7 +261,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
           <input type="password" value={confirm} autoComplete="new-password" onChange={(e) => setConfirm(e.target.value)} />
         </label>
         {(passwordIssue || mismatch) && <p className="meta error">{passwordIssue ?? 'The two passwords differ.'}</p>}
-        <div className="actions"><button type="submit" disabled={busy || code.length !== 6 || Boolean(passwordIssue) || confirm !== password}>{busy ? 'Saving' : 'Set password and sign in'}</button></div>
+        <div className="actions"><ActionButton icon="lock" type="submit" disabled={busy || code.length !== 6 || Boolean(passwordIssue) || confirm !== password}>{busy ? 'Saving' : 'Set password and sign in'}</ActionButton></div>
       </form>
       break
   }

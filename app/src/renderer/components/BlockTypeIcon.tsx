@@ -2,10 +2,12 @@ import type { JSX, ReactNode } from 'react'
 import type { Block } from '@core/types'
 
 export const blockTypeLabels: Record<Block['type'], string> = {
+  'python-cell': 'Python cell',
   markdown: 'Text', image: 'Image', video: 'Video', visualization: 'Visualization', quiz: 'Quiz', exercise: 'Exercise'
 }
 
 const shapes: Record<Block['type'], ReactNode> = {
+  'python-cell': <><path d="m7 7-5 5 5 5M17 7l5 5-5 5" /></>,
   markdown: <><path d="M4 4h16M12 4v16M8 20h8" /></>,
   image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8" cy="8" r="1.5" /><path d="m3 17 5-5 4 4 4-6 5 7" /></>,
   video: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m10 8 6 4-6 4Z" /></>,

@@ -64,7 +64,7 @@ export function authoringContext(manifest: CourseManifest, target: AuthoringTarg
   const ancestry = []
   let parent = current?.parentId
   while (parent) { const node = nodes.find(n => n.id === parent); if (!node) break; ancestry.unshift({ ref: node.id, label: node.label }); parent = node.parentId }
-  const outline = nodes.filter(n => ['module', 'project', 'lesson', 'markdown', 'quiz', 'exercise', 'image', 'video', 'visualization', 'flashcard'].includes(n.kind)).map(n => ({ ref: n.id, parent: n.parentId, kind: n.kind, label: n.label }))
+  const outline = nodes.filter(n => ['module', 'project', 'lesson', 'markdown', 'python-cell', 'quiz', 'exercise', 'image', 'video', 'visualization', 'flashcard'].includes(n.kind)).map(n => ({ ref: n.id, parent: n.parentId, kind: n.kind, label: n.label }))
   const authored = authoringManifest(manifest)
   const selected = ref ? findRef(authored, ref) : { ...authored, modules: undefined }
   return { target, label: current?.label ?? 'Course overview', draftVersion, course: { title: manifest.title, slug: manifest.slug }, ancestry,

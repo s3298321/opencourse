@@ -27,8 +27,9 @@ describe('validateManifest', () => {
   it('still accepts a v1.0 manifest', () => {
     const m = example()
     m.schema_version = '1.0'
+    delete m.notebook
     m.modules = (m.modules as { type?: string }[]).filter((mod) => mod.type !== 'project')
-    for (const module of m.modules as { lessons: { flashcards?: unknown }[] }[]) for (const lesson of module.lessons) delete lesson.flashcards
+    for (const module of m.modules as { lessons: { flashcards?: unknown; blocks: { type: string }[] }[] }[]) for (const lesson of module.lessons) { delete lesson.flashcards; lesson.blocks = lesson.blocks.filter(block => block.type !== 'python-cell') }
     expect(validateManifest(m)).toEqual([])
   })
 

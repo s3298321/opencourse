@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import type { ExerciseBlock } from '@core/types'
@@ -70,20 +71,21 @@ export default function ExerciseBlockView({
 
       <div className="actions">
         {!brief && onOpenWorkbench && (
-          <button onClick={() => onOpenWorkbench(block.id)} disabled={isOpen}>
+          <ActionButton icon="terminal" onClick={() => onOpenWorkbench(block.id)} disabled={isOpen}>
             {isOpen ? 'Editor open →' : 'Open editor'}
-          </button>
+          </ActionButton>
         )}
-        <button className="secondary" onClick={() => void showSolution()} disabled={solution !== null}>
+        <ActionButton icon="eye" className="secondary" onClick={() => void showSolution()} disabled={solution !== null}>
           Show solution
-        </button>
-        <button
+        </ActionButton>
+        <ActionButton
+          icon="check"
           className={done ? 'secondary' : ''}
           onClick={() => onToggleDone(block.id, !done)}
           style={{ marginLeft: 'auto' }}
         >
-          {done ? '✓ Completed' : 'Mark completed'}
-        </button>
+          {done ? 'Completed' : 'Mark completed'}
+        </ActionButton>
       </div>
 
       {solution !== null && (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { CoachTranscript as Transcript, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
+import ScreenPlaceholder from '../components/ScreenPlaceholder'
 import type { Route, Screen } from '../routes'
 
 interface Props {
@@ -55,7 +56,7 @@ export default function CoachTranscript({ projectId, sessionId, user, navigate, 
     )
   }
 
-  if (!transcript) return <div className="empty">Loading…</div>
+  if (!transcript) return <ScreenPlaceholder />
 
   const { session, turns, toolCalls } = transcript
 

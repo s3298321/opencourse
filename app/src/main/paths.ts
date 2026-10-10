@@ -55,6 +55,11 @@ export function userCoursesDir(id: string): string {
   return join(userDir(id), 'courses')
 }
 
+/** Imported PDFs only: never shared with the course server. */
+export function userDocumentsDir(id: string): string {
+  return join(userDir(id), 'documents')
+}
+
 export function userProgressDir(id: string): string {
   return join(userDir(id), 'progress')
 }

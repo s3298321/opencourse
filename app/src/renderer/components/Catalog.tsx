@@ -1,16 +1,17 @@
+import ActionButton from './ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { CatalogCourse, CatalogPage, CatalogSort, CatalogTag } from '@core/catalog/api'
 import type { CourseSummary, ServerConnection } from '@core/types'
 import type { Route, Screen } from '../routes'
-import Menu from './Menu'
 
 /**
- * Library → Course catalog: the active server's courses. Everything here comes
+ * Library → Add courses: the selected server's courses. Everything here comes
  * through main (window.opencourse) - the renderer still makes no network
  * request of its own, covers included.
  */
-export default function Catalog({ navigate, route, library, onAdded }: {
+export default function Catalog({ serverId, navigate, route, library, onAdded }: {
+  serverId: string
   navigate: (r: Route) => void
   route: Screen
   library: CourseSummary[]
@@ -31,7 +32,7 @@ export default function Catalog({ navigate, route, library, onAdded }: {
   const loadServers = useCallback(() => { void window.opencourse.listServers().then(setServers).catch(() => setServers([])) }, [])
   useEffect(loadServers, [loadServers])
   useEffect(() => window.opencourse.onServersChanged(loadServers), [loadServers])
-  const active = servers?.find((s) => s.active) ?? null
+  const active = servers?.find((s) => s.id === serverId) ?? null
 
   // Typing settles before it searches; a new search starts at page one.
   useEffect(() => {
@@ -43,17 +44,20 @@ export default function Catalog({ navigate, route, library, onAdded }: {
     if (!active) return undefined
     let alive = true
     setError(null)
+    setResult(null)
     void window.opencourse.searchCatalog(active.id, { q: query, tags, sort: sort || undefined, page }).then((r) => {
       if (!alive) return
       if (r.ok) setResult(r.value)
       else { setResult(null); setError(r.message) }
-    })
+    }).catch((err) => { if (alive) { setResult(null); setError(err.message) } })
     return () => { alive = false }
   }, [active?.id, query, tags, sort, page])
 
   useEffect(() => {
     if (!active) return
-    void window.opencourse.listCatalogTags(active.id).then((r) => setAllTags(r.ok ? r.value : []))
+    let alive = true
+    void window.opencourse.listCatalogTags(active.id).then((r) => { if (alive) setAllTags(r.ok ? r.value : []) }).catch(() => { if (alive) setAllTags([]) })
+    return () => { alive = false }
   }, [active?.id, result?.total])
 
   if (servers === null) return <p className="meta">Loading…</p>
@@ -62,7 +66,7 @@ export default function Catalog({ navigate, route, library, onAdded }: {
       <div className="empty-library catalog-empty">
         <h3>No server to browse</h3>
         <p>Course catalogs live on OpenCourse servers. Connect to one in Settings — with an account there, you can add its courses to your library and publish your own.</p>
-        <button onClick={() => navigate({ name: 'settings', from: route })}>Open Settings</button>
+        <ActionButton icon="settings" onClick={() => navigate({ name: 'settings', from: route, section: 'servers' })}>Open Settings</ActionButton>
       </div>
     )
   }
@@ -74,6 +78,8 @@ export default function Catalog({ navigate, route, library, onAdded }: {
       const r = await window.opencourse.addCatalogCourse(active.id, course.id)
       if (r.ok) { setNote({ text: `Added “${r.value.title}” (v${r.value.version}) to your courses.`, error: false }); onAdded() }
       else setNote({ text: r.message, error: true })
+    } catch (err) {
+      setNote({ text: (err as Error).message, error: true })
     } finally { setAdding(null) }
   }
   const toggleTag = (tag: string): void => { setTags((now) => now.includes(tag) ? now.filter((t) => t !== tag) : [...now, tag]); setPage(1) }
@@ -82,9 +88,7 @@ export default function Catalog({ navigate, route, library, onAdded }: {
   return (
     <div className="catalog">
       <div className="catalog-bar">
-        {servers.length > 1
-          ? <Menu label={active.name} className="catalog-server" ariaLabel="Server" items={servers.map((s) => ({ id: s.id, label: s.name, hint: s.url, checked: s.active, onSelect: () => { void window.opencourse.setActiveServer(s.id).then(setServers) } }))} />
-          : <span className="catalog-server-name" title={active.url}>{active.name}</span>}
+        <span className="catalog-server-name" title={active.url}>{active.name}</span>
         <input type="search" className="catalog-search" aria-label="Search courses" placeholder="Search by keyword" value={q} onChange={(e) => setQ(e.target.value)} />
         <select aria-label="Sort courses" value={sort} onChange={(e) => { setSort(e.target.value as CatalogSort | ''); setPage(1) }}>
           <option value="">Best match</option>
@@ -94,7 +98,7 @@ export default function Catalog({ navigate, route, library, onAdded }: {
         </select>
       </div>
       {!active.account && (
-        <p className="import-note">You are signed out of {active.name}. <button className="ghost catalog-inline" onClick={() => navigate({ name: 'settings', from: route })}>Sign in</button> to add courses.</p>
+        <p className="import-note">You are signed out of {active.name}. <button className="ghost catalog-inline" onClick={() => navigate({ name: 'settings', from: route, section: 'servers' })}>Sign in</button> to add courses.</p>
       )}
       {allTags.length > 0 && (
         <div className="catalog-tags" aria-label="Filter by tag">
@@ -107,6 +111,7 @@ export default function Catalog({ navigate, route, library, onAdded }: {
       )}
       {note && <p className={`import-note${note.error ? ' error' : ''}`} role="status">{note.text}</p>}
       {error && <p className="import-note error" role="alert">{error}</p>}
+      {!result && !error && <p className="meta">Loading courses…</p>}
       {result && <p className="meta catalog-count">{result.total === 1 ? '1 course' : `${result.total} courses`}{query || tags.length ? ' match' : ` on ${active.name}`}</p>}
       {result?.courses.length === 0 && <p className="meta">Nothing matches. Try fewer words or tags.</p>}
       <div className="catalog-grid">
@@ -119,9 +124,9 @@ export default function Catalog({ navigate, route, library, onAdded }: {
       </div>
       {pages > 1 && (
         <nav className="catalog-pager">
-          <button className="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← Previous</button>
+          <ActionButton icon="left" className="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</ActionButton>
           <span className="meta">Page {page} of {pages}</span>
-          <button className="secondary" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next →</button>
+          <ActionButton icon="right" className="secondary" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next</ActionButton>
         </nav>
       )}
     </div>
@@ -164,8 +169,8 @@ function CatalogCard({ serverId, course, inLibrary, adding, canAdd, onOpen, onAd
       </div>
       <div className="catalog-card-action" onClick={(e) => e.stopPropagation()}>
         {inLibrary
-          ? <button className="secondary" onClick={onOpenInLibrary}>In your library</button>
-          : <button disabled={adding || !canAdd} onClick={onAdd}>{adding ? 'Adding' : 'Add'}</button>}
+          ? <ActionButton icon="check" className="secondary" onClick={onOpenInLibrary}>In your library</ActionButton>
+          : <ActionButton icon="plus" disabled={adding || !canAdd} onClick={onAdd}>{adding ? 'Adding' : 'Add'}</ActionButton>}
       </div>
     </div>
   )

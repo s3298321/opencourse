@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useId, useState } from 'react'
 import type { JSX } from 'react'
 import type { QuizAttempt, QuizBlock } from '@core/types'
@@ -82,9 +83,9 @@ export default function QuizBlockView({ courseId, block, attempt, onAnswered, pr
       )}
 
       <div className="actions">
-        <button onClick={() => void submit()} disabled={busy || selected.length === 0}>
+        <ActionButton icon="check" onClick={() => void submit()} disabled={busy || selected.length === 0}>
           {block.kind === 'multiple' ? 'Check answers' : 'Check answer'}
-        </button>
+        </ActionButton>
         {answeredEarlier && (
           <span className="meta">
             Last attempt: {attempt?.isCorrect ? 'correct' : 'incorrect'}

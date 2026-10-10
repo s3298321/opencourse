@@ -77,7 +77,7 @@ describe('flashcard review screen', () => {
   })
 })
 /** A local course on a machine with no servers: the course page's server half has nothing to ask. */
-const noServers = { listServers: async () => [], onServersChanged: () => () => {}, checkCourseUpdates: async () => ({}) }
+const noServers = { listServers: async () => [], onServersChanged: () => () => {}, checkCourseUpdates: async () => ({}), touchCourse: vi.fn(async () => emptyProgress('course')) }
 describe('course overview review controls', () => {
   it('defaults to ten, accepts fifteen/twenty, shows estimates and refreshes on events/focus', async () => {
     const course = buildCourse({ schema_version: '1.4', slug: 'course', title: 'Course', modules: [{ slug: 'module', title: 'Module', lessons: [{ slug: 'lesson', title: 'Lesson', blocks: [] }] }] }, '/tmp')
@@ -96,8 +96,11 @@ describe('course overview review controls', () => {
     expect(service.startReviewSession).toHaveBeenLastCalledWith('course', 15)
     expect(navigate).toHaveBeenCalledWith({ name: 'review', session: initial() })
     const before = service.getReviewSummary.mock.calls.length
+    const opened = service.touchCourse.mock.calls.length
     await act(async () => { changed('course'); window.dispatchEvent(new Event('focus')) })
     expect(service.getReviewSummary.mock.calls.length).toBeGreaterThan(before)
+    expect(service.touchCourse).toHaveBeenCalledWith('course')
+    expect(service.touchCourse.mock.calls.length).toBe(opened)
   })
   it('disables reviews for locked or empty decks and explains why', async () => {
     const course = buildCourse({ schema_version: '1.4', slug: 'course', title: 'Course', modules: [] }, '/tmp')
@@ -105,5 +108,51 @@ describe('course overview review controls', () => {
     await act(async () => root.render(createElement(CourseDetail, { courseId: 'course', user: null, route: { name: 'course', courseId: 'course' }, navigate: vi.fn() })))
     expect(button('Review').disabled).toBe(true)
     expect(container.textContent).toContain('Complete a lesson with flashcards')
+  })
+})
+
+describe('course overview deletion', () => {
+  const setup = async () => {
+    const course = buildCourse({ schema_version: '1.4', slug: 'course', title: 'Course to delete', modules: [] }, '/tmp')
+    const service = {
+      getCourse: async () => course, getProgress: async () => emptyProgress('course'),
+      getReviewSummary: async () => initial().summary, onCoursesChanged: () => () => {},
+      onReviewChanged: () => () => {}, removeCourse: vi.fn(async () => {}), ...noServers
+    }
+    const confirm = vi.fn(() => true), navigate = vi.fn()
+    vi.stubGlobal('confirm', confirm)
+    vi.stubGlobal('opencourse', service)
+    await act(async () => root.render(createElement(CourseDetail, { courseId: 'course', user: null, route: { name: 'course', courseId: 'course' }, navigate })))
+    return { service, confirm, navigate }
+  }
+  it('leaves the course intact when confirmation is cancelled', async () => {
+    const { service, confirm, navigate } = await setup()
+    confirm.mockReturnValue(false)
+    await act(async () => button('Delete course').click())
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('permanently deletes all progress'))
+    expect(service.removeCourse).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+  it('prevents repeated deletion while pending and returns to the library after success', async () => {
+    const { service, navigate } = await setup()
+    let finish!: () => void
+    service.removeCourse.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
+    await act(async () => button('Delete course').click())
+    expect(button('Delete course').disabled).toBe(true)
+    await act(async () => button('Delete course').click())
+    expect(service.removeCourse).toHaveBeenCalledExactlyOnceWith('course')
+    expect(navigate).not.toHaveBeenCalled()
+    await act(async () => finish())
+    expect(navigate).toHaveBeenCalledWith({ name: 'library' })
+  })
+  it('shows a failed deletion and lets the user retry without leaving the course', async () => {
+    const { service, navigate } = await setup()
+    service.removeCourse.mockRejectedValueOnce(new Error('Could not delete course'))
+    await act(async () => button('Delete course').click())
+    expect(container.querySelector('p[role="status"]')?.textContent).toBe('Could not delete course')
+    expect(button('Delete course').disabled).toBe(false)
+    expect(navigate).not.toHaveBeenCalled()
+    await act(async () => button('Delete course').click())
+    expect(navigate).toHaveBeenCalledWith({ name: 'library' })
   })
 })

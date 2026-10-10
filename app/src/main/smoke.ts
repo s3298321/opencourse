@@ -1,7 +1,10 @@
+import { notebookChecks } from './notebook-smoke'
 import { editorSmoke } from './editor-smoke'
 import { themeChecks } from './theme-smoke'
 import { readingSizeChecks } from './reading-smoke'
 import { appUpdateChecks } from './update-smoke'
+import { workspaceChecks } from './workspace-smoke'
+import { documentsChecks } from './documents-smoke'
 import { FIXTURE_API, fixtureCourse, fixtureCoursesDir } from './fixture-identities'
 /**
  * Headless smoke check: boots the real window, drives the real renderer, and
@@ -46,7 +49,7 @@ const SCRIPT = `(async () => {
   const waitFor = async (selector, timeout = 8000) => {
     const t0 = Date.now()
     while (Date.now() - t0 < timeout) {
-      const el = document.querySelector(selector)
+      const el = [...document.querySelectorAll(selector)].find(el => el.checkVisibility({ visibilityProperty: true }))
       if (el) return el
       await sleep(50)
     }
@@ -525,7 +528,7 @@ const SCRIPT = `(async () => {
   // to the moment money would be spent has to work, and the moment itself has
   // to say so rather than fail.
   await step('highlighting a passage offers to ask about it, and opens the chat', async () => {
-    assert(!document.querySelector('.sidechat'), 'the side chat was already open')
+    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat was already open')
     const prose = await waitFor('.content-inner .prose p')
     const range = document.createRange()
     range.selectNodeContents(prose)
@@ -727,8 +730,9 @@ const SCRIPT = `(async () => {
   })
 
   await step('the side chat surface is exactly what the bridge means to expose', async () => {
-    // The project and course-editor chats are surfaces of their own.
-    const methods = Object.keys(window.opencourse).filter((k) => /Chat/.test(k) && !/ProjectChat|AuthoringChat/.test(k)).sort()
+    // The project and course-editor chats are surfaces of their own; the
+    // document chat is pinned on its own line below.
+    const methods = Object.keys(window.opencourse).filter((k) => /Chat/.test(k) && !/ProjectChat|AuthoringChat|DocumentChat/.test(k)).sort()
     assert(
       methods.join(',') ===
         'cancelChat,createChat,deleteChat,getChat,getChatModelSettings,getChatSourceIcons,getChatWebSearch,' +
@@ -736,17 +740,25 @@ const SCRIPT = `(async () => {
           'setChatDefaults,setChatModel,setChatProvider,setChatReasoning,setChatWebSearch,setEnabledChatModels',
       'the side chat surface changed: ' + methods.join(', ')
     )
-    return methods.length + ' methods'
+    const documentMethods = Object.keys(window.opencourse).filter((k) => /DocumentChat/.test(k)).sort()
+    assert(
+      documentMethods.join(',') ===
+        'cancelDocumentChat,createDocumentChat,deleteDocumentChat,getDocumentChat,listDocumentChats,' +
+          'onDocumentChatActivity,onDocumentChatDelta,onDocumentChatDone,onDocumentChatError,onDocumentChatTitle,' +
+          'setDocumentChatModel,setDocumentChatProvider,setDocumentChatReasoning',
+      'the document chat surface changed: ' + documentMethods.join(', ')
+    )
+    return methods.length + ' + ' + documentMethods.length + ' methods'
   })
 
-  await step('the editor opens beside the exercise brief, and the chat is not offered there', async () => {
+  await step('the editor opens beside the exercise brief and retains its Ask chat', async () => {
     // Three columns: the chapter list, the exercise's task, and the code. What
     // must not be there is the chat, which has no lesson on screen to be about.
     const lessonWithExercise = [...document.querySelectorAll('.sidebar a')]
       .find((a) => /await, create_task/i.test(a.textContent))
     assert(lessonWithExercise, 'no lesson with an exercise in the sidebar')
     lessonWithExercise.click()
-    assert(document.querySelector('.sidechat'), 'the chat did not survive the lesson change')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chat did not survive the lesson change')
     // Navigating scrolls the column to the top once the route has changed, which
     // is a moment after the click: scroll before that and it undoes the offset.
     await until(() => /await, create_task/i.test(document.querySelector('.lesson-head h1')?.textContent ?? ''), 'the exercise lesson')
@@ -768,8 +780,10 @@ const SCRIPT = `(async () => {
     await waitFor('.workbench .cm-content')
     await sleep(400)
 
-    assert(!document.querySelector('.sidechat'), 'the chat is still open over the editor')
-    assert(!document.querySelector('.titlebar .chat-chip'), 'the editor still offers the chat')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'Ask disappeared in the editor')
+    assert(document.querySelector('.titlebar .chat-chip'), 'the editor lost its Ask control')
+    document.querySelector('.titlebar .chat-chip').click()
+    await sleep(100)
     assert(document.querySelector('.content').hidden, 'the lesson column is still on screen')
     const chapters = document.querySelector('.sidebar').getBoundingClientRect()
     assert(chapters.width > 100, 'the chapter list went away with the lesson')
@@ -806,11 +820,13 @@ const SCRIPT = `(async () => {
     const back = [...brief.querySelectorAll('.workbench-back')]
       .find((b) => /back/i.test(b.textContent))
     assert(back, 'no way back to the lesson')
+    document.querySelector('.titlebar .chat-chip').click()
+    await sleep(100)
     back.click()
     await sleep(400)
     assert(!document.querySelector('.workbench'), 'the editor is still open')
     assert(document.querySelector('.lesson-head h1'), 'the lesson did not come back')
-    assert(document.querySelector('.sidechat'), 'the chat did not come back with the lesson')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chat did not return with the lesson')
     const after = document.querySelector('.content').scrollTop
     assert(after === wasAt, 'the lesson came back at ' + after + ', not ' + wasAt)
     return Math.round(left.width) + 'px brief → ' + Math.round(widened) + 'px, ' +
@@ -822,18 +838,18 @@ const SCRIPT = `(async () => {
     // a chip that stops toggling leaves the feature unreachable but for a
     // highlight.
     const chip = await waitFor('.titlebar .chat-chip')
-    assert(document.querySelector('.sidechat'), 'expected the chat open at this point')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'expected the chat open at this point')
     assert(chip.getAttribute('aria-pressed') === 'true', 'the chip does not show it is on')
     chip.click()
     await sleep(300)
-    assert(!document.querySelector('.sidechat'), 'the chip did not close the panel')
+    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chip did not close the panel')
     assert(
       document.querySelector('.titlebar .chat-chip').getAttribute('aria-pressed') === 'false',
       'the chip still shows it is on'
     )
     document.querySelector('.titlebar .chat-chip').click()
     await waitFor('.sidechat-tab')
-    assert(document.querySelector('.sidechat'), 'the chip did not open the panel again')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chip did not open the panel again')
     return 'closed and opened from the titlebar'
   })
 
@@ -920,7 +936,7 @@ const SCRIPT = `(async () => {
     assert(close, 'no close button on the panel')
     close.click()
     await sleep(300)
-    assert(!document.querySelector('.sidechat'), 'the panel is still open')
+    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the panel is still open')
     assert(document.querySelector('.lesson-head h1'), 'the lesson went away with the panel')
     return 'closed'
   })
@@ -1111,7 +1127,8 @@ const SCRIPT = `(async () => {
 
   await step('settings opens over a lesson and gives it back, scroll and chat intact', async () => {
     const before = document.querySelector('.lesson-head h1').textContent
-    document.querySelector('.titlebar .chat-chip').click()
+    const chatChip = document.querySelector('.titlebar .chat-chip')
+    if(chatChip.getAttribute('aria-pressed') !== 'true') chatChip.click()
     await waitFor('.sidechat')
     const scroller = document.querySelector('.content.scroll')
     scroller.scrollTop = 220
@@ -1134,7 +1151,7 @@ const SCRIPT = `(async () => {
     assert(head.textContent === before, 'came back to ' + head.textContent + ', not ' + before)
     // Both of these are the reason settings remembers where it came from: a
     // modal kept them for free and a route has to be made to.
-    assert(document.querySelector('.sidechat'), 'the side chat did not survive the trip')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat did not survive the trip')
     const after = document.querySelector('.content.scroll').scrollTop
     assert(after > 100, 'the lesson was scrolled back to ' + after)
     document.querySelector('.sidechat-close').click()
@@ -1247,6 +1264,8 @@ const SCRIPT = `(async () => {
     document.querySelector('.titlebar .user-chip').click()
     const menu = await waitFor('.menu-panel')
     ;[...menu.querySelectorAll('.menu-item')].find((b) => /Settings/.test(b.textContent)).click()
+    await waitFor('.settings-nav')
+    document.querySelector('[data-settings-category="ai"]').click()
     await waitFor('.settings-ai-chat .settings-model')
   }
   const modelRows = () => [...document.querySelectorAll('.settings-ai-chat .settings-model')]
@@ -1281,6 +1300,7 @@ const SCRIPT = `(async () => {
   await step('the picker enforces the allowlist and resets a disallowed conversation model', async () => {
     document.querySelector('.titlebar .chat-chip').click()
     const trigger = await waitFor('.sidechat-model')
+    await sleep(250)
     const own = trigger.textContent.trim()
     trigger.click()
     const offered = [...(await waitFor('.menu-panel')).querySelectorAll('.menu-item-label')].map((l) => l.textContent.trim())
@@ -1328,6 +1348,7 @@ const SCRIPT = `(async () => {
     await select('.settings-default-chat-model', 'gpt-4.1')
     const reasoning = document.querySelector('.settings-default-chat-reasoning')
     assert(reasoning.disabled && reasoning.value === '', 'unsupported reasoning was retained')
+    document.querySelector('[data-settings-category="coach"]').click()
     await select('.settings-default-coach-model', 'gpt-realtime')
     assert(await window.fixtureAPI.getDefaultCoachModel() === 'gpt-realtime', 'coach default was not stored')
     const coach = await window.fixtureAPI.createCoachProject({ name: 'Defaults check' })
@@ -1854,7 +1875,7 @@ const ANSWER_QUOTE_SCRIPT = `(async () => {
   const waitFor = async (selector, timeout = 8000) => {
     const t0 = Date.now()
     while (Date.now() - t0 < timeout) {
-      const el = document.querySelector(selector)
+      const el = [...document.querySelectorAll(selector)].find(el => el.checkVisibility({ visibilityProperty: true }))
       if (el) return el
       await sleep(50)
     }
@@ -1895,7 +1916,13 @@ const ANSWER_QUOTE_SCRIPT = `(async () => {
 
   let word = ''
   await step('the end of a line in an answer offers to ask about it, on screen', async () => {
-    document.querySelector('.chat-chip').click()
+    if (document.querySelector('.chat-chip').getAttribute('aria-pressed') !== 'true') document.querySelector('.chat-chip').click()
+    await waitFor('.sidechat-history-toggle')
+    await sleep(150)
+    document.querySelector('.sidechat-history-toggle').click()
+    await waitFor('.sidechat-history-row')
+    document.querySelector('.sidechat-history-row').click()
+    document.querySelector('.sidechat-history-toggle').click()
     await waitFor('.chat-answer[data-ask="answer"] .prose p')
     await sleep(300)
     // The end of the rightmost word in the answer. The panel is flush with the
@@ -2053,7 +2080,7 @@ const COACH_FILES_SCRIPT = `(async () => {
   const waitFor = async (selector, timeout = 8000) => {
     const t0 = Date.now()
     while (Date.now() - t0 < timeout) {
-      const el = document.querySelector(selector)
+      const el = [...document.querySelectorAll(selector)].find(el => el.checkVisibility({ visibilityProperty: true }))
       if (el) return el
       await sleep(50)
     }
@@ -2618,7 +2645,8 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>
     requests.push(body)
     const input = body.input as Record<string, unknown>[]
-    const hasTools = Array.isArray(body.tools) && body.tools.some((tool: { type?: string }) => tool.type === 'namespace')
+    // Side chat brings its own `course` tools now; only project review reads files.
+    const hasTools = Array.isArray(body.tools) && body.tools.some((tool: { type?: string; name?: string }) => tool.type === 'namespace' && tool.name === 'project')
     const continued = input.some(item => item.type === 'function_call_output')
     const output = hasTools && !continued ? [{ type: 'reasoning', encrypted_content: 'simulated-reasoning', summary: [] },
       { type: 'function_call', namespace: 'project', name: 'read_project_file', call_id: 'smoke-file', arguments: '{"path":"README.md","start_line":1,"max_lines":100}' }] : []
@@ -2631,11 +2659,13 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
     try { results.push({ name, ok: true, detail: String(await win.webContents.executeJavaScript(script)) }) }
     catch (error) { results.push({ name, ok: false, detail: String(error) }) }
   }
-  const wait = `const sleep = ms => new Promise(r => setTimeout(r, ms)); const wait = async selector => { for(let n=0;n<160;n++){ const el=document.querySelector(selector); if(el && el.getBoundingClientRect().width)return el; await sleep(25); } throw new Error('No '+selector); };`
+  const wait = `const sleep = ms => new Promise(r => setTimeout(r, ms)); const wait = async selector => { for(let n=0;n<160;n++){ const el=[...document.querySelectorAll(selector)].find(el=>el.checkVisibility({ visibilityProperty: true })); if(el)return el; await sleep(25); } throw new Error('No '+selector); };`
   try {
     await check('subscription Settings keeps four profiles and routing independent', `(async () => {
       ${wait}
       document.querySelector('.titlebar .user-chip').click(); const menu=await wait('.menu-panel'); [...menu.querySelectorAll('.menu-item')].find(b=>/Settings/.test(b.textContent)).click();
+      (await wait('[data-settings-category="connections"]')).click(); await wait('.settings-subscription');
+      document.querySelector('[data-settings-category="ai"]').click();
       await wait('.settings-ai-chat .settings-model'); await wait('.settings-ai-project .settings-model');
       if(!/Simulated account/.test(document.querySelector('.settings-subscription').textContent))throw new Error('Connection not displayed');
       const projectBefore=await window.fixtureAPI.getAIModelSettings('project','apiKey');
@@ -2650,8 +2680,8 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
       const projectAfter=await window.fixtureAPI.getAIModelSettings('project','apiKey');
       if(JSON.stringify(projectAfter.profile)!==JSON.stringify(projectBefore.profile)||projectAfter.selectedProvider!=='apiKey')throw new Error('Chat settings changed project settings');
       if((await window.fixtureAPI.hasOpenAIKey()).has)throw new Error('Subscription created an API key');
-      document.querySelector('.titlebar .crumbs a').click(); await wait('.lesson-head h1');
-      if(!document.querySelector('.sidechat'))document.querySelector('.titlebar .chat-chip').click();
+      document.querySelector('.titlebar .crumbs a').click(); await wait('.lesson-head h1'); await wait('.titlebar .chat-chip');
+      if(document.querySelector('.titlebar .chat-chip').getAttribute('aria-pressed') !== 'true')document.querySelector('.titlebar .chat-chip').click();
       for(let n=0;n<100 && !/ChatGPT subscription/.test(document.querySelector('.sidechat-connection')?.getAttribute('aria-label'));n++)await sleep(25);
       const indicator=document.querySelector('.sidechat-connection');
       if(!/ChatGPT subscription/.test(indicator?.getAttribute('aria-label')) || !indicator.querySelector('svg'))throw new Error('Composer connection icon stale');
@@ -2826,23 +2856,23 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
     })()`)
     await cdp.sendCommand('CSS.forcePseudoState', { nodeId: chipId, forcedPseudoClasses: [] })
     await cdp.sendCommand('CSS.forcePseudoState', { nodeId: itemId, forcedPseudoClasses: [] })
-    await check('screen transitions animate content while the titlebar stays steady', `(async () => {
+    await check('screen navigation reveals content immediately while the titlebar stays steady', `(async () => {
       [...document.querySelectorAll('.user-menu .menu-item')].find(b => /Settings/.test(b.textContent)).click();
       for (let n = 0; n < 50 && !document.querySelector('.settings'); n++) await new Promise(r => setTimeout(r, 8));
-      const body = document.querySelector('.app > .body');
-      if (!body?.getAnimations().some(a => a.playState === 'running')) throw new Error('No content transition');
+      const body = document.querySelector('.screen-host:not([hidden]) .body');
+      if (!body || body.getAnimations().length || getComputedStyle(body).opacity !== '1') throw new Error('Content entrance still animates');
       const titlebar = [...document.querySelectorAll('.titlebar')].find(el => el.getBoundingClientRect().width);
       if (titlebar.getAnimations().length || getComputedStyle(titlebar).opacity !== '1') throw new Error('Titlebar animated with content');
-      return 'Content fades independently of the titlebar';
+      return 'Content and titlebar appear immediately';
     })()`)
     await cdp.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
     await check('reduced motion cancels navigation and suppresses subsequent entrances', `(async () => {
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-      const body = document.querySelector('.app > .body');
+      const body = document.querySelector('.screen-host:not([hidden]) .body');
       if (body.getAnimations({subtree: true}).some(a => a.playState === 'running')) throw new Error('Navigation still animating');
       document.querySelector('.app > .titlebar .crumbs a').click();
       for (let n = 0; n < 50 && document.querySelector('.settings'); n++) await new Promise(r => setTimeout(r, 8));
-      const project = document.querySelector('.project-screen:not([hidden]) > .body');
+      const project = document.querySelector('.project-screen:not([hidden]) .body');
       if (!project || project.getAnimations({subtree: true}).some(a => a.playState === 'running')) throw new Error('Reduced-motion project animated');
       return 'In-flight motion cancelled; return navigation remains static';
     })()`)
@@ -2852,11 +2882,11 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
       [...document.querySelectorAll('.project-brief .lesson-nav button')].find(b => /Reflection/.test(b.textContent)).click();
       for (let n = 0; n < 100 && !document.querySelector('.lesson-head'); n++) await sleep(20);
       const chip = document.querySelector('.titlebar .chat-chip');
-      if (document.querySelector('.sidechat')) { chip.click(); await sleep(30); }
+      if (chip.getAttribute('aria-pressed') === 'true') { chip.click(); await sleep(30); }
       chip.click();
       for (let n = 0; n < 100 && !document.querySelector('.sidechat-model'); n++) await sleep(8);
-      const chat = document.querySelector('.sidechat');
-      if (!chat.getAnimations().some(a => a.animationName === 'chat-panel-enter')) throw new Error('No Ask entrance');
+      const chat = document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)');
+      if (!chat || !chat.getBoundingClientRect().width) throw new Error('Ask did not open');
       const trigger = document.querySelector('.sidechat-model'); trigger.click();
       for (let n = 0; n < 50 && !document.querySelector('.menu-panel'); n++) await sleep(8);
       await sleep(450);
@@ -2907,7 +2937,7 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
     await check('reduced motion shows fresh messages without animation', `(async () => {
       const find = () => [...document.querySelectorAll('.chat-bubble')].find(b => b.textContent === 'Reduced motion fixture question');
       for (let n = 0; n < 100 && !find(); n++) await new Promise(r => setTimeout(r, 8));
-      if (!find() || find().getAnimations().length || document.querySelector('.sidechat').getAnimations().length) throw new Error('Reduced-motion chat still animates');
+      if (!find() || find().getAnimations().length || document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)').getAnimations().length) throw new Error('Reduced-motion chat still animates');
       return 'Fresh messages and Ask remain static with reduced motion';
     })()`)
     await cdp.sendCommand('Emulation.setEmulatedMedia', { features: [] })
@@ -2920,7 +2950,7 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
       if (box.borderColor !== getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() && box.borderColor !== 'rgb(228, 228, 232)') throw new Error('Composer lost its focus border');
       return 'Focused composer has a border, no shadow and no gradient overlay';
     })()`)
-    await check('asynchronously loaded course and lesson screens visibly transition after loading', `(async () => {
+    await check('asynchronously loaded course and lesson screens open without entrance motion', `(async () => {
       const sleep = ms => new Promise(r => setTimeout(r, ms));
       const wait = async selector => {
         for (let n = 0; n < 150; n++) { const el = document.querySelector(selector); if (el) return el; await sleep(8); }
@@ -2928,17 +2958,14 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
       };
       const verify = async headingSelector => {
         await wait(headingSelector);
-        const body = document.querySelector('.app > .body');
-        if (!body.getAnimations().some(a => a.playState === 'running')) throw new Error(headingSelector + ' missed its entrance after loading');
-        const start = Number(getComputedStyle(body).opacity);
-        await sleep(80);
-        const during = Number(getComputedStyle(body).opacity);
-        if (start >= 0.8 || during <= start || during >= 1) throw new Error('No visible fade: ' + start + ' → ' + during);
-        await sleep(450);
-        if (getComputedStyle(body).opacity !== '1' || body.getAnimations().length) throw new Error('Entrance did not settle');
-        return headingSelector + ': ' + start.toFixed(2) + ' → ' + during.toFixed(2) + ' → 1.00';
+        const body = document.querySelector('.screen-host:not([hidden]) .body');
+        if (!body || body.getAnimations().length || getComputedStyle(body).opacity !== '1') throw new Error('Content still fades on navigation');
+        if (document.querySelector(headingSelector).getAnimations().length) throw new Error('Heading still rises on navigation');
+        return headingSelector + ': immediately visible';
       };
-      document.querySelector('.titlebar .crumbs a').click(); await wait('.library');
+      // A lesson's back link is its course overview, and the overview's is All courses.
+      for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+      await wait('.library');
       for (let n = 0; n < 150 && !document.querySelector('.course-card'); n++) await sleep(8);
       [...document.querySelectorAll('.course-card')].find(card => /The OpenCourse example course/.test(card.textContent)).click();
       const course = await verify('.detail h1');
@@ -2983,7 +3010,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         }
         throw new Error('Test user picker did not load');
       })()`)
-      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks }
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks }
       const unknown = only.filter((name) => !suites[name])
       if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
       const results: Result[] = []
@@ -3044,7 +3071,8 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
       // Last: they bring the example course and a side chat of their own, and
       // nothing after them should have to account for either.
       ...(await readingSizeChecks(win)),
-      ...(await appUpdateChecks(win))
+      ...(await appUpdateChecks(win)),
+      ...(await workspaceChecks(win))
     ]
     clearTimeout(watchdog)
     const failed = results.filter((r) => !r.ok)

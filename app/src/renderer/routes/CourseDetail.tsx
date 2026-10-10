@@ -1,15 +1,20 @@
+import ActionButton from '../components/ActionButton'
 import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import { runtimeLabel } from '@core/toolchains'
 import { lessonKey } from '@core/manifest'
 import { summarizeProgress } from '@core/progress'
 import TitleBar from '../components/TitleBar'
+import ScreenPlaceholder from '../components/ScreenPlaceholder'
 import type { CourseProgress, CourseView, ReviewCount, ReviewSummary, UserProfile } from '@core/types'
 import { reviewRecommendation } from '../review-display'
 import { itemRoute, type Route, type Screen } from '../routes'
 import Html from '../components/Html'
 import CompletionMark from '../components/CompletionMark'
 import CourseServerPanel from '../components/CourseServerPanel'
+import { useScreenActive } from '../screen-activity'
+import { useActiveTheme } from '../theme/ThemeProvider'
+import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
 
 interface Props {
   courseId: string
@@ -19,12 +24,39 @@ interface Props {
 }
 
 export default function CourseDetail({ courseId, user, navigate, route }: Props): JSX.Element {
+  const active = useScreenActive()
+  const theme = useActiveTheme()
   const [course, setCourse] = useState<CourseView | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [progress, setProgress] = useState<CourseProgress | null>(null)
   const [review, setReview] = useState<ReviewSummary | null>(null)
   const [reviewCount, setReviewCount] = useState<ReviewCount>(10)
   const [reviewBusy, setReviewBusy] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+
+  const deleteCourse = async (): Promise<void> => {
+    if (!course || deleteBusy) return
+    if (!window.confirm(
+      `Delete “${course.title}” from your library?\n\n` +
+      `This permanently deletes all progress, chat history, exercise files and project folders for this course. ` +
+      `Importing it again will start fresh.`
+    )) return
+    setDeleteBusy(true)
+    setNote(null)
+    try {
+      await window.opencourse.removeCourse(courseId)
+      navigate({ name: 'library' })
+    } catch (err) {
+      setNote((err as Error).message)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!active) return
+    void window.opencourse.touchCourse(courseId).catch((err) => setNote(err.message))
+  }, [courseId, active])
 
   useEffect(() => {
     let alive = true
@@ -46,7 +78,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
     [course, progress]
   )
 
-  if (!course || !progress) return <div className="empty">Loading…</div>
+  if (!course || !progress) return <ScreenPlaceholder />
 
   const done = new Set(progress.completedLessons)
   const resume = course.flatItems.find((item) => item.moduleId === progress.lastItem?.moduleId && (item.kind === 'project' ? progress.lastItem.kind === 'project' : progress.lastItem.kind === 'lesson' && item.lessonId === progress.lastItem.lessonId)) ?? course.flatItems[0]
@@ -62,6 +94,12 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
       <div className="body">
         <div className="content scroll">
           <div className="detail">
+            <CourseServerPanel course={course} navigate={navigate} actions={<>
+              <ActionButton icon="edit" className="secondary" onClick={() => navigate({ name: 'courseEditor', courseId })}>Edit course</ActionButton>
+              <ActionButton icon="download" className="secondary" onClick={() => { void window.opencourse.exportCourse(courseId).then(({ saved }) => { if (saved) setNote(`Saved to ${saved}`) }).catch((err) => setNote(err.message)) }}>Export ZIP</ActionButton>
+            </>} trailingActions={
+              <ActionButton icon="trash" className="danger course-delete" data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined} disabled={deleteBusy} onClick={() => void deleteCourse()}>Delete course</ActionButton>
+            } />
             <h1>{course.title}</h1>
             <div className="meta">
               {course.subject ? `${course.subject} · ` : ''}
@@ -77,28 +115,8 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
             )}
 
             {note && <p role="status">{note}</p>}
-            <CourseServerPanel course={course} navigate={navigate} actions={<>
-              <button className="secondary" onClick={() => navigate({ name: 'courseEditor', courseId })}>Edit course</button>
-              <button className="secondary" onClick={() => { void window.opencourse.exportCourse(courseId).then(({ saved }) => { if (saved) setNote(`Saved to ${saved}`) }).catch((err) => setNote(err.message)) }}>Export ZIP</button>
-            </>} />
             <div className="summary">
-              <button
-                onClick={() =>
-                  resume && navigate(itemRoute(course.courseId, resume))
-                }
-              >
-                {progress.lastItem ? 'Continue' : 'Start course'}
-              </button>
-              <div className="course-review-control">
-                <button className="secondary" disabled={reviewBusy || !review?.eligible} onClick={() => {
-                  setReviewBusy(true); setNote(null)
-                  void window.opencourse.startReviewSession(courseId, reviewCount).then(session => navigate({ name: 'review', session })).catch(err => setNote(err.message)).finally(() => setReviewBusy(false))
-                }}>{reviewBusy ? 'Starting' : 'Review'}</button>
-                <select aria-label="Number of flashcards" value={reviewCount} disabled={reviewBusy} onChange={event => setReviewCount(Number(event.target.value) as ReviewCount)}>
-                  {[10, 15, 20].map(count => <option key={count} value={count}>{count} cards</option>)}
-                </select>
-              </div>
-              <div style={{ flex: 1 }}>
+              <div className="course-progress">
                 <div className="progress-bar">
                   <span style={{ width: `${summary?.percent ?? 0}%` }} />
                 </div>
@@ -109,12 +127,29 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
                   {summary?.projectsTotal ? ` · ${summary.projectsDone}/${summary.projectsTotal} projects` : ''}
                 </div>
               </div>
+              <ActionButton icon="play" className="course-continue"
+                onClick={() =>
+                  resume && navigate(itemRoute(course.courseId, resume))
+                }
+              >
+                {progress.lastItem ? 'Continue' : 'Start course'}
+              </ActionButton>
+              <div className="course-review-row">
+                <div className="course-review-control">
+                  <ActionButton icon="review" className="secondary" disabled={reviewBusy || !review?.eligible} onClick={() => {
+                    setReviewBusy(true); setNote(null)
+                    void window.opencourse.startReviewSession(courseId, reviewCount).then(session => navigate({ name: 'review', session })).catch(err => setNote(err.message)).finally(() => setReviewBusy(false))
+                  }}>{reviewBusy ? 'Starting' : 'Review'}</ActionButton>
+                  <select aria-label="Number of flashcards" value={reviewCount} disabled={reviewBusy} onChange={event => setReviewCount(Number(event.target.value) as ReviewCount)}>
+                    {[10, 15, 20].map(count => <option key={count} value={count}>{count} cards</option>)}
+                  </select>
+                </div>
+                {review && <div className={`course-review-summary${review.total === 0 ? ' no-flashcards' : ''}`} role="status">
+                  <strong>{reviewRecommendation(review)}</strong>
+                  {!!review.eligible && <span className="meta">{review.due} due · {review.new} new · {review.practiced}/{review.eligible} practiced{review.estimatedRecall !== null ? ` · ${Math.round(review.estimatedRecall * 100)}% estimated recall` : ''}{review.eligible < review.total ? ` · ${review.total - review.eligible} locked` : ''}</span>}
+                </div>}
+              </div>
             </div>
-
-            {review && <div className="course-review-summary" role="status">
-              <strong>{reviewRecommendation(review)}</strong>
-              {!!review.eligible && <span className="meta">{review.due} due · {review.new} new · {review.practiced}/{review.eligible} practiced{review.estimatedRecall !== null ? ` · ${Math.round(review.estimatedRecall * 100)}% estimated recall` : ''}{review.eligible < review.total ? ` · ${review.total - review.eligible} locked` : ''}</span>}
-            </div>}
 
             {course.prerequisites && course.prerequisites.length > 0 && (
               <div className="panel">

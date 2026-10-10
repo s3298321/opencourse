@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.6",
+  "schema_version": "1.7",
   "slug": "opencourse-example",
   "title": "The OpenCourse example course",
   "version": "0.1.0",
@@ -44,7 +44,7 @@
               "type": "image",
               "src": "assets/img/diagram-1.svg",
               "alt": "Conceptual diagram",
-              "caption": "Figure 1 \u2014 the Python runtime at a glance.",
+              "caption": "Figure 1 — the Python runtime at a glance.",
               "slug": "conceptual-diagram"
             },
             {
@@ -63,7 +63,7 @@
               "type": "quiz",
               "id": "q-hello-1",
               "kind": "single",
-              "question": "Python is\u2026",
+              "question": "Python is…",
               "options": [
                 {
                   "id": "a",
@@ -110,6 +110,11 @@
                 "`return` the string - the `print` at the bottom is already written for you."
               ],
               "slug": "ex-hello-1"
+            },
+            {
+              "type": "python-cell",
+              "slug": "try-python",
+              "content": "# Each lesson cell runs in a fresh process.\nresult = 6 * 7\nresult"
             }
           ],
           "flashcards": [
@@ -139,7 +144,7 @@
           "blocks": [
             {
               "type": "markdown",
-              "content": "## Variables\n\nYou don't declare variables in Python \u2014 you just assign to them.\n\n```python\nname = \"Ada\"\nage = 36\n```",
+              "content": "## Variables\n\nYou don't declare variables in Python — you just assign to them.\n\n```python\nname = \"Ada\"\nage = 36\n```",
               "slug": "variables"
             },
             {
@@ -212,7 +217,7 @@
                 },
                 {
                   "id": "c",
-                  "text": "Both \u2014 the exercise passes only if each agrees.",
+                  "text": "Both — the exercise passes only if each agrees.",
                   "correct": false
                 },
                 {
@@ -345,5 +350,12 @@
         }
       ]
     }
-  ]
+  ],
+  "notebook": {
+    "cells": [
+      {
+        "content": "# Your course notebook\nmessage = \"Hello from the notebook\"\nmessage"
+      }
+    ]
+  }
 }

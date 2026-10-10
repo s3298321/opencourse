@@ -26,8 +26,8 @@ export interface WorkbenchTheme {
 }
 
 /**
- * The editor's and the terminal's type size. Not a token: a theme does not set
- * how large text is, and the reader's text size is for reading, not for code.
+ * Base sizes at 100%. Exercise editors and terminals apply the shared reader
+ * scale; authoring editors keep these defaults. Themes do not set text size.
  */
 export const EDITOR_FONT_PX = 12.5
 export const TERMINAL_FONT_PX = 12

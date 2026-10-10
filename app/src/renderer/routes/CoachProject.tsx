@@ -1,3 +1,4 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { CoachFileNode, CoachModel, CoachProject as Project, CoachSessionSummary, UserProfile } from '@core/types'
@@ -7,6 +8,7 @@ import CoachSession from '../components/CoachSession'
 import CoachSessions from '../components/CoachSessions'
 import CoachFileView from '../components/CoachFileView'
 import TitleBar from '../components/TitleBar'
+import ScreenPlaceholder from '../components/ScreenPlaceholder'
 import type { Route, Screen } from '../routes'
 
 interface Props {
@@ -99,7 +101,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
     )
   }
 
-  if (!project) return <div className="empty">Loading…</div>
+  if (!project) return <ScreenPlaceholder />
 
   const patch = async (change: Parameters<typeof window.opencourse.updateCoachProject>[1]): Promise<void> => {
     try {
@@ -171,9 +173,9 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                 </div>
               </div>
               <div className="actions">
-                <button className="secondary" onClick={() => void window.opencourse.revealCoachProject(projectId)}>
+                <ActionButton icon="folder" className="secondary" onClick={() => void window.opencourse.revealCoachProject(projectId)}>
                   Show files in Finder
-                </button>
+                </ActionButton>
               </div>
             </div>
 
@@ -203,10 +205,10 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                 <>
                   <textarea value={draft} rows={16} onChange={(e) => setDraft(e.target.value)} />
                   <div className="actions">
-                    <button onClick={() => void saveBrief()}>Save</button>
-                    <button className="secondary" onClick={() => setEditing(false)}>
+                    <ActionButton icon="save" onClick={() => void saveBrief()}>Save</ActionButton>
+                    <ActionButton icon="close" className="secondary" onClick={() => setEditing(false)}>
                       Cancel
-                    </button>
+                    </ActionButton>
                   </div>
                   <p className="meta">
                     Sessions already recorded keep the brief they ran with, so an old transcript still shows

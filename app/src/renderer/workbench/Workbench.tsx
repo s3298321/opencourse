@@ -1,9 +1,11 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import type { CourseProgress, ExerciseSession, ExerciseTarget } from '@core/types'
 import CodeEditor from './CodeEditor'
 import TerminalView from './TerminalView'
 import TestPanel, { type TestPanelHandle } from './TestPanel'
+import ReadingSize from '../components/ReadingSize'
 import { useWorkbenchTheme } from './theme'
 
 interface Props {
@@ -15,6 +17,8 @@ interface Props {
   starterCode: string
   /** The exercise itself - prompt, how to verify, hints - kept beside the editor. */
   brief: ReactNode
+  readingScale: number
+  onReadingScaleChange: (scale: number) => void
   onClose: () => void
   onProgress: (progress: CourseProgress) => void
 }
@@ -53,6 +57,8 @@ export default function Workbench({
   lastRun,
   starterCode,
   brief,
+  readingScale,
+  onReadingScaleChange,
   onClose,
   onProgress
 }: Props): JSX.Element {
@@ -286,10 +292,13 @@ export default function Workbench({
   const briefColumn = (
     <>
       <section className="workbench-brief" style={{ width: briefWidth, flex: '0 1 auto' }} aria-label="Exercise">
-        <button className="secondary workbench-back" onClick={onClose} title="Back to the lesson">
-          ← Back to lesson
-        </button>
-        {brief}
+        <div className="workbench-brief-content scroll">
+          <ActionButton icon="left" className="secondary workbench-back" onClick={onClose} title="Back to the lesson">
+            Back to lesson
+          </ActionButton>
+          {brief}
+        </div>
+        <ReadingSize scale={readingScale} onChange={onReadingScaleChange} />
       </section>
       <div
         className="workbench-grip"
@@ -332,7 +341,7 @@ export default function Workbench({
         {conflict && (
           <div className="workbench-conflict">
             <span>{learnerFile} changed outside the app.</span>
-            <button
+            <ActionButton icon="download"
               onClick={() => {
                 buffer.current = conflict.content
                 mtime.current = conflict.mtimeMs
@@ -342,8 +351,8 @@ export default function Workbench({
               }}
             >
               Load theirs
-            </button>
-            <button className="secondary" onClick={() => void save(true)}>Keep mine</button>
+            </ActionButton>
+            <ActionButton icon="save" className="secondary" onClick={() => void save(true)}>Keep mine</ActionButton>
           </div>
         )}
 
@@ -355,6 +364,7 @@ export default function Workbench({
               indentUnit={session.indentUnit}
               initialDoc={buffer.current}
               theme={theme}
+              textScale={readingScale}
               onChange={onChange}
               onSave={() => void save()}
               onRun={() => void run()}
@@ -363,13 +373,13 @@ export default function Workbench({
         </div>
 
         <div className="workbench-actions">
-          <button onClick={() => void run()} disabled={!session || running || !session.canRun}>
+          <ActionButton icon="play" onClick={() => void run()} disabled={!session || running || !session.canRun}>
             {running ? 'Running' : 'Run checks'}
-          </button>
+          </ActionButton>
           {running && (
-            <button className="secondary" onClick={() => void window.opencourse.cancelRun()}>Stop</button>
+            <ActionButton icon="stop" className="secondary" onClick={() => void window.opencourse.cancelRun()}>Stop</ActionButton>
           )}
-          <button className="secondary" onClick={() => void resetToStarter()} disabled={!session}>Reset</button>
+          <ActionButton icon="refresh" className="secondary" onClick={() => void resetToStarter()} disabled={!session}>Reset</ActionButton>
           <span className={`run-status ${status.kind}`}>
             {status.kind !== 'idle' && status.message}
             {status.kind === 'error' && status.detail && <em> {status.detail}</em>}
@@ -404,7 +414,7 @@ export default function Workbench({
             {/* Both panes stay mounted: a display:none xterm has no size, and
                 fitting one produces NaN columns and a corrupted buffer. */}
             <div className={`pane${tab === 'tests' ? ' active' : ''}`}>
-              <TestPanel theme={theme} visible={tab === 'tests'} handleRef={tests} />
+              <TestPanel theme={theme} textScale={readingScale} visible={tab === 'tests'} handleRef={tests} />
             </div>
             <div className={`pane${tab === 'terminal' ? ' active' : ''}`}>
               {session && terminalStarted && (
@@ -414,6 +424,7 @@ export default function Workbench({
                   envDir={session.envDir}
                   language={session.language}
                   theme={theme}
+                  textScale={readingScale}
                   visible={tab === 'terminal'}
                   onExit={() => undefined}
                 />

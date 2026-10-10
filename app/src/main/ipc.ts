@@ -1,4 +1,10 @@
+import { watchNotebook, ensureNotebook, getNotebook, saveNotebook, clearNotebookOutput, runCell, stopLessonCell, stopNotebook, stopAllNotebooks, rebuildNotebook } from './notebooks'
+import type { CellTarget, CellRunRequest } from '../core/notebook/types'
 import { authoringEvents, authoringRunState, cancelCourseAuthoring } from './authoring-state'
+import { appInfo } from './app-info'
+import { readPdfResource } from './pdf-resources'
+import { documentEvents, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentCompleted, stopDocumentWorkers } from './documents'
+import { cancelAllDocumentChats, cancelDocumentChat, createDocumentChat, deleteDocumentChat, documentSourceIcons, getDocumentChat, listDocumentChats, sendDocumentMessage, setDocumentChatModel, setDocumentChatProvider, setDocumentChatReasoning } from './document-chat'
 import { cancelAllAuthoringChats, cancelAuthoringChat, createAuthoringChat, deleteAuthoringChat, getAuthoringChat, listAuthoringChats, sendAuthoringMessage, setAuthoringChatModel, setAuthoringChatProvider, setAuthoringChatReasoning } from './authoring-chat'
 import type { AuthoringTarget } from '../core/types'
 import { assertCourseAvailable } from './course-busy'
@@ -24,11 +30,11 @@ import { readFileSync } from 'node:fs'
 import { isInside } from '../core/safepath'
 import { outputMatch } from '../core/toolchains'
 import { grade } from '../core/grading'
-import { recordExerciseRun, recordQuizAttempt, setExerciseDone, toggleLesson, touchLesson, touchProject, setProjectDone } from '../core/progress'
+import { recordExerciseRun, recordQuizAttempt, setExerciseDone, toggleLesson, touchCourse, touchLesson, touchProject, setProjectDone } from '../core/progress'
 import type {
   ProjectTarget,
   Block,
-  ChatLessonRef,
+  ChatContextRef,
   ChatQuote,
   CoachFileNode,
   CoachKeyResult,
@@ -260,12 +266,28 @@ function holdEditor(sender: WebContents): number {
 }
 
 export function registerIpc(): void {
+  ipcMain.handle('notebook:status', (event, courseId: string) => watchNotebook(event.sender, courseId))
+  ipcMain.handle('notebook:ensure', (event, courseId: string, retry = false) => { watchNotebook(event.sender, courseId); return ensureNotebook(courseId, retry === true) })
+  ipcMain.handle('notebook:get', (_event, courseId: string) => getNotebook(courseId))
+  ipcMain.handle('notebook:save', (_event, courseId: string, revision: number, cells: { id: string; content: string }[]) => saveNotebook(courseId, revision, cells))
+  ipcMain.handle('notebook:clear', (_event, courseId: string, cellId: string) => clearNotebookOutput(courseId, cellId))
+  ipcMain.handle('notebook:run', (event, target: CellRunRequest, source?: string) => runCell(event.sender, target, source))
+  ipcMain.handle('notebook:stopLesson', (event, target: CellTarget) => stopLessonCell(target, undefined, event.sender.id))
+  ipcMain.handle('notebook:stop', (_event, courseId: string, restart = false) => stopNotebook(courseId, restart === true))
+  ipcMain.handle('notebook:rebuild', async (event, courseId: string) => {
+    const owner = requireUser()
+    watchNotebook(event.sender, courseId)
+    const result = await dialog.showMessageBox({ type: 'warning', buttons: ['Cancel', 'Rebuild environment'], defaultId: 0, cancelId: 0, message: 'Rebuild the notebook environment?', detail: 'Your current environment will be retained as a recovery backup. Notebook cells and outputs stay intact. You will need to reinstall packages in the new environment.' })
+    if (requireUser() !== owner) throw new Error('The active user changed.')
+    return result.response === 1 ? rebuildNotebook(courseId) : watchNotebook(event.sender, courseId)
+  })
   aiEvents.on('changed', () => broadcast('ai:changed'))
+  documentEvents.on('changed', (id: string) => broadcast('documents:changed', id))
   updateEvents.on('changed', () => broadcast('appUpdate:changed', appUpdateInfo()))
   authoringEvents.on('draft', (...args) => { broadcast('authoring:draftChanged', ...args); syncDocumentEdited() })
   authoringEvents.on('run', (...args) => broadcast('authoring:runState', ...args))
   subscriptionEvents.on('changed', notifyAIConnectionChanged)
-  subscriptionEvents.on('stop', () => { cancelAllChats('chatgpt'); cancelAllProjectChats('chatgpt'); cancelAllAuthoringChats('chatgpt') })
+  subscriptionEvents.on('stop', () => { cancelAllChats('chatgpt'); cancelAllProjectChats('chatgpt'); cancelAllAuthoringChats('chatgpt'); cancelAllDocumentChats('chatgpt') })
   app.on('before-quit', releaseSubscriptionSession)
   ipcMain.handle('ai:settings', (_e, scope: AIScope, provider?: AIProvider, refresh = false) => {
     if (process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS']) smokeCatalogs()
@@ -292,9 +314,10 @@ export function registerIpc(): void {
 
   ipcMain.handle('session:get', (): Session => getSession())
   ipcMain.handle('users:list', (): UserProfile[] => listUsers())
-  ipcMain.handle('users:create', (_e, name: string): UserProfile => {
+  ipcMain.handle('users:create', async (_e, name: string): Promise<UserProfile> => {
+    await stopAllNotebooks()
     endAllReviews()
-    releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); endAllSessions(); closeDb(); forgetVolatileKeys()
+    releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); cancelAllDocumentChats(); stopDocumentWorkers(); endAllSessions(); closeDb(); forgetVolatileKeys()
     const user = createUser(name)
     // After the session moved, so the line is already theirs.
     log.child('users').info('User created and selected')
@@ -303,7 +326,8 @@ export function registerIpc(): void {
   // A rename takes no id: main applies it to whoever is selected, because it
   // rewrites a file whose path main builds.
   ipcMain.handle('users:rename', (_e, name: string): UserProfile => renameUser(name))
-  ipcMain.handle('users:switch', (_e, id: string): UserProfile => {
+  ipcMain.handle('users:switch', async (_e, id: string): Promise<UserProfile> => {
+    await stopAllNotebooks()
     endAllReviews()
     forgetEditSessions()
     forgetServerSessions()
@@ -313,6 +337,8 @@ export function registerIpc(): void {
     // stop the work that is still holding them first, or an answer still
     // streaming lands in a database that no longer belongs to anyone.
     cancelAllChats()
+    cancelAllDocumentChats()
+    stopDocumentWorkers()
     cancelAllProjectChats()
     cancelAllAuthoringChats()
     releaseSubscriptionSession()
@@ -325,13 +351,16 @@ export function registerIpc(): void {
     themeChanged()
     return user
   })
-  ipcMain.handle('users:delete', (_e, id: string): Session => {
+  ipcMain.handle('users:delete', async (_e, id: string): Promise<Session> => {
+    await stopAllNotebooks()
     endAllReviews()
     forgetEditSessions()
     forgetServerSessions()
     forgetStagedUpdates()
     releaseSubscriptionSession()
     cancelAllChats()
+    cancelAllDocumentChats()
+    stopDocumentWorkers()
     cancelAllProjectChats()
     cancelAllAuthoringChats()
     endAllSessions()
@@ -504,6 +533,7 @@ export function registerIpc(): void {
      to check and to install "the update"; which release that is, and where it
      comes from, stays in main. */
 
+  ipcMain.handle('app:info', () => appInfo())
   ipcMain.handle('appUpdate:state', () => appUpdateInfo())
   ipcMain.handle('appUpdate:check', () => checkForAppUpdate(true))
   ipcMain.handle('appUpdate:install', () => installAppUpdate())
@@ -568,6 +598,7 @@ export function registerIpc(): void {
   ipcMain.handle('project:open', (_e, target: ProjectTarget, recreate = false) => {
     const result = openCourseProject(target, recreate === true)
     updateProgress(target.courseId, (p) => touchProject(p, target.moduleId))
+    void ensureNotebook(target.courseId).catch(() => {})
     return result
   })
   ipcMain.handle('project:setDone', (_e, target: ProjectTarget, done: boolean) => {
@@ -587,6 +618,11 @@ export function registerIpc(): void {
   ipcMain.handle('projectChat:send', (e, id: string, text: string, quote?: ChatQuote, review = false) => sendProjectMessage(e.sender, id, text, quote, review === true))
 
   ipcMain.handle('progress:get', (_e, courseId: string): CourseProgress => readProgress(courseId))
+  ipcMain.handle('progress:touchCourse', (_e, courseId: string) => {
+    assertCourseAvailable(courseId)
+    if (!getCourse(courseId)) throw new Error('That course is not in your library.')
+    return updateProgress(courseId, (p) => touchCourse(p))
+  })
 
   ipcMain.handle('review:summary', (_e, courseId: string) => getReviewSummary(courseId))
   ipcMain.handle('review:start', (e, courseId: string, count: ReviewCount) => startReviewSession(courseId, count, e.sender.id))
@@ -608,9 +644,11 @@ export function registerIpc(): void {
     return result
   })
 
-  ipcMain.handle('progress:touchLesson', (_e, courseId: string, moduleId: string, lessonId: string) =>
-    updateProgress(courseId, (p) => touchLesson(p, requireLesson(courseId, moduleId, lessonId).module.slug, lessonId))
-  )
+  ipcMain.handle('progress:touchLesson', (_e, courseId: string, moduleId: string, lessonId: string) => {
+    const result = updateProgress(courseId, (p) => touchLesson(p, requireLesson(courseId, moduleId, lessonId).module.slug, lessonId))
+    void ensureNotebook(courseId).catch(() => {})
+    return result
+  })
 
   ipcMain.handle('quiz:submit', (_e, courseId: string, blockId: string, answers: string[]) => {
     assertCourseAvailable(courseId)
@@ -893,6 +931,33 @@ export function registerIpc(): void {
    * `chat:error`, addressed to the renderer that asked rather than broadcast,
    * because it is that window's conversation and no other's.
    */
+  ipcMain.handle('documents:list', () => listDocuments())
+  ipcMain.handle('documents:get', (_e, id: string) => getDocument(id))
+  ipcMain.handle('documents:import', () => importDocument())
+  ipcMain.handle('documents:importDrop', (_e, path: string) => {
+    if (typeof path !== 'string' || !path) throw new Error('Drop a local PDF file.')
+    return importDocument(path)
+  })
+  ipcMain.handle('documents:range', (_e, id: string, begin: number, end: number) => readDocumentRange(id, begin, end))
+  ipcMain.handle('documents:resource', (_e, kind: string, filename: string) => { requireUser(); return readPdfResource(kind, filename) })
+  ipcMain.handle('documents:search', (_e, id: string, query: string, cursor: number) => searchDocument(id, query, cursor))
+  ipcMain.handle('documents:completed', (_e, id: string, completed: boolean) => setDocumentCompleted(id, completed))
+  ipcMain.handle('documents:rename', (_e, id: string, title: string) => renameDocument(id, title))
+  ipcMain.handle('documents:remove', (_e, id: string) => removeDocument(id))
+  ipcMain.handle('documents:retryIndex', (_e, id: string, password?: string) => {
+    if (password !== undefined && (typeof password !== 'string' || password.length > 1000)) throw new Error('Invalid PDF password.')
+    return retryDocumentIndex(id, password)
+  })
+  ipcMain.handle('documentChat:list', (_e, id: string) => listDocumentChats(id))
+  ipcMain.handle('documentChat:get', (_e, id: string) => getDocumentChat(id))
+  ipcMain.handle('documentChat:create', (_e, id: string, page: number) => createDocumentChat(id, page))
+  ipcMain.handle('documentChat:delete', (_e, id: string) => deleteDocumentChat(id))
+  ipcMain.handle('documentChat:cancel', (_e, id: string) => cancelDocumentChat(id))
+  ipcMain.handle('documentChat:setModel', (_e, id: string, model: string) => setDocumentChatModel(id, model))
+  ipcMain.handle('documentChat:setReasoning', (_e, id: string, reasoning: ReasoningEffort | null) => setDocumentChatReasoning(id, reasoning))
+  ipcMain.handle('documentChat:setProvider', (_e, id: string, provider: AIProvider | null) => setDocumentChatProvider(id, provider))
+  ipcMain.handle('documentChat:sourceIcons', (_e, id: string, seq: number) => documentSourceIcons(id, seq))
+  ipcMain.handle('documentChat:send', (event, id: string, text: string, quote: ChatQuote | undefined, page: number) => sendDocumentMessage(event.sender, id, text, quote, page))
   ipcMain.handle('chat:listModels', () => listPickerModels())
   ipcMain.handle('chat:modelSettings', () => getChatModelSettings())
   ipcMain.handle('chat:setDefaults', (_e, defaults: ChatDefaults) => setChatDefaults(defaults))
@@ -902,7 +967,7 @@ export function registerIpc(): void {
   ipcMain.handle('chat:sourceIcons', (_e, chatId: string, seq: number) => getSourceIcons(chatId, seq))
   ipcMain.handle('chat:list', (_e, courseId: string) => listChats(courseId))
   ipcMain.handle('chat:get', (_e, chatId: string) => getChat(chatId))
-  ipcMain.handle('chat:create', (_e, courseId: string, lesson: ChatLessonRef, model?: string) =>
+  ipcMain.handle('chat:create', (_e, courseId: string, lesson: ChatContextRef, model?: string) =>
     createChat(courseId, lesson, model)
   )
   ipcMain.handle('chat:setModel', (_e, chatId: string, model: string) => setChatModel(chatId, model))
@@ -914,7 +979,7 @@ export function registerIpc(): void {
   ipcMain.handle('chat:cancel', (_e, chatId: string) => cancelChat(chatId))
   ipcMain.handle(
     'chat:send',
-    (e, chatId: string, text: string, quote: ChatQuote | undefined, lesson: ChatLessonRef) =>
+    (e, chatId: string, text: string, quote: ChatQuote | undefined, lesson: ChatContextRef) =>
       sendChatMessage(e.sender, chatId, text, quote, lesson)
   )
 

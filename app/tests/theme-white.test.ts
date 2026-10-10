@@ -4,8 +4,19 @@ import { auditTheme } from '@core/theme/audit'
 import { composite, contrast, parseColor } from '@core/theme/color'
 import { normalizeTheme } from '@core/theme/normalize'
 import white from '@core/theme/white.json'
+import { darkChrome, darkChromeBackground } from '@core/theme/dark-chrome'
 
 describe('built-in White palette', () => {
+  it('uses a readable Dark titlebar palette without changing White content colors', () => {
+    const background = parseColor(darkChromeBackground)!
+    expect(contrast(parseColor(darkChrome.values['--fg'])!, background)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(parseColor(darkChrome.values['--muted'])!, background)).toBeGreaterThanOrEqual(4.5)
+    expect(compiledWhiteTheme.values['--bg']).toBe('#ffffff')
+    for (const palette of [darkChrome.reducedTransparency, { ...darkChrome.reducedTransparency, ...darkChrome.increasedContrast }]) {
+      const values = { ...darkChrome.values, ...palette }
+      expect(contrast(parseColor(values['--fg'])!, parseColor(values['--chrome'])!)).toBeGreaterThanOrEqual(4.5)
+    }
+  })
   it('normalizes without notes and keeps the app typography and logo', () => {
     const read = normalizeTheme(white, new Map())
     expect('error' in read).toBe(false)

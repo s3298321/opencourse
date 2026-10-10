@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { ChatQuote } from '@core/types'
+import { useScreenActive } from '../screen-activity'
 import { QUOTE_HIGHLIGHT } from '@core/vizbridge'
 import type { Ask, AskOffer } from '../ask-context'
 
@@ -12,6 +13,7 @@ function markPassage(range: Range | null): void {
 
 /** The lesson's selection/quote interaction, scoped to the authoring preview. */
 export function usePreviewAsk(enabled: boolean, selectionKey: string) {
+  const active = useScreenActive()
   const [selection, setSelection] = useState<AskOffer | null>(null)
   const [quote, setQuote] = useState<ChatQuote | null>(null)
   const marked = useRef<AskOffer | null>(null)
@@ -24,7 +26,7 @@ export function usePreviewAsk(enabled: boolean, selectionKey: string) {
   }, [enabled, selectionKey])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !active) return
     const onUp = (event: MouseEvent): void => {
       if ((event.target as Element | null)?.closest?.('.ask-about')) return
       const found = window.getSelection(), text = found?.toString().trim() ?? ''
@@ -41,16 +43,16 @@ export function usePreviewAsk(enabled: boolean, selectionKey: string) {
     }
     document.addEventListener('mouseup', onUp)
     return () => document.removeEventListener('mouseup', onUp)
-  }, [enabled])
+  }, [enabled, active])
 
   const attach = useCallback((offer: AskOffer): void => {
-    if (!enabled) return
+    if (!enabled || !active) return
     marked.current?.unmark()
     setQuote({ text: offer.text, from: offer.from === 'answer' ? 'answer' : 'preview' })
     setSelection(null)
     offer.mark()
     marked.current = offer
-  }, [enabled])
+  }, [enabled, active])
   const ask = useMemo<Ask>(() => ({
     // Visualization frames reuse the existing lesson bridge, so their source
     // becomes "preview" here while their mark/unmark callbacks stay intact.

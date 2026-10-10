@@ -1,7 +1,9 @@
+import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { CoachProjectSummary, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
+import { useScreenActive } from '../screen-activity'
 import type { Route, Screen } from '../routes'
 
 interface Props {
@@ -21,6 +23,7 @@ function whenLast(iso?: string): string {
 }
 
 export default function Coach({ user, navigate, newSignal, route }: Props): JSX.Element {
+  const active = useScreenActive()
   const [projects, setProjects] = useState<CoachProjectSummary[] | null>(null)
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
@@ -53,7 +56,7 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
   }, [newSignal])
 
   useEffect(() => {
-    if (naming) nameInput.current?.focus()
+    if (active && naming) nameInput.current?.focus()
   }, [naming])
 
   const create = async (): Promise<void> => {
@@ -101,9 +104,9 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
                 <p className="lede">Learn something by talking about it.</p>
               </div>
               <div className="actions">
-                <button disabled={busy || naming} onClick={() => setNaming(true)}>
+                <ActionButton icon="plus" disabled={busy || naming} onClick={() => setNaming(true)}>
                   New coach
-                </button>
+                </ActionButton>
               </div>
             </div>
 
@@ -115,7 +118,7 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
                   <strong>No OpenAI key yet.</strong> You can set a coach up without one, but starting a
                   session needs it.
                 </div>
-                <button className="ghost" onClick={() => navigate({ name: 'settings', from: route })}>
+                <button className="ghost" onClick={() => navigate({ name: 'settings', from: route, section: 'connections' })}>
                   Open settings
                 </button>
               </div>
@@ -141,10 +144,10 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
                   <p className="meta">You can change the name, the model and the coach's brief afterwards.</p>
                 </div>
                 <div className="actions">
-                  <button disabled={busy || !name.trim()} onClick={() => void create()}>
+                  <ActionButton icon="plus" disabled={busy || !name.trim()} onClick={() => void create()}>
                     {busy ? 'Creating' : 'Create'}
-                  </button>
-                  <button
+                  </ActionButton>
+                  <ActionButton icon="close"
                     className="secondary"
                     onClick={() => {
                       setNaming(false)
@@ -152,7 +155,7 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
                     }}
                   >
                     Cancel
-                  </button>
+                  </ActionButton>
                 </div>
               </div>
             )}

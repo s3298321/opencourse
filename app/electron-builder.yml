@@ -11,6 +11,9 @@ files:
 # ship is the format bundle, so an author can get the spec, the schema and a
 # working example out of the app itself.
 extraResources:
+  - from: resources/notebook
+    to: notebook
+    filter: ['worker.py']
   - from: resources/python
     to: python
     filter: ['**/*', '.opencourse-runtime']
@@ -24,8 +27,8 @@ extraResources:
 # dies with "posix_spawnp failed".
 asarUnpack:
   - '**/node_modules/node-pty/**'
-# node-pty is the only native dep and it is a Node-API addon shipping its own
-# prebuilt binaries, which load in Electron unchanged. Rebuilding it from
+# node-pty and PDF.js's optional canvas dependency are Node-API addons shipping
+# prebuilt binaries, which load in Electron unchanged. Rebuilding them from
 # source would need a full node-gyp toolchain on every build machine for no
 # gain - and fails here.
 npmRebuild: false

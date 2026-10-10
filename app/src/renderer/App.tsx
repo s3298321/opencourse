@@ -1,7 +1,12 @@
+import Notebook, { type NotebookHandle } from './routes/Notebook'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import Users from './routes/Users'
 import Library from './routes/Library'
+import ServerCatalog from './routes/ServerCatalog'
+import Documents from './routes/Documents'
+import DocumentReader from './routes/Document'
+import type { ReadingSource } from '@core/documents/types'
 import CourseEditor from './routes/CourseEditor'
 import CourseDetail from './routes/CourseDetail'
 import CatalogCourse from './routes/CatalogCourse'
@@ -18,26 +23,37 @@ import Search from './components/Search'
 import ConfirmDialog, { type ConfirmRequest } from './components/ConfirmDialog'
 import { MarkdownProvider } from './markdown-context'
 import type { CourseView, Session, UserProfile } from '@core/types'
-import { screenOf, type Route } from './routes'
+import { screenOf, sectionOf, type Route, type Screen } from './routes'
 import type { EditorHandle } from './routes/CourseEditor'
-import { useScreenEntrance } from './screen-motion'
+import AppShell from './components/AppShell'
+import { ScreenHost } from './screen-activity'
+import { initialNavigation, navigateWorkspace, screenKey, switchWorkspace as restoreWorkspace, type Workspace } from './workspaces'
 
 export default function App(): JSX.Element {
   // The app opens on the picker: main starts every launch with no user
   // selected, and nothing user-scoped can be fetched until one is.
-  const [route, setRoute] = useState<Route>({ name: 'users' })
-  useScreenEntrance(route)
+  const [navigation, setNavigation] = useState(initialNavigation)
+  const route = navigation.route
+  const navigationRef = useRef(navigation)
+  navigationRef.current = navigation
+  const setRoute = useCallback((next: Route | ((current: Route) => Route)) => {
+    setNavigation(current => navigateWorkspace(current, typeof next === 'function' ? next(current.route) : next))
+  }, [])
+  const switchWorkspace = useCallback((section: Workspace) => {
+    if (restoreWorkspace(navigationRef.current, section) === navigationRef.current) return
+    setSearchCourse(null)
+    setNavigation(current => restoreWorkspace(current, section))
+  }, [])
   const [session, setSession] = useState<Session | null>(null)
   const [navSignal, setNavSignal] = useState<{ action: 'prev' | 'next'; n: number } | null>(null)
   const [importSignal, setImportSignal] = useState(0)
+  const [documentImportSignal, setDocumentImportSignal] = useState(0)
+  const [documentFindSignal, setDocumentFindSignal] = useState(0)
   const [coachNewSignal, setCoachNewSignal] = useState(0)
   const [searchCourse, setSearchCourse] = useState<CourseView | null>(null)
-  // Lifted out of Lesson so a trip to settings and back does not close it. The
-  // thread itself is a database row and would survive either way; what would
-  // not is the panel being open, which is the part the learner arranged.
+  // Shared across lessons; the mounted workspace also retains its chat draft.
   const [chatOpen, setChatOpen] = useState(false)
-  // Same reason, for the reading position: a ref inside Lesson would not
-  // outlive the unmount that opening settings causes.
+  // Tag the reader's offset so lesson navigation restores only the right lesson.
   const lessonScroll = useRef({ key: '', top: 0 })
   // And the reader's text size, for the same reason and one more: the lesson
   // restores its scroll offset as soon as it has a course to show, so the size
@@ -49,6 +65,8 @@ export default function App(): JSX.Element {
   // Leaving it is the one navigation that can lose work, so every way out goes
   // through confirmLeave: Back, the menu, switching user. Its edits live in
   // main until Save, which is what lets a parked editor be asked too.
+  const notebook = useRef<NotebookHandle | null>(null)
+  const registerNotebook = useCallback((handle: NotebookHandle | null) => { notebook.current = handle }, [])
   const editor = useRef<EditorHandle | null>(null)
   const registerEditor = useCallback((handle: EditorHandle | null) => { editor.current = handle }, [])
   const editorDirty = useRef(false)
@@ -62,8 +80,13 @@ export default function App(): JSX.Element {
 
   /** True when it is fine to go to `next`; null means "somewhere else entirely". */
   const confirmLeave = useCallback(async (next: Route | null): Promise<boolean> => {
-    const current = screenOf(routeRef.current)
-    if (current.name !== 'courseEditor') return true
+    const current = navigationRef.current.courses
+    if (current?.name === 'notebook' && notebook.current) {
+      try { await notebook.current.flush() } catch { return false }
+    }
+    if (current?.name !== 'courseEditor') return true
+    // Changing halves parks the editor. Replacing it or changing user leaves it.
+    if (next && next.name !== 'users' && sectionOf(next) !== 'courses') return true
     const courseId = current.courseId
     if (editor.current) await editor.current.flush().catch(() => {})
     // Settings and Logs open over the editor; its session waits underneath.
@@ -81,20 +104,41 @@ export default function App(): JSX.Element {
     return true
   }, [ask])
 
-  const navigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => {
+  const navigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }, origin?: Workspace) => {
     void (async () => {
     if (!options?.skipGuard && !(await confirmLeave(next))) return
+    const parked = origin && sectionOf(routeRef.current) !== origin
+    if (parked) {
+      setNavigation(current => ({ ...navigateWorkspace(current, next), route: current.route }))
+      return
+    }
+    const returning = (routeRef.current.name === 'settings' || routeRef.current.name === 'logs') && next === screenOf(routeRef.current)
     setSearchCourse(null)
     setRoute(next)
-    if (!options?.keepScroll && next.name !== 'settings' && next.name !== 'logs' && next.name !== 'project') document.querySelector('.content')?.scrollTo({ top: 0 })
+    if (!returning && !options?.keepScroll && next.name !== 'settings' && next.name !== 'logs' && next.name !== 'project') {
+      requestAnimationFrame(() => document.querySelector('.screen-host:not([hidden]) .content')?.scrollTo({ top: 0 }))
+    }
     })().catch(() => {})
   }, [confirmLeave])
+
+  const coursesNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'courses'), [navigate])
+  const coachNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'coach'), [navigate])
+  const documentsNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'documents'), [navigate])
+
+  useEffect(() => {
+    const source = (event: Event): void => {
+      const ref = (event as CustomEvent<ReadingSource>).detail
+      if (ref?.kind === 'course') navigate(ref.lessonId ? { name: 'lesson', courseId: ref.courseId, moduleId: ref.moduleId, lessonId: ref.lessonId } : { name: 'project', courseId: ref.courseId, moduleId: ref.moduleId })
+    }
+    window.addEventListener('reading:source', source)
+    return () => window.removeEventListener('reading:source', source)
+  }, [navigate])
 
   // Closing or reloading the window with unsaved edits: main asks natively
   // (will-prevent-unload), because a page that is unloading cannot.
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent): void => {
-      if (screenOf(routeRef.current).name === 'courseEditor' && editorDirty.current) { event.preventDefault(); event.returnValue = '' }
+      if (editorDirty.current || notebook.current?.dirty()) { event.preventDefault(); event.returnValue = '' }
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
@@ -120,16 +164,23 @@ export default function App(): JSX.Element {
   useEffect(() => {
     return window.opencourse.onNavigate((action) => {
       void (async () => {
+      if (action === 'coach') { switchWorkspace('coach'); return }
+      if (action === 'documents') { switchWorkspace('documents'); return }
+      if (action === 'importDocument') { setRoute({ name: 'documents' }); setDocumentImportSignal(value => value + 1); return }
+      if (action === 'library' && sectionOf(routeRef.current) === 'documents') { setRoute({ name: 'documents' }); return }
+      if (action === 'library' && sectionOf(routeRef.current) === 'coach') { switchWorkspace('courses'); return }
       if (action === 'saveCourse') {
+        if (routeRef.current.name !== 'courseEditor') return
         // Course ▸ Save Course (⌘S) is only enabled while an editor is mounted.
         document.dispatchEvent(new Event('authoring:save'))
         return
       }
       if (action === 'search' || action === 'prev' || action === 'next') {
         if (action === 'search') {
+          if (routeRef.current.name === 'document') { setDocumentFindSignal(value => value + 1); return }
           setRoute((current) => {
             // Only a course has anything to search in.
-            if (current.name === 'course' || current.name === 'lesson' || current.name === 'project') {
+            if (current.name === 'course' || current.name === 'lesson' || current.name === 'project' || current.name === 'notebook') {
               void window.opencourse.getCourse(current.courseId).then(setSearchCourse)
             }
             return current
@@ -140,7 +191,7 @@ export default function App(): JSX.Element {
       const target: Route | null =
         action === 'library' || action === 'import' ? { name: 'library' }
           : action === 'users' ? { name: 'users' }
-          : action === 'coach' || action === 'coachNew' ? { name: 'coach' }
+          : action === 'coachNew' ? { name: 'coach' }
           : action === 'settings' ? { name: 'settings', from: screenOf(routeRef.current) }
           : null
       if (!(await confirmLeave(target))) return
@@ -150,9 +201,6 @@ export default function App(): JSX.Element {
       } else if (action === 'users') {
         setSearchCourse(null)
         setRoute({ name: 'users' })
-      } else if (action === 'coach') {
-        setSearchCourse(null)
-        setRoute({ name: 'coach' })
       } else if (action === 'coachNew') {
         setSearchCourse(null)
         setRoute({ name: 'coach' })
@@ -171,7 +219,7 @@ export default function App(): JSX.Element {
       }
       })().catch(() => {})
     })
-  }, [confirmLeave])
+  }, [confirmLeave, setRoute, switchWorkspace])
 
   // Open external links in the system browser instead of inside the app.
   useEffect(() => {
@@ -196,9 +244,18 @@ export default function App(): JSX.Element {
   const onSessionChanged = useCallback(
     (next: Session, user: UserProfile | null) => {
       setSession(next)
-      navigate(user ? { name: 'library' } : { name: 'users' })
+      setChatOpen(false)
+      lessonScroll.current = { key: '', top: 0 }
+      editorDirty.current = false
+      setSearchCourse(null)
+      setImportSignal(0)
+      setDocumentImportSignal(0)
+      setDocumentFindSignal(0)
+      setCoachNewSignal(0)
+      setNavSignal(null)
+      setNavigation(navigateWorkspace(initialNavigation(), user ? { name: 'library' } : { name: 'users' }))
     },
-    [navigate]
+    []
   )
 
   const user = session?.user ?? null
@@ -216,79 +273,47 @@ export default function App(): JSX.Element {
     // size on screen for this session rather than taking it back.
     void window.opencourse.setReadingScale(scale).then(setReadingScale).catch(() => {})
   }, [])
-  // Kept mounted, hidden, under an overlay - a project's draft and a review's
-  // place survive a trip to Settings or Logs.
-  const underneath = screenOf(route)
-  const projectRoute = underneath.name === 'project' ? underneath : null
-  const reviewRoute = underneath.name === 'review' ? underneath : null
+  const renderScreen = (screen: Screen, active: boolean): JSX.Element => {
+    const screenNavigate = sectionOf(screen) === 'coach' ? coachNavigate : sectionOf(screen) === 'documents' ? documentsNavigate : coursesNavigate
+    switch (screen.name) {
+      case 'users': return <Users session={session} onSessionChanged={onSessionChanged} />
+      case 'library': return <Library user={user} navigate={screenNavigate} importSignal={importSignal} route={screen} />
+      case 'catalog': return <ServerCatalog serverId={screen.serverId} user={user} navigate={screenNavigate} route={screen} />
+      case 'documents': return <Documents user={user} navigate={screenNavigate} importSignal={documentImportSignal} onImportHandled={() => setDocumentImportSignal(0)} route={screen} />
+      case 'document': return <DocumentReader documentId={screen.documentId} user={user} navigate={screenNavigate} route={screen} navSignal={navSignal} findSignal={documentFindSignal} />
+      case 'courseEditor': return <CourseEditor courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} registerEditor={registerEditor} onDirty={onEditorDirty} ask={ask} />
+      case 'catalogCourse': return <CatalogCourse serverId={screen.serverId} courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} />
+      case 'publication': return <Publication serverId={screen.serverId} courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} ask={ask} />
+      case 'course': return <CourseDetail courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} />
+      case 'review': return <Review initialSession={screen.session} navigate={screenNavigate} active={active} />
+      case 'lesson': return <LessonView courseId={screen.courseId} moduleId={screen.moduleId} lessonId={screen.lessonId}
+        pythonCellsActive={active || (overlay && sectionOf(screenOf(route)) === 'courses')}
+        user={user} navigate={screenNavigate} navSignal={navSignal} route={screen} chatOpen={chatOpen} setChatOpen={setChatOpen}
+        scrollRef={lessonScroll} readingScale={readingScale} setReadingScale={changeReadingScale} />
+      case 'notebook': return <Notebook courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} chatOpen={chatOpen} setChatOpen={setChatOpen} textScale={readingScale ?? 1} registerNotebook={registerNotebook} />
+      case 'project': return <Project courseId={screen.courseId} moduleId={screen.moduleId} user={user} navigate={screenNavigate} route={screen} active={active} navSignal={navSignal} />
+      case 'coach': return <Coach user={user} navigate={screenNavigate} newSignal={coachNewSignal} route={screen} />
+      case 'coachProject': return <CoachProject projectId={screen.projectId} user={user} navigate={screenNavigate} route={screen} />
+      case 'coachSession': return <CoachTranscript projectId={screen.projectId} sessionId={screen.sessionId} user={user} navigate={screenNavigate} route={screen} />
+    }
+  }
+  const section = sectionOf(route)
+  const overlay = route.name === 'settings' || route.name === 'logs'
 
-  return (
-    <MarkdownProvider>
-      <div className="app">
-        {reviewRoute && <div className="review-screen-host" hidden={route.name !== 'review'}><Review key={`${user?.id}/${reviewRoute.session.id}`} initialSession={reviewRoute.session} navigate={navigate} active={route.name === 'review'} /></div>}
-        {route.name === 'users' && <Users session={session} onSessionChanged={onSessionChanged} />}
-        {route.name === 'library' && (
-          <Library user={user} navigate={navigate} importSignal={importSignal} route={route} />
-        )}
-        {route.name === 'courseEditor' && <CourseEditor key={route.courseId} courseId={route.courseId} user={user} navigate={navigate} route={route} registerEditor={registerEditor} onDirty={onEditorDirty} ask={ask} />}
-        {route.name === 'catalogCourse' && (
-          <CatalogCourse key={`${route.serverId}/${route.courseId}`} serverId={route.serverId} courseId={route.courseId} user={user} navigate={navigate} route={route} />
-        )}
-        {route.name === 'publication' && (
-          <Publication key={`${route.serverId}/${route.courseId}`} serverId={route.serverId} courseId={route.courseId} user={user} navigate={navigate} route={route} ask={ask} />
-        )}
-        {route.name === 'course' && (
-          <CourseDetail courseId={route.courseId} user={user} navigate={navigate} route={route} />
-        )}
-        {route.name === 'lesson' && (
-          <LessonView
-            courseId={route.courseId}
-            moduleId={route.moduleId}
-            lessonId={route.lessonId}
-            user={user}
-            navigate={navigate}
-            navSignal={navSignal}
-            route={route}
-            chatOpen={chatOpen}
-            setChatOpen={setChatOpen}
-            scrollRef={lessonScroll}
-            readingScale={readingScale}
-            setReadingScale={changeReadingScale}
-          />
-        )}
-        {projectRoute && <div className="project-screen" hidden={route.name !== 'project'}>
-          <Project key={`${user?.id}/${projectRoute.courseId}/${projectRoute.moduleId}`} courseId={projectRoute.courseId} moduleId={projectRoute.moduleId} user={user} navigate={navigate} route={projectRoute} active={route.name === 'project'} navSignal={navSignal} />
-        </div>}
-        {route.name === 'coach' && (
-          <Coach user={user} navigate={navigate} newSignal={coachNewSignal} route={route} />
-        )}
-        {route.name === 'coachProject' && (
-          <CoachProject projectId={route.projectId} user={user} navigate={navigate} route={route} />
-        )}
-        {route.name === 'coachSession' && (
-          <CoachTranscript
-            projectId={route.projectId}
-            sessionId={route.sessionId}
-            user={user}
-            navigate={navigate}
-            route={route}
-          />
-        )}
-        {route.name === 'settings' && (
-          <Settings
-            user={user}
-            navigate={navigate}
-            route={route}
-            onSession={onSession}
-            onSessionChanged={onSessionChanged}
-          />
-        )}
-        {route.name === 'logs' && <Logs user={user} navigate={navigate} route={route} />}
-        {searchCourse && (
-          <Search course={searchCourse} navigate={navigate} onClose={() => setSearchCourse(null)} />
-        )}
-        {question && <ConfirmDialog request={question.request} onResult={question.resolve} />}
-      </div>
-    </MarkdownProvider>
-  )
+  return <MarkdownProvider>
+    <AppShell key={userId ?? 'picker'} user={user} route={route} navigate={navigate} switchWorkspace={switchWorkspace}>
+      {(['courses', 'documents', 'coach'] as const).map(workspace => {
+        const screen = navigation[workspace]
+        const active = section === workspace && !overlay
+        return screen && <ScreenHost key={workspace} active={active} className={`workspace-${workspace}${screen.name === 'project' ? ' project-screen' : ''}${screen.name === 'review' ? ' review-screen-host' : ''}`}>
+          <div className="screen-content" key={screenKey(screen)}>{renderScreen(screen, active)}</div>
+        </ScreenHost>
+      })}
+      {route.name === 'users' && <ScreenHost active>{renderScreen(route, true)}</ScreenHost>}
+      {route.name === 'settings' && <ScreenHost active><Settings user={user} navigate={navigate} route={route} onSession={onSession} onSessionChanged={onSessionChanged} /></ScreenHost>}
+      {route.name === 'logs' && <ScreenHost active><Logs user={user} navigate={navigate} route={route} /></ScreenHost>}
+      {searchCourse && <Search course={searchCourse} navigate={navigate} onClose={() => setSearchCourse(null)} />}
+      {question && <ConfirmDialog request={question.request} onResult={question.resolve} />}
+    </AppShell>
+  </MarkdownProvider>
 }

@@ -22,7 +22,7 @@ const EXAMPLE = 'opencourse-example'
 
 const HELPERS = `
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const visible = (e) => e && e.getBoundingClientRect().width > 0;
+  const visible = (e) => e && e.checkVisibility({ visibilityProperty: true });
   const wait = async (selector, timeout = 8000) => {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
@@ -72,6 +72,10 @@ export async function ensureExampleCourse(win: BrowserWindow): Promise<ReturnTyp
 export const OPEN_EXAMPLE_LESSON = `
   if (document.querySelector('.settings') || document.querySelector('.logs')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
   document.querySelector('.titlebar [data-section="courses"]').click();
+  await sleep(100);
+  // The courses switch restores the last courses screen. A lesson's back link
+  // is its course overview, and the overview's is All courses.
+  for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a')?.click(); await sleep(250); }
   await wait('.library');
   const card = await (async () => {
     for (let n = 0; n < 160; n++) {
@@ -102,7 +106,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   /** A real press - mousedown, mouseup, click - at the centre of what `selector` finds. */
   const press = async (selector: string): Promise<void> => {
     const box = await win.webContents.executeJavaScript(`(() => {
-      const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0);
+      const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.checkVisibility({ visibilityProperty: true }));
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -178,7 +182,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await run('a lesson opens at the app\'s own size, with the control at the column\'s foot', `
     ${OPEN_EXAMPLE_LESSON}
     const close = document.querySelector('.sidechat-close');
-    if (close) { close.click(); await until(() => !document.querySelector('.sidechat'), 'the side chat to close'); }
+    if (close) { close.click(); await until(() => !document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat to close'); }
     await sleep(200);
     await wait('.content .reading-size');
     if (label() !== '100%') throw new Error('the control reads ' + label());
@@ -273,7 +277,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await pressing('the chat chip pressed again', '.titlebar .chat-chip')
 
   await run('the next lesson keeps the size', `
-    await until(() => label() === '125%' && !document.querySelector('.sidechat'), 'back to 125% with the chat closed');
+    await until(() => label() === '125%' && !document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'back to 125% with the chat closed');
     const title = document.querySelector('.lesson-head h1').textContent;
     const next = [...document.querySelectorAll('.lesson-nav button')].find((b) => /→$/.test(b.textContent.trim()));
     next.click();
@@ -303,7 +307,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
     return before + 'px, ' + label();
   `)
 
-  await run('the exercise brief follows the size, and the control goes with the column', `
+  await run('the exercise shares the lesson size, with its own control at the brief\'s foot', `
     const back = [...document.querySelectorAll('.lesson-nav button')].find((b) => /^←/.test(b.textContent.trim()));
     back.click();
     await wait('.exercise');
@@ -313,11 +317,58 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
     const brief = await wait('.workbench-brief');
     const size = px(brief);
     if (Math.abs(size - 14 * 1.25) > 0.5) throw new Error('brief ' + size + 'px');
-    if (visible(pill())) throw new Error('the control is still showing over the editor');
+    if (visible(pill())) throw new Error('the lesson control is still showing over the editor');
+    const control = await wait('.workbench-brief .reading-size');
+    if (control.querySelector('.reading-size-value').textContent !== '125%') throw new Error('exercise size is not synced');
+    const box = control.getBoundingClientRect(), column = brief.getBoundingClientRect();
+    if (Math.abs(box.left - column.left - 16) > 2 || Math.abs(column.bottom - box.bottom - 16) > 2) throw new Error('control is not at the bottom-left of the brief');
+    const editor = await wait('.workbench .cm-editor');
+    const checks = await wait('.workbench .pane.active .xterm-rows');
+    if (Math.abs(px(editor) - 12.5 * 1.25) > 0.5) throw new Error('code ' + px(editor) + 'px');
+    if (Math.abs(px(checks) - 12 * 1.25) > 0.5) throw new Error('checks ' + px(checks) + 'px');
+    window.__readingEditor = editor;
+    window.__readingCode = editor.querySelector('.cm-content').textContent;
+    window.__readingChecks = checks;
+    return size + 'px brief, ' + px(editor) + 'px code, ' + px(checks) + 'px checks';
+  `)
+  await pressing('the exercise terminal opened', '.workbench-tabs button:nth-child(2)')
+  await run('a terminal first opened at a larger size uses that size', `
+    await until(() => document.querySelector('.workbench-tabs button.active')?.textContent.trim() === 'Terminal', 'the terminal tab to finish starting', 30000);
+    const terminal = await wait('.workbench .pane:nth-child(2) .xterm-rows');
+    await until(() => terminal.textContent.trim().length > 0, 'the shell to write its prompt', 10000);
+    if (Math.abs(px(terminal) - 12 * 1.25) > 0.5) throw new Error('terminal ' + px(terminal) + 'px');
+    window.__readingTerminal = terminal;
+    return px(terminal) + 'px';
+  `)
+  await pressing('A+ pressed in the exercise', '.workbench-brief .reading-size-larger')
+  await run('the exercise control resizes the statement, code and both output panes in place', `
+    await until(() => document.querySelector('.workbench-brief .reading-size-value')?.textContent === '150%', 'exercise 150%');
+    const expected = [[document.querySelector('.workbench-brief .prompt'), 14], [window.__readingEditor, 12.5], [window.__readingChecks, 12], [window.__readingTerminal, 12]];
+    for (const [element, base] of expected) {
+      if (!element.isConnected) throw new Error('a text pane was recreated');
+      if (Math.abs(px(element) - base * 1.5) > 0.5) throw new Error(element.className + ' ' + px(element) + 'px');
+    }
+    if (window.__readingEditor.querySelector('.cm-content').textContent !== window.__readingCode) throw new Error('code changed while resizing');
+    const scroller = document.querySelector('.workbench-brief-content');
+    scroller.scrollTop = scroller.scrollHeight;
+    const box = document.querySelector('.workbench-brief .reading-size').getBoundingClientRect();
+    if (scroller.getBoundingClientRect().bottom > box.top) throw new Error('the control overlaps the statement scroller');
+    if (document.querySelector('.body').scrollWidth > document.querySelector('.body').clientWidth + 1) throw new Error('the exercise scrolls sideways');
+    return '150%, same editor and output panes';
+  `)
+  await shot('150-exercise')
+  await pressing('the checks tab opened after resizing', '.workbench-tabs button:first-child')
+  await run('the checks pane fits at the new size, and the lesson reflects exercise changes', `
+    const checks = await wait('.workbench .pane.active .xterm-rows');
+    if (checks !== window.__readingChecks || Math.abs(px(checks) - 18) > 0.5) throw new Error('checks lost their new size');
+    if (checks.getBoundingClientRect().width <= 0) throw new Error('checks have no width');
     document.querySelector('.workbench-back').click();
     await wait('.content .reading-size');
-    return size + 'px';
+    if (label() !== '150%') throw new Error('lesson is not synced: ' + label());
+    return label();
   `)
+  await pressing('restore 125% for the remaining reader checks', '.content .reading-size-smaller')
+  await run('the shared size is restored', `await until(() => label() === '125%', '125%'); return label();`)
 
   await shot('125-next')
   // The size can be typed: any whole percent from 50 to 200. Anything else, or

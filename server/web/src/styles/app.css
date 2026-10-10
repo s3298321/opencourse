@@ -352,7 +352,8 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .auth { position: relative; overflow: hidden; display: grid; place-items: center; padding: clamp(2rem, 7vw, 5rem) 16px; min-height: calc(100vh - 60px - 140px); }
 .auth-sparkles { opacity: 0.8; }
 .auth-card { position: relative; z-index: 1; width: min(100%, 420px); padding: 2rem 1.9rem 1.6rem; border-radius: var(--radius-xl); display: flex; flex-direction: column; gap: 0.9rem; }
-.auth-mark { width: 52px; height: 52px; border-radius: 13px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.45), 0 0 40px rgba(228, 228, 232, 0.1); margin-bottom: 0.2rem; }
+/* Follow the PNG's alpha outline rather than its transparent image box. */
+.auth-mark { width: 52px; height: 52px; filter: drop-shadow(0 0 20px rgba(228, 228, 232, 0.1)); margin-bottom: 0.2rem; }
 .auth-card h1 { font-size: 1.55rem; letter-spacing: -0.03em; }
 .auth-subtitle { color: var(--muted); font-size: 0.92rem; margin-top: -0.4rem; }
 .auth-form { display: flex; flex-direction: column; gap: 0.95rem; margin-top: 0.35rem; }

@@ -240,7 +240,7 @@ describe('webSearchFor', () => {
 describe('the side chat prompt and the search switch', () => {
   it('says it cannot look anything up unless search is on', () => {
     expect(sideChatInstructions(false)).toBe(SIDE_CHAT_INSTRUCTIONS)
-    expect(SIDE_CHAT_INSTRUCTIONS).toContain('You have no way to look anything up.')
+    expect(SIDE_CHAT_INSTRUCTIONS).toContain('You cannot search the web.')
     const searching = sideChatInstructions(true)
     expect(searching).not.toContain('no way to look anything up')
     expect(searching).toContain('You can search the web')

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useScreenActive } from '../screen-activity'
 
 export interface MenuItem {
   id: string
@@ -42,6 +43,7 @@ export default function Menu({
   align = 'right',
   side = 'auto',
   heading,
+  resetKey,
   items
 }: {
   label: ReactNode
@@ -57,9 +59,12 @@ export default function Menu({
   side?: 'auto' | 'above'
   /** A line of text over the items, saying what they choose. */
   heading?: string
+  /** Persistent chrome menus close when their screen changes. */
+  resetKey?: unknown
   items: MenuItem[]
 }): JSX.Element {
   const [open, setOpen] = useState(false)
+  const screenActive = useScreenActive()
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
   const [active, setActive] = useState(0)
   const trigger = useRef<HTMLButtonElement | null>(null)
@@ -72,6 +77,7 @@ export default function Menu({
     setOpen(false)
     if (restoreFocus) trigger.current?.focus()
   }, [])
+  useLayoutEffect(() => { close(false) }, [screenActive, resetKey, close])
 
   // Measured after layout and before paint, so the panel never shows in the
   // wrong place for a frame.
@@ -129,6 +135,11 @@ export default function Menu({
     const onScroll = (event: Event): void => {
       const target = event.target as Node | null
       if (target && panel.current?.contains(target)) return
+      // Parked workspaces still receive output and may scroll their own panes.
+      // Their layout has no bearing on the visible menu's anchor.
+      if (target instanceof Element && target.closest('[hidden]')) return
+      // A composer scrolling its own text does not move any menu anchor.
+      if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return
       close(false)
     }
     document.addEventListener('mousedown', onDown)

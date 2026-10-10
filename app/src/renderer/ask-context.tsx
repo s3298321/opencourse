@@ -13,6 +13,7 @@ import type { QuoteSource } from '@core/types'
  */
 export interface AskOffer {
   /** Who made the offer, so only they can take it back. */
+  notebook?: { cellId?: string }
   owner: object
   text: string
   /** What the model is told the passage is from. */

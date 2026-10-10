@@ -24,7 +24,7 @@ export function searchCourse(course: CourseView, term: string, limit = MAX_HITS)
     for (const lesson of mod.lessons) {
       const base: SearchHit = { kind: 'lesson', moduleId: mod.slug, lessonId: lesson.slug, moduleTitle: mod.title, lessonTitle: lesson.title }
       if (lesson.title.toLowerCase().includes(needle)) { hits.push(base); continue }
-      const line = lesson.blocks.flatMap((b) => b.type === 'markdown' ? b.content.split('\n') : []).find((l) => l.toLowerCase().includes(needle))
+      const line = lesson.blocks.flatMap((b) => b.type === 'markdown' || b.type === 'python-cell' ? b.content.split('\n') : []).find((l) => l.toLowerCase().includes(needle))
       if (line) hits.push({ ...base, excerpt: line.replace(/^[#>\-*\s]+/, '').slice(0, 120) })
     }
   }

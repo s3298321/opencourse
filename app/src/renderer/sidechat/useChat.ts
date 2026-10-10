@@ -35,7 +35,7 @@ let drafted = 0
 /** A tab whose chat does not exist yet. */
 export const isDraft = (id: string | null | undefined): boolean => !!id?.startsWith(DRAFT)
 
-export type PanelSummary = Omit<ChatSummary, 'startedIn'> & { startedIn?: ChatLessonRef | null; historyLabel?: string }
+export type PanelSummary = Omit<ChatSummary, 'startedIn' | 'courseId'> & { courseId?: string; documentId?: string; startedIn?: ChatLessonRef | null; historyLabel?: string }
 export interface PanelThread { chat: PanelSummary; messages: ChatMessage[] }
 interface PendingMessage { chat: PanelSummary; message: ChatMessage; afterSeq: number }
 export interface ChatPanel {
@@ -60,6 +60,8 @@ export interface ChatPanel {
   connections: Partial<Record<AIProvider, AIConnection>>
   loading: boolean
   activity: string | null
+  /** True from a tool call until the model speaks again: the call is still running. */
+  toolRunning: boolean
   sendBlocked?: boolean
   setActive: (id: string) => void
   open: (id: string) => void
@@ -100,7 +102,7 @@ function savedPanel(key?: string): { tabs: string[]; active: string | null } {
     return { tabs: Array.isArray(value?.tabs) ? value.tabs.filter((id: unknown) => typeof id === 'string').slice(0, 200) : [], active: typeof value?.active === 'string' ? value.active : null }
   } catch { return { tabs: [], active: null } }
 }
-export function useChatPanel(courseId: string, lesson?: ChatLessonRef, projectModuleSlug?: string, visible = true): ChatPanel {
+export function useChatPanel(courseId: string, lesson?: ChatLessonRef, projectModuleSlug?: string, visible = true, notebook = false, beforeSend?: () => Promise<void>): ChatPanel {
   const transport = useMemo(() => {
     const api = window.opencourse
     const target = { courseId, moduleId: projectModuleSlug ?? '' }
@@ -113,18 +115,19 @@ export function useChatPanel(courseId: string, lesson?: ChatLessonRef, projectMo
       onActivity: api.onProjectChatActivity
     } : {
       list: () => api.listChats(courseId), get: api.getChat,
-      create: () => api.createChat(courseId, lesson!), remove: api.deleteChat,
-      send: (id: string, text: string, quote?: ChatQuote, _review?: boolean) => api.sendChatMessage(id, text, quote, lesson!),
+      create: () => api.createChat(courseId, notebook ? { kind: 'notebook' } : lesson!), remove: api.deleteChat,
+      send: async (id: string, text: string, quote?: ChatQuote, _review?: boolean) => { await beforeSend?.(); return api.sendChatMessage(id, text, quote, notebook ? { kind: 'notebook' } : lesson!) },
       cancel: api.cancelChat, setModel: api.setChatModel, setReasoning: api.setChatReasoning, setProvider: api.setChatProvider,
       onDelta: api.onChatDelta, onDone: api.onChatDone, onTitle: api.onChatTitle, onError: api.onChatError,
       onActivity: api.onChatActivity
     }
-  }, [courseId, lesson?.moduleId, lesson?.lessonId, projectModuleSlug])
+  }, [courseId, lesson?.moduleId, lesson?.lessonId, projectModuleSlug, notebook, beforeSend])
   return useConversationPanel(transport, projectModuleSlug ? 'project' : 'chat', visible)
 }
 
 export function useConversationPanel(transport: ChatTransport, scope: AIScope, visible = true, storageKey?: string): ChatPanel {
   const [activity, setActivity] = useState<string | null>(null)
+  const [toolRunning, setToolRunning] = useState(false)
   const [chats, setChats] = useState<PanelSummary[]>([])
   // Restore only after the course's chat list validates saved IDs. Never load
   // a stale or unrelated thread from local storage during the initial render.
@@ -257,10 +260,11 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   useEffect(() => {
     const offDelta = transport.onDelta((chatId, chunk) => {
       buffers.current.set(chatId, (buffers.current.get(chatId) ?? '') + chunk)
+      if (activeRef.current === chatId) setToolRunning(false)
     })
     const offDone = transport.onDone((chatId) => {
       buffers.current.delete(chatId)
-      if (activeRef.current === chatId) setActivity(null)
+      if (activeRef.current === chatId) { setActivity(null); setToolRunning(false) }
       setBusy((current) => {
         const next = new Set(current)
         next.delete(chatId)
@@ -272,7 +276,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     })
     const offError = transport.onError((chatId, message) => {
       buffers.current.delete(chatId)
-      if (activeRef.current === chatId) setActivity(null)
+      if (activeRef.current === chatId) { setActivity(null); setToolRunning(false) }
       setBusy((current) => {
         const next = new Set(current)
         next.delete(chatId)
@@ -286,7 +290,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
       void refreshList()
     })
     const offActivity = transport.onActivity((id, message) => {
-      if (activeRef.current === id) setActivity(message)
+      if (activeRef.current === id) { setActivity(message); setToolRunning(true) }
     })
     const offTitle = transport.onTitle((id, title) => {
       keepUnlisted(next => { const chat = next.get(id); if (chat) next.set(id, { ...chat, title }) })
@@ -325,6 +329,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     setThread(current => current?.chat.id === id ? current : null)
     setStreaming(buffers.current.get(id) ?? null)
     setActivity(null)
+    setToolRunning(false)
     setError(null)
   }, [])
 
@@ -583,6 +588,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     connections,
     loading,
     activity,
+    toolRunning,
     setActive: open,
     open,
     close,

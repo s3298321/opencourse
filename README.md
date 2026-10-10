@@ -14,7 +14,8 @@ And two ways to ask. **Side chat** opens beside the lesson you are reading:
 highlight a paragraph, ask what it means, ask for it a different way. **Coach**
 is the other one — learn something by talking about it, a spoken conversation
 with an OpenAI voice model that keeps its own notes between sessions, so the
-next one picks up where the last stopped. Those two use an OpenAI API key or a
+next one picks up where the last stopped. **Documents**, between Courses and
+Coach, lets you read local PDFs with the same Ask chat. These use an OpenAI API key or a
 connected ChatGPT subscription; the servers you connect to are the only other
 place the app goes online.
 
@@ -44,7 +45,7 @@ site/                       opencourse.dev (Astro, static): the app, the downloa
 design/                     the web's design layer: the app's tokens, shared by site and web app
 docs/getting-started.md     the user's guide, from download to publishing
 docs/self-hosting.md        running a catalog server: Docker, mail, admin, backups
-docs/course-format.md       the course format, v1.6
+docs/course-format.md       the course format, v1.7
 docs/server-api.md          the server API, v1
 .github/workflows/          CI, app releases, the website, the server image
 docs/example-course/        a minimal course exercising every block type
@@ -65,6 +66,9 @@ npm install
 npm run dev
 ```
 
+Development watches the renderer, preload and main process. Main-process changes
+restart the app so new IPC handlers are loaded alongside the updated UI.
+
 Other things you can run from `app/`:
 
 | Command | What it does |
@@ -74,6 +78,8 @@ Other things you can run from `app/`:
 | `npm run zip:course [slug]` | Packs `content/<slug>/` into `content-zip/<slug>.zip` for importing; no slug packs them all |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run smoke` | Boots the app on a throwaway profile and drives the real renderer through 146 checks, including simulated subscription streaming and project tools; writes a report to `/tmp/opencourse-smoke.json` |
+| `OPENCOURSE_SMOKE_ONLY=notebook npm run smoke` | Notebook journey with bundled Python, keyboard execution, selections, navigation, persistence, themes and narrow layout on a throwaway profile |
+| `OPENCOURSE_TEST_PYTHON=1 npx vitest run tests/notebook-runtime.test.ts` | Offline notebook venv and worker integration tests, including local package installation and process cleanup |
 | `npm run shots` | Screenshots the app's own screens into `/tmp/opencourse-shots` (uses `capturePage`, so no screen-recording permission) |
 | `npm run dmg` | Unsigned `OpenCourse-mac-arm64.dmg` into `app/dist/`. Releases are built by CI, signed when it has the credentials (see [Releasing](#releasing)) |
 
@@ -84,8 +90,8 @@ npm run check:exercises   # every solution must pass, every starter must fail
 ## Side chat
 
 Reading a lesson and want to ask something about it? The **Ask** button in the
-top-right corner opens a chat beside it. The whole lesson goes to the assistant 
-with your first question, so you can ask what a paragraph means, ask for the same 
+top-right corner opens a chat beside it. The current lesson goes to the assistant
+with your question, so you can ask what a paragraph means, ask for the same
 idea a different way, or push past where the lesson stopped.
 
 Highlight a passage first and an **Ask about this** button appears; what you
@@ -116,8 +122,53 @@ had about this course. Chats are stored per person and per course: you never see
 another user's, or another course's.
 
 A chat is not tied to the lesson it was started in. Carry one to the next lesson
-and that lesson is sent too, while everything said so far is kept — so "so how
+and that lesson becomes the current context, while everything said so far is kept — so "so how
 does this relate to what we just discussed?" works.
+Earlier lesson snapshots stay in the local transcript. The assistant can search
+the course and read relevant lessons or project briefs in bounded passages;
+quiz answers and exercise solutions are excluded.
+
+## Python cells and notebook
+
+Courses in format 1.7 can include editable Python lesson cells and one persistent
+notebook. Starting a lesson or project prepares a dedicated course venv using the
+app's bundled Python, with pip and no additional packages. Exercise environments
+remain separate. The **Notebook** button below the course title shows setup status
+and opens the notebook when ready.
+
+Notebook cells share variables; lesson cells run in fresh processes. **Stop kernel**
+and **Restart kernel** reset notebook variables while keeping saved cells, outputs
+and installed packages. Code and outputs autosave, and selected code or output can
+be attached to the course's shared chat on the right. See the
+[course format](docs/course-format.md#python-cells-and-course-notebook-v17) for
+starter cells, limits and the Python package-installation example.
+
+## Documents
+
+Choose **Documents → Import PDF**, or drop a PDF into the Documents library.
+OpenCourse keeps a copy for the current local user. Documents never go to an
+OpenCourse server and cannot be downloaded from its catalog or published there.
+
+Opening a document shows its headings on the left, PDF pages in the center, and
+Ask on the right. Click the title above the headings to rename it locally;
+Enter or clicking away saves, and Escape cancels. PDF bookmarks provide the headings; when none exist, the app
+infers prominent headings from the text. Use the page control or **Find** for
+documents without useful headings. Highlight text and choose **Ask about this**
+to attach the passage with its page number. Sources beneath an answer jump to
+the corresponding page.
+
+PDF parsing and search indexing happen locally in a background worker. Only
+nearby pages render. Ask receives the document identity, current page, your
+question, and any selected quote; it can search and read bounded passages as
+needed. The PDF file and whole document are never automatically sent to the AI.
+Questions, quotes, retrieved passages and chat history use the existing AI
+connection and the same settings as course Ask.
+
+Completion is a manual flag for the whole document; chapters have no completion
+or progress tracking. Image-only PDFs can be read visually, but this release has
+no OCR, so their text cannot be selected or searched. Encrypted PDFs prompt for
+their password when opened; passwords are not saved. Removing a document deletes
+its local copy, index and chats while keeping the original file.
 
 Connect an **OpenAI API key** or use **Continue with ChatGPT** in
 **Settings → Connections**. API requests use API billing; eligible subscription
@@ -307,7 +358,7 @@ Then **Library ▸ Import course…**. Every import creates a new library course
 even when the slug matches an existing course. Use **Edit course** to change an
 existing course while preserving progress, or **Create course** to author one
 directly in the app. **Export ZIP…** on a course's page downloads the last saved
-version in format 1.6. **Get the course format…** saves the spec, schema and an
+version in format 1.7. **Get the course format…** saves the spec, schema and an
 example course.
 
 Nothing you change in the editor — by hand or through the assistant — is
@@ -469,7 +520,7 @@ courses, and configure your AI connections again in Settings.
 Course manifests using relative asset paths remain importable. The app supports
 only `opencourse://` asset URLs and the OpenCourse visualization bridge; old
 branded URLs, bridge identifiers, and environment variables have no aliases.
-The current course-format version is 1.6; compatible Python imports from 1.0–1.5 remain supported.
+The current course-format version is 1.7; compatible Python imports from 1.0–1.6 remain supported.
 
 ## Branding assets
 

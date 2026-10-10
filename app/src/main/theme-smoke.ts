@@ -17,7 +17,7 @@ const HELPERS = `
   const wait = async (selector, timeout = 8000) => {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
-      const el = [...document.querySelectorAll(selector)].find((e) => e.getBoundingClientRect().width > 0);
+      const el = [...document.querySelectorAll(selector)].find((e) => e.checkVisibility({ visibilityProperty: true }));
       if (el) return el;
       await sleep(50);
     }
@@ -29,7 +29,7 @@ const HELPERS = `
   };
   const el = (target) => {
     if (typeof target !== 'string') return target;
-    const found = [...document.querySelectorAll(target)].find((e) => e.getBoundingClientRect().width > 0) ?? document.querySelector(target);
+    const found = [...document.querySelectorAll(target)].find((e) => e.checkVisibility({ visibilityProperty: true })) ?? document.querySelector(target);
     if (!found) throw new Error('nothing matches ' + target);
     return found;
   };
@@ -41,6 +41,7 @@ const HELPERS = `
     document.querySelector('.titlebar .user-chip').click();
     const menu = await wait('.menu-panel');
     [...menu.querySelectorAll('.menu-item')].find((b) => /Settings/.test(b.textContent)).click();
+    (await wait('[data-settings-category="appearance"]')).click();
     await wait('.settings-appearance .theme-card');
   };
   const card = (name) => [...document.querySelectorAll('.settings-appearance .theme-card')].find((c) => c.querySelector('.theme-name').textContent === name);
@@ -48,6 +49,10 @@ const HELPERS = `
   const library = async () => {
     if (document.querySelector('.settings')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
     document.querySelector('.titlebar [data-section="courses"]').click();
+    await sleep(100);
+    // The courses switch restores the last courses screen. A lesson's back link
+    // is its course overview, and the overview's is All courses.
+    for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a')?.click(); await sleep(250); }
     await wait('.library');
     await wait('.titlebar .brand img');
   };
@@ -102,7 +107,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
         ui: token('--ui-size'),
         bodySize: css(document.body, 'font-size'),
         mark: el('.titlebar .brand img').src,
-        grain: css('.content', 'background-image')
+        grain: css('.screen-host:not([hidden]) .content', 'background-image')
       };
       await openSettings();
       const own = card('OpenCourse Dark');
@@ -178,10 +183,10 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       const titlebar = document.querySelector('.titlebar');
       if (css(titlebar, 'background-color') !== 'rgba(246, 241, 231, 0.72)') throw new Error('titlebar ' + css(titlebar, 'background-color'));
       if (!css(titlebar, 'background-image').includes('paper-grain.png')) throw new Error('the titlebar has no grain texture');
-      if (css(document.querySelector('.content'), 'background-color') !== 'rgb(248, 244, 236)') throw new Error('reading surface ' + css(document.querySelector('.content'), 'background-color'));
+      if (css('.screen-host:not([hidden]) .content', 'background-color') !== 'rgb(248, 244, 236)') throw new Error('reading surface ' + css('.screen-host:not([hidden]) .content', 'background-color'));
       // The reading surface asks for the texture at half strength, which the
       // renderer draws on a canvas; the titlebar takes it as authored.
-      await until(() => css('.content', 'background-image').startsWith('url("data:image/png'), 'the faded reading texture');
+      await until(() => css('.screen-host:not([hidden]) .content', 'background-image').startsWith('url("data:image/png'), 'the faded reading texture');
       if (css(document.body, 'background-color') !== 'rgba(0, 0, 0, 0)') throw new Error('body is painted');
       const backdrop = css(document.body, 'background-image', '::before');
       if (!backdrop.includes('desk.jpg') || css(document.body, 'filter', '::before') !== 'blur(6px)') throw new Error('window picture: ' + backdrop.slice(0, 80));
@@ -296,7 +301,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
         for (const key of Object.keys(now)) if (now[key] !== before[key]) throw new Error(key + ': ' + before[key] + ' became ' + now[key]);
         // The grain is the same picture spelled differently (Vite inlines the
         // file its own way; the theme generates it), so compare what it draws.
-        const [own, exported] = [await pixels(before.grain), await pixels(css('.content', 'background-image'))];
+        const [own, exported] = [await pixels(before.grain), await pixels(css('.screen-host:not([hidden]) .content', 'background-image'))];
         if (own.length !== exported.length) throw new Error('grain tiles differ in size');
         let worst = 0;
         for (let i = 0; i < own.length; i++) worst = Math.max(worst, Math.abs(own[i] - exported[i]));

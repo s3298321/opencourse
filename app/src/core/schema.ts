@@ -6,6 +6,7 @@ import type { ErrorObject } from 'ajv'
 import schema from './course-schema.json'
 import type { CourseManifest } from './types'
 import { projectContextText, validateProjectFiles } from './projects/context'
+import { MAX_CELL_BYTES } from './notebook/types'
 
 const ajv = new Ajv2020({ allErrors: true, strict: false, allowUnionTypes: true })
 const validator = ajv.compile(schema)
@@ -19,6 +20,7 @@ export function schemaAtLeast(version: string, minimum: string): boolean {
 function describe(err: ErrorObject): string {
   const field = err.keyword === 'required' ? '/' + (err.params as { missingProperty: string }).missingProperty : ''
   const path = (err.instancePath + field) || '(root)'
+  if (err.schemaPath.startsWith('#/allOf/0/then')) return `${path}: Python cells and notebooks require schema_version 1.7 or later`
   // The raw pattern means nothing to an author; say what a version looks like.
   if (err.instancePath === '/version' && err.keyword === 'pattern') return '/version: use three numbers, MAJOR.MINOR.PATCH, such as 1.2.0'
   if (err.keyword === 'enum' && err.instancePath.endsWith('/runtime/language')) return `${path}: Only Python exercises are supported`
@@ -38,6 +40,9 @@ export function validateManifest(manifest: unknown): string[] {
   if (validator(manifest)) {
     const course = manifest as unknown as CourseManifest
     const issues: string[] = []
+    if (course.notebook && !schemaAtLeast(course.schema_version, '1.7')) issues.push('/notebook: notebooks require schema_version 1.7 or later')
+    const encoder = new TextEncoder()
+    for (const [index, cell] of (course.notebook?.cells ?? []).entries()) if (encoder.encode(cell.content).length > MAX_CELL_BYTES) issues.push(`/notebook/cells/${index}/content: cell source exceeds the 1 MiB limit`)
     const slugs = new Set<string>()
     for (const [moduleIndex, mod] of course.modules.entries()) {
       if (slugs.has(mod.slug)) issues.push(`duplicate module slug: ${mod.slug}`)
@@ -53,6 +58,8 @@ export function validateManifest(manifest: unknown): string[] {
           }
           const blockSlugs = new Set<string>()
           for (const [blockIndex, block] of lesson.blocks.entries()) {
+            if (block.type === 'python-cell' && !schemaAtLeast(course.schema_version, '1.7')) issues.push(`/modules/${moduleIndex}/lessons/${lessonIndex}/blocks/${blockIndex}: Python cells require schema_version 1.7 or later`)
+            if (block.type === 'python-cell' && encoder.encode(block.content).length > MAX_CELL_BYTES) issues.push(`/modules/${moduleIndex}/lessons/${lessonIndex}/blocks/${blockIndex}/content: cell source exceeds the 1 MiB limit`)
             if (blockSlugs.has(block.slug)) issues.push(`/modules/${moduleIndex}/lessons/${lessonIndex}/blocks/${blockIndex}/slug: duplicate block slug "${block.slug}" in this lesson`)
             blockSlugs.add(block.slug)
           }

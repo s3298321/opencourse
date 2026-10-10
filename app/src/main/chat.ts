@@ -1,5 +1,10 @@
+import { notebookChatContext } from './notebooks'
 import { assertCourseAvailable } from './course-busy'
 import { createHash } from 'node:crypto'
+import { COURSE_TOOLS, READING_LIMITS, READING_TOOL_INSTRUCTIONS } from '../core/reading/tools'
+import { runProjectAgent } from '../core/projects/agent'
+import { runCourseReadingTool } from './course-reading'
+import type { ChatCitation, ReadingSource } from '../core/types'
 /**
  * Side chat: a text conversation about the lesson the learner is reading.
  *
@@ -37,6 +42,7 @@ import {
 import { sideChatInstructions } from '../core/sidechat/prompt'
 import { MAX_MESSAGE_CHARS, MAX_QUOTE_CHARS, buildInput, needsContext } from '../core/sidechat/thread'
 import type {
+  ChatContextRef,
   ChatLessonRef,
   ChatDefaults,
   ChatModel,
@@ -150,7 +156,7 @@ function chatConfig(chat: ChatSummary): ChatSummary {
   const snapshot = inflight.get(chat.id)?.chat
   const configured = snapshot ? { ...chat, model: snapshot.model, reasoning: snapshot.reasoning, provider: snapshot.provider } : conversationConfig('chat', chat)
   const course = getCourse(chat.courseId)
-  return { ...configured, historyLabel: chat.startedIn && course ? findLesson(course, chat.startedIn.moduleId, chat.startedIn.lessonId)?.lesson.title ?? 'Conversation' : 'Conversation' }
+  return { ...configured, historyLabel: chat.startedInNotebook ? 'Notebook' : chat.startedIn && course ? findLesson(course, chat.startedIn.moduleId, chat.startedIn.lessonId)?.lesson.title ?? 'Conversation' : 'Conversation' }
 }
 
 export function listChats(courseId: string): ChatSummary[] {
@@ -177,10 +183,13 @@ export function getChat(chatId: string): ChatThread | null {
  * injected until the first message - a chat opened and abandoned should cost
  * nothing, and the learner may well scroll to another lesson before typing.
  */
-export function createChat(courseId: string, lesson: ChatLessonRef, model?: string): ChatSummary {
+export function createChat(courseId: string, target: ChatContextRef, model?: string): ChatSummary {
+  const notebook = 'kind' in target && target.kind === 'notebook'
+  const lesson = notebook ? undefined : target as ChatLessonRef
   assertCourseAvailable(courseId)
   const course = getCourse(courseId)
-  if (!course || !findLesson(course, lesson.moduleId, lesson.lessonId)) throw new Error('That lesson is not in this course.')
+  if (!course || (!notebook && (!lesson || !findLesson(course, lesson.moduleId, lesson.lessonId)))) throw new Error('That lesson is not in this course.')
+  if (notebook) notebookChatContext(courseId)
   const id = newChatId()
   const defaults = newAIConversation('chat')
   if (model) {
@@ -192,7 +201,8 @@ export function createChat(courseId: string, lesson: ChatLessonRef, model?: stri
     id,
     courseId,
     ...defaults,
-    startedIn: lesson,
+    startedIn: lesson ?? null,
+    startedInNotebook: notebook,
     at: new Date().toISOString()
   })
   return requireChat(id)
@@ -396,8 +406,10 @@ export async function sendChatMessage(
   chatId: string,
   text: string,
   quote: ChatQuote | undefined,
-  lesson: ChatLessonRef
+  target: ChatContextRef
 ): Promise<ChatSendResult> {
+  const notebook = !!target && 'kind' in target && target.kind === 'notebook'
+  const lesson = notebook ? undefined : target as ChatLessonRef
   let chat = requireChat(chatId)
   const owner = requireUser()
   const asked = String(text ?? '').trim().slice(0, MAX_MESSAGE_CHARS)
@@ -426,18 +438,19 @@ export async function sendChatMessage(
   assertCourseAvailable(chat.courseId)
   const course = getCourse(chat.courseId)
   if (!course) return { status: 'failed', message: `that course is no longer in your library` }
-  const found = findLesson(course, lesson.moduleId, lesson.lessonId)
-  if (!found) return { status: 'failed', message: 'that lesson is not in this course' }
+  const found = lesson && findLesson(course, lesson.moduleId, lesson.lessonId)
+  if (!notebook && !found) return { status: 'failed', message: 'that lesson is not in this course' }
 
   const at = new Date().toISOString()
   const stored = selectMessages(chatId)
-  const contextText = lessonContextText(course.title, found.module.title, found.lesson, course.subject)
+  const contextText = notebook ? notebookChatContext(course.courseId) : lessonContextText(course.title, found!.module.title, found!.lesson, course.subject)
   const contextFingerprint = createHash('sha256').update(contextText).digest('hex')
-  if (needsContext(stored, lesson, contextFingerprint)) {
+  if (notebook ? ![...stored].reverse().find(message => message.role === 'context')?.notebook || [...stored].reverse().find(message => message.role === 'context')?.contextFingerprint !== contextFingerprint : needsContext(stored, lesson!, contextFingerprint)) {
     appendMessage(chatId, {
       role: 'context',
       text: contextText,
       contextFingerprint,
+      notebook: notebook || undefined,
       lesson,
       at
     })
@@ -449,7 +462,8 @@ export async function sendChatMessage(
   const seq = appendMessage(chatId, {
     role: 'user',
     text: asked,
-    ...(quoted ? { quote: { text: quoted, from: quote?.from === 'answer' ? 'answer' : 'lesson' } } : {}),
+    ...(quoted ? { quote: { text: quoted, from: quote?.from === 'answer' ? 'answer' : notebook ? 'notebook' : 'lesson', ...(notebook && typeof quote?.notebook?.cellId === 'string' ? { notebook: { cellId: quote.notebook.cellId } } : {}) } } : {}),
+    notebook: notebook || undefined,
     lesson,
     at
   })
@@ -458,6 +472,7 @@ export async function sendChatMessage(
   const started = Date.now()
   const about = (): Record<string, unknown> => ({ model: chat.model, provider: chat.provider ?? 'apiKey', reasoning: chat.reasoning ?? null, ms: Date.now() - started, chars: answered.length })
   let answered = ''
+  const localSources: ReadingSource[] = []
   let finalized = false
   const valid = (): boolean => currentUserId() === owner && !!selectChat(chatId) && getCourse(chat.courseId)?.revision === course.revision
   const stop = (): void => {
@@ -465,7 +480,7 @@ export async function sendChatMessage(
     finalized = true
     controller.abort()
     if (inflight.get(chatId)?.controller === controller) inflight.delete(chatId)
-    if (valid() && answered.trim()) appendMessage(chatId, { role: 'assistant', text: answered, status: 'stopped', generation: { model: chat.model, reasoning: chat.reasoning, provider: chat.provider ?? 'apiKey' }, lesson, at: new Date().toISOString() })
+    if (valid() && answered.trim()) appendMessage(chatId, { role: 'assistant', text: answered, status: 'stopped', localSources, generation: { model: chat.model, reasoning: chat.reasoning, provider: chat.provider ?? 'apiKey' }, notebook: notebook || undefined, lesson, at: new Date().toISOString() })
     logger.info('Answer stopped', about())
     push(sender, 'chat:done', chatId, { stopped: true })
   }
@@ -481,22 +496,54 @@ export async function sendChatMessage(
   const webSearch = readPreferences().webSearch === true && webSearchFor(chat.model, chat.reasoning)
 
   void (async () => {
-    const ask = (search: boolean): ReturnType<typeof streamChat> =>
-      streamChat({
+    const budget = { chars: 0, signal: controller.signal }
+    const citations: ChatCitation[] = []
+    const timer = setTimeout(() => controller.abort(), 18 * 60_000)
+    timer.unref()
+    const ask = async (search: boolean): Promise<{ text: string; aborted: boolean; citations: ChatCitation[] }> => {
+      const result = await runProjectAgent({
+        input: buildInput(selectMessages(chatId), `${sideChatInstructions(search)}\n\n${READING_TOOL_INSTRUCTIONS}`),
+        signal: controller.signal, limits: READING_LIMITS,
+        stream: async input => {
+          const begin = answered.length
+          let first = true
+          const result = await streamChat({
         key,
         provider: chat.provider,
         model: chat.model,
         ...(chat.reasoning ? { reasoning: chat.reasoning } : {}),
-        input: buildInput(selectMessages(chatId), sideChatInstructions(search)),
+        input,
+        tools: COURSE_TOOLS,
+        toolNamespace: { name: 'course', description: 'Read-only retrieval from learner-facing text in the current course.' },
         webSearch: search,
         onSearch: (event) => { if (!finalized && valid()) push(sender, 'chat:activity', chatId, searchActivity(event)) },
         signal: controller.signal,
         onDelta: (chunk) => {
           if (finalized || !valid()) return
-          answered += chunk
-          push(sender, 'chat:delta', chatId, chunk)
+          const delta = first && answered ? `\n\n${chunk}` : chunk
+          first = false
+          answered += delta
+          push(sender, 'chat:delta', chatId, delta)
+        }
+          })
+          if (first && result.text && !finalized && valid()) {
+            const delta = `${begin ? '\n\n' : ''}${result.text}`
+            answered += delta
+            push(sender, 'chat:delta', chatId, delta)
+          }
+          const offset = begin + (begin && result.text ? 2 : 0)
+          citations.push(...result.citations.map(citation => ({ ...citation, start: citation.start + offset, end: citation.end + offset })))
+          return result
+        },
+        tool: async (name, args) => {
+          if (finalized || !valid() || controller.signal.aborted) throw new Error('Course Ask stopped.')
+          push(sender, 'chat:activity', chatId, name === 'search_course' ? 'Searching the course…' : name === 'read_course_section' ? 'Reading a course section…' : 'Listing course sections…')
+          try { return runCourseReadingTool(course, name, args, budget, localSources) }
+          catch (error) { return JSON.stringify({ error: (error as Error).message }) }
         }
       })
+      return { text: answered, aborted: result.stopped, citations }
+    }
     try {
       let result: Awaited<ReturnType<typeof streamChat>>
       try {
@@ -520,6 +567,8 @@ export async function sendChatMessage(
           status: result.aborted ? 'stopped' : 'complete',
           generation: { model: chat.model, reasoning: chat.reasoning, provider: chat.provider ?? 'apiKey' },
           ...(result.citations.length ? { citations: result.citations } : {}),
+          ...(localSources.length ? { localSources } : {}),
+          notebook: notebook || undefined,
           lesson,
           at: new Date().toISOString()
         })
@@ -534,7 +583,7 @@ export async function sendChatMessage(
       // unhandled rejection in main.
       try {
         if (currentUserId() === owner && answered.trim() && selectChat(chatId) && getCourse(chat.courseId)?.revision === course.revision) {
-          appendMessage(chatId, { role: 'assistant', text: answered, status: 'failed', generation: { model: chat.model, reasoning: chat.reasoning, provider: chat.provider ?? 'apiKey' }, lesson, at: new Date().toISOString() })
+          appendMessage(chatId, { role: 'assistant', text: answered, status: 'failed', localSources, generation: { model: chat.model, reasoning: chat.reasoning, provider: chat.provider ?? 'apiKey' }, notebook: notebook || undefined, lesson, at: new Date().toISOString() })
         }
       } catch {
         // Nothing left to save it to; the error below is the thing to report.
@@ -542,6 +591,7 @@ export async function sendChatMessage(
       logger.error('Answer failed', { ...about(), webSearch, error: err })
       push(sender, 'chat:error', chatId, (err as Error).message)
     } finally {
+      clearTimeout(timer)
       if (inflight.get(chatId)?.controller === controller) inflight.delete(chatId)
     }
   })()

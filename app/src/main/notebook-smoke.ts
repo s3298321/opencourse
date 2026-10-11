@@ -15,6 +15,7 @@ const wait = async (selector, timeout = 15000) => { const started = Date.now(); 
 const until = async (test, timeout = 15000) => { const started=Date.now(); while (!(await test())) { if (Date.now()-started > timeout) throw new Error('Condition did not become true'); await sleep(25); } };
 const assert = (value, message) => { if (!value) throw new Error(message); };
 const button = text => [...document.querySelectorAll('button')].find(element => visible(element) && element.textContent.trim() === text);
+const runCell = async index => { await until(() => { const button = document.querySelectorAll('.notebook-inner .python-cell-run')[index]; return button && !button.disabled; }); document.querySelectorAll('.notebook-inner .python-cell-run')[index].click(); };
 `
 export async function notebookChecks(win: BrowserWindow): Promise<Result[]> {
   const results: Result[] = []
@@ -23,6 +24,7 @@ export async function notebookChecks(win: BrowserWindow): Promise<Result[]> {
   const courseId = fixture.courseId
   await win.webContents.executeJavaScript(`window.__NOTEBOOK_COURSE = ${JSON.stringify(courseId)}`)
   const run = async (name: string, code: string): Promise<void> => {
+    console.log('Notebook smoke:', name)
     try { const detail = await win.webContents.executeJavaScript(`(async () => { ${HELPERS} const courseId = window.__NOTEBOOK_COURSE; ${code} })()`); results.push({ name, ok: true, detail: String(detail ?? '') }) }
     catch (error) { results.push({ name, ok: false, detail: String(error) }) }
   }
@@ -36,6 +38,19 @@ export async function notebookChecks(win: BrowserWindow): Promise<Result[]> {
     assert(reset.nextElementSibling?.classList.contains('python-cell-run'), 'Reset is not beside Run'); const tall = [reset, lesson.querySelector('.python-cell-run')].find(b => b.getBoundingClientRect().height > 30); assert(!tall, 'Cell button taller than the app action size');
     reset.click(); await until(() => !lesson.querySelector('.python-cell-output') && reset.disabled); return 'Output cleared, Reset disabled again';`)
   await run('notebook opens with editable starter cells', `button('Notebook').click(); await wait('.notebook-inner .cm-editor'); assert(document.querySelectorAll('.notebook-inner .python-cell').length === 1, 'Starter cells missing'); return 'One seeded cell';`)
+  await run('lesson and notebook retain their DOM, editors and reading positions', `
+    const notebook=await wait('.notebook-inner'), editor=notebook.querySelector('.cm-editor'), notebookColumn=notebook.closest('.content');
+    notebookColumn.scrollTop=120; await sleep(50); const notebookTop=notebookColumn.scrollTop;
+    [...document.querySelectorAll('.sidebar ol a')].find(visible).click(); const lesson=await wait('.lesson-inner'), lessonEditor=lesson.querySelector('.cm-editor'), lessonColumn=lesson.closest('.content');
+    lessonColumn.scrollTop=180; await sleep(50); const lessonTop=lessonColumn.scrollTop;
+    button('Notebook').click(); await wait('.notebook-inner');
+    assert(document.querySelector('.notebook-inner')===notebook && notebook.querySelector('.cm-editor')===editor, 'Notebook or editor remounted');
+    assert(notebookColumn.scrollTop===notebookTop, 'Notebook position lost');
+    [...document.querySelectorAll('.sidebar ol a')].find(visible).click(); await wait('.lesson-inner');
+    assert(document.querySelector('.lesson-inner')===lesson && lesson.querySelector('.cm-editor')===lessonEditor, 'Lesson or editor remounted');
+    assert(lessonColumn.scrollTop===lessonTop, 'Lesson position lost');
+    assert(![...document.querySelectorAll('.screen-host:not([hidden]) .empty[role="status"]')].some(visible), 'Loading placeholder returned');
+    button('Notebook').click(); await wait('.notebook-inner'); return 'Same DOM and CodeMirror instances, scroll positions retained';`)
   await run('notebook controls use compact icon buttons and the chapter-list glass', `const controls=[...document.querySelectorAll('.notebook-heading button, .notebook-cell-actions button, .notebook-inner .python-cell-toolbar button')];
     assert(controls.length >= 7, 'Controls missing'); const odd=controls.find(b => !b.classList.contains('action-button') || !b.querySelector('svg') || b.getBoundingClientRect().height > 30); assert(!odd, 'Not a compact icon button: '+odd?.textContent);
     const link=document.querySelector('.sidebar-notebook-link.current'); assert(link?.querySelector('svg'), 'Notebook link has no icon'); const style=getComputedStyle(link); assert(style.backdropFilter.includes('blur') && style.backgroundImage.includes('gradient'), 'Notebook link is not glass');
@@ -44,16 +59,16 @@ export async function notebookChecks(win: BrowserWindow): Promise<Result[]> {
   await run('notebook cells share a process and display output', `let saved = await window.opencourse.getNotebook(courseId); const first = saved.cells[0].id, second = crypto.randomUUID();
     await window.opencourse.saveNotebook(courseId, saved.revision, [{id:first,content:'value = 40'}, {id:second,content:'value + 2'}]);
     await until(() => document.querySelectorAll('.notebook-inner .python-cell').length === 2);
-    document.querySelectorAll('.notebook-inner .python-cell-toolbar button')[0].click(); await until(async () => (await window.opencourse.getNotebook(courseId)).cells[0].execution?.status === 'complete');
-    document.querySelectorAll('.notebook-inner .python-cell-toolbar button')[1].click(); await until(() => document.querySelectorAll('.notebook-inner .python-cell-output')[1]?.textContent.includes('42'));
+    await runCell(0); await until(async () => (await window.opencourse.getNotebook(courseId)).cells[0].execution?.status === 'complete');
+    await runCell(1); await until(() => document.querySelectorAll('.notebook-inner .python-cell-output')[1]?.textContent.includes('42'));
     return 'Second cell sees value from the first';`)
   await run('notebook globals survive course and workspace navigation', `const generation=(await window.opencourse.getNotebookStatus(courseId)).generation;
-    document.querySelector('.sidebar ol a').click(); await wait('.lesson-head');
+    [...document.querySelectorAll('.sidebar ol a')].find(visible).click(); await wait('.lesson-head');
     document.querySelector('.titlebar [data-section="documents"]').click(); await wait('.screen-host:not([hidden]) .documents-library');
     document.querySelector('.titlebar [data-section="courses"]').click(); await wait('.lesson-head'); button('Notebook').click(); await wait('.notebook-inner');
     assert((await window.opencourse.getNotebookStatus(courseId)).generation===generation,'Kernel was replaced on navigation');
     const count=(await window.opencourse.getNotebook(courseId)).cells[1].execution.count;
-    document.querySelectorAll('.notebook-inner .python-cell-toolbar button')[1].click(); await until(async () => {const run=(await window.opencourse.getNotebook(courseId)).cells[1].execution; return run?.status==='complete' && run.count>count;}); await wait('.notebook-inner .python-cell-output pre');
+    await runCell(1); await until(async () => {const run=(await window.opencourse.getNotebook(courseId)).cells[1].execution; return run?.status==='complete' && run.count>count;}); await wait('.notebook-inner .python-cell-output pre');
     return 'Same kernel across lessons and Documents';`)
   await run('selected output opens course chat on the right', `const output = await wait('.notebook-inner .python-cell-output pre'); const range=document.createRange(); range.selectNodeContents(output); const selection=window.getSelection(); selection.removeAllRanges(); selection.addRange(range); output.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
     (await wait('.ask-about')).click(); const chat=await wait('.lesson-chat-host .sidechat'); await wait('.sidechat-quote');
@@ -61,26 +76,42 @@ export async function notebookChecks(win: BrowserWindow): Promise<Result[]> {
     return 'Output attached as a notebook quote';`)
   await run('Restart clears variables and retains saved code and output', `const generation=(await window.opencourse.getNotebookStatus(courseId)).generation; button('Restart kernel').click(); await until(async () => { const status=await window.opencourse.getNotebookStatus(courseId); return status.generation!==generation && status.kernel==='idle'; });
     const saved=await window.opencourse.getNotebook(courseId); assert(saved.cells[1].execution.outputs.some(output=>output.text.includes('42')), 'Restart discarded output');
-    document.querySelectorAll('.notebook-inner .python-cell-toolbar button')[1].click(); await until(() => document.querySelectorAll('.notebook-inner .python-cell-output')[1]?.textContent.includes('NameError'));
+    await runCell(1); await until(() => document.querySelectorAll('.notebook-inner .python-cell-output')[1]?.textContent.includes('NameError'));
     return 'Variables reset; cells and historical outputs retained';`)
   await run('lesson processes cannot see notebook variables', `await window.opencourse.stopNotebook(courseId); const course=await window.opencourse.getCourse(courseId); const cell=course.modules.flatMap(module=>module.lessons??[]).flatMap(lesson=>lesson.blocks).find(block=>block.type==='python-cell');
     const result=await window.opencourse.runPythonCell({courseId,cellId:cell.nodeId,kind:'lesson',requestId:crypto.randomUUID()},'value'); assert(result.outputs.some(output=>output.text.includes('NameError')), 'Lesson inherited notebook variable'); return 'Fresh lesson process';`)
   await run('empty notebook survives navigation without reseeding', `const saved=await window.opencourse.getNotebook(courseId); await window.opencourse.saveNotebook(courseId,saved.revision,[]); await until(()=>document.querySelectorAll('.notebook-inner .python-cell').length===0);
-    document.querySelector('.sidebar ol a').click(); await wait('.lesson-head'); button('Notebook').click(); await wait('.notebook-inner'); assert(document.querySelectorAll('.notebook-inner .python-cell').length===0,'Reseeded deleted cells'); return 'Deleted defaults stay deleted';`)
+    [...document.querySelectorAll('.sidebar ol a')].find(visible).click(); await wait('.lesson-head'); button('Notebook').click(); await wait('.notebook-inner'); assert(document.querySelectorAll('.notebook-inner .python-cell').length===0,'Reseeded deleted cells'); return 'Deleted defaults stay deleted';`)
+  await run('a failed notebook flush blocks departure until the conflict is resolved', `
+    const notebook=await wait('.notebook-inner'), saved=await window.opencourse.getNotebook(courseId);
+    button('Add cell').click();
+    await window.opencourse.saveNotebook(courseId,saved.revision,[{id:crypto.randomUUID(),content:'print("Other window")'}]);
+    await wait('.notebook-conflict');
+    document.querySelector('.titlebar .crumbs a').click(); await sleep(150);
+    assert(visible(notebook) && document.querySelector('.notebook-inner')===notebook, 'Failed save allowed departure');
+    button('Reload saved notebook').click(); await until(()=>!document.querySelector('.notebook-conflict'));
+    const latest=await window.opencourse.getNotebook(courseId); await window.opencourse.saveNotebook(courseId,latest.revision,[]);
+    await until(()=>document.querySelectorAll('.notebook-inner .python-cell').length===0); return 'Conflict retains edits and blocks departure; reload resolves it';`)
   await run('cell edits autosave from the actual code editor', `button('Add cell').click(); await wait('.notebook-inner .cm-content'); document.querySelector('.notebook-inner .cm-content').focus(); return 'Editor focused';`)
   try {
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'A', modifiers: ['meta'] }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'A', modifiers: ['meta'] })
     await win.webContents.insertText('print("saved from the editor")')
+    await run('navigation flushes notebook editor changes and retains the editor', `
+      const editor=document.querySelector('.notebook-inner .cm-editor');
+      [...document.querySelectorAll('.sidebar ol a')].find(visible).click(); await wait('.lesson-inner');
+      assert((await window.opencourse.getNotebook(courseId)).cells[0]?.content.includes('saved from the editor'), 'Navigation lost pending edits');
+      button('Notebook').click(); await wait('.notebook-inner'); assert(document.querySelector('.notebook-inner .cm-editor')===editor, 'Edited notebook was remounted');
+      document.querySelector('.notebook-inner .cm-content').focus(); return 'Pending edit flushed before switching, same editor restored';`)
     await run('edited cell is saved without an explicit Save action', `await until(async () => (await window.opencourse.getNotebook(courseId)).cells[0]?.content.includes('saved from the editor')); return 'CodeMirror input persisted';`)
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'A', modifiers: ['meta'] }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'A', modifiers: ['meta'] })
     await run('keyboard code selections are highlighted while composing', `(await wait('.ask-about')).click(); await wait('.python-quote-mark'); assert(document.querySelector('.sidechat-quote blockquote').textContent.includes('saved from the editor'),'Code quote missing'); return 'CodeMirror selection quoted and decorated';`)
     await run('focus the notebook cell for keyboard execution', `document.querySelector('.notebook-inner .cm-content').focus(); return 'Cell focused';`)
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter', modifiers: ['shift'] }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter', modifiers: ['shift'] })
-    await run('Shift+Enter runs and advances into a new cell', `await until(async () => { const notebook=await window.opencourse.getNotebook(courseId); return notebook.cells.length===2 && notebook.cells[0].execution?.status==='complete'; }); assert(document.querySelector('.python-cell-output').textContent.includes('saved from the editor'),'Run output missing'); return 'Execution and next blank cell saved';`)
+    await run('Shift+Enter runs and advances into a new cell', `await until(async () => { const notebook=await window.opencourse.getNotebook(courseId); return notebook.cells.length===2 && notebook.cells[0].execution?.status==='complete'; }); assert(document.querySelector('.notebook-inner .python-cell-output').textContent.includes('saved from the editor'),'Run output missing'); return 'Execution and next blank cell saved';`)
   } catch (error) { results.push({ name: 'native editor input', ok: false, detail: String(error) }) }
-  await run('notebook follows the light editor theme', `await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)}); await until(()=>document.documentElement.dataset.appearance==='light'); assert(getComputedStyle(document.querySelector('.cm-editor')).backgroundColor!=='rgb(17, 17, 17)','Editor retained dark background'); return 'Light editor palette';`)
+  await run('notebook follows the light editor theme', `await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)}); await until(()=>document.documentElement.dataset.appearance==='light'); assert(getComputedStyle(document.querySelector('.notebook-inner .cm-editor')).backgroundColor!=='rgb(17, 17, 17)','Editor retained dark background'); return 'Light editor palette';`)
   win.setSize(720, 700)
-  await run('notebook and right-side chat fit the narrow window', `await sleep(300); const body=document.querySelector('.notebook-body'); assert(body.scrollWidth<=body.clientWidth+1,'Notebook overflows horizontally'); assert(document.querySelector('.sidechat-close').getBoundingClientRect().right<=window.innerWidth,'Chat close is outside window'); return '720px layout';`)
+  await run('notebook and right-side chat fit the narrow window', `await sleep(300); const body=document.querySelector('.notebook-body'); assert(body.scrollWidth<=body.clientWidth+1,'Notebook overflows horizontally'); assert([...document.querySelectorAll('.sidechat-close')].find(visible).getBoundingClientRect().right<=window.innerWidth,'Chat close is outside window'); return '720px layout';`)
   win.setSize(1240, 860)
   writeFileSync(join(tmpdir(), 'opencourse-notebook.png'), (await win.webContents.capturePage()).toPNG())
   await stopAllNotebooks()

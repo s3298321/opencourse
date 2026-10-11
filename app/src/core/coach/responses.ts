@@ -117,8 +117,10 @@ export class ResponseGate {
   }
 
   /** A `response.created` arrived - including one we did not ask for. */
-  started(responseId = ''): void {
-    if (!this.active) {
+  started(responseId = ''): boolean {
+    if (responseId && this.completedIds.has(responseId)) return false
+    if (!this.active || (responseId && this.responseId && responseId !== this.responseId)) {
+      this.cancelling = false
       this.activeGeneration = this.generation
       // An automatic reply fulfils any held request. Keeping it would create
       // another answer as soon as this one finishes.
@@ -127,12 +129,13 @@ export class ResponseGate {
     }
     this.active = true
     this.responseId = responseId
+    return true
   }
 
   /** A `response.done` arrived. Releases anything that was held back. */
-  done(responseId = ''): void {
-    if (responseId && this.completedIds.has(responseId)) return
-    if (responseId && this.responseId && this.responseId !== responseId) return
+  done(responseId = ''): boolean {
+    if (responseId && this.completedIds.has(responseId)) return false
+    if (responseId && this.responseId && this.responseId !== responseId) return false
     if (responseId) {
       this.completedIds.add(responseId)
       if (this.completedIds.size > 100) this.completedIds.delete(this.completedIds.values().next().value as string)
@@ -144,6 +147,7 @@ export class ResponseGate {
     // A tool still running will ask for the reply itself when it lands; asking
     // now would only get in its way.
     if (queued && this.pendingTools === 0 && !this.learnerSpeaking) this.request(queued)
+    return true
   }
 
   /** A session being torn down must not fire a held request into a closed channel. */

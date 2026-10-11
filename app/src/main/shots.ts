@@ -20,10 +20,13 @@ import { simulateAppUpdate } from './updates'
 
 const NAV = `(async (target) => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  const visible = el => el && (el.tagName === 'STYLE' || el.checkVisibility({ visibilityProperty: true }))
+  const all = selector => [...document.querySelectorAll(selector)].filter(visible)
+  const find = selector => all(selector)[0]
   const waitFor = async (selector, timeout = 8000) => {
     const t0 = Date.now()
     while (Date.now() - t0 < timeout) {
-      const el = document.querySelector(selector)
+      const el = find(selector)
       if (el) return el
       await sleep(50)
     }
@@ -39,25 +42,25 @@ const NAV = `(async (target) => {
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
     setter.call(input, 'Sam')
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    click([...document.querySelectorAll('.user-card.new button')].find((b) => b.textContent.trim() === 'Create'))
+    click([...all('.user-card.new button')].find((b) => b.textContent.trim() === 'Create'))
     await waitFor('.library')
   } else if (target === 'import') {
     const result = await window.fixtureAPI.importCoursePath(window.__OPENCOURSE_SHOTS_ZIP)
     if (result.status !== 'ok') throw new Error('import said ' + JSON.stringify(result))
     await waitFor('.course-card')
   } else if (target === 'coach-empty') {
-    click(document.querySelector('.titlebar [data-section="coach"]'))
+    click(find('.titlebar [data-section="coach"]'))
     await waitFor('.coach .empty-library')
     await sleep(250)
   } else if (target === 'coach-new') {
-    click([...document.querySelectorAll('.coach .actions button')].find((b) => /New coach/i.test(b.textContent)))
+    click([...all('.coach .actions button')].find((b) => /New coach/i.test(b.textContent)))
     const input = await waitFor('.coach-card.new input')
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
     setter.call(input, 'French vocabulary')
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await sleep(250)
   } else if (target === 'coach-project') {
-    click([...document.querySelectorAll('.coach-card.new button')].find((b) => b.textContent.trim() === 'Create'))
+    click([...all('.coach-card.new button')].find((b) => b.textContent.trim() === 'Create'))
     const fold = await waitFor('.coach-brief')
     fold.open = true
     await waitFor('.coach-brief-text')
@@ -65,114 +68,148 @@ const NAV = `(async (target) => {
   } else if (target === 'coach-files') {
     await waitFor('.file-row')
     await waitFor('.session-row')
+    find('.coach-brief').open = false
+    find('.content.scroll').scrollTop = 0
     await sleep(300)
   } else if (target === 'coach-brief-edit') {
-    click([...document.querySelectorAll('.coach-brief button')].find(b => b.textContent.trim() === 'Edit'))
+    click([...all('.coach-brief button')].find(b => b.textContent.trim() === 'Edit'))
     await waitFor('.coach-brief textarea')
-    document.querySelector('.coach-brief').scrollIntoView({ block: 'start' })
+    find('.coach-brief').scrollIntoView({ block: 'start' })
     await sleep(250)
   } else if (target === 'coach-brief-cancel') {
-    click([...document.querySelectorAll('.coach-brief button')].find(b => b.textContent.trim() === 'Cancel'))
+    click([...all('.coach-brief button')].find(b => b.textContent.trim() === 'Cancel'))
     await waitFor('.coach-brief-text')
   } else if (target === 'coach-transcript') {
-    click(document.querySelector('.session-row .session-open'))
+    click(find('.session-row .session-open'))
     await waitFor('.transcript .turn')
     await sleep(300)
   } else if (target === 'back-to-coach') {
-    click(document.querySelector('.titlebar .crumbs a'))
+    click(find('.titlebar .crumbs a'))
     await waitFor('.coach-live')
     await sleep(200)
   } else if (target === 'coach-file-open') {
-    const row = [...document.querySelectorAll('.file-row')]
+    const row = [...all('.file-row')]
       .find((r) => r.querySelector('.file-name').textContent.includes('learned.md'))
     click(row.querySelector('.file-name'))
     await waitFor('.coach-panel .prose h1')
     await sleep(300)
   } else if (target === 'coach-list') {
-    const close = document.querySelector('.coach-panel-head button')
+    const close = find('.coach-panel-head button')
     if (close) { close.click(); await sleep(200) }
-    click(document.querySelector('.titlebar .crumbs a'))
+    click(find('.titlebar .crumbs a'))
     await waitFor('.coach-card')
     await sleep(250)
+  } else if (target === 'documents-reader') {
+    click(find('.titlebar [data-section="documents"]'))
+    click(await waitFor('.document-card-open'))
+    await waitFor('.pdf-page canvas[data-rendered="true"]')
+    await waitFor('.document-reader .chat-turn.assistant')
+    await document.fonts.ready
+    await sleep(300)
+  } else if (target === 'author-ai') {
+    click(find('.titlebar [data-section="courses"]'))
+    await waitFor('.project-body')
+    click(find('.titlebar .crumbs a'))
+    await waitFor('.library')
+    click([...all('.course-card')].find(card => /The OpenCourse example course/.test(card.textContent)))
+    await waitFor('.detail')
+    click([...all('.detail button')].find(button => button.textContent.trim() === 'Edit course'))
+    await waitFor('.author-mode')
+    click([...all('.author-mode button')].find(button => button.textContent.trim() === 'AI'))
+    await waitFor('.author-chat-column .chat-turn.assistant')
+    const course = await window.fixtureAPI.getCourse('opencourse-example')
+    click([...all('.outline-row')].find(row => row.getAttribute('aria-label') === course.modules[0].lessons[0].title))
+    await waitFor('.author-preview .lesson-head')
+    await document.fonts.ready
+    await sleep(300)
+  } else if (target === 'author-back') {
+    click(find('.titlebar .crumbs a'))
+    await waitFor('.library')
   } else if (target === 'user-menu') {
-    click(document.querySelector('.titlebar .user-chip'))
+    click(find('.titlebar .user-chip'))
     await waitFor('.menu-panel')
     await sleep(250)
   } else if (target === 'settings') {
-    const item = [...document.querySelectorAll('.menu-panel .menu-item')]
+    const item = [...all('.menu-panel .menu-item')]
       .find((b) => /Settings/.test(b.textContent))
     click(item)
     await waitFor('.settings')
     await sleep(300)
   } else if (target === 'logs' || target === 'theme-logs') {
     // The log, from the user menu, with the newest error opened if there is one.
-    click(document.querySelector('.titlebar .user-chip'))
+    click(find('.titlebar .user-chip'))
     await waitFor('.menu-panel .menu-item')
-    click([...document.querySelectorAll('.menu-panel .menu-item')].find((b) => /^Logs$/.test(b.textContent.trim())))
+    click([...all('.menu-panel .menu-item')].find((b) => /^Logs$/.test(b.textContent.trim())))
     await waitFor('.logs-row')
-    click(document.querySelector('.logs-row.level-error') ?? document.querySelector('.logs-row'))
+    click(find('.logs-row.level-error') ?? find('.logs-row'))
     await waitFor('.logs-detail')
     await sleep(300)
   } else if (target === 'logs-to-settings') {
-    click(document.querySelector('.titlebar .user-chip'))
+    click(find('.titlebar .user-chip'))
     await waitFor('.menu-panel .menu-item')
-    click([...document.querySelectorAll('.menu-panel .menu-item')].find((b) => /Settings/.test(b.textContent)))
+    click([...all('.menu-panel .menu-item')].find((b) => /Settings/.test(b.textContent)))
     await waitFor('.settings')
     await sleep(300)
   } else if (target === 'theme-logs-back') {
-    click(document.querySelector('.titlebar .crumbs a'))
+    click(find('.titlebar .crumbs a'))
     await waitFor('.lesson-head h1')
     await sleep(300)
   } else if (target === 'settings-models') {
-    // Untick a few, so the shot shows a choice rather than the untouched state.
-    for (const row of [...document.querySelectorAll('.settings-model')].slice(3)) {
-      click(row.querySelector('input'))
-      await sleep(120)
-    }
-    document.querySelector('.settings-models').scrollIntoView({ block: 'center' })
-    await sleep(300)
+    click(await waitFor('[data-settings-category="ai"]'))
+    await waitFor('.settings-models-unselect-all')
+    click(find('.settings-models-unselect-all'))
+    await sleep(250)
   } else if (target === 'white-apply') {
+    click(await waitFor('[data-settings-category="appearance"]'))
+    await waitFor('.settings-appearance')
     await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)})
     await waitFor('#opencourse-theme')
-    document.querySelector('.settings-appearance').scrollIntoView({ block: 'start' })
+    find('.settings-appearance').scrollIntoView({ block: 'start' })
     await sleep(500)
   } else if (target === 'theme-apply') {
+    click(await waitFor('[data-settings-category="appearance"]'))
+    await waitFor('.settings-appearance')
     // The example theme, imported the way Settings does it and applied.
     const result = await window.opencourse.importThemePath(window.__OPENCOURSE_SHOTS_THEME)
     if (result.status !== 'ok') throw new Error('theme import failed: ' + JSON.stringify(result))
     await window.opencourse.applyTheme(result.theme.id)
     await waitFor('#opencourse-theme')
     await document.fonts.ready
-    document.querySelector('.settings-appearance').scrollIntoView({ block: 'start' })
+    find('.settings-appearance').scrollIntoView({ block: 'start' })
     await sleep(500)
   } else if (target === 'theme-library' || target === 'white-library') {
-    click(document.querySelector('.titlebar .crumbs a'))
+    click(find('.titlebar .crumbs a'))
     await sleep(200)
-    click(document.querySelector('.titlebar [data-section="courses"]'))
+    click(find('.titlebar [data-section="courses"]'))
+    await sleep(200)
+    for (let i = 0; i < 4 && !find('.library'); i++) {
+      click(find('.workbench-back') ?? find('.titlebar .crumbs a'))
+      await sleep(300)
+    }
     await waitFor('.course-card')
     await sleep(500)
   } else if (target === 'theme-lesson' || target === 'white-lesson') {
-    click([...document.querySelectorAll('.course-card')].find((c) => /Python asyncio/.test(c.textContent)))
+    click([...all('.course-card')].find((c) => /Python asyncio/.test(c.textContent)))
     await waitFor('.detail')
-    click([...document.querySelectorAll('.lesson-row')].find((r) => /await, create_task/.test(r.textContent)))
+    click([...all('.lesson-row')].find((r) => /await, create_task/.test(r.textContent)))
     await waitFor('.lesson-head h1')
     await sleep(600)
   } else if (target === 'theme-workbench' || target === 'white-workbench') {
-    click([...document.querySelectorAll('.exercise .actions button')].find((b) => /open editor|editor open/i.test(b.textContent)))
+    click([...all('.exercise .actions button')].find((b) => /open editor|editor open/i.test(b.textContent)))
     await waitFor('.workbench .cm-content')
     await sleep(1200)
   } else if (target === 'theme-off' || target === 'white-off') {
     // Back to the app's own look, and to a screen with the user chip, for the picker shot.
     await window.opencourse.applyTheme(null)
-    const back = document.querySelector('.workbench-back')
+    const back = find('.workbench-back')
     if (back) click(back)
     await sleep(300)
   } else if (target === 'users-switch') {
     // Straight to the picker: the menu that would open it is gone from the
     // titlebar once nobody is selected.
-    click(document.querySelector('.titlebar .user-chip'))
+    click(find('.titlebar .user-chip'))
     const item = await waitFor('.menu-panel .menu-item')
-    click([...document.querySelectorAll('.menu-panel .menu-item')]
+    click([...all('.menu-panel .menu-item')]
       .find((b) => /Switch user/.test(b.textContent)) ?? item)
     await waitFor('.user-card.add')
     await sleep(300)
@@ -182,17 +219,17 @@ const NAV = `(async (target) => {
   } else if (target === 'library') {
     await waitFor('.course-card')
   } else if (target === 'course') {
-    click(document.querySelector('.course-card'))
+    click(find('.course-card'))
     await waitFor('.detail h1')
   } else if (target === 'lesson') {
-    click(document.querySelector('.lesson-row'))
+    click(find('.lesson-row'))
     await waitFor('.lesson-head h1')
   } else if (target === 'reading-larger') {
     // Two presses of A+, so the shot shows the lesson at 125%.
-    document.querySelector('.content').scrollTop = 0
+    find('.content').scrollTop = 0
     click(await waitFor('.reading-size-larger'))
     await sleep(100)
-    click(document.querySelector('.reading-size-larger'))
+    click(find('.reading-size-larger'))
     await sleep(300)
   } else if (target === 'reading-type') {
     // The size being typed: press it, and the field takes the keys.
@@ -203,7 +240,7 @@ const NAV = `(async (target) => {
     await sleep(200)
   } else if (target === 'reading-reset') {
     // Typed, the way a reader sets an exact size.
-    if (!document.querySelector('.reading-size-field')) click(await waitFor('.reading-size-value'))
+    if (!find('.reading-size-field')) click(await waitFor('.reading-size-value'))
     const field = await waitFor('.reading-size-field')
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, '100')
     field.dispatchEvent(new Event('input', { bubbles: true }))
@@ -215,30 +252,30 @@ const NAV = `(async (target) => {
     await waitFor('.update-menu')
     await sleep(200)
   } else if (target === 'update-settings') {
-    click([...document.querySelectorAll('.update-menu .menu-item')].find((b) => /Update settings/.test(b.textContent)))
+    click([...all('.update-menu .menu-item')].find((b) => /Update settings/.test(b.textContent)))
     await waitFor('.settings-updates')
     await sleep(300)
   } else if (target === 'update-clear') {
-    click(document.querySelector('.titlebar .crumbs a'))
+    click(find('.titlebar .crumbs a'))
     await waitFor('.lesson-head h1')
   } else if (target === 'sidechat-connection') {
     // This chat's connection, chosen from the composer. The reasoning list is
     // still open from the step before; its own trigger closes it.
-    if (document.querySelector('.menu-panel')) click(document.querySelector('.sidechat-reasoning'))
+    if (find('.menu-panel')) click(find('.sidechat-reasoning'))
     await sleep(150)
     click(await waitFor('.sidechat-connection'))
     await waitFor('.connection-menu')
     await sleep(250)
   } else if (target === 'sidechat-connection-close') {
-    document.querySelector('.connection-menu')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    click(find('.sidechat-connection'))
     await sleep(150)
   } else if (target === 'viz') {
-    document.querySelector('.viz-frame').scrollIntoView({ block: 'center' })
+    find('.viz-frame').scrollIntoView({ block: 'center' })
     await sleep(1500)
   } else if (target === 'sidechat') {
     // Through the affordance a person would use: highlight, then accept the
     // offer. It exercises the selection path and dresses the shot in one go.
-    const prose = document.querySelector('.content-inner .prose p')
+    const prose = find('.content-inner .prose p')
     prose.scrollIntoView({ block: 'center' })
     const range = document.createRange()
     range.selectNodeContents(prose)
@@ -250,7 +287,7 @@ const NAV = `(async (target) => {
     await waitFor('.sidechat-quote blockquote')
     await sleep(300)
     // React owns the value, so poke the native setter it listens behind.
-    const field = document.querySelector('.sidechat-composer textarea')
+    const field = find('.sidechat-composer textarea')
     const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
     // Long enough to wrap, so the shot shows the box grown past one line.
     setter.call(field, 'Why is it a loop rather than threads? And what are the other tasks doing while one of them waits on the network?')
@@ -259,14 +296,14 @@ const NAV = `(async (target) => {
   } else if (target === 'sidechat-ask-answer') {
     // The other kind of passage: part of an answer. The lesson's quote and the
     // draft go first, so the shot is of this one alone.
-    const dismiss = document.querySelector('.sidechat-quote-head button')
+    const dismiss = find('.sidechat-quote-head button')
     if (dismiss) click(dismiss)
-    const field = document.querySelector('.sidechat-composer textarea')
+    const field = find('.sidechat-composer textarea')
     const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
     setter.call(field, '')
     field.dispatchEvent(new Event('input', { bubbles: true }))
     const phrase = 'only the blocking call is handed to a worker'
-    const paragraph = [...document.querySelectorAll('.chat-answer[data-ask="answer"] .prose p')]
+    const paragraph = [...all('.chat-answer[data-ask="answer"] .prose p')]
       .find((p) => p.textContent.includes(phrase))
     if (!paragraph) throw new Error('no seeded answer says: ' + phrase)
     const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
@@ -283,30 +320,30 @@ const NAV = `(async (target) => {
     await waitFor('.ask-about')
     await sleep(250)
   } else if (target === 'sidechat-answer-quote') {
-    click(document.querySelector('.ask-about'))
+    click(find('.ask-about'))
     await waitFor('.sidechat-quote blockquote')
-    const field = document.querySelector('.sidechat-composer textarea')
+    const field = find('.sidechat-composer textarea')
     const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
     setter.call(field, 'So the loop never waits, but the worker does?')
     field.dispatchEvent(new Event('input', { bubbles: true }))
     await sleep(400)
   } else if (target === 'sidechat-model') {
-    click(document.querySelector('.sidechat-model'))
+    click(find('.sidechat-model'))
     await waitFor('.menu-panel')
     await sleep(250)
   } else if (target === 'sidechat-reasoning') {
     // The model's list is still open, and a scripted click is no mousedown to
     // dismiss it; its own trigger closes it.
-    click(document.querySelector('.sidechat-model'))
+    click(find('.sidechat-model'))
     await sleep(150)
-    click(document.querySelector('.sidechat-reasoning'))
+    click(find('.sidechat-reasoning'))
     await waitFor('.menu-panel')
     await sleep(250)
   } else if (target === 'sidechat-close') {
-    click(document.querySelector('.sidechat-close'))
+    click(find('.sidechat-close'))
     await sleep(300)
   } else if (target === 'quiz') {
-    const quiz = document.querySelector('.quiz')
+    const quiz = find('.quiz')
     quiz.scrollIntoView({ block: 'center' })
     quiz.querySelector('input[type=radio]').click()
     click([...quiz.querySelectorAll('button')].find((b) => /check/i.test(b.textContent)))
@@ -314,17 +351,17 @@ const NAV = `(async (target) => {
     await sleep(300)
   } else if (target === 'exercise') {
     // third lesson has the first exercise
-    click([...document.querySelectorAll('.sidebar a')].find((a) => /await, create_task/i.test(a.textContent)))
+    click([...all('.sidebar a')].find((a) => /await, create_task/i.test(a.textContent)))
     await waitFor('.exercise')
-    document.querySelector('.exercise').scrollIntoView({ block: 'start' })
+    find('.exercise').scrollIntoView({ block: 'start' })
     await sleep(600)
   } else if (target === 'workbench') {
-    const open = [...document.querySelectorAll('.exercise .actions button')].find((b) => /open editor/i.test(b.textContent))
+    const open = [...all('.exercise .actions button')].find((b) => /open editor/i.test(b.textContent))
     click(open)
     await waitFor('.workbench .cm-content')
     await sleep(1200)
   } else if (target === 'workbench-terminal') {
-    click([...document.querySelectorAll('.workbench-tabs button')].find((b) => /terminal/i.test(b.textContent)))
+    click([...all('.workbench-tabs button')].find((b) => /terminal/i.test(b.textContent)))
     await sleep(2500)
   } else if (target === 'workbench-pass') {
     // Put the reference solution on disk, reopen the editor so it reads it
@@ -332,41 +369,41 @@ const NAV = `(async (target) => {
     const solution = await window.fixtureAPI.getSolution('python-asyncio', 'ex-tasks-1')
     const t = { courseId: 'python-asyncio', moduleId: 'coroutines-and-tasks', lessonId: 'await-and-tasks', blockId: 'ex-tasks-1' }
     await window.fixtureAPI.writeExerciseFile(t, solution, null)
-    click(document.querySelector('.workbench-back'))
+    click(find('.workbench-back'))
     await sleep(300)
-    click([...document.querySelectorAll('.exercise .actions button')].find((b) => /open editor/i.test(b.textContent)))
+    click([...all('.exercise .actions button')].find((b) => /open editor/i.test(b.textContent)))
     await waitFor('.workbench .cm-content')
     await sleep(500)
-    const runBtn = [...document.querySelectorAll('.workbench-actions button')].find((b) => /run checks/i.test(b.textContent))
+    const runBtn = [...all('.workbench-actions button')].find((b) => /run checks/i.test(b.textContent))
     click(runBtn)
     await sleep(300)
     const t0 = Date.now()
     while (Date.now() - t0 < 180000) {
-      const btn = [...document.querySelectorAll('.workbench-actions button')][0]
+      const btn = [...all('.workbench-actions button')][0]
       if (btn && !/Running/i.test(btn.textContent)) break
       await sleep(300)
     }
     await sleep(600)
   } else if (target === 'workbench-run') {
-    click([...document.querySelectorAll('.workbench-tabs button')].find((b) => /checks/i.test(b.textContent)))
-    click([...document.querySelectorAll('.workbench-actions button')].find((b) => /run checks/i.test(b.textContent)))
+    click([...all('.workbench-tabs button')].find((b) => /checks/i.test(b.textContent)))
+    click([...all('.workbench-actions button')].find((b) => /run checks/i.test(b.textContent)))
     await sleep(300)
     // First run in a throwaway profile builds the venv, so give it room. Wait
     // on the button, not the status text: a reopened workbench already shows
     // the previous verdict.
     const t0 = Date.now()
     while (Date.now() - t0 < 180000) {
-      const btn = [...document.querySelectorAll('.workbench-actions button')][0]
+      const btn = [...all('.workbench-actions button')][0]
       if (btn && !/Running/i.test(btn.textContent)) break
       await sleep(300)
     }
     await sleep(500)
   } else if (target === 'to-library') {
-    const close = document.querySelector('.workbench-back')
+    const close = find('.workbench-back')
     if (close) { close.click(); await sleep(300) }
     // Walk back up the breadcrumbs until the library is showing.
-    for (let i = 0; i < 4 && !document.querySelector('.library'); i++) {
-      const crumb = document.querySelector('.titlebar a')
+    for (let i = 0; i < 4 && !find('.library'); i++) {
+      const crumb = find('.titlebar a')
       if (!crumb) break
       crumb.click()
       await sleep(400)
@@ -377,16 +414,18 @@ const NAV = `(async (target) => {
     if (result.status !== 'ok') throw new Error('import said ' + JSON.stringify(result))
     await sleep(300)
   } else if (target === 'python-course') {
-    const card = [...document.querySelectorAll('.course-card')].find((c) => /Introduction to Python/i.test(c.textContent))
+    const card = [...all('.course-card')].find((c) => /Introduction to Python/i.test(c.textContent))
     click(card)
     await waitFor('.detail h1')
     await sleep(300)
   } else if (target === 'python-viz') {
-    const row = [...document.querySelectorAll('.lesson-row')].find((r) => /Lists and references/i.test(r.textContent))
+    const course = await window.opencourse.getAuthoringCourse(await window.fixtureCourseId('intro-to-python'))
+    const id = course.document.manifest.modules.find(module => module.slug === 'arrays-strings-pointers').lessons.find(lesson => lesson.slug === 'pointers').nodeId
+    const row = find('.lesson-row[data-lesson-id="' + id + '"]')
     click(row)
     await waitFor('.lesson-head h1')
     await waitFor('.viz-frame')
-    document.querySelector('.viz-frame').scrollIntoView({ block: 'center' })
+    find('.viz-frame').scrollIntoView({ block: 'center' })
     await sleep(1800)
   } else if (target === 'python-workbench-pass') {
     const t = { courseId: 'intro-to-python', moduleId: 'arrays-strings-pointers', lessonId: 'pointers', blockId: 'ex-swap-1' }
@@ -396,36 +435,36 @@ const NAV = `(async (target) => {
     const exercise = await waitFor('.exercise')
     exercise.scrollIntoView({ block: 'start' })
     await sleep(300)
-    click([...document.querySelectorAll('.exercise .actions button')].find((b) => /open editor/i.test(b.textContent)))
+    click([...all('.exercise .actions button')].find((b) => /open editor/i.test(b.textContent)))
     await waitFor('.workbench .cm-content')
     await sleep(500)
-    click([...document.querySelectorAll('.workbench-actions button')].find((b) => /run checks/i.test(b.textContent)))
+    click([...all('.workbench-actions button')].find((b) => /run checks/i.test(b.textContent)))
     await sleep(300)
     // A fresh Python environment may need to install test requirements.
     const t0 = Date.now()
     while (Date.now() - t0 < 60000) {
-      const btn = [...document.querySelectorAll('.workbench-actions button')][0]
+      const btn = [...all('.workbench-actions button')][0]
       if (btn && !/Running/i.test(btn.textContent)) break
       await sleep(200)
     }
     await sleep(700)
   } else if (target === 'import-project-course') {
-    click(document.querySelector('.titlebar [data-section="courses"]'));
+    click(find('.titlebar [data-section="courses"]'));
     await waitFor('.library');
     const result = await window.fixtureAPI.importCoursePath(window.__OPENCOURSE_SHOTS_ZIP_PROJECT);
     if (result.status !== 'ok') throw new Error(JSON.stringify(result));
     await sleep(200);
   } else if (target === 'project') {
-    click([...document.querySelectorAll('.course-card')].find(card => /The OpenCourse example course/.test(card.textContent)));
-    await waitFor('.project-row'); click(document.querySelector('.project-row'));
+    click([...all('.course-card')].find(card => /The OpenCourse example course/.test(card.textContent)));
+    await waitFor('.project-row'); click(find('.project-row'));
     await waitFor('.project-directory'); await waitFor('.sidechat .chat-turn.assistant');
     await sleep(400);
   } else if (target === 'project-editor') {
-    const picker = document.querySelector('.project-editor-picker');
+    const picker = find('.project-editor-picker');
     if (picker) { picker.scrollIntoView({ block: 'center' }); await sleep(200); click(picker); await waitFor('.menu-panel'); }
     await sleep(200);
   } else if (target === 'project-narrow') {
-    document.querySelector('.menu-panel')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    if (find('.menu-panel')) click(find('.project-editor-picker'));
     await sleep(400);
   } else if (target === 'search') {
     await sleep(200)
@@ -633,17 +672,21 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     ...['viz', 'quiz', 'exercise', 'workbench', 'workbench-terminal', 'workbench-run', 'workbench-pass'].map(
       (target) => ({ target, photo: true })
     ),
-    // A second course, in a second language, through the same screens.
+    // A second Python fixture, through the same screens.
     { target: 'to-library', photo: false },
     { target: 'import-python', photo: false },
     { target: 'python-course', photo: true },
     { target: 'python-viz', photo: true },
     { target: 'python-workbench-pass', photo: true },
+    { target: 'to-library', photo: false },
     { target: 'import-project-course', photo: false },
     { target: 'project', photo: true },
     { target: 'project-editor', photo: true },
     { target: 'project-narrow', photo: true },
-    // The other half of the app.
+    { target: 'documents-reader', photo: true },
+    { target: 'author-ai', photo: true },
+    { target: 'author-back', photo: false },
+    // Coach.
     { target: 'coach-empty', photo: true },
     { target: 'coach-new', photo: true },
     { target: 'coach-project', photo: true },
@@ -709,10 +752,13 @@ export async function runShots(win: BrowserWindow): Promise<void> {
       if (target === 'coach-files') await seedCoachWorkspace(win)
       if (target === 'sidechat') await seedSideChat()
       if (target === 'project') await seedProjectChat()
+      if (target === 'documents-reader') { win.setSize(1440, 960); await seedDocumentChat() }
+      if (target === 'author-ai') { win.setSize(1440, 960); await seedAuthoringChat() }
       if (target === 'project-narrow') win.setSize(720, 860)
       if (target === 'update-available') simulateAppUpdate({ state: 'available', version: '0.2.0', size: 138_000_000, notesUrl: 'https://github.com/s3298321/opencourse/releases/tag/v0.2.0', installable: true })
       if (target === 'coach-empty') win.setSize(1240, 860)
-      await win.webContents.executeJavaScript(NAV.replace('%TARGET%', target))
+      try { await win.webContents.executeJavaScript(NAV.replace('%TARGET%', target)) }
+      catch (error) { throw new Error(`Screenshot step ${target}: ${String(error)}`) }
       if (process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' && target === 'library') {
         defaultMark = await win.webContents.executeJavaScript("document.querySelector('.titlebar .brand img').src")
       }
@@ -724,7 +770,11 @@ export async function runShots(win: BrowserWindow): Promise<void> {
       }
       if (!photo) continue
       n += 1
-      const file = join(dir, `${String(n).padStart(2, '0')}-${target}.png`)
+      const published: Record<string, string> = { 'sidechat-ask-answer': '07-sidechat-ask-answer', viz: '11-viz', quiz: '12-quiz', 'workbench-pass': '17-workbench-pass', 'documents-reader': 'documents-reader', 'coach-files': 'coach-workspace', 'author-ai': 'course-editor-ai' }
+      await win.webContents.executeJavaScript('document.fonts.ready')
+      win.webContents.invalidate()
+      await new Promise(resolve => setTimeout(resolve, 150))
+      const file = join(dir, `${published[target] ?? `${String(n).padStart(2, '0')}-${target}`}.png`)
       writeFileSync(file, (await win.webContents.capturePage()).toPNG())
       console.log('wrote', file)
       if (process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' && target === 'white-workbench') {
@@ -766,4 +816,35 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     tidy()
     app.exit(1)
   }
+}
+
+/** Fixtures stay within the disposable shots profile and never call AI. */
+async function seedDocumentChat(): Promise<void> {
+  const { fixturePdf } = await import('../../tests/helpers/pdf')
+  const { importDocument, getDocument } = await import('./documents')
+  const { createDocumentChat } = await import('./document-chat')
+  const { appendDocumentMessage } = await import('./document-chatdb')
+  const root = mkdtempSync(join(tmpdir(), 'opencourse-shots-pdf-'))
+  try {
+    const path = join(root, 'Local reading.pdf')
+    writeFileSync(path, fixturePdf({ pages: 4 }))
+    const result = await importDocument(path)
+    if (result.status !== 'ok') throw new Error('Screenshot PDF did not import')
+    for (let n = 0; n < 400 && getDocument(result.document.id).status === 'indexing'; n++) await new Promise(resolve => setTimeout(resolve, 25))
+    if (getDocument(result.document.id).status !== 'ready') throw new Error('Screenshot PDF did not finish indexing')
+    const chat = createDocumentChat(result.document.id, 1), at = new Date().toISOString()
+    appendDocumentMessage(chat.id, { role: 'user', text: 'How does Ask use this document?', at })
+    appendDocumentMessage(chat.id, { role: 'assistant', text: 'The PDF stays in your local library. When you ask a question, **Ask retrieves relevant passages** and sends them to your selected AI connection.\n\nYou can highlight text to attach a passage, search the document, or navigate using its headings.', status: 'complete', at })
+  } finally { rmSync(root, { recursive: true, force: true }) }
+}
+async function seedAuthoringChat(): Promise<void> {
+  const { createAuthoringChat } = await import('./authoring-chat')
+  const { appendAuthoringMessage } = await import('./authoring-chatdb')
+  const { getAuthoringCourse } = await import('./course-authoring')
+  const course = fixtureCourse('opencourse-example')
+  if (!course) throw new Error('No example course for editor screenshot')
+  getAuthoringCourse(course.courseId)
+  const chat = createAuthoringChat(course.courseId), at = new Date().toISOString()
+  appendAuthoringMessage(chat.id, { role: 'user', text: 'Help me plan a course that combines reading and practice.', at })
+  appendAuthoringMessage(chat.id, { role: 'assistant', text: 'Build each lesson around one learning objective:\n\n1. Introduce the idea with a short explanation.\n2. Add a visualization or worked example.\n3. Let learners practise with a quiz or exercise.\n\nThe preview shows the course as learners will read it. Select a lesson or block to focus the next change.', status: 'complete', at })
 }

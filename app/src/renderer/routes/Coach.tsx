@@ -101,7 +101,6 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
             <div className="library-head">
               <div>
                 <h1>Your coaches</h1>
-                <p className="lede">Learn something by talking about it.</p>
               </div>
               <div className="actions">
                 <ActionButton icon="plus" disabled={busy || naming} onClick={() => setNaming(true)}>
@@ -163,10 +162,7 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
             {empty && !naming && (
               <div className="empty-library">
                 <h3>No coaches yet</h3>
-                <p>
-                  A coach is a voice conversation with a purpose. Tell it what you want to get better at, talk
-                  to it, and it keeps notes between sessions so the next one picks up where this one stopped.
-                </p>
+                <p>Create a coach for a topic you want to practise.</p>
                 <p className="meta">Add your OpenAI API key in Settings before starting a session.</p>
               </div>
             )}
@@ -187,6 +183,8 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
                 </div>
                 <button
                   className="ghost card-remove"
+                  disabled={project.busy}
+                  title={project.busy ? 'Finish the session before deleting this coach' : undefined}
                   onClick={(e) => {
                     e.stopPropagation()
                     void remove(project)

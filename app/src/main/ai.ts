@@ -25,6 +25,7 @@ export function notifyAIConnectionChanged(): void {
   notifyAIChanged()
 }
 export function connectionStatus(provider: AIProvider): AIConnection {
+  if (process.env['OPENCOURSE_SHOTS']) return { provider, ready: provider === 'apiKey' }
   if (provider === 'apiKey') return { provider, ready: Boolean(readKey()), ...(!readKey() ? { message: 'Add an OpenAI API key in Settings.' } : {}) }
   const account = subscriptionIdentity()
   return { provider, ready: account?.ready === true, account: account?.label, volatile: account?.volatile,
@@ -58,6 +59,7 @@ function storeCatalog(id: string, catalog: Catalog): void {
   renameSync(temporary, target)
 }
 export async function modelCatalog(provider: AIProvider, refresh = false): Promise<Catalog> {
+  if (process.env['OPENCOURSE_SHOTS']) return listChatModels('')
   const owner = requireUser(), id = identity(provider)
   const cached = cachedCatalog(id)
   if (!refresh && cached?.source === 'api' && !staleCatalogs.has(id)) return cached

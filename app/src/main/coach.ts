@@ -25,6 +25,7 @@ import {
 } from './coachdb'
 import { coachProjectDir, coachProjectsRoot } from './paths'
 import { requireUser } from './users'
+import { isCoachProjectBusy } from './coach-activity'
 
 export interface CoachProjectDraft {
   name: string
@@ -108,6 +109,7 @@ function adoptOrphans(known: Set<string>): CoachProject[] {
 }
 
 export function listProjects(): CoachProjectSummary[] {
+  recoverDeletions()
   const projects = selectProjects()
   const orphans = adoptOrphans(new Set(projects.map((p) => p.id)))
   const all = orphans.length ? [...projects, ...orphans] : projects
@@ -117,6 +119,7 @@ export function listProjects(): CoachProjectSummary[] {
       const count = counts.get(project.id)
       return {
         id: project.id,
+        busy: isCoachProjectBusy(project.id),
         name: project.name,
         model: project.model,
         sessions: count?.sessions ?? 0,
@@ -175,14 +178,37 @@ export function updateProject(id: string, patch: Partial<CoachProjectDraft>, now
 
 /** Takes the workspace with it: a project is its files as much as its transcripts. */
 export function deleteProject(id: string): void {
+  requireProject(id)
+  if (isCoachProjectBusy(id)) throw new Error('Finish this coach’s session before deleting it.')
   const dir = projectDir(id)
-  deleteProjectRow(id)
-  rmSync(dir, { recursive: true, force: true })
+  const staged = join(coachProjectsRoot(requireUser()), `.deleted-${id}`)
+  if (existsSync(dir)) renameSync(dir, staged)
+  try { deleteProjectRow(id) }
+  catch (error) { if (existsSync(staged)) renameSync(staged, dir); throw error }
+  // A failed cleanup stays outside the adoptable directories and is retried.
+  try { rmSync(staged, { recursive: true, force: true }) } catch { /* next list retries */ }
 }
 
 /** Where the coach's files live. Exported for the file tools and for Reveal in Finder. */
 export function workspaceDir(id: string): string {
+  requireProject(id)
   const dir = projectDir(id)
   mkdirSync(dir, { recursive: true })
   return dir
+}
+
+/** A crash between staging and the SQL delete restores the workspace. */
+function recoverDeletions(): void {
+  const root = coachProjectsRoot(requireUser())
+  if (!existsSync(root)) return
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('.deleted-')) continue
+    const id = entry.name.slice('.deleted-'.length)
+    if (!/^cp_[a-zA-Z0-9_-]+$/.test(id)) continue
+    const staged = join(root, entry.name)
+    try {
+      if (selectProject(id)) { if (!existsSync(projectDir(id))) renameSync(staged, projectDir(id)) }
+      else rmSync(staged, { recursive: true, force: true })
+    } catch { /* preserve recoverable files and retry later */ }
+  }
 }

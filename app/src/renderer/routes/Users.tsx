@@ -89,9 +89,6 @@ export default function Users({
         <div className="content content-glass scroll">
           <div className="users">
             <h1>Who's learning?</h1>
-            <p className="lede">
-              Courses, progress and exercise files are kept separately for each person on this Mac.
-            </p>
 
             {error && <p className="import-note error">{error}</p>}
             {users === null && <p className="meta">Loading…</p>}

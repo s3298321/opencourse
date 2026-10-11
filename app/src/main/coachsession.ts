@@ -25,6 +25,11 @@ import { readKey } from './coachkey'
 import { holdMic } from './mic'
 import { mintClientSecret, exchangeSdp, type ClientSecret } from './openai'
 import { log } from './log'
+import { holdCoachProject } from './coach-activity'
+import { getCoachAllowDelete } from './preferences'
+import { currentUserId, requireUser } from './users'
+import { runCoachTool, type CoachToolResult } from './coachtools'
+import type { CoachResponseDiagnostic } from '../core/types'
 
 const coachLog = log.child('coach')
 
@@ -38,6 +43,8 @@ interface Live {
   searches: number
   started: number
   releaseMic: () => void
+  releaseProject: () => void
+  owner: string
 }
 
 const live = new Map<string, Live>()
@@ -58,6 +65,7 @@ function watchSender(sender: WebContents): void {
 function close(entry: Live, status: 'ended' | 'failed', error?: string): void {
   entry.releaseMic()
   live.delete(entry.sessionId)
+  entry.releaseProject()
   const fields = { sessionId: entry.sessionId, projectId: entry.projectId, model: entry.model, status, minutes: Math.round((Date.now() - entry.started) / 6_000) / 10, toolCalls: entry.toolCalls, searches: entry.searches }
   if (status === 'failed') coachLog.warn('Coach session ended early', { ...fields, reason: error ?? null })
   else coachLog.info('Coach session ended', fields)
@@ -98,67 +106,80 @@ export async function startSession(sender: WebContents, projectId: string): Prom
   const key = readKey()
   if (!key) return { status: 'no-key' }
 
+  const releaseProject = holdCoachProject(projectId)
+  let kept = false
   const releaseMic = holdMic()
   try {
-    const granted = await systemPreferences.askForMediaAccess('microphone')
-    if (!granted) {
+    const owner = requireUser()
+    try {
+      const granted = await systemPreferences.askForMediaAccess('microphone')
+      if (!granted) {
+        releaseMic()
+        coachLog.info('The microphone was refused', { projectId })
+        return { status: 'mic-denied' }
+      }
+    } catch (error) {
       releaseMic()
-      coachLog.info('The microphone was refused', { projectId })
+      coachLog.warn('The microphone could not be asked for', { projectId, error })
       return { status: 'mic-denied' }
     }
-  } catch (error) {
-    releaseMic()
-    coachLog.warn('The microphone could not be asked for', { projectId, error })
-    return { status: 'mic-denied' }
-  }
 
-  // The coach should start knowing what it already wrote down.
-  const instructions = buildInstructions(project, listFiles(projectId))
-  const tools = toolsFor(project)
+    // The coach should start knowing what it already wrote down.
+    if (currentUserId() !== owner) { releaseMic(); throw new Error('The user changed while connecting.') }
+    const effectiveProject = { ...project, allowDelete: getCoachAllowDelete() }
+    const instructions = buildInstructions(effectiveProject, listFiles(projectId))
+    const tools = toolsFor(effectiveProject)
 
-  let secret: ClientSecret
-  try {
-    secret = await mintClientSecret(key, {
+    let secret: ClientSecret
+    try {
+      secret = await mintClientSecret(key, {
+        model: project.model,
+        voice: project.voice,
+        instructions,
+        tools
+      })
+    } catch (err) {
+      releaseMic()
+      coachLog.error('A coach session could not be started', { projectId, model: project.model, error: err })
+      return { status: 'failed', message: (err as Error).message }
+    }
+
+    if (currentUserId() !== owner) { releaseMic(); throw new Error('The user changed while connecting.') }
+    const sessionId = newSessionId()
+    const startedAt = new Date().toISOString()
+    // The model and the brief are snapshotted: an old transcript should show the
+    // coach that actually produced it, not today's settings.
+    insertSession({ id: sessionId, projectId, startedAt, model: project.model, instructions })
+
+    live.set(sessionId, {
+      sessionId,
+      projectId,
+      model: project.model,
+      senderId: sender.id,
+      secret,
+      toolCalls: 0,
+      searches: 0,
+      started: Date.now(),
+      releaseMic,
+      releaseProject,
+      owner
+    })
+    kept = true
+    watchSender(sender)
+    coachLog.info('Coach session started', { sessionId, projectId, model: project.model, voice: project.voice })
+
+    // Note what is absent: the secret. The renderer never sees one.
+    return {
+      status: 'ok',
+      sessionId,
       model: project.model,
       voice: project.voice,
       instructions,
-      tools
-    })
-  } catch (err) {
-    releaseMic()
-    coachLog.error('A coach session could not be started', { projectId, model: project.model, error: err })
-    return { status: 'failed', message: (err as Error).message }
-  }
-
-  const sessionId = newSessionId()
-  const startedAt = new Date().toISOString()
-  // The model and the brief are snapshotted: an old transcript should show the
-  // coach that actually produced it, not today's settings.
-  insertSession({ id: sessionId, projectId, startedAt, model: project.model, instructions })
-
-  live.set(sessionId, {
-    sessionId,
-    projectId,
-    model: project.model,
-    senderId: sender.id,
-    secret,
-    toolCalls: 0,
-    searches: 0,
-    started: Date.now(),
-    releaseMic
-  })
-  watchSender(sender)
-  coachLog.info('Coach session started', { sessionId, projectId, model: project.model, voice: project.voice })
-
-  // Note what is absent: the secret. The renderer never sees one.
-  return {
-    status: 'ok',
-    sessionId,
-    model: project.model,
-    voice: project.voice,
-    instructions,
-    tools,
-    startedAt
+      tools,
+      startedAt
+    }
+  } finally {
+    if (!kept) { releaseMic(); releaseProject() }
   }
 }
 
@@ -188,7 +209,7 @@ export async function connectSession(sessionId: string, offerSdp: string): Promi
       model: project.model,
       voice: project.voice,
       instructions: selectSessionRow(sessionId)?.instructions ?? project.instructions,
-      tools: toolsFor(project)
+      tools: toolsFor({ ...project, allowDelete: getCoachAllowDelete() })
     })
   }
 
@@ -262,4 +283,45 @@ export function endSession(
   if (entry) close(entry, outcome.status, outcome.error)
   else finishSession(sessionId, outcome.status, outcome.error)
   return selectSessionSummary(sessionId)
+}
+
+/** Session-bound metadata only; callers cannot write arbitrary log messages. */
+export function assertCoachSender(sessionId: string, senderId: number): void {
+  const entry = requireLive(sessionId)
+  if (entry.senderId !== senderId || entry.owner !== requireUser()) throw new Error('This coach session belongs to another window or user.')
+}
+export function reportCoachResponse(sessionId: string, senderId: number, raw: CoachResponseDiagnostic): void {
+  if (!live.has(sessionId)) return // a diagnostic can land just after teardown
+  assertCoachSender(sessionId, senderId)
+  if (!raw || !['response.started', 'response.done', 'speech.started', 'wrapup.started'].includes(raw.event)) throw new Error('Invalid coach diagnostic.')
+  const entry = requireLive(sessionId)
+  const identifier = (value: unknown): string | undefined => typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,100}$/.test(value) ? value : undefined
+  const fields = {
+    sessionId, projectId: entry.projectId, event: raw.event,
+    responseId: identifier(raw.responseId), status: identifier(raw.status), reason: identifier(raw.reason),
+    errorCode: identifier(raw.errorCode), errorType: identifier(raw.errorType),
+    expected: raw.expected === true, wrappingUp: raw.wrappingUp === true,
+    pendingTools: Number.isInteger(raw.pendingTools) ? Math.max(0, Math.min(60, raw.pendingTools!)) : 0
+  }
+  const logger = log.child('coach', { userId: entry.owner })
+  if (raw.event === 'response.done' && ['cancelled', 'failed', 'incomplete'].includes(fields.status ?? '') && !fields.expected) logger.warn('Coach response interrupted', fields)
+  else logger.info('Coach response lifecycle', fields)
+}
+
+/** Reserve the budget before awaiting, and hold the project through late tools. */
+export async function executeCoachTool(sessionId: string, senderId: number, name: string, args: string): Promise<CoachToolResult> {
+  assertCoachSender(sessionId, senderId)
+  const entry = requireLive(sessionId)
+  const release = holdCoachProject(entry.projectId)
+  const logger = log.child('coach', { userId: entry.owner })
+  const started = Date.now()
+  try {
+    const caps = toolCaps(sessionId)
+    countToolCall(sessionId, name)
+    const result = await runCoachTool(sessionId, name, args, caps)
+    const fields = { sessionId, projectId: entry.projectId, tool: /^[a-z_]{1,40}$/.test(name) ? name : 'unknown', ok: result.ok, durationMs: Date.now() - started }
+    if (result.ok) logger.info('Coach tool completed', fields)
+    else logger.warn('Coach tool failed', fields)
+    return result
+  } finally { release() }
 }

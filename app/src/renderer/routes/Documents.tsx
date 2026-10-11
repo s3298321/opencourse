@@ -39,7 +39,7 @@ export default function Documents({ user, route, navigate, importSignal, onImpor
         onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false) }}
         onDrop={event => { event.preventDefault(); if (!busy && event.dataTransfer.files[0]) void importPdf(event.dataTransfer.files[0]); setDragging(false) }}>
         <div className="library">
-          <div className="library-head"><div><h1>Documents</h1><p className="meta">Your PDFs, stored on this Mac.</p></div><ActionButton icon="upload" disabled={busy} onClick={() => void importPdf()}>{busy ? 'Importing…' : 'Import PDF'}</ActionButton></div>
+          <div className="library-head"><div><h1>Documents</h1></div><ActionButton icon="upload" disabled={busy} onClick={() => void importPdf()}>{busy ? 'Importing…' : 'Import PDF'}</ActionButton></div>
           {error && <p className="import-note error" role="alert">{error}</p>}
           <div className="documents-search">
             <input type="search" aria-label="Find a document" placeholder="Find a document…" value={query} onChange={event => setQuery(event.target.value)} />
@@ -58,7 +58,7 @@ export default function Documents({ user, route, navigate, importSignal, onImpor
               })}
             </div>
             <div>
-          {documents === null ? <p className="meta">Loading documents…</p> : documents.length === 0 ? <div className="empty-library document-empty"><span className="document-glyph" aria-hidden="true">▤</span><h3>Bring something to read</h3><p>Import a PDF or drop one here. Navigate its headings and ask questions beside the pages.</p></div> : visible?.length === 0 ? <p className="meta">No documents match this filter.</p> : <div className="documents-cards">{visible?.map(document => <article className="document-card" key={document.id}>
+          {documents === null ? <p className="meta">Loading documents…</p> : documents.length === 0 ? <div className="empty-library document-empty"><span className="document-glyph" aria-hidden="true">▤</span><h3>Bring something to read</h3><p>Import a PDF or drop one here.</p></div> : visible?.length === 0 ? <p className="meta">No documents match this filter.</p> : <div className="documents-cards">{visible?.map(document => <article className="document-card" key={document.id}>
             <button className="document-card-open" onClick={() => navigate({ name: 'document', documentId: document.id })}><span className="document-glyph" aria-hidden="true">▤</span><div><h3>{document.title}</h3><div className="meta">{document.pages ? `${document.pages} pages · ` : ''}{(document.bytes / 1024 / 1024).toFixed(1)} MB</div><div className="meta">{document.completed ? 'Completed' : 'To read'}{document.status === 'indexing' ? ' · Building search index…' : document.status === 'error' ? ' · Text index unavailable' : document.searchablePages === 0 ? ' · Image-only PDF' : ''}</div></div></button>
             <div className="document-card-actions"><button className="ghost" onClick={() => void window.opencourse.setDocumentCompleted(document.id, !document.completed).catch(error => setError(error.message))}>{document.completed ? 'Mark incomplete' : 'Mark completed'}</button><button className="ghost" onClick={() => void remove(document)}>Remove</button></div>
           </article>)}</div>}

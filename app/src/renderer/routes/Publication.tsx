@@ -67,7 +67,6 @@ export default function Publication({ serverId, courseId, user, navigate, route,
                 ))}
               </tbody>
             </table>
-            <p className="meta">To publish a change, edit the course, raise its version and choose Publish a new version on its page. The current version cannot be deleted; make another one current first, or unpublish the course.</p>
             <div className="actions">
               {course.listed
                 ? <ActionButton icon="trash" className="secondary danger" disabled={busy} onClick={() => void run(

@@ -202,19 +202,12 @@ export default function CoachSession({
         <p className="import-note">This session is near the 45-minute limit and will wrap itself up soon.</p>
       )}
 
-      {!view && !problem && (
-        <p className="meta">
-          Talk to your coach. It listens, answers out loud, and keeps its own notes in the workspace below —
-          you can read them but not edit them. Sessions are transcribed and kept on this Mac.
-        </p>
-      )}
-
-      {view && view.activity.length > 0 && (
-        <div className="live-activity">
-          {view.activity.map((entry) => (
-            <span key={entry.id} className={`tool-chip${entry.ok ? '' : ' failed'}`}>
+      {view && view.activity.some(entry => !entry.ok) && (
+        <div className="live-problems" role="status">
+          {view.activity.filter(entry => !entry.ok).map((entry) => (
+            <p key={entry.id} className="import-note error">
               {entry.text}
-            </span>
+            </p>
           ))}
         </div>
       )}

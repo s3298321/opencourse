@@ -187,8 +187,7 @@ export default function Library({
               <div className="empty-library">
                 <h3>No courses yet</h3>
                 <p>
-                  OpenCourse doesn't ship any courses — you bring your own. Create a course here, import a <code>.zip</code> archive,
-                  or select a connected server above and choose Add courses to browse its catalog.
+                  Create a course, import a <code>.zip</code> archive, or select a server and choose Add courses.
                 </p>
               </div>
             )}
@@ -203,7 +202,6 @@ export default function Library({
             {courses !== null && selectedSource.courses.length > 0 && visibleCourses.length === 0 && (
               <div className="empty-library">
                 <h3>No {statusFilters.find((filter) => filter.id === status)?.label.toLowerCase()} courses</h3>
-                <p>No courses in this tab match the selected status.</p>
                 <ActionButton icon="book" className="secondary" onClick={() => setStatus(null)}>Show all courses</ActionButton>
               </div>
             )}

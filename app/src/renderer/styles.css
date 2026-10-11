@@ -901,7 +901,6 @@ button.course-delete[data-builtin-theme] { --danger-button-bg: #6b2430; backgrou
 .catalog-tag.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .catalog-tag.on span { color: inherit; opacity: 0.75; }
 .catalog-count { margin: 0 0 0.75rem; }
-.catalog-card { height: auto; min-height: 11rem; }
 .catalog-card-action { flex: none; align-self: flex-start; }
 .catalog-pager { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1rem; }
 .catalog-inline { padding: 0 0.15rem; font-size: inherit; text-decoration: underline; }
@@ -917,7 +916,7 @@ button.course-delete[data-builtin-theme] { --danger-button-bg: #6b2430; backgrou
 .catalog-release-note { flex-basis: 100%; margin: 0.2rem 0 0; white-space: pre-wrap; font-size: 0.9rem; }
 
 /* The course page's server half (components/CourseServerPanel.tsx). */
-.course-server-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.6rem 0.8rem; margin-bottom: 1rem; }
+.course-server-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap-reverse; gap: 0.6rem 0.8rem; margin-bottom: 1rem; }
 .course-origin-line { justify-content: flex-start; margin: 0 auto 0 0; }
 .course-server-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; margin: 0; }
 .course-server-actions:empty { display: none; }
@@ -1149,7 +1148,8 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .lesson-head { margin-bottom: 1.25rem; }
 .lesson-head h1 { margin: 0.2rem 0 0.3rem; font-size: calc(1.8rem * var(--reading-scale, 1)); }
 /* Text the lesson inherits rather than sizes - quiz options, an exercise's
-   prompt, the objectives, the buttons - and the line under the title. */
+   prompt, the objectives - and the line under the title. Action buttons stay
+   at the app's UI size independently of the reading scale. */
 .lesson-inner { font-size: calc(var(--ui-size) * var(--reading-scale, 1)); }
 .lesson-inner .meta, .workbench-brief .meta { font-size: calc(0.86rem * var(--reading-scale, 1)); }
 .empty { color: var(--muted); padding: 3rem 0; text-align: center; }
@@ -1661,7 +1661,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 
 /* The bottom padding clears the fade the composer casts over the last line. */
 .sidechat-transcript { position: relative; flex: 1; min-height: 0; }
-.sidechat-scroll { --chat-status-inset: 12px; min-height: 0; padding: 0.75rem 0.75rem 1.4rem; overflow-anchor: none; }
+.sidechat-scroll { min-height: 0; padding: 0.75rem 0.75rem 1.4rem; overflow-anchor: none; }
 .sidechat-latest {
   position: absolute;
   bottom: 12px;
@@ -1820,7 +1820,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 @keyframes chat-fade { from { opacity: 0; } }
 
 /* Before the first word of an answer arrives. */
-.chat-typing { display: inline-flex; gap: 4px; padding: 0.45rem var(--chat-status-inset); }
+.chat-typing { display: inline-flex; gap: 4px; padding: 0.45rem 0; }
 .chat-typing i {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--muted);
@@ -2077,10 +2077,10 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .project-editor-picker {
   justify-content: space-between; gap: 1rem;
   min-width: 150px; max-width: 100%;
-  padding: 0.5rem 0.75rem;
+  min-height: 28px; padding: 0.3rem 0.65rem;
   background: var(--chip-bg); color: var(--fg);
   border: 1px solid var(--border); border-radius: 5px;
-  font-size: 0.9rem; font-weight: 500;
+  font-size: 0.75rem; line-height: 1.25; font-weight: 500;
 }
 .project-editor-picker:hover, .project-editor-picker.open { border-color: var(--muted); }
 .project-editor-picker:focus-visible { border-color: var(--accent); }
@@ -2107,7 +2107,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 button, a, input, select, textarea { transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
 button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 button:hover { filter: none; }
-button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.update-chip):not(.menu-item):not(.section-switch button):not(.reading-size button):not(.course-source-tabs button):not(.sidebar-notebook-link):not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--hover-ring); }
+button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user-chip):not(.update-chip):not(.menu-item):not(.section-switch button):not(.author-mode button):not(.reading-size button):not(.course-source-tabs button):not(.sidebar-notebook-link):not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--hover-ring); }
 @media (hover: hover) {
   button.action-button:not(:disabled):hover {
     background-color: color-mix(in srgb, var(--accent) 92%, var(--accent-fg));
@@ -2324,3 +2324,11 @@ select:not([multiple]):not([size]) {
   .notebook-body .lesson-chat-host { position: absolute; z-index: 9; top: 0; bottom: 0; right: 0; max-width: calc(100% - 60px); box-shadow: -12px 0 32px rgb(var(--shadow-rgb) / 0.25); }
   .notebook-body .lesson-chat-host > .sidechat { background-color: var(--bg); }
 }
+
+.author-mode button:hover { filter: none; }
+.author-mode button:not(.active):hover { color: var(--fg); }
+.coach-card .card-remove { opacity: 1; }
+.catalog-library-status { color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
+
+.course-reader-host { position: relative; }
+.course-reader-host > .screen-host[hidden] { display: flex; position: absolute; inset: 0; visibility: hidden; pointer-events: none; }

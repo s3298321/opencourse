@@ -143,13 +143,15 @@ export function CoursePage() {
             <span className="oc-eyebrow"><SparklesIcon aria-hidden />Add this course</span>
             <ol className="mini-steps">
               <li>Open <strong>OpenCourse</strong> on your Mac.</li>
-              <li>In <strong>Settings ▸ Servers</strong>, connect to this server.</li>
-              <li>Find <strong>{course.title}</strong> in the <strong>Course catalog</strong> tab and add it.</li>
+              <li>In <strong>Settings ▸ Course Servers</strong>, connect to this server.
+                <div className="server-address">
+                  <code>{server.publicUrl.replace(/^https?:\/\//, '')}</code>
+                  <CopyButton text={server.publicUrl} />
+                </div>
+              </li>
+              <li>In <strong>Courses</strong>, select <strong>{server.name}</strong>, choose <strong>Add courses</strong>, then find <strong>{course.title}</strong> and add it.</li>
             </ol>
-            <div className="server-address">
-              <code>{server.publicUrl.replace(/^https?:\/\//, '')}</code>
-              <CopyButton text={server.publicUrl} />
-            </div>
+
             <a className="oc-btn secondary aside-get" href={server.appUrl}><Download aria-hidden />Get the app</a>
           </div>
         </aside>
@@ -158,8 +160,8 @@ export function CoursePage() {
       <Dialog open={adding} onClose={() => setAdding(false)} title="Add this course in OpenCourse" description="Add the course to the Mac app to read its lessons and save your progress locally." footer={<><a className="oc-btn secondary" href={server.appUrl}><Download aria-hidden />Get the app</a><button type="button" className="oc-btn" onClick={() => setAdding(false)}>Done</button></>}>
         <ol className="dialog-steps">
           <li><span className="how-n">1</span><div><strong>Open OpenCourse</strong><p>Download and install the Mac app if needed.</p></div></li>
-          <li><span className="how-n">2</span><div><strong>Connect to this server</strong><p>Go to <strong>Settings ▸ Servers ▸ Connect to a server</strong> and enter:</p><div className="server-address"><code>{server.publicUrl.replace(/^https?:\/\//, '')}</code><CopyButton text={server.publicUrl} /></div></div></li>
-          <li><span className="how-n">3</span><div><strong>Add the course</strong><p>Open the <strong>Course catalog</strong> tab, find “{course.title}” and choose <strong>Add</strong>.</p></div></li>
+          <li><span className="how-n">2</span><div><strong>Connect to this server</strong><p>Go to <strong>Settings ▸ Course Servers ▸ Connect to a server</strong> and enter:</p><div className="server-address"><code>{server.publicUrl.replace(/^https?:\/\//, '')}</code><CopyButton text={server.publicUrl} /></div></div></li>
+          <li><span className="how-n">3</span><div><strong>Add the course</strong><p>Open <strong>Courses</strong>, select <strong>{server.name}</strong> and choose <strong>Add courses</strong>. Find “{course.title}” and choose <strong>Add</strong>.</p></div></li>
         </ol>
       </Dialog>
     </article>

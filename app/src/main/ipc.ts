@@ -88,7 +88,8 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getDefaultCoachModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { coachActivity, isCoachProjectBusy } from './coach-activity'
 import { appUpdateInfo, checkForAppUpdate, installAppUpdate, setAppUpdateAutomatic, updateEvents } from './updates'
 import type { ChatDefaults, ThemeImportResult } from '../core/types'
 import { closeDb } from './db'
@@ -103,15 +104,14 @@ import {
 import { createFolder, listFiles, moveFile, purgeFile, readTextFile, trashFile } from './coachfiles'
 import { clearKey, forgetVolatileKeys, hasKey, readKey, setKey, storedKeyHint } from './coachkey'
 import {
+  executeCoachTool,
+  reportCoachResponse,
   connectSession,
-  countToolCall,
   endAllSessions,
   endSession,
   flushTurns,
   startSession,
-  toolCaps
 } from './coachsession'
-import { runCoachTool } from './coachtools'
 import { listRealtimeModels, validateKey, type ModelList } from './openai'
 import { getCourse, listCourses } from './courses'
 import { importCourseZip, removeCourse } from './import'
@@ -285,6 +285,7 @@ export function registerIpc(): void {
   documentEvents.on('changed', (id: string) => broadcast('documents:changed', id))
   updateEvents.on('changed', () => broadcast('appUpdate:changed', appUpdateInfo()))
   authoringEvents.on('draft', (...args) => { broadcast('authoring:draftChanged', ...args); syncDocumentEdited() })
+  coachActivity.on('changed', () => broadcast('coach:changed'))
   authoringEvents.on('run', (...args) => broadcast('authoring:runState', ...args))
   subscriptionEvents.on('changed', notifyAIConnectionChanged)
   subscriptionEvents.on('stop', () => { cancelAllChats('chatgpt'); cancelAllProjectChats('chatgpt'); cancelAllAuthoringChats('chatgpt'); cancelAllDocumentChats('chatgpt') })
@@ -792,7 +793,7 @@ export function registerIpc(): void {
    * hint - `readKey` is main-only and nothing here returns what it returns.
    */
   ipcMain.handle('coach:hasKey', (): { has: boolean; hint: string | null } => ({
-    has: hasKey(),
+    has: Boolean(process.env['OPENCOURSE_SHOTS']) || hasKey(),
     hint: storedKeyHint()
   }))
 
@@ -806,6 +807,10 @@ export function registerIpc(): void {
 
   /** One round trip: the call that fills this list is the call that checks the key. */
   ipcMain.handle('coach:listModels', (): Promise<ModelList> => listRealtimeModels(readKey()))
+  ipcMain.handle('coach:allowDelete', () => getCoachAllowDelete())
+  ipcMain.handle('coach:setAllowDelete', (_e, value: boolean) => { const result = setCoachAllowDelete(value); broadcast('coach:changed'); return result })
+  ipcMain.handle('coach:projectRunState', (_e, projectId: string) => { if (!getProject(projectId)) throw new Error('That coach is gone.'); return { busy: isCoachProjectBusy(projectId) } })
+  ipcMain.handle('coach:response', (e, sessionId: string, diagnostic: import('../core/types').CoachResponseDiagnostic) => reportCoachResponse(sessionId, e.sender.id, diagnostic))
   ipcMain.handle('coach:defaultModel', () => getDefaultCoachModel())
   ipcMain.handle('coach:setDefaultModel', (_e, model: string) => setDefaultCoachModel(model))
 
@@ -814,13 +819,15 @@ export function registerIpc(): void {
   ipcMain.handle('coach:getProject', (_e, projectId: string): CoachProject | null => getProject(projectId))
 
   ipcMain.handle('coach:createProject', (_e, draft: CoachProjectDraft): CoachProject => {
-    const project = createProject(draft)
+    const { name, model, voice, instructions } = draft
+    const project = createProject({ name, model, voice, instructions })
     broadcast('coach:changed')
     return project
   })
 
   ipcMain.handle('coach:updateProject', (_e, projectId: string, patch: Partial<CoachProjectDraft>): CoachProject => {
-    const project = updateProject(projectId, patch)
+    const { name, model, voice, instructions } = patch
+    const project = updateProject(projectId, { name, model, voice, instructions })
     broadcast('coach:changed')
     return project
   })
@@ -880,11 +887,8 @@ export function registerIpc(): void {
 
   ipcMain.handle(
     'coach:tool',
-    async (_e, sessionId: string, name: string, args: string): Promise<CoachToolOutcome> => {
-      const result = await runCoachTool(sessionId, name, args, toolCaps(sessionId))
-      countToolCall(sessionId, name)
-      if (!result.ok) log.child('coach').warn('A coach tool call failed', { sessionId, tool: name, summary: result.summary })
-      // A file the coach just wrote should appear in the tree beside it.
+    async (e, sessionId: string, name: string, args: string): Promise<CoachToolOutcome> => {
+      const result = await executeCoachTool(sessionId, e.sender.id, name, args)
       if (result.ok && name !== 'web_search' && name !== 'read_file' && name !== 'list_files') {
         broadcast('coach:filesChanged', requireSessionProject(sessionId))
       }

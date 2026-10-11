@@ -51,3 +51,11 @@ export function setReadingScale(scale: number): number {
   writePreferences(next === DEFAULT_READING_SCALE ? rest : { ...rest, readingScale: next })
   return getReadingScale()
 }
+
+/** Legacy project flags do not grant a global permission. */
+export function getCoachAllowDelete(): boolean { return readPreferences().coachAllowDelete === true }
+export function setCoachAllowDelete(value: boolean): boolean {
+  if (typeof value !== 'boolean') throw new Error('Choose whether coaches may delete files.')
+  writePreferences({ ...readPreferences(), coachAllowDelete: value })
+  return getCoachAllowDelete()
+}

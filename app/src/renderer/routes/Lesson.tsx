@@ -179,6 +179,13 @@ export default function LessonView({
     setQuote((current) => (current?.from === 'answer' ? current : null))
   }, [courseId, moduleId, lessonId])
 
+  useEffect(() => {
+    if (!active) return
+    let alive = true
+    void window.opencourse.getProgress(courseId).then(next => { if (alive) setProgress(next) })
+    return () => { alive = false }
+  }, [active, courseId])
+
   const found = useMemo(
     () => (course ? findLesson(course, moduleId, lessonId) : undefined),
     [course, moduleId, lessonId]
@@ -447,15 +454,15 @@ export default function LessonView({
 
             <div className="lesson-nav">
               {neighbours.prev ? (
-                <button className="secondary" onClick={() => go(neighbours.prev)}>
-                  ← {neighbours.prev.title}
-                </button>
+                <ActionButton icon="left" className="secondary" aria-label={`Previous: ${neighbours.prev.title}`} onClick={() => go(neighbours.prev)}>
+                  {neighbours.prev.title}
+                </ActionButton>
               ) : (
                 <span />
               )}
               <span className="spacer" />
               {neighbours.next && (
-                <button onClick={() => go(neighbours.next)}>{neighbours.next.title} →</button>
+                <ActionButton icon="right" aria-label={`Next: ${neighbours.next.title}`} onClick={() => go(neighbours.next)}>{neighbours.next.title}</ActionButton>
               )}
             </div>
           </div>

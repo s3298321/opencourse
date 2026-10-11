@@ -15,6 +15,7 @@ const root = mkdtempSync(join(tmpdir(), 'opencourse-coachsession-'))
 let dataDir = join(root, 'data')
 
 let micGranted = true
+let micRequest: Promise<boolean> | undefined
 let quitHandler: (() => void) | null = null
 
 interface Call {
@@ -52,7 +53,7 @@ vi.mock('electron', () => ({
     decryptString: (buffer: Buffer) => buffer.toString().replace(/^enc:/, '')
   },
   systemPreferences: {
-    askForMediaAccess: () => Promise.resolve(micGranted),
+    askForMediaAccess: () => micRequest ?? Promise.resolve(micGranted),
     getMediaAccessStatus: () => (micGranted ? 'granted' : 'denied')
   },
   net: {
@@ -69,13 +70,18 @@ vi.mock('electron', () => ({
   }
 }))
 
-const { createUser, deleteUser, listUsers } = await import('../src/main/users')
+const { createUser, deleteUser, listUsers, requireUser, switchUser } = await import('../src/main/users')
 const { closeDb } = await import('../src/main/db')
 const { selectSessionRow, selectSessions } = await import('../src/main/coachdb')
-const { createProject, updateProject } = await import('../src/main/coach')
+const { createProject, updateProject, deleteProject } = await import('../src/main/coach')
+const { getCoachAllowDelete, setCoachAllowDelete } = await import('../src/main/preferences')
+const { isCoachProjectBusy } = await import('../src/main/coach-activity')
 const { setKey } = await import('../src/main/coachkey')
+const { log } = await import('../src/main/log')
 const { wantsMic } = await import('../src/main/mic')
 const {
+  executeCoachTool,
+  reportCoachResponse,
   connectSession,
   countToolCall,
   endAllSessions,
@@ -107,6 +113,7 @@ beforeEach(async () => {
   dataDir = join(root, `data-${n}`)
   mkdirSync(dataDir, { recursive: true })
   micGranted = true
+  micRequest = undefined
   calls = []
   responses = {}
   createUser('Ada')
@@ -194,13 +201,34 @@ describe('starting a session', () => {
     expect(mint?.auth).toContain(GOOD)
   })
 
-  it('withholds the delete tool unless the project allows it', async () => {
+  it('withholds the delete tool until the global setting allows it', async () => {
     const off = await start()
     expect(off.status === 'ok' && (off.tools as { name: string }[]).map((t) => t.name)).not.toContain('delete_file')
 
     updateProject(projectId, { allowDelete: true })
-    const on = await start(2)
+    const legacy = await start(2)
+    expect(legacy.status === 'ok' && (legacy.tools as { name: string }[]).map(t => t.name)).not.toContain('delete_file')
+    setCoachAllowDelete(true)
+    const on = await start(3)
     expect(on.status === 'ok' && (on.tools as { name: string }[]).map((t) => t.name)).toContain('delete_file')
+  })
+
+  it('applies permission to all coaches, persists per user and revokes live deletion immediately', async () => {
+    const owner = requireUser()
+    setCoachAllowDelete(true)
+    const second = createProject({name: 'Chess'})
+    const started = await startSession(sender(7) as any, second.id)
+    if (started.status !== 'ok') throw new Error(started.status)
+    expect((started.tools as {name: string}[]).map(tool => tool.name)).toContain('delete_file')
+    await executeCoachTool(started.sessionId, 7, 'write_file', JSON.stringify({path: 'notes.md', content: 'Keep'}))
+    setCoachAllowDelete(false)
+    expect((await executeCoachTool(started.sessionId, 7, 'delete_file', JSON.stringify({path: 'notes.md'}))).ok).toBe(false)
+    endAllSessions()
+    setCoachAllowDelete(true)
+    createUser('Grace')
+    expect(getCoachAllowDelete()).toBe(false)
+    switchUser(owner)
+    expect(getCoachAllowDelete()).toBe(true)
   })
 
   it('reports an OpenAI refusal as an outcome, not an exception', async () => {
@@ -209,6 +237,46 @@ describe('starting a session', () => {
     expect(started).toEqual({ status: 'failed', message: 'slow down' })
     expect(selectSessions(projectId)).toHaveLength(0)
     expect(wantsMic()).toBe(false)
+  })
+})
+
+describe('project deletion while connecting or running', () => {
+  it('refuses deletion until the live session ends', async () => {
+    const result = await start()
+    expect(isCoachProjectBusy(projectId)).toBe(true)
+    expect(() => deleteProject(projectId)).toThrow(/Finish/)
+    if (result.status === 'ok') endSession(result.sessionId, { status: 'ended' })
+    expect(isCoachProjectBusy(projectId)).toBe(false)
+    expect(() => deleteProject(projectId)).not.toThrow()
+  })
+  it('refuses deletion while permission is being requested', async () => {
+    let grant!: (value: boolean) => void
+    micRequest = new Promise(resolve => { grant = resolve })
+    const connecting = start()
+    expect(() => deleteProject(projectId)).toThrow(/Finish/)
+    grant(false)
+    await connecting
+    expect(() => deleteProject(projectId)).not.toThrow()
+  })
+  it('holds pending tools after the session ends', async () => {
+    const started = await start()
+    if (started.status !== 'ok') throw new Error(started.status)
+    const tools = await import('../src/main/coachtools')
+    let finish!: (value: {ok: boolean; output: string; summary: string}) => void
+    const run = vi.spyOn(tools, 'runCoachTool').mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    try {
+      const pending = executeCoachTool(started.sessionId, 1, 'web_search', '{}')
+      endSession(started.sessionId, {status: 'ended'})
+      expect(() => deleteProject(projectId)).toThrow(/Finish/)
+      finish({ok: true, output: '{}', summary: 'Search complete'})
+      await pending
+      expect(() => deleteProject(projectId)).not.toThrow()
+    } finally { run.mockRestore() }
+  })
+  it('releases the project after a refused microphone', async () => {
+    micGranted = false
+    await start()
+    expect(isCoachProjectBusy(projectId)).toBe(false)
   })
 })
 
@@ -366,5 +434,27 @@ describe('ending a session', () => {
     endSession(started.sessionId, { status: 'ended' })
     expect(() => endSession(started.sessionId, { status: 'ended' })).not.toThrow()
     expect(selectSessions(projectId)).toHaveLength(1)
+  })
+})
+
+describe('coach diagnostics', () => {
+  it('logs tool successes and failures without arguments, file content or results', async () => {
+    const records: import('../src/core/logging/types').LogRecord[] = []
+    log.addSink({ name: 'coach-test', minLevel: 'info', write: record => { records.push(record) } })
+    try {
+      const result = await start()
+      if (result.status !== 'ok') throw new Error('Session did not start')
+      await executeCoachTool(result.sessionId, 1, 'write_file', JSON.stringify({ path: 'private.md', content: 'PRIVATE CONTENT' }))
+      await executeCoachTool(result.sessionId, 1, 'read_file', JSON.stringify({ path: 'missing.md' }))
+      const tools = records.filter(record => record.message.startsWith('Coach tool'))
+      expect(tools.map(record => record.level)).toEqual(['info', 'warn'])
+      expect(JSON.stringify(tools)).not.toMatch(/PRIVATE CONTENT|private.md|missing.md/)
+      expect(tools[0].data).toMatchObject({ sessionId: result.sessionId, projectId, tool: 'write_file', ok: true })
+      expect(() => reportCoachResponse(result.sessionId, 999, { event: 'response.done' })).toThrow(/another window/)
+      reportCoachResponse(result.sessionId, 1, { event: 'response.done', status: 'cancelled', reason: 'PRIVATE CONTENT', responseId: 'resp_test', errorCode: 'rate_limit_exceeded', errorType: 'tokens' })
+      expect(records.at(-1)?.data).toMatchObject({ errorCode: 'rate_limit_exceeded', errorType: 'tokens' })
+      expect(records.at(-1)?.level).toBe('warn')
+      expect(JSON.stringify(records.at(-1))).not.toContain('PRIVATE CONTENT')
+    } finally { log.removeSink('coach-test') }
   })
 })

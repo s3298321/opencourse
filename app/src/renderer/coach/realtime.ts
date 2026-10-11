@@ -93,6 +93,7 @@ export class RealtimeSession {
   private wrapUpAttempts = 0
   private wrapUpToolCalls = 0
   private wrapUpResolve: (() => void) | null = null
+  private wrapUpResponseId: string | null = null
 
   constructor(config: Ready, onChange: () => void) {
     this.config = config
@@ -237,11 +238,18 @@ export class RealtimeSession {
   }
 
   /** Waits for the conversation to go quiet, so a request will not be refused. */
-  private async waitUntilIdle(ms = 10_000): Promise<void> {
+  private async waitUntilIdle(ms = 10_000): Promise<boolean> {
     const deadline = Date.now() + ms
-    while (this.responses.busy && Date.now() < deadline) {
+    while ((this.responses.busy || this.pending.size > 0) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 80))
     }
+    return !this.responses.busy && this.pending.size === 0
+  }
+
+  private diagnostic(event: import('@core/types').CoachResponseDiagnostic['event'], fields: Omit<import('@core/types').CoachResponseDiagnostic, 'event'> = {}): void {
+    void window.opencourse.reportCoachResponse?.(this.config.sessionId, {
+      event, pendingTools: this.pending.size, wrappingUp: this.stopping, ...fields
+    }).catch(() => {})
   }
 
   private onEvent(data: unknown): void {
@@ -272,6 +280,8 @@ export class RealtimeSession {
       if (type === 'input_audio_buffer.speech_started' && this.configured && !this.stopping) {
         // The server cancels and truncates WebRTC playback itself. Only
         // invalidate stale tool continuations; do not send a second cancel.
+        if (this.responses.busy && this.generatingResponseId) this.rememberInterruption(this.generatingResponseId)
+        this.diagnostic('speech.started', { responseId: this.generatingResponseId, expected: true })
         this.responses.speechStarted()
       }
       if (type === 'input_audio_buffer.speech_stopped') this.responses.speechStopped()
@@ -323,7 +333,7 @@ export class RealtimeSession {
           .runCoachTool(this.config.sessionId, name, args)
           .then((result) => {
             this.note(result.summary, result.ok)
-            if (this.status.kind === 'wrapping-up') this.wrapUpToolCalls += 1
+            if (result.ok && this.status.kind === 'wrapping-up' && (name === 'write_file' || name === 'append_file')) this.wrapUpToolCalls += 1
             submit(result.output)
           })
           .catch((err: Error) => {
@@ -347,20 +357,24 @@ export class RealtimeSession {
         return
 
       case 'responseStarted':
+        if (!this.responses.started(effect.responseId)) return
         this.generatingResponseId = effect.responseId
-        if (this.responses.isCancelling) this.rememberInterruption(effect.responseId)
-        this.responses.started(effect.responseId)
+        if (this.wrapUpResolve && this.wrapUpResponseId === null) this.wrapUpResponseId = effect.responseId
+        this.diagnostic('response.started', { responseId: effect.responseId })
         return
 
-      case 'responseDone':
+      case 'responseDone': {
+        const expected = this.responses.isCancelling || this.interruptedResponses.has(effect.responseId) || this.stopping
+        if (!this.responses.done(effect.responseId)) return
+        this.diagnostic('response.done', { responseId: effect.responseId, status: effect.status, reason: effect.statusReason ?? effect.reason, errorCode: effect.errorCode, errorType: effect.errorType, expected })
         if (effect.status === 'failed' || effect.status === 'incomplete') {
           this.note(`Coach reply stopped before finishing${effect.reason ? `: ${effect.reason}` : '.'}`, false)
-        } else if (effect.status === 'cancelled' && !this.responses.isCancelling && !this.stopping) {
-          this.note('The service interrupted the coach’s reply before it finished.', false)
+        } else if (effect.status === 'cancelled' && !expected) {
+          this.note('The coach’s reply was interrupted before it finished.', false)
         }
-        this.responses.done(effect.responseId)
-        if (this.status.kind === 'wrapping-up') this.wrapUpResolve?.()
+        if (this.wrapUpResolve && this.wrapUpResponseId === effect.responseId) this.wrapUpResolve()
         return
+      }
 
       case 'unknown':
         return
@@ -403,8 +417,10 @@ export class RealtimeSession {
       function finish(): void {
         clearTimeout(timer)
         self.wrapUpResolve = null
+        self.wrapUpResponseId = null
         resolve()
       }
+      this.wrapUpResponseId = null
       this.wrapUpResolve = finish
     })
   }
@@ -445,7 +461,10 @@ export class RealtimeSession {
         const forced = this.wrapUpAttempts === 1
         // Let whatever the coach was mid-sentence on finish, or the wrap-up
         // request is refused and the notes never get written.
-        await this.waitUntilIdle()
+        if (!(await this.waitUntilIdle())) break
+        this.diagnostic('wrapup.started')
+        // Arm before sending: even an immediate completion belongs to this ask.
+        const finished = this.waitForResponse(WRAPUP_TIMEOUT_MS)
         this.send({
           type: 'conversation.item.create',
           item: {
@@ -459,7 +478,7 @@ export class RealtimeSession {
           ...(forced ? { tool_choice: { type: 'function', name: 'write_file' } } : {})
         })
 
-        await this.waitForResponse(WRAPUP_TIMEOUT_MS)
+        await finished
         await Promise.allSettled([...this.pending.values()])
         if (this.wrapUpToolCalls > 0) break
       }
@@ -483,6 +502,7 @@ export class RealtimeSession {
     if (this.configureTimer) clearTimeout(this.configureTimer)
 
     this.responses.discard()
+    this.wrapUpResolve?.()
     this.stopTracks()
     try {
       this.channel?.close()

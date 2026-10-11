@@ -10,7 +10,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const PASSWORD = 'correct horse battery'
 const EXAMPLE = 'The OpenCourse example course'
-const shot = (page: Page, name: string) => page.screenshot({ path: join(tmpdir(), `opencourse-web-${name}.png`), fullPage: false })
+const shot = (page: Page, name: string) => page.screenshot({ path: join(tmpdir(), `opencourse-web-${name}.png`), fullPage: false, animations: 'disabled' })
 
 /** Fails the test on any script error or console error the page reports. */
 function watch(page: Page): string[] {
@@ -39,6 +39,12 @@ test('the catalog: search, a course, and how to add it', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1, name: 'E2E Catalog' })).toBeVisible()
   await expect(page.getByRole('link', { name: new RegExp(EXAMPLE) })).toBeVisible()
   await shot(page, 'catalog')
+  await page.getByLabel('Search courses').first().fill('nothing-matches-this-course');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Nothing matches that' })).toBeVisible();
+  await expect(page.locator('.empty-art .sparkles > *')).toHaveCount(9);
+  await page.locator('.empty-state').scrollIntoViewIfNeeded()
+  await shot(page, 'catalog-empty')
 
   await page.getByLabel('Search courses').first().fill('example')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
@@ -50,10 +56,12 @@ test('the catalog: search, a course, and how to add it', async ({ page }) => {
   await expect(page).toHaveTitle(`${EXAMPLE} · E2E Catalog`)
   await expect(page.getByRole('heading', { name: 'Contents' })).toBeVisible()
   await expect(page.getByText('1.0.0').first()).toBeVisible()
+  await expect(page.locator('.mini-steps > li').nth(1).locator('.server-address')).toBeVisible()
+  await expect(page.locator('.mini-steps > li').nth(2)).toContainText('Add courses')
   await page.getByRole('button', { name: 'Add in OpenCourse' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add this course in OpenCourse' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByText('Settings ▸ Servers ▸ Connect to a server', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Settings ▸ Course Servers ▸ Connect to a server', { exact: true })).toBeVisible()
   await shot(page, 'course-dialog')
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()

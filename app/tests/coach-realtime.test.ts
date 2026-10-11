@@ -66,6 +66,7 @@ beforeEach(async () => {
     connectCoachSession: vi.fn().mockResolvedValue({ answerSdp: 'answer' }),
     saveCoachTurns: vi.fn().mockResolvedValue(undefined),
     endCoachSession: vi.fn().mockResolvedValue(undefined),
+    reportCoachResponse: vi.fn().mockResolvedValue(undefined),
     runCoachTool: runTool
   })
   session = new RealtimeSession({
@@ -245,4 +246,60 @@ describe('WebRTC coach turn handling', () => {
     for (const request of requests()) expect(request['response']).toEqual({ output_modalities: ['text'] })
     expect(session.view().status.kind).toBe('ended')
   })
+  it('keeps the wrap-up waiter armed when an older response finishes', async () => {
+    const stopping = session.stop()
+    await vi.advanceTimersByTimeAsync(0)
+    event(responseCreated('wrapup-current'))
+    event(responseDone('old-response'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(session.view().status.kind).toBe('wrapping-up')
+    expect(requests()).toHaveLength(1)
+    event(toolDone('save-current', 'write_file', '{}'))
+    event(responseDone('wrapup-current', 1))
+    await vi.advanceTimersByTimeAsync(0)
+    await stopping
+    expect(session.view().status.kind).toBe('ended')
+  })
+  it('tries a forced write when the first wrap-up only reads files', async () => {
+    const stopping = session.stop()
+    await vi.advanceTimersByTimeAsync(0)
+    event(responseCreated('wrapup-read'))
+    event(toolDone('read-notes', 'read_file', '{}'))
+    event(responseDone('wrapup-read', 1))
+    await vi.advanceTimersByTimeAsync(0)
+    event(responseCreated('read-continuation'))
+    event(responseDone('read-continuation'))
+    await vi.advanceTimersByTimeAsync(80)
+    expect(requests().some(request => (request['response'] as Record<string, unknown>)?.['tool_choice'])).toBe(true)
+    event(responseCreated('wrapup-write'))
+    event(toolDone('save-notes', 'write_file', '{}'))
+    event(responseDone('wrapup-write', 1))
+    await vi.advanceTimersByTimeAsync(0)
+    await stopping
+    expect(session.view().status.kind).toBe('ended')
+  })
+  it('ignores an old cancellation arriving after a newer automatic response has started', () => {
+    event(responseCreated('old'))
+    event({ type: 'input_audio_buffer.speech_started', item_id: 'learner' })
+    event({ type: 'input_audio_buffer.speech_stopped', item_id: 'learner' })
+    event(responseCreated('new'))
+    event({ type: 'response.done', response: { id: 'old', status: 'cancelled', output: [] } })
+    expect(session.view().responding).toBe(true)
+    expect(session.view().activity).toEqual([])
+    event(responseDone('new'))
+    expect(session.view().responding).toBe(false)
+  })
+  it('reports unexpected cancellations once, with metadata and a visible problem', () => {
+    event(responseCreated('unexpected'))
+    const done = { type: 'response.done', response: { id: 'unexpected', status: 'cancelled', output: [] } }
+    event(done); event(done)
+    expect(session.view().activity).toHaveLength(1)
+    expect(session.view().activity[0].text).toMatch(/interrupted/)
+    expect(window.opencourse.reportCoachResponse).toHaveBeenCalledWith('test-session', expect.objectContaining({ event: 'response.done', responseId: 'unexpected', status: 'cancelled', expected: false }))
+  })
+  it('does not re-start a completed response when its created event is duplicated late', () => {
+    event(responseCreated('finished')); event(responseDone('finished')); event(responseCreated('finished'))
+    expect(session.view().responding).toBe(false)
+  })
+
 })

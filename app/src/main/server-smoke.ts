@@ -170,6 +170,10 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
       await press('Add courses');
       const card = await wait(() => document.querySelector('.catalog-card'), 'catalog card');
       if (!card.textContent.includes('v0.1.0') || !card.textContent.includes('author')) throw new Error('Card lacks version or publisher: ' + card.textContent);
+      const tag = await wait(() => card.querySelector('.course-card-tag-list .tag'), 'whole tag beneath the cover');
+      const cover = card.querySelector('.course-card-media img');
+      if (!cover || tag.getBoundingClientRect().top < cover.getBoundingClientRect().bottom || tag.getBoundingClientRect().bottom > card.getBoundingClientRect().bottom) throw new Error('Catalog tags do not fit below the cover');
+      if (document.querySelector('.server-catalog h1').textContent !== 'Smoke server' || document.querySelector('.catalog-server-name')) throw new Error('Server name is not solely in the page heading');
       return card.textContent;
     `)
     await shot('catalog')

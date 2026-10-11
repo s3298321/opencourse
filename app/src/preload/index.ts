@@ -292,6 +292,11 @@ const api = {
   getDefaultCoachModel: (): Promise<string> => ipcRenderer.invoke('coach:defaultModel'),
   setDefaultCoachModel: (model: string): Promise<string> => ipcRenderer.invoke('coach:setDefaultModel', model),
 
+  getCoachAllowDelete: (): Promise<boolean> => ipcRenderer.invoke('coach:allowDelete'),
+  setCoachAllowDelete: (value: boolean): Promise<boolean> => ipcRenderer.invoke('coach:setAllowDelete', value),
+  getCoachProjectRunState: (projectId: string): Promise<{ busy: boolean }> => ipcRenderer.invoke('coach:projectRunState', projectId),
+  reportCoachResponse: (sessionId: string, diagnostic: import('../core/types').CoachResponseDiagnostic): Promise<void> => ipcRenderer.invoke('coach:response', sessionId, diagnostic),
+
   listCoachProjects: (): Promise<CoachProjectSummary[]> => ipcRenderer.invoke('coach:listProjects'),
   getCoachProject: (projectId: string): Promise<CoachProject | null> =>
     ipcRenderer.invoke('coach:getProject', projectId),
@@ -300,11 +305,10 @@ const api = {
     model?: string
     voice?: string
     instructions?: string
-    allowDelete?: boolean
   }): Promise<CoachProject> => ipcRenderer.invoke('coach:createProject', draft),
   updateCoachProject: (
     projectId: string,
-    patch: { name?: string; model?: string; voice?: string; instructions?: string; allowDelete?: boolean }
+    patch: { name?: string; model?: string; voice?: string; instructions?: string }
   ): Promise<CoachProject> => ipcRenderer.invoke('coach:updateProject', projectId, patch),
   deleteCoachProject: (projectId: string): Promise<void> => ipcRenderer.invoke('coach:deleteProject', projectId),
   revealCoachProject: (projectId: string): Promise<void> => ipcRenderer.invoke('coach:revealProject', projectId),

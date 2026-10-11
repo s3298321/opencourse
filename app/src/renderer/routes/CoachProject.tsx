@@ -21,6 +21,8 @@ interface Props {
 export default function CoachProject({ projectId, user, navigate, route }: Props): JSX.Element {
   const [project, setProject] = useState<Project | null>(null)
   const [missing, setMissing] = useState(false)
+  const [busy, setBusy] = useState(true)
+  const [deleting, setDeleting] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -30,6 +32,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
   const [sessions, setSessions] = useState<CoachSessionSummary[] | null>(null)
 
   const refresh = useCallback(() => {
+    void window.opencourse.getCoachProjectRunState(projectId).then(state => setBusy(state.busy)).catch(() => setBusy(true))
     void window.opencourse.getCoachProject(projectId).then((found) => {
       if (found) setProject(found)
       else setMissing(true)
@@ -162,17 +165,17 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                       ))}
                     </select>
                   </label>
-                  <label className="coach-toggle">
-                    <input
-                      type="checkbox"
-                      checked={project.allowDelete}
-                      onChange={(e) => void patch({ allowDelete: e.target.checked })}
-                    />
-                    <span className="meta">Let the coach delete its own files</span>
-                  </label>
                 </div>
               </div>
               <div className="actions">
+                <ActionButton icon="trash" className="secondary danger coach-delete" disabled={busy || deleting}
+                  title={busy ? 'Finish the session before deleting this coach' : undefined}
+                  onClick={() => {
+                    if (!window.confirm(`Delete “${project.name}”?\n\nThis permanently deletes its sessions, transcripts and workspace files.`)) return
+                    setDeleting(true)
+                    void window.opencourse.deleteCoachProject(projectId).then(() => navigate({ name: 'coach' }))
+                      .catch(error => { setError(error.message); setDeleting(false) })
+                  }}>Delete coach</ActionButton>
                 <ActionButton icon="folder" className="secondary" onClick={() => void window.opencourse.revealCoachProject(projectId)}>
                   Show files in Finder
                 </ActionButton>
@@ -218,15 +221,15 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
               ) : (
                 <>
                   <pre className="coach-brief-text">{project.instructions}</pre>
-                  <button
-                    className="ghost"
+                  <ActionButton icon="edit"
+                    className="secondary"
                     onClick={() => {
                       setDraft(project.instructions)
                       setEditing(true)
                     }}
                   >
                     Edit
-                  </button>
+                  </ActionButton>
                 </>
               )}
             </details>

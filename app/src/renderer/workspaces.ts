@@ -1,20 +1,33 @@
 import { screenOf, sectionOf, type Route, type Screen } from './routes'
 
 export type Workspace = 'courses' | 'documents' | 'coach'
+export interface CourseReaderPair {
+  courseId: string
+  lesson?: Extract<Screen, { name: 'lesson' }>
+  notebook?: Extract<Screen, { name: 'notebook' }>
+}
 export interface WorkspaceNavigation {
+  reader: CourseReaderPair | null
   route: Route
   courses: Screen | null
   documents: Screen | null
   coach: Screen | null
 }
 
-export const initialNavigation = (): WorkspaceNavigation => ({ route: { name: 'users' }, courses: null, documents: null, coach: null })
+export const initialNavigation = (): WorkspaceNavigation => ({ route: { name: 'users' }, courses: null, documents: null, coach: null, reader: null })
 
 /** Only real navigation replaces a screen; overlays and section switches park it. */
 export function navigateWorkspace(state: WorkspaceNavigation, route: Route): WorkspaceNavigation {
   if (route.name === 'users') return initialNavigation()
   const section = sectionOf(route)
-  return section ? { ...state, route, [section]: screenOf(route) } : { ...state, route }
+  if (!section || route.name === 'settings' || route.name === 'logs') return { ...state, route }
+  let reader = state.reader
+  if (section === 'courses') {
+    if (route.name === 'lesson' || route.name === 'notebook') {
+      reader = { ...(reader?.courseId === route.courseId ? reader : { courseId: route.courseId }), [route.name]: route }
+    } else reader = null
+  }
+  return { ...state, route, reader, [section]: screenOf(route) }
 }
 
 export function switchWorkspace(state: WorkspaceNavigation, section: Workspace): WorkspaceNavigation {

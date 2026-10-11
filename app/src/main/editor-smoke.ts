@@ -1,4 +1,4 @@
-import { beginAuthoringTurn } from './authoring-state'
+import { authoringRunState, beginAuthoringTurn } from './authoring-state'
 import { runAuthoringTool } from './authoring-tools'
 import { getAuthoringCourse } from './course-authoring'
 /** The authoring journey uses real React controls and the production save/export services. */
@@ -17,7 +17,9 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       const detail = await win.webContents.executeJavaScript(`(async () => {
         const sleep = ms => new Promise(r => setTimeout(r, ms));
         const wait = async test => { for(let n=0;n<200;n++) { const result=test(); if(result) return result; await sleep(25); } throw new Error('Timed out: '+test.toString()); };
-        const button = text => [...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+        const visible = element => element?.checkVisibility({ visibilityProperty: true });
+        const find = selector => [...document.querySelectorAll(selector)].find(visible);
+        const button = text => [...document.querySelectorAll('button')].find(b=>visible(b) && b.textContent.trim()===text);
         const field = async (label,value) => { const input=await wait(()=>document.querySelector('[aria-label="'+label+'"]')); Object.getOwnPropertyDescriptor(input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value); input.dispatchEvent(new Event('input',{bubbles:true})); await sleep(30); };
         ${source}
       })()`)
@@ -30,7 +32,9 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
   }
   try {
     await run('editor: a new course is unsaved until Save, and leaving asks first', `
-      (await wait(()=>document.querySelector('.titlebar [data-section="courses"]'))).click(); await sleep(100); if (!document.querySelector('.library')) document.querySelector('.titlebar .crumbs a')?.click(); await wait(()=>document.querySelector('.library'));
+      (await wait(()=>find('.titlebar [data-section="courses"]'))).click(); await sleep(100);
+      for(let n=0;n<4 && !find('.library:not(.documents-library):not(.coach)');n++) {find('.titlebar .crumbs a')?.click(); await sleep(200);}
+      await wait(()=>find('.library:not(.documents-library):not(.coach)'));
       button('Create course').click(); await wait(()=>document.querySelector('.course-editor'));
       const state=await wait(()=>document.querySelector('.author-save-state'));
       if(state.textContent!=='Not saved yet') throw new Error('A new course does not say it is unsaved: '+state.textContent);
@@ -78,6 +82,27 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       window.__EDITOR_SMOKE_ID=entry.courseId;
       return entry.courseId;
     `) as string
+
+    let stoppedCleanTurn = false
+    const cleanTurn = beginAuthoringTurn(courseId, 'smoke-clean-turn', () => { stoppedCleanTurn = true })
+    try {
+      await run('editor: a clean running assistant warns before departure and stays running when parked', `
+        document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
+        if(!document.querySelector('.dialog').textContent.includes('The assistant is still working. Leaving stops it.')) throw new Error('Clean running turn had no warning');
+        document.querySelector('.dialog-cancel').click(); await sleep(80);
+        if(!(await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Cancelling stopped the assistant');
+        document.querySelector('[data-section="coach"]').click(); await sleep(80);
+        if(document.querySelector('.dialog')) throw new Error('Parking asked to stop the turn');
+        document.querySelector('[data-section="courses"]').click(); await sleep(80);
+        document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
+        document.querySelector('.dialog-confirm').click(); await wait(()=>document.querySelector('.library'));
+        if((await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Leaving did not stop the turn');
+        const card=[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course'));card.click(); await wait(()=>document.querySelector('.detail'));
+        button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
+        return 'Clean running turn confirms; Cancel and parking preserve it; confirmed departure stops it';
+      `)
+      if (!stoppedCleanTurn || authoringRunState(courseId).chatId !== null) throw new Error('Clean authoring lease survived confirmed departure')
+    } finally { cleanTurn.release() }
     await run('editor: Discard leaves the saved course as it was, and a discarded new course leaves nothing', `
       button('Course details').click(); await field('Course title','Unsaved title');
       await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
@@ -166,7 +191,12 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
         button('Manual').click();
         if(!document.querySelector('.author-form fieldset').disabled) throw new Error('Manual changes are not locked');
         button('AI').click();
-        return 'Tool edits update the current draft immediately and serialize other mutations';
+        document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
+        const warning=document.querySelector('.dialog').textContent;
+        if(!warning.includes('Your edits to this course have not been saved.') || !warning.includes('The assistant is still working. Leaving stops it.')) throw new Error('Dirty running turn did not combine both warnings');
+        document.querySelector('.dialog-cancel').click();
+        if(!(await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Cancelling stopped the running assistant');
+        return 'Tool edits update the current draft immediately; departure combines unsaved changes and assistant warnings';
       `)
     } finally { lease.release() }
     await run('editor: complete lesson and quiz previews match learning without writing progress', `

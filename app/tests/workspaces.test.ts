@@ -54,4 +54,21 @@ describe('workspace navigation', () => {
     expect(screenKey(pdf)).not.toBe(screenKey({ name: 'document', documentId: 'other' }))
     expect(navigateWorkspace(state, { name: 'users' }).documents).toBeNull()
   })
+  it('retains just the current course’s visited reader screens and clears them on departure', () => {
+    const notebook: Screen = { name: 'notebook', courseId: 'course' }
+    let state = navigateWorkspace(initialNavigation(), lesson)
+    state = navigateWorkspace(state, notebook)
+    expect(state.reader).toEqual({ courseId: 'course', lesson, notebook })
+    state = switchWorkspace(state, 'coach')
+    expect(state.reader?.notebook).toBe(notebook)
+    state = navigateWorkspace(state, { name: 'settings', from: notebook })
+    expect(state.reader?.lesson).toBe(lesson)
+    state = navigateWorkspace(state, { name: 'lesson', courseId: 'other', moduleId: 'm', lessonId: 'l' })
+    expect(state.reader?.notebook).toBeUndefined()
+    expect(state.reader?.courseId).toBe('other')
+    state = navigateWorkspace(state, { name: 'library' })
+    expect(state.reader).toBeNull()
+    expect(navigateWorkspace(state, { name: 'users' }).reader).toBeNull()
+  })
+
 })

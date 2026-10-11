@@ -410,6 +410,13 @@ function WebSearchSection(): JSX.Element {
 }
 
 function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Element {
+  const [allowDelete, setAllowDelete] = useState<boolean | null>(null)
+  const [savingPermission, setSavingPermission] = useState(false)
+  useEffect(() => {
+    const load = () => { void window.opencourse.getCoachAllowDelete().then(setAllowDelete).catch(error => setError(error.message)) }
+    load()
+    return window.opencourse.onCoachChanged(load)
+  }, [])
   const [models, setModels] = useState<CoachModel[]>([])
   const [model, setModel] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -447,7 +454,18 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
 
   return (
     <section className="settings-section">
-      <h2>Coach model</h2>
+      <h2>Coach</h2>
+      <label className="coach-toggle">
+        <input type="checkbox" className="settings-coach-delete" checked={allowDelete === true} disabled={allowDelete === null || savingPermission}
+          onChange={event => {
+            setSavingPermission(true); setError(null)
+            void window.opencourse.setCoachAllowDelete(event.target.checked).then(setAllowDelete)
+              .catch(error => setError(error.message)).finally(() => setSavingPermission(false))
+          }} />
+        <span>Let coaches delete their files</span>
+      </label>
+      <p className="meta">Files go to the coach’s trash. Enabling applies to new sessions; disabling blocks deletion immediately.</p>
+      <h3>Coach model</h3>
       <p className="meta">Choose the speech-to-speech model new coaches start with.</p>
       <div className="settings-defaults">
         <label>

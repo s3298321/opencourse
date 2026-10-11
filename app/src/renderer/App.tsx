@@ -81,7 +81,9 @@ export default function App(): JSX.Element {
   /** True when it is fine to go to `next`; null means "somewhere else entirely". */
   const confirmLeave = useCallback(async (next: Route | null): Promise<boolean> => {
     const current = navigationRef.current.courses
-    if (current?.name === 'notebook' && notebook.current) {
+    // Returning to a retained notebook must remain possible to resolve a save conflict.
+    const returningToNotebook = current?.name === 'lesson' && next?.name === 'notebook' && current.courseId === next.courseId
+    if (navigationRef.current.reader?.notebook && notebook.current && !returningToNotebook) {
       try { await notebook.current.flush() } catch { return false }
     }
     if (current?.name !== 'courseEditor') return true
@@ -92,10 +94,11 @@ export default function App(): JSX.Element {
     // Settings and Logs open over the editor; its session waits underneath.
     if (next && screenOf(next).name === 'courseEditor' && (screenOf(next) as { courseId: string }).courseId === courseId) return true
     const dirty = editorDirty.current || await window.opencourse.isCourseDraftDirty(courseId).catch(() => false)
-    if (dirty && !(await ask({
-      title: 'Discard unsaved changes?',
-      detail: 'Your edits to this course have not been saved. Discarding them leaves the course as it was last saved.',
-      confirmLabel: 'Discard changes',
+    const running = (await window.opencourse.getAuthoringRunState(courseId)).chatId !== null
+    if ((dirty || running) && !(await ask({
+      title: dirty ? 'Discard unsaved changes?' : 'Stop the assistant and leave?',
+      detail: [dirty ? 'Your edits to this course have not been saved. Discarding them leaves the course as it was last saved.' : '', running ? 'The assistant is still working. Leaving stops it.' : ''].filter(Boolean).join(' '),
+      confirmLabel: dirty ? 'Discard changes' : 'Stop and leave',
       cancelLabel: 'Keep editing',
       danger: true
     }))) return false
@@ -113,10 +116,12 @@ export default function App(): JSX.Element {
       return
     }
     const returning = (routeRef.current.name === 'settings' || routeRef.current.name === 'logs') && next === screenOf(routeRef.current)
+    const previous = screenOf(routeRef.current)
+    const readerSwitch = (next.name === 'lesson' || next.name === 'notebook') && (previous.name === 'lesson' || previous.name === 'notebook') && next.name !== previous.name && next.courseId === previous.courseId
     setSearchCourse(null)
     setRoute(next)
-    if (!returning && !options?.keepScroll && next.name !== 'settings' && next.name !== 'logs' && next.name !== 'project') {
-      requestAnimationFrame(() => document.querySelector('.screen-host:not([hidden]) .content')?.scrollTo({ top: 0 }))
+    if (!returning && !readerSwitch && !options?.keepScroll && next.name !== 'settings' && next.name !== 'logs' && next.name !== 'project') {
+      requestAnimationFrame(() => [...document.querySelectorAll<HTMLElement>('.screen-host .content')].find(element => element.checkVisibility({ visibilityProperty: true }))?.scrollTo({ top: 0 }))
     }
     })().catch(() => {})
   }, [confirmLeave])
@@ -287,7 +292,7 @@ export default function App(): JSX.Element {
       case 'course': return <CourseDetail courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} />
       case 'review': return <Review initialSession={screen.session} navigate={screenNavigate} active={active} />
       case 'lesson': return <LessonView courseId={screen.courseId} moduleId={screen.moduleId} lessonId={screen.lessonId}
-        pythonCellsActive={active || (overlay && sectionOf(screenOf(route)) === 'courses')}
+        pythonCellsActive={section === 'courses' && navigation.reader?.courseId === screen.courseId}
         user={user} navigate={screenNavigate} navSignal={navSignal} route={screen} chatOpen={chatOpen} setChatOpen={setChatOpen}
         scrollRef={lessonScroll} readingScale={readingScale} setReadingScale={changeReadingScale} />
       case 'notebook': return <Notebook courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} chatOpen={chatOpen} setChatOpen={setChatOpen} textScale={readingScale ?? 1} registerNotebook={registerNotebook} />
@@ -306,7 +311,11 @@ export default function App(): JSX.Element {
         const screen = navigation[workspace]
         const active = section === workspace && !overlay
         return screen && <ScreenHost key={workspace} active={active} className={`workspace-${workspace}${screen.name === 'project' ? ' project-screen' : ''}${screen.name === 'review' ? ' review-screen-host' : ''}`}>
-          <div className="screen-content" key={screenKey(screen)}>{renderScreen(screen, active)}</div>
+          {workspace === 'courses' && navigation.reader ? <div className="screen-content course-reader-host" key={`reader/${navigation.reader.courseId}`}>
+            {([navigation.reader.lesson, navigation.reader.notebook]).map(reader => reader && <ScreenHost key={reader.name} active={active && screen.name === reader.name} className={`reader-${reader.name}`}>
+              {renderScreen(reader, active && screen.name === reader.name)}
+            </ScreenHost>)}
+          </div> : <div className="screen-content" key={screenKey(screen)}>{renderScreen(screen, active)}</div>}
         </ScreenHost>
       })}
       {route.name === 'users' && <ScreenHost active>{renderScreen(route, true)}</ScreenHost>}

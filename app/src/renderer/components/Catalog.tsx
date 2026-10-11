@@ -1,5 +1,6 @@
 import ActionButton from './ActionButton'
-import { useCallback, useEffect, useState } from 'react'
+import CourseCardMedia from './CourseCardMedia'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { CatalogCourse, CatalogPage, CatalogSort, CatalogTag } from '@core/catalog/api'
 import type { CourseSummary, ServerConnection } from '@core/types'
@@ -10,14 +11,14 @@ import type { Route, Screen } from '../routes'
  * through main (window.opencourse) - the renderer still makes no network
  * request of its own, covers included.
  */
-export default function Catalog({ serverId, navigate, route, library, onAdded }: {
-  serverId: string
+export default function Catalog({ server: active, loadingServer, navigate, route, library, onAdded }: {
+  server: ServerConnection | null
+  loadingServer: boolean
   navigate: (r: Route) => void
   route: Screen
   library: CourseSummary[]
   onAdded: () => void
 }): JSX.Element {
-  const [servers, setServers] = useState<ServerConnection[] | null>(null)
   const [q, setQ] = useState('')
   const [query, setQuery] = useState('')
   const [tags, setTags] = useState<string[]>([])
@@ -28,11 +29,6 @@ export default function Catalog({ serverId, navigate, route, library, onAdded }:
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
-
-  const loadServers = useCallback(() => { void window.opencourse.listServers().then(setServers).catch(() => setServers([])) }, [])
-  useEffect(loadServers, [loadServers])
-  useEffect(() => window.opencourse.onServersChanged(loadServers), [loadServers])
-  const active = servers?.find((s) => s.id === serverId) ?? null
 
   // Typing settles before it searches; a new search starts at page one.
   useEffect(() => {
@@ -60,12 +56,12 @@ export default function Catalog({ serverId, navigate, route, library, onAdded }:
     return () => { alive = false }
   }, [active?.id, result?.total])
 
-  if (servers === null) return <p className="meta">Loading…</p>
+  if (loadingServer) return <p className="meta">Loading…</p>
   if (!active) {
     return (
       <div className="empty-library catalog-empty">
         <h3>No server to browse</h3>
-        <p>Course catalogs live on OpenCourse servers. Connect to one in Settings — with an account there, you can add its courses to your library and publish your own.</p>
+        <p>Connect to a course server in Settings.</p>
         <ActionButton icon="settings" onClick={() => navigate({ name: 'settings', from: route, section: 'servers' })}>Open Settings</ActionButton>
       </div>
     )
@@ -88,7 +84,6 @@ export default function Catalog({ serverId, navigate, route, library, onAdded }:
   return (
     <div className="catalog">
       <div className="catalog-bar">
-        <span className="catalog-server-name" title={active.url}>{active.name}</span>
         <input type="search" className="catalog-search" aria-label="Search courses" placeholder="Search by keyword" value={q} onChange={(e) => setQ(e.target.value)} />
         <select aria-label="Sort courses" value={sort} onChange={(e) => { setSort(e.target.value as CatalogSort | ''); setPage(1) }}>
           <option value="">Best match</option>
@@ -118,8 +113,7 @@ export default function Catalog({ serverId, navigate, route, library, onAdded }:
         {result?.courses.map((course) => (
           <CatalogCard key={course.id} serverId={active.id} course={course} inLibrary={inLibrary.has(course.id)} adding={adding === course.id} canAdd={Boolean(active.account)}
             onOpen={() => navigate({ name: 'catalogCourse', serverId: active.id, courseId: course.id })}
-            onAdd={() => void add(course)}
-            onOpenInLibrary={() => navigate({ name: 'course', courseId: course.id })} />
+            onAdd={() => void add(course)} />
         ))}
       </div>
       {pages > 1 && (
@@ -144,14 +138,14 @@ export function useCatalogCover(serverId: string, course: { id: string; version:
   return cover
 }
 
-function CatalogCard({ serverId, course, inLibrary, adding, canAdd, onOpen, onAdd, onOpenInLibrary }: {
+function CatalogCard({ serverId, course, inLibrary, adding, canAdd, onOpen, onAdd }: {
   serverId: string; course: CatalogCourse; inLibrary: boolean; adding: boolean; canAdd: boolean
-  onOpen: () => void; onAdd: () => void; onOpenInLibrary: () => void
+  onOpen: () => void; onAdd: () => void
 }): JSX.Element {
   const cover = useCatalogCover(serverId, course)
   return (
     <div className="course-card catalog-card" onClick={onOpen}>
-      {cover && <img src={cover} alt="" />}
+      <CourseCardMedia coverUrl={cover ?? undefined} tags={course.tags} />
       <div className="course-card-content">
         <h3 title={course.title}>{course.title}</h3>
         <div className="meta course-card-meta">
@@ -163,13 +157,10 @@ function CatalogCard({ serverId, course, inLibrary, adding, canAdd, onOpen, onAd
           <span className="meta">{course.downloads === 1 ? '1 download' : `${course.downloads} downloads`} · by {course.publisher}</span>
         </div>
         {course.description && <p className="catalog-summary">{course.description.replace(/[#*_`>[\]()]/g, '').slice(0, 220)}</p>}
-        <div className="course-card-footer">
-          <div className="course-card-tags">{course.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
-        </div>
       </div>
-      <div className="catalog-card-action" onClick={(e) => e.stopPropagation()}>
+      <div className="catalog-card-action" onClick={(e) => { if (!inLibrary) e.stopPropagation() }}>
         {inLibrary
-          ? <ActionButton icon="check" className="secondary" onClick={onOpenInLibrary}>In your library</ActionButton>
+          ? <span className="catalog-library-status">In your library</span>
           : <ActionButton icon="plus" disabled={adding || !canAdd} onClick={onAdd}>{adding ? 'Adding' : 'Add'}</ActionButton>}
       </div>
     </div>

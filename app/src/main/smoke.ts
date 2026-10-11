@@ -514,7 +514,7 @@ const SCRIPT = `(async () => {
   // --- navigation -------------------------------------------------------------------
   await step('next lesson navigates', async () => {
     const before = document.querySelector('.lesson-head h1').textContent
-    const next = [...document.querySelectorAll('.lesson-nav button')].find((b) => b.textContent.includes('→'))
+    const next = document.querySelector('.lesson-nav button[aria-label^="Next:"]')
     assert(next, 'no next button')
     next.click()
     await sleep(600)
@@ -2039,7 +2039,7 @@ const ANSWER_QUOTE_SCRIPT = `(async () => {
 
   await step('a passage from an answer stays attached, and marked, in the next lesson', async () => {
     const before = document.querySelector('.lesson-head h1').textContent
-    const next = [...document.querySelectorAll('.lesson-nav button')].find((b) => b.textContent.includes('→'))
+    const next = document.querySelector('.lesson-nav button[aria-label^="Next:"]')
     assert(next, 'no next lesson to move to')
     next.click()
     const t0 = Date.now()

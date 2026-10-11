@@ -40,7 +40,14 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
     } finally { setBusy(false) }
   }
 
-  const back = { label: 'Add courses', onClick: () => navigate({ name: 'catalog', serverId }) }
+  const [serverName, setServerName] = useState('Catalog')
+  useEffect(() => {
+    let alive = true
+    const load = () => { void window.opencourse.listServers().then(list => { if (alive) setServerName(list.find(server => server.id === serverId)?.name ?? 'Catalog') }).catch(() => {}) }
+    load(); const off = window.opencourse.onServersChanged(load)
+    return () => { alive = false; off() }
+  }, [serverId])
+  const back = { label: serverName, onClick: () => navigate({ name: 'catalog', serverId }) }
   if (!course) {
     return <>
       <TitleBar user={user} navigate={navigate} route={route} back={back} />

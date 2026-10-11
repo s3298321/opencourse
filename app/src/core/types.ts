@@ -499,6 +499,7 @@ export interface CoachProject {
 
 /** A project as the list screen needs it - no instructions, plus session counts. */
 export interface CoachProjectSummary {
+  busy?: boolean
   id: string
   name: string
   model: string
@@ -525,6 +526,18 @@ export interface TranscriptTurn {
   role: 'user' | 'assistant' | 'system'
   text: string
   at: string
+}
+
+export interface CoachResponseDiagnostic {
+  event: 'response.started' | 'response.done' | 'speech.started' | 'wrapup.started'
+  responseId?: string
+  status?: string
+  reason?: string
+  errorCode?: string
+  errorType?: string
+  expected?: boolean
+  pendingTools?: number
+  wrappingUp?: boolean
 }
 
 export interface CoachToolRecord {
@@ -815,6 +828,8 @@ export interface Preferences {
   defaultChatModel?: string
   defaultChatReasoning?: ReasoningEffort
   defaultCoachModel?: string
+  /** All coaches may trash files only while this user opts in. */
+  coachAllowDelete?: boolean
   projectEditor?: string
   /**
    * Lets the side chat use OpenAI's web search. Opt-in, because every search is

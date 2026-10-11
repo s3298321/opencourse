@@ -35,7 +35,7 @@ export type SessionEffect =
   | { kind: 'tool'; call: PendingToolCall }
   | { kind: 'error'; message: string }
   | { kind: 'responseStarted'; responseId: string }
-  | { kind: 'responseDone'; responseId: string; toolCallCount: number; status?: string; reason?: string }
+  | { kind: 'responseDone'; responseId: string; toolCallCount: number; status?: string; reason?: string; statusReason?: string; errorCode?: string; errorType?: string }
   | { kind: 'unknown'; type: string }
 
 interface OpenItem {
@@ -336,7 +336,10 @@ export function reduceRealtimeEvent(
     const details = record['status_details']
     const detail = details && typeof details === 'object' ? details as Record<string, unknown> : {}
     const error = detail['error']
-    const reason = (error && typeof error === 'object' ? str((error as Record<string, unknown>)['message']) : '') || str(detail['reason'])
+    const errorRecord = error && typeof error === 'object' ? error as Record<string, unknown> : {}
+    const statusReason = str(detail['reason'])
+    const errorCode = str(errorRecord['code']), errorType = str(errorRecord['type'])
+    const reason = str(errorRecord['message']) || statusReason
     const output =
       response && typeof response === 'object' ? (response as Record<string, unknown>)['output'] : undefined
     const toolCallCount = Array.isArray(output)
@@ -348,7 +351,7 @@ export function reduceRealtimeEvent(
     const responseId =
       (response && typeof response === 'object' ? str((response as Record<string, unknown>)['id']) : '') ||
       str(event['response_id'])
-    return { state, effects: [{ kind: 'responseDone', responseId, toolCallCount, ...(status ? { status } : {}), ...(reason ? { reason } : {}) }] }
+    return { state, effects: [{ kind: 'responseDone', responseId, toolCallCount, ...(status ? { status } : {}), ...(reason ? { reason } : {}), ...(errorCode ? { errorCode } : {}), ...(errorType ? { errorType } : {}), ...(statusReason && errorRecord['message'] ? { statusReason } : {}) }] }
   }
 
   /* --- everything else ---------------------------------------------------- */

@@ -192,17 +192,16 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .sparkles > :nth-child(6) { top: 48%; left: 92%; width: 11px; height: 11px; }
 .sparkles > :nth-child(7) { top: 80%; left: 40%; width: 8px; height: 8px; }
 .sparkles > :nth-child(8) { top: 38%; left: 3%; width: 8px; height: 8px; }
-/* An irregular scatter across the whole illustration, with no central mark. */
-.empty-art .sparkles > :nth-child(1) { top: 9%; left: 18%; width: 15px; height: 15px; }
-.empty-art .sparkles > :nth-child(2) { top: 67%; left: 6%; width: 8px; height: 8px; }
-.empty-art .sparkles > :nth-child(3) { top: 3%; left: 73%; width: 11px; height: 11px; }
-.empty-art .sparkles > :nth-child(4) { top: 76%; left: 81%; width: 12px; height: 12px; }
-.empty-art .sparkles > :nth-child(5) { top: 38%; left: 89%; width: 7px; height: 7px; }
-.empty-art .sparkles > :nth-child(6) { top: 34%; left: 45%; width: 18px; height: 18px; }
-.empty-art .sparkles > :nth-child(7) { top: 82%; left: 38%; width: 9px; height: 9px; }
-.empty-art .sparkles > :nth-child(8) { top: 44%; left: 11%; width: 6px; height: 6px; }
-.empty-art .sparkles > :nth-child(9) { top: 57%; left: 63%; width: 10px; height: 10px; }
-
+/* One star per cell of a jittered 3 × 3 grid. */
+.empty-art .sparkles > :nth-child(1) { top: 16%; left: 15%; width: 15px; height: 15px; }
+.empty-art .sparkles > :nth-child(2) { top: 13%; left: 51%; width: 8px; height: 8px; }
+.empty-art .sparkles > :nth-child(3) { top: 19%; left: 82%; width: 11px; height: 11px; }
+.empty-art .sparkles > :nth-child(4) { top: 48%; left: 18%; width: 7px; height: 7px; }
+.empty-art .sparkles > :nth-child(5) { top: 46%; left: 48%; width: 10px; height: 10px; }
+.empty-art .sparkles > :nth-child(6) { top: 51%; left: 80%; width: 6px; height: 6px; }
+.empty-art .sparkles > :nth-child(7) { top: 79%; left: 14%; width: 12px; height: 12px; }
+.empty-art .sparkles > :nth-child(8) { top: 82%; left: 49%; width: 9px; height: 9px; }
+.empty-art .sparkles > :nth-child(9) { top: 76%; left: 83%; width: 18px; height: 18px; }
 /* ---------- covers ---------- */
 .cover { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: var(--chip-bg); }
 .cover img { width: 100%; height: 100%; object-fit: cover; transition: transform 600ms var(--ease); }

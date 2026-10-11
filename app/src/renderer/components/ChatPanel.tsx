@@ -471,10 +471,7 @@ export default function ChatPanelView({
                 as broken, and the guidance is true either way. */}
             {thread?.messages.length === 0 && (
               <div className="sidechat-empty">
-                <p>{variant === 'notebook' ? 'Ask anything about this notebook.' : variant === 'document' ? 'Ask anything about this document.' : variant === 'authoring' ? 'Describe the course you want, or ask to edit any part of this course.' : variant === 'project' ? 'Ask for clarification or feedback on your project.' : 'Ask anything about this lesson.'}</p>
-                <p className="meta">
-                  {variant === 'notebook' ? 'Saved code and outputs are included with your question. Ask can search the course and explain selected passages. It cannot inspect live Python variables.' : variant === 'document' ? 'Highlight a passage to attach it. Ask can search this PDF and read relevant pages; only selected and retrieved passages are sent to your AI connection.' : variant === 'authoring' ? 'Your selected block is included automatically. Changes appear in the preview as the assistant edits your draft.' : variant === 'project' ? 'The project definition and deliverables are included automatically. Files the assistant reads from this project folder are sent to OpenAI. The assistant can inspect text files and cannot run code.' : 'The current lesson is included with your question. Ask can search other sections when needed. Highlight a passage to attach it.'}
-                </p>
+                <p>{variant === 'authoring' ? 'Describe the course you want' : `Ask about this ${variant}`}</p>
               </div>
             )}
             {displayedMessages?.map((message) => (

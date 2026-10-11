@@ -180,6 +180,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
                     return (
                       <div
                         className="lesson-row"
+                        data-lesson-id={lesson.slug}
                         key={lesson.slug}
                         onClick={() =>
                           navigate({

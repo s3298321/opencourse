@@ -1,3 +1,4 @@
+import { setCoachAllowDelete } from '../src/main/preferences'
 /**
  * The whole session, without a socket.
  *
@@ -44,7 +45,7 @@ const { newSessionId } = await import('../src/core/coach/ids')
 const { createUser, deleteUser, listUsers } = await import('../src/main/users')
 const { closeDb } = await import('../src/main/db')
 const { insertSession, saveTurns, selectTurns } = await import('../src/main/coachdb')
-const { createProject, updateProject, workspaceDir } = await import('../src/main/coach')
+const { createProject, workspaceDir } = await import('../src/main/coach')
 const { listFiles } = await import('../src/main/coachfiles')
 const { runCoachTool } = await import('../src/main/coachtools')
 
@@ -182,7 +183,7 @@ describe('a session, end to end', () => {
 })
 
 describe('what the coach is not allowed to do', () => {
-  it('cannot delete unless the project says so', async () => {
+  it('cannot delete unless the global setting allows it', async () => {
     await play([...call('c1', 'write_file', { path: 'learned.md', content: 'x' })])
     const { ran } = await play([...call('c2', 'delete_file', { path: 'learned.md' })])
 
@@ -191,8 +192,8 @@ describe('what the coach is not allowed to do', () => {
     expect(listFiles(projectId).some((node) => node.name === 'learned.md')).toBe(true)
   })
 
-  it('deletes to the trash when the project does say so', async () => {
-    updateProject(projectId, { allowDelete: true })
+  it('deletes to the trash when the global setting allows it', async () => {
+    setCoachAllowDelete(true)
     await play([...call('c1', 'write_file', { path: 'learned.md', content: 'x' })])
     const { ran } = await play([...call('c2', 'delete_file', { path: 'learned.md' })])
 

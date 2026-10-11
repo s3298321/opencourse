@@ -40,6 +40,12 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
     refresh(); const off = window.opencourse.onCoursesChanged(refresh)
     return () => { alive = false; off() }
   }, [courseId])
+  useEffect(() => {
+    if (!active) return
+    let alive = true
+    void window.opencourse.getProgress(courseId).then(next => { if (alive) setProgress(next) })
+    return () => { alive = false }
+  }, [active, courseId])
   const attach = useCallback((selection: AskOffer): void => {
     marked.current?.unmark(); selection.mark(); marked.current = selection
     setQuote({ text: selection.text, from: selection.from, ...(selection.notebook ? { notebook: selection.notebook } : {}) }); setOffer(null); setChatOpen(true)

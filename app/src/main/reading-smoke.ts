@@ -23,6 +23,7 @@ const EXAMPLE = 'opencourse-example'
 const HELPERS = `
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const visible = (e) => e && e.checkVisibility({ visibilityProperty: true });
+  const find = selector => [...document.querySelectorAll(selector)].find(visible);
   const wait = async (selector, timeout = 8000) => {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
@@ -36,8 +37,8 @@ const HELPERS = `
     const t0 = Date.now();
     while (!(await test())) { if (Date.now() - t0 > timeout) throw new Error('timed out waiting for ' + what); await sleep(50); }
   };
-  const px = (target) => parseFloat(getComputedStyle(typeof target === 'string' ? document.querySelector(target) : target).fontSize);
-  const pill = () => document.querySelector('.content .reading-size');
+  const px = (target) => parseFloat(getComputedStyle(typeof target === 'string' ? find(target) : target).fontSize);
+  const pill = () => find('.content .reading-size');
   const label = () => pill().querySelector('.reading-size-value')?.textContent;
   /** What scales, by what it is: the first visible match of each, in the lesson. */
   const SCALED = {
@@ -70,16 +71,17 @@ export async function ensureExampleCourse(win: BrowserWindow): Promise<ReturnTyp
 
 /** Renderer code that opens the example course's first lesson from wherever the window is. */
 export const OPEN_EXAMPLE_LESSON = `
-  if (document.querySelector('.settings') || document.querySelector('.logs')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
-  document.querySelector('.titlebar [data-section="courses"]').click();
+  const readerFind = selector => [...document.querySelectorAll(selector)].find(visible);
+  if (readerFind('.settings') || readerFind('.logs')) { readerFind('.titlebar .crumbs a').click(); await sleep(250); }
+  readerFind('.titlebar [data-section="courses"]').click();
   await sleep(100);
   // The courses switch restores the last courses screen. A lesson's back link
   // is its course overview, and the overview's is All courses.
-  for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a')?.click(); await sleep(250); }
+  for (let n = 0; n < 3 && !readerFind('.library'); n++) { readerFind('.titlebar .crumbs a')?.click(); await sleep(250); }
   await wait('.library');
   const card = await (async () => {
     for (let n = 0; n < 160; n++) {
-      const found = [...document.querySelectorAll('.course-card')].find((c) => /OpenCourse example course/.test(c.textContent));
+      const found = [...document.querySelectorAll('.course-card')].find((c) => visible(c) && /OpenCourse example course/.test(c.textContent));
       if (found) return found;
       await sleep(50);
     }
@@ -181,24 +183,25 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   win.setSize(1240, 860)
   await run('a lesson opens at the app\'s own size, with the control at the column\'s foot', `
     ${OPEN_EXAMPLE_LESSON}
-    const close = document.querySelector('.sidechat-close');
-    if (close) { close.click(); await until(() => !document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat to close'); }
+    const close = find('.sidechat-close');
+    if (close) { close.click(); await until(() => !find('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat to close'); }
     await sleep(200);
     await wait('.content .reading-size');
     if (label() !== '100%') throw new Error('the control reads ' + label());
     const box = pill().getBoundingClientRect();
-    const column = document.querySelector('.content').getBoundingClientRect();
-    const sidebar = document.querySelector('.sidebar').getBoundingClientRect();
+    const column = find('.content').getBoundingClientRect();
+    const sidebar = find('.sidebar').getBoundingClientRect();
     const fromLeft = box.left - column.left;
     const fromBottom = window.innerHeight - box.bottom;
     if (fromLeft < 4 || fromLeft > 24) throw new Error('it sits ' + fromLeft + 'px into the column');
     if (fromBottom < 4 || fromBottom > 24) throw new Error('it sits ' + fromBottom + 'px above the window\\'s foot');
     if (box.left < sidebar.right) throw new Error('it overlaps the sidebar');
     // At this window's width the lesson has a margin, and the control fits in it.
-    const inner = document.querySelector('.lesson-inner');
+    const inner = find('.lesson-inner');
     const textLeft = inner.getBoundingClientRect().left + parseFloat(getComputedStyle(inner).paddingLeft);
     if (box.right > textLeft) throw new Error('it covers the start of the lines: ' + Math.round(box.right) + ' > ' + Math.round(textLeft));
     window.__readingBase = sizes();
+    window.__readingButtons = [...document.querySelectorAll('.lesson-nav button, .lesson-actions button, .exercise .action-button')].map(button => ({button, size:px(button), height:button.getBoundingClientRect().height}));
     window.__readingSidebar = px([...document.querySelectorAll('.sidebar a')].find(visible));
     const missing = ['paragraph', 'title', 'meta', 'objective', 'option'].filter((key) => window.__readingBase[key] === null);
     if (missing.length) throw new Error('nothing to measure for ' + missing.join(', '));
@@ -208,8 +211,8 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   // Pin a passage near the top of the column before the change, to see the
   // reading position kept.
   await run('(setup) scroll a quiz near the top', `
-    const column = document.querySelector('.content');
-    const quiz = document.querySelector('.lesson-inner .quiz');
+    const column = find('.content');
+    const quiz = find('.lesson-inner .quiz');
     // The quiz's top just inside the column's, so it is the passage the
     // position is pinned to: the text above it is out of view.
     column.scrollTop += quiz.getBoundingClientRect().top - column.getBoundingClientRect().top - 2;
@@ -226,16 +229,17 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
       .filter(([key, base]) => base !== null && Math.abs(now[key] - base * 1.25) > 1)
       .map(([key, base]) => key + ' ' + base + '→' + now[key]);
     if (wrong.length) throw new Error(wrong.join(', '));
+    for (const {button, size, height} of window.__readingButtons) { if (px(button)!==size || Math.abs(button.getBoundingClientRect().height-height)>1) throw new Error('Lesson action grew with text size: '+button.textContent); }
     const sidebar = px([...document.querySelectorAll('.sidebar a')].find(visible));
     if (sidebar !== window.__readingSidebar) throw new Error('the sidebar moved: ' + window.__readingSidebar + '→' + sidebar);
-    const body = document.querySelector('.body');
+    const body = find('.body');
     if (body.scrollWidth > body.clientWidth + 1) throw new Error('the screen scrolls sideways');
     return Object.entries(now).filter(([, v]) => v !== null).map(([k, v]) => k + ' ' + v).join(', ');
   `)
 
   await shot('125')
   await run('the passage you were reading stays where it was', `
-    const quiz = document.querySelector('.lesson-inner .quiz');
+    const quiz = find('.lesson-inner .quiz');
     const moved = quiz.getBoundingClientRect().top - window.__readingAnchor;
     if (Math.abs(moved) > 4) throw new Error('it moved ' + Math.round(moved) + 'px');
     return Math.round(moved) + 'px';
@@ -267,7 +271,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await run('the composer refits when the size changes under it', `
     await until(() => label() === '150%', 'the control to read 150%');
     await sleep(300);
-    const field = document.querySelector('.sidechat-input');
+    const field = find('.sidechat-input');
     if (field.scrollHeight > field.clientHeight + 1) throw new Error('the composer clips at 150%: ' + field.scrollHeight + ' > ' + field.clientHeight);
     if (field.clientHeight <= window.__readingField) throw new Error('the composer did not grow: ' + field.clientHeight);
     field.select(); document.execCommand('delete');
@@ -277,38 +281,38 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await pressing('the chat chip pressed again', '.titlebar .chat-chip')
 
   await run('the next lesson keeps the size', `
-    await until(() => label() === '125%' && !document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'back to 125% with the chat closed');
-    const title = document.querySelector('.lesson-head h1').textContent;
-    const next = [...document.querySelectorAll('.lesson-nav button')].find((b) => /→$/.test(b.textContent.trim()));
+    await until(() => label() === '125%' && !find('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'back to 125% with the chat closed');
+    const title = find('.lesson-head h1').textContent;
+    const next = find('.lesson-nav button[aria-label^="Next:"]');
     next.click();
-    await until(() => document.querySelector('.lesson-head h1')?.textContent !== title, 'the next lesson');
+    await until(() => find('.lesson-head h1')?.textContent !== title, 'the next lesson');
     await sleep(200);
     if (label() !== '125%') throw new Error('it reads ' + label());
     const paragraph = px([...document.querySelectorAll('.lesson-inner .prose p')].find(visible));
     if (Math.abs(paragraph - window.__readingBase.paragraph * 1.25) > 1) throw new Error('paragraph ' + paragraph);
-    return document.querySelector('.lesson-head h1').textContent;
+    return find('.lesson-head h1').textContent;
   `)
 
   await run('a trip to Settings comes back to the same place at the same size', `
-    const column = document.querySelector('.content');
+    const column = find('.content');
     column.scrollTop = Math.min(300, column.scrollHeight - column.clientHeight);
     await sleep(100);
     const before = column.scrollTop;
-    document.querySelector('.titlebar .user-chip').click();
+    find('.titlebar .user-chip').click();
     const menu = await wait('.menu-panel');
     [...menu.querySelectorAll('.menu-item')].find((b) => /Settings/.test(b.textContent)).click();
     await wait('.settings');
-    document.querySelector('.titlebar .crumbs a').click();
+    find('.titlebar .crumbs a').click();
     await wait('.content .reading-size');
     await sleep(300);
-    const after = document.querySelector('.content').scrollTop;
+    const after = find('.content').scrollTop;
     if (Math.abs(after - before) > 2) throw new Error('scrolled ' + before + ' → ' + after);
     if (label() !== '125%') throw new Error('it reads ' + label());
     return before + 'px, ' + label();
   `)
 
   await run('the exercise shares the lesson size, with its own control at the brief\'s foot', `
-    const back = [...document.querySelectorAll('.lesson-nav button')].find((b) => /^←/.test(b.textContent.trim()));
+    const back = find('.lesson-nav button[aria-label^="Previous:"]');
     back.click();
     await wait('.exercise');
     const open = [...document.querySelectorAll('.exercise button')].find((b) => /Open editor/.test(b.textContent));
@@ -333,7 +337,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   `)
   await pressing('the exercise terminal opened', '.workbench-tabs button:nth-child(2)')
   await run('a terminal first opened at a larger size uses that size', `
-    await until(() => document.querySelector('.workbench-tabs button.active')?.textContent.trim() === 'Terminal', 'the terminal tab to finish starting', 30000);
+    await until(() => find('.workbench-tabs button.active')?.textContent.trim() === 'Terminal', 'the terminal tab to finish starting', 30000);
     const terminal = await wait('.workbench .pane:nth-child(2) .xterm-rows');
     await until(() => terminal.textContent.trim().length > 0, 'the shell to write its prompt', 10000);
     if (Math.abs(px(terminal) - 12 * 1.25) > 0.5) throw new Error('terminal ' + px(terminal) + 'px');
@@ -342,18 +346,18 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   `)
   await pressing('A+ pressed in the exercise', '.workbench-brief .reading-size-larger')
   await run('the exercise control resizes the statement, code and both output panes in place', `
-    await until(() => document.querySelector('.workbench-brief .reading-size-value')?.textContent === '150%', 'exercise 150%');
-    const expected = [[document.querySelector('.workbench-brief .prompt'), 14], [window.__readingEditor, 12.5], [window.__readingChecks, 12], [window.__readingTerminal, 12]];
+    await until(() => find('.workbench-brief .reading-size-value')?.textContent === '150%', 'exercise 150%');
+    const expected = [[find('.workbench-brief .prompt'), 14], [window.__readingEditor, 12.5], [window.__readingChecks, 12], [window.__readingTerminal, 12]];
     for (const [element, base] of expected) {
       if (!element.isConnected) throw new Error('a text pane was recreated');
       if (Math.abs(px(element) - base * 1.5) > 0.5) throw new Error(element.className + ' ' + px(element) + 'px');
     }
     if (window.__readingEditor.querySelector('.cm-content').textContent !== window.__readingCode) throw new Error('code changed while resizing');
-    const scroller = document.querySelector('.workbench-brief-content');
+    const scroller = find('.workbench-brief-content');
     scroller.scrollTop = scroller.scrollHeight;
-    const box = document.querySelector('.workbench-brief .reading-size').getBoundingClientRect();
+    const box = find('.workbench-brief .reading-size').getBoundingClientRect();
     if (scroller.getBoundingClientRect().bottom > box.top) throw new Error('the control overlaps the statement scroller');
-    if (document.querySelector('.body').scrollWidth > document.querySelector('.body').clientWidth + 1) throw new Error('the exercise scrolls sideways');
+    if (find('.body').scrollWidth > find('.body').clientWidth + 1) throw new Error('the exercise scrolls sideways');
     return '150%, same editor and output panes';
   `)
   await shot('150-exercise')
@@ -362,7 +366,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
     const checks = await wait('.workbench .pane.active .xterm-rows');
     if (checks !== window.__readingChecks || Math.abs(px(checks) - 18) > 0.5) throw new Error('checks lost their new size');
     if (checks.getBoundingClientRect().width <= 0) throw new Error('checks have no width');
-    document.querySelector('.workbench-back').click();
+    find('.workbench-back').click();
     await wait('.content .reading-size');
     if (label() !== '150%') throw new Error('lesson is not synced: ' + label());
     return label();
@@ -386,7 +390,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await typeSize('250%', '250')
   await run('a size outside 50 to 200 puts back the one it had', `
     await until(() => label() === '125%', 'the size to come back');
-    if (document.querySelector('.reading-size-field')) throw new Error('the field stayed open');
+    if (find('.reading-size-field')) throw new Error('the field stayed open');
     return label();
   `)
   await typeSize('130%', '130')
@@ -402,7 +406,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   })
   await typeSize('Escape', '90', 'Escape')
   await run('Escape keeps the size it had', `
-    await until(() => !document.querySelector('.reading-size-field'), 'the field to close');
+    await until(() => !find('.reading-size-field'), 'the field to close');
     if (label() !== '130%') throw new Error('it reads ' + label());
     return label();
   `)

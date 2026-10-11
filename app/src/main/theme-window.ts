@@ -18,7 +18,7 @@ const DEFAULT_LOOK: WindowLook = { appearance: 'dark', vibrancy: true, backgroun
 
 /** macOS's own accessibility settings switch glass off, whatever the theme says. */
 function glassAllowed(): boolean {
-  return process.platform === 'darwin' && !nativeTheme.prefersReducedTransparency && !nativeTheme.shouldUseHighContrastColors
+  return !process.env['OPENCOURSE_SHOTS'] && process.platform === 'darwin' && !nativeTheme.prefersReducedTransparency && !nativeTheme.shouldUseHighContrastColors
 }
 
 export function currentLook(): WindowLook {

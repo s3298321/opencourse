@@ -16,7 +16,7 @@ import { describeTree } from '../core/coach/files'
 import { parseToolCall, type ParsedToolCall } from '../core/coach/tools'
 import { readKey } from './coachkey'
 import { listFiles, readTextFile, trashFile, writeWorkspaceFile } from './coachfiles'
-import { requireProject } from './coach'
+import { getCoachAllowDelete } from './preferences'
 import { selectSessionRow } from './coachdb'
 import { webSearch } from './openai'
 
@@ -69,9 +69,9 @@ async function execute(projectId: string, call: ParsedToolCall): Promise<CoachTo
     }
 
     case 'delete_file': {
-      // The tool is not offered unless the project allows it, but a model can
+      // The tool is not offered unless Settings allows it, but a model can
       // call a tool it was never given.
-      if (!requireProject(projectId).allowDelete) {
+      if (!getCoachAllowDelete()) {
         return refuse('you cannot delete files in this project', 'refused a delete')
       }
       const result = trashFile(projectId, call.path)

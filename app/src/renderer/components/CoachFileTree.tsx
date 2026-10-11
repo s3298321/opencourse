@@ -142,17 +142,11 @@ export default function CoachFileTree({ projectId, tree, onChanged, onOpen }: Pr
       {tree === null && <p className="meta">Loading…</p>}
       {tree?.length === 0 && (
         <p className="meta file-empty">
-          Nothing here yet. The coach writes its own notes during a session — you can read them, move them and
-          delete them, but the coach is the one who writes them.
+          No workspace files yet.
         </p>
       )}
       {tree?.map((node) => row(node, 0))}
 
-      {tree !== null && tree.length > 0 && (
-        <p className="meta file-foot">
-          Text files open here. Everything else can be moved or deleted, and opened in Finder.
-        </p>
-      )}
     </div>
   )
 }

@@ -4,7 +4,7 @@
  * happen when something has already gone wrong: a force quit mid-session, a
  * truncated file, a project directory the database has never heard of.
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, renameSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -26,6 +26,7 @@ const { userDbFile, coachProjectDir, coachProjectsRoot } = await import('../src/
 const { SCHEMA_VERSION, closeDb, db } = await import('../src/main/db')
 const {
   deleteSessionRow,
+  deleteProjectRow,
   finishSession,
   insertSession,
   recordToolCall,
@@ -34,7 +35,7 @@ const {
   selectToolCalls,
   selectTurns
 } = await import('../src/main/coachdb')
-const { createProject, deleteProject, listProjects, updateProject } = await import('../src/main/coach')
+const { createProject, deleteProject, listProjects, updateProject, workspaceDir } = await import('../src/main/coach')
 const { getDefaultCoachModel, setDefaultCoachModel } = await import('../src/main/preferences')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -342,4 +343,37 @@ describe('projects', () => {
     createUser('Ada')
     expect(() => createProject({ name: '   ' })).toThrow(/name/)
   })
+})
+
+describe('staged project deletion recovery', () => {
+  it('restores a workspace when a crash happened before the database delete', () => {
+    createUser('Ada')
+    const project = createProject({ name: 'Restore' })
+    const dir = workspaceDir(project.id)
+    writeFileSync(join(dir, 'context.md'), 'Keep this note')
+    const staged = join(dir, '..', `.deleted-${project.id}`)
+    renameSync(dir, staged)
+    expect(listProjects().some(p => p.id === project.id)).toBe(true)
+    expect(readFileSync(join(dir, 'context.md'), 'utf8')).toBe('Keep this note')
+    expect(existsSync(staged)).toBe(false)
+  })
+  it('cleans a committed deletion without re-adopting its mirror', () => {
+    createUser('Ada')
+    const project = createProject({ name: 'Delete' })
+    const dir = workspaceDir(project.id), staged = join(dir, '..', `.deleted-${project.id}`)
+    renameSync(dir, staged)
+    deleteProjectRow(project.id)
+    expect(listProjects().some(p => p.id === project.id)).toBe(false)
+    expect(existsSync(staged)).toBe(false)
+  })
+  it('restores workspace files when the database refuses deletion', () => {
+    createUser('Ada')
+    const project = createProject({name: 'French'})
+    writeFileSync(join(workspaceDir(project.id), 'notes.md'), 'Retain these notes')
+    db().exec("CREATE TRIGGER refuse_project_delete BEFORE DELETE ON projects BEGIN SELECT RAISE(ABORT, 'refuse delete'); END;")
+    expect(() => deleteProject(project.id)).toThrow('refuse delete')
+    expect(readFileSync(join(workspaceDir(project.id), 'notes.md'), 'utf8')).toBe('Retain these notes')
+    expect(listProjects().map(project => project.name)).toContain('French')
+  })
+
 })

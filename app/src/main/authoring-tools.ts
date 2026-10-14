@@ -4,7 +4,7 @@ import { dirname, extname, join } from 'node:path'
 import { TextDecoder } from 'node:util'
 import { authoringManifest, findRef, parseAuthoringManifest } from '../core/authoring/document'
 import { copyElement, deleteElement, locateElement } from '../core/course-editor'
-import { currentFormat, newDraftRef } from '../core/course-document'
+import { courseNodes, currentFormat, newDraftRef } from '../core/course-document'
 import { resolveInside } from '../core/safepath'
 import { classifyEntry } from '../core/import'
 import type { CourseManifest, Lesson } from '../core/types'
@@ -44,7 +44,38 @@ export async function runAuthoringTool(courseId: string, name: string, raw: unkn
     switch (name) {
       case 'get_course_format': {
         if (args.section !== undefined && args.section !== 'format' && args.section !== 'schema') throw new Error('Choose format or schema.')
-        result = page(readFileSync(join(specResourcesDir(), args.section === 'schema' ? 'course-schema.json' : 'course-format.md'), 'utf8'), args.offset); break
+        const text = readFileSync(join(specResourcesDir(), args.section === 'schema' ? 'course-schema.json' : 'course-format.md'), 'utf8')
+        if (args.topic !== undefined && typeof args.topic !== 'string') throw new Error('Use a section heading or schema key.')
+        if (args.section === 'schema') {
+          const schema = JSON.parse(text) as Record<string, unknown>
+          if (args.topic === undefined && args.offset === undefined) result = { sections: Object.keys(schema), note: 'Supply topic to read a schema key, or offset to read the entire schema.' }
+          else if (args.topic !== undefined) {
+            if (!Object.hasOwn(schema, args.topic as string)) throw new Error('Unknown schema key.')
+            result = page(JSON.stringify(schema[args.topic as string]), args.offset)
+          } else result = page(text, args.offset)
+        } else {
+          const headings = [...text.matchAll(/^#{1,6} (.+)$/gm)]
+          if (args.topic === undefined && args.offset === undefined) result = { sections: headings.map(h => h[1]), note: 'Supply topic to read a section, or offset to read the entire format.' }
+          else if (args.topic !== undefined) {
+            const matches = headings.filter(h => h[1]!.toLowerCase().includes(String(args.topic).toLowerCase()))
+            if (matches.length !== 1) throw new Error('Choose a unique heading from the format sections.')
+            const heading = matches[0]!, at = headings.indexOf(heading), level = heading[0].indexOf(' ')
+            const end = headings.slice(at + 1).find(h => h[0].indexOf(' ') <= level)?.index ?? text.length
+            result = page(text.slice(heading.index, end), args.offset)
+          } else result = page(text, args.offset)
+        }
+        break
+      }
+      case 'list_course_elements': {
+        const cursor = args.cursor ?? 0
+        if (typeof cursor !== 'number' || !Number.isSafeInteger(cursor) || cursor < 0) throw new Error('Invalid cursor.')
+        if (args.draft_version !== undefined && args.draft_version !== draft.draftVersion) throw new Error('The draft changed; restart listing at cursor 0.')
+        const nodes = courseNodes(previous)
+        if (args.parent_ref !== undefined && !nodes.some(n => n.id === args.parent_ref)) throw new Error('That parent ref no longer exists.')
+        const all = nodes.filter(n => args.parent_ref === undefined || n.parentId === args.parent_ref)
+        const elements = all.slice(cursor, cursor + 20).map(n => ({ ref: n.id, parent: n.parentId, kind: n.kind, label: n.label.slice(0, 160) }))
+        result = { draftVersion: draft.draftVersion, elements, nextCursor: cursor + elements.length < all.length ? cursor + elements.length : null }
+        break
       }
       case 'read_course': {
         const value = args.ref === undefined ? args.full === true ? authored : { ...authored, modules: authored.modules.map(m => ({ ref: m.nodeId ?? (m as unknown as { ref: string }).ref, slug: m.slug, title: m.title, type: m.type ?? 'lessons', ...(m.type === 'project' ? {} : { lessons: m.lessons.map(l => ({ ref: (l as unknown as { ref: string }).ref, slug: l.slug, title: l.title, blocks: l.blocks.map(b => ({ ref: (b as unknown as { ref: string }).ref, slug: b.slug, type: b.type })), flashcards: l.flashcards?.map(card => ({ ref: (card as unknown as { ref: string }).ref, id: card.id, question: card.question, kind: 'flashcard' })) })) }) })) } : findRef(authored, requiredString(args.ref, 'ref'))
@@ -160,7 +191,14 @@ export async function runAuthoringTool(courseId: string, name: string, raw: unkn
       const saved = saveDraft(courseId, next, document.revision, draft.draftVersion, token)
       if ('status' in saved) throw new Error('The draft changed. Read it again before applying this edit.')
       authoringEvents.emit('draft', courseId, getAuthoringCourse(courseId))
-      result = { ...(result as object ?? {}), draftVersion: saved.draftVersion, outline: JSON.parse(await runAuthoringTool(courseId, 'read_course', {}, token, signal)) }
+      const oldRefs = new Set(courseNodes(previous).map(n => n.id))
+      const created = courseNodes(next).filter(n => !oldRefs.has(n.id))
+      result = { ...(result as object ?? {}), operation: name, draftVersion: saved.draftVersion,
+        ...(typeof args.ref === 'string' ? { affectedRef: args.ref } : {}),
+        ...(typeof args.parent_ref === 'string' ? { parentRef: args.parent_ref } : {}),
+        created: created.slice(0, 10).map(n => ({ ref: n.id, parent: n.parentId, kind: n.kind })),
+        createdCount: created.length,
+        ...(created.length > 10 ? { more: 'Use list_course_elements to discover remaining refs.' } : {}) }
     }
     return JSON.stringify({ ok: true, result })
   } catch (error) { return JSON.stringify({ ok: false, error: (error as Error).message }) }

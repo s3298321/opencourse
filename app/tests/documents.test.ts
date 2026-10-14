@@ -27,7 +27,7 @@ vi.mock('node:worker_threads', async importOriginal => {
 } return { ...actual, Worker, default: { ...actual, Worker } } })
 const { createUser, switchUser } = await import('../src/main/users')
 const { closeDb, db, SCHEMA_VERSION } = await import('../src/main/db')
-const { documentFile, documentPageText, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentCompleted, stopDocumentWorkers } = await import('../src/main/documents')
+const { documentFile, documentPageText, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentCompleted, setDocumentPage, stopDocumentWorkers } = await import('../src/main/documents')
 const { appendDocumentMessage, insertDocumentChat, selectDocumentChats, selectDocumentMessages } = await import('../src/main/document-chatdb')
 const { runDocumentReadingTool } = await import('../src/main/document-reading')
 const { buildInput } = await import('../src/core/sidechat/thread')
@@ -54,6 +54,38 @@ function indexed(pages: string[]) {
   worker.emit('message', { type: 'done', version: 1 })
 }
 describe('local PDF library', () => {
+  it('remembers each document’s page across reopen, indexing and user switches', async () => {
+    const document = await imported()
+    expect(getDocument(document.id).lastPage).toBe(1)
+    // Reading works before the text index knows the PDF page count.
+    setDocumentPage(document.id, 2)
+    indexed(['First page', 'Second page', 'Third page'])
+    closeDb()
+    expect(getDocument(document.id).lastPage).toBe(2)
+    expect(getDocument(document.id).completed).toBe(false)
+    await retryDocumentIndex(document.id)
+    indexed(['First page', 'Second page', 'Third page'])
+    expect(getDocument(document.id).lastPage).toBe(2)
+    await importDocument(fixture)
+    expect(getDocument(document.id).lastPage).toBe(2)
+    const first = (await import('../src/main/users')).getSession().user!
+    createUser('Another reader')
+    expect(() => setDocumentPage(document.id, 1)).toThrow('no longer')
+    const other = await imported()
+    expect(getDocument(other.id).lastPage).toBe(1)
+    switchUser(first.id)
+    expect(getDocument(document.id).lastPage).toBe(2)
+    for (const page of [0, -1, 1.5, NaN, Infinity, 4]) expect(() => setDocumentPage(document.id, page)).toThrow('page')
+    expect(getDocument(document.id).lastPage).toBe(2)
+  })
+  it('defaults existing documents to page one when upgrading a version 16 library', async () => {
+    const document = await imported(); indexed(['A passage'])
+    renameDocument(document.id, 'Saved title'); setDocumentCompleted(document.id, true)
+    db().exec('ALTER TABLE documents DROP COLUMN last_page; PRAGMA user_version=16')
+    closeDb()
+    expect(getDocument(document.id)).toMatchObject({ title: 'Saved title', completed: true, lastPage: 1 })
+    expect(db().prepare('PRAGMA user_version').get()).toMatchObject({ user_version: SCHEMA_VERSION })
+  })
   it('keeps a renamed title across indexing, reopen and duplicate import without modifying the PDF', async () => {
     const document = await imported(), original = readFileSync(documentFile(document.id))
     expect(renameDocument(document.id, '  Natural pedagogy  ').title).toBe('Natural pedagogy')

@@ -101,6 +101,7 @@ const api = {
   importDroppedDocument: (file: File): Promise<DocumentImportResult> => ipcRenderer.invoke('documents:importDrop', webUtils.getPathForFile(file)),
   removeDocument: (id: string): Promise<void> => ipcRenderer.invoke('documents:remove', id),
   setDocumentCompleted: (id: string, completed: boolean): Promise<DocumentView> => ipcRenderer.invoke('documents:completed', id, completed),
+  setDocumentPage: (id: string, page: number): Promise<void> => ipcRenderer.invoke('documents:page', id, page),
   renameDocument: (id: string, title: string): Promise<DocumentView> => ipcRenderer.invoke('documents:rename', id, title),
   readDocumentRange: (id: string, begin: number, end: number): Promise<Uint8Array> => ipcRenderer.invoke('documents:range', id, begin, end),
   readPdfResource: (kind: string, filename: string): Promise<Uint8Array> => ipcRenderer.invoke('documents:resource', kind, filename),

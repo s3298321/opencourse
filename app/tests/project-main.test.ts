@@ -134,7 +134,7 @@ describe('project assistant scope, evidence and lifecycle', () => {
     const reasoning = { type: 'reasoning', encrypted_content: 'opaque' }
     mocked.stream.mockImplementationOnce(async (options: ChatStreamOptions) => {
       expect(JSON.stringify(options.input)).toContain('README explains the design choices.')
-      expect(options.tools).toHaveLength(3)
+      expect(options.tools).toHaveLength(4)
       return { text: '', aborted: false, output: [reasoning, { type: 'function_call', call_id: 'read1', name: 'read_project_file', arguments: '{"path":"README.md","start_line":1,"max_lines":100}' }] }
     }).mockImplementationOnce(async (options: ChatStreamOptions) => {
       expect(options.input).toContainEqual(reasoning)

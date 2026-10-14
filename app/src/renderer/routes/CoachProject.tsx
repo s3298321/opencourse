@@ -9,6 +9,8 @@ import CoachSessions from '../components/CoachSessions'
 import CoachFileView from '../components/CoachFileView'
 import TitleBar from '../components/TitleBar'
 import ScreenPlaceholder from '../components/ScreenPlaceholder'
+import { useActiveTheme } from '../theme/ThemeProvider'
+import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
 import type { Route, Screen } from '../routes'
 
 interface Props {
@@ -19,6 +21,7 @@ interface Props {
 }
 
 export default function CoachProject({ projectId, user, navigate, route }: Props): JSX.Element {
+  const theme = useActiveTheme()
   const [project, setProject] = useState<Project | null>(null)
   const [missing, setMissing] = useState(false)
   const [busy, setBusy] = useState(true)
@@ -168,7 +171,10 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                 </div>
               </div>
               <div className="actions">
-                <ActionButton icon="trash" className="secondary danger coach-delete" disabled={busy || deleting}
+                <ActionButton icon="folder" className="secondary" onClick={() => void window.opencourse.revealCoachProject(projectId)}>
+                  Show files in Finder
+                </ActionButton>
+                <ActionButton icon="trash" className="danger coach-delete" data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined} disabled={busy || deleting}
                   title={busy ? 'Finish the session before deleting this coach' : undefined}
                   onClick={() => {
                     if (!window.confirm(`Delete “${project.name}”?\n\nThis permanently deletes its sessions, transcripts and workspace files.`)) return
@@ -176,9 +182,6 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                     void window.opencourse.deleteCoachProject(projectId).then(() => navigate({ name: 'coach' }))
                       .catch(error => { setError(error.message); setDeleting(false) })
                   }}>Delete coach</ActionButton>
-                <ActionButton icon="folder" className="secondary" onClick={() => void window.opencourse.revealCoachProject(projectId)}>
-                  Show files in Finder
-                </ActionButton>
               </div>
             </div>
 

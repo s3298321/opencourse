@@ -1,8 +1,9 @@
-import { notebookChatContext } from './notebooks'
+import { readNotebookCells } from '../core/notebook/reading'
+import { getNotebook, notebookChatContext } from './notebooks'
 import { assertCourseAvailable } from './course-busy'
 import { createHash } from 'node:crypto'
-import { COURSE_TOOLS, READING_LIMITS, READING_TOOL_INSTRUCTIONS } from '../core/reading/tools'
-import { runProjectAgent } from '../core/projects/agent'
+import { COURSE_TOOLS, NOTEBOOK_TOOLS, READING_LIMITS, READING_TOOL_INSTRUCTIONS } from '../core/reading/tools'
+import { runChatAgent } from './text-chat'
 import { runCourseReadingTool } from './course-reading'
 import type { ChatCitation, ReadingSource } from '../core/types'
 /**
@@ -71,7 +72,7 @@ import { getCourse } from './courses'
 import { iconsFor } from './favicons'
 import { OpenAIError, listChatModels, streamChat, type ChatSearchEvent } from './openai'
 import { readPreferences, writePreferences } from './preferences'
-import { conversationConfig, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
+import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
 import { aiPickerModels, getAIModelSettings, notifyAIChanged } from './ai'
 import { aiSettings, profileDefaults } from '../core/ai'
 import { requireUser, currentUserId } from './users'
@@ -441,9 +442,11 @@ export async function sendChatMessage(
   const found = lesson && findLesson(course, lesson.moduleId, lesson.lessonId)
   if (!notebook && !found) return { status: 'failed', message: 'that lesson is not in this course' }
 
+  const chatTools = notebook ? NOTEBOOK_TOOLS : COURSE_TOOLS
+  const notebookSnapshot = notebook ? getNotebook(course.courseId) : undefined
   const at = new Date().toISOString()
   const stored = selectMessages(chatId)
-  const contextText = notebook ? notebookChatContext(course.courseId) : lessonContextText(course.title, found!.module.title, found!.lesson, course.subject)
+  const contextText = notebook ? notebookChatContext(course.courseId, quote?.notebook?.cellId) : lessonContextText(course.title, found!.module.title, found!.lesson, course.subject)
   const contextFingerprint = createHash('sha256').update(contextText).digest('hex')
   if (notebook ? ![...stored].reverse().find(message => message.role === 'context')?.notebook || [...stored].reverse().find(message => message.role === 'context')?.contextFingerprint !== contextFingerprint : needsContext(stored, lesson!, contextFingerprint)) {
     appendMessage(chatId, {
@@ -501,8 +504,12 @@ export async function sendChatMessage(
     const timer = setTimeout(() => controller.abort(), 18 * 60_000)
     timer.unref()
     const ask = async (search: boolean): Promise<{ text: string; aborted: boolean; citations: ChatCitation[] }> => {
-      const result = await runProjectAgent({
+      const result = await runChatAgent({
         input: buildInput(selectMessages(chatId), `${sideChatInstructions(search)}\n\n${READING_TOOL_INSTRUCTIONS}`),
+        session: { mode: 'chat', chatId, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools: chatTools, webSearch: search, sourceVersion: course.revision,
+          context: [{ role: 'user', content: `[${notebook ? 'notebook' : 'lesson'} context]\n\n${contextText}` }], valid, sources: localSources },
+        readOnly: () => true,
+        cacheKey: (name, args) => JSON.stringify([course.revision, name, args]),
         signal: controller.signal, limits: READING_LIMITS,
         stream: async input => {
           const begin = answered.length
@@ -511,9 +518,10 @@ export async function sendChatMessage(
         key,
         provider: chat.provider,
         model: chat.model,
+        modelContext: conversationModelContext(chat.provider ?? 'apiKey', chat.model),
         ...(chat.reasoning ? { reasoning: chat.reasoning } : {}),
         input,
-        tools: COURSE_TOOLS,
+        tools: chatTools,
         toolNamespace: { name: 'course', description: 'Read-only retrieval from learner-facing text in the current course.' },
         webSearch: search,
         onSearch: (event) => { if (!finalized && valid()) push(sender, 'chat:activity', chatId, searchActivity(event)) },
@@ -538,7 +546,9 @@ export async function sendChatMessage(
         tool: async (name, args) => {
           if (finalized || !valid() || controller.signal.aborted) throw new Error('Course Ask stopped.')
           push(sender, 'chat:activity', chatId, name === 'search_course' ? 'Searching the course…' : name === 'read_course_section' ? 'Reading a course section…' : 'Listing course sections…')
-          try { return runCourseReadingTool(course, name, args, budget, localSources) }
+          try {
+            if (name === 'read_notebook_cells' && notebookSnapshot) return readNotebookCells(notebookSnapshot, args, budget)
+            return runCourseReadingTool(course, name, args, budget, localSources) }
           catch (error) { return JSON.stringify({ error: (error as Error).message }) }
         }
       })

@@ -4,7 +4,8 @@ import { newChatId } from '../core/sidechat/ids'
 import { MAX_MESSAGE_CHARS, MAX_QUOTE_CHARS } from '../core/sidechat/thread'
 import { authoringContext } from '../core/authoring/document'
 import { AUTHORING_INSTRUCTIONS, AUTHORING_TOOLS } from '../core/authoring/tools'
-import { runProjectAgent, type ResponseInput } from '../core/projects/agent'
+import { runChatAgent } from './text-chat'
+import type { ResponseInput } from '../core/text-chat/agent'
 import { scrubSecrets } from '../core/coach/key'
 import { getAuthoringCourse, noteAuthoringChat } from './course-authoring'
 import { readDocument } from './course-store'
@@ -139,7 +140,12 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   let history: ReturnType<typeof selectAuthoringMessages>
   try { history = selectAuthoringMessages(id, database) }
   catch (error) { finish('failed', (error as Error).message); return { status: 'failed', message: (error as Error).message } }
+  const latestContext = history.filter(message => message.role === 'context').at(-1)
   for (const message of [...history].reverse()) {
+    if (message.role === 'context' && message !== latestContext) {
+      if (available < 85) break
+      kept.unshift({ role: 'user', content: '[Earlier editor selection; retrieve current content with authoring tools.]' }); available -= 85; continue
+    }
     const content = message.role === 'context' ? `[Authoring context for the following user message]\n${message.text}` : message.quote ? `${message.quote.from === 'answer' ? 'Quoted earlier answer' : 'Quoted course preview passage'}:\n${message.quote.text}\n\n${message.text}` : message.text
     if (content.length > available && kept.length) break
     available -= content.length; kept.unshift({ role: message.role === 'assistant' ? 'assistant' : 'user', content })
@@ -149,7 +155,14 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   timer = setTimeout(() => { controller.abort(); finish('failed', 'Course creation timed out. Completed draft changes are preserved; send another message to continue.') }, 30 * 60_000)
   setImmediate(() => { void (async () => {
     try {
-      const result = await runProjectAgent({ input, signal: controller.signal, limits: { rounds: 64, calls: 256 },
+      const result = await runChatAgent({ input, signal: controller.signal,
+        session: { mode: 'authoring', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider!, key, tools: AUTHORING_TOOLS, sourceVersion: expectedRevision,
+          context: [{ role: 'user', content: `[Authoring context for the following user message]\n${JSON.stringify(context)}` }],
+          valid: () => !finalized && readDocument(chat.courseId).revision === expectedRevision },
+        readOnly: name => ['get_course_format', 'read_course', 'list_course_elements', 'list_assets', 'read_asset', 'validate_course'].includes(name),
+        cacheKey: (name, args) => ['get_course_format', 'read_course', 'list_course_elements', 'list_assets', 'read_asset'].includes(name)
+          ? JSON.stringify([name, args, getAuthoringCourse(chat.courseId).draft.draftVersion]) : undefined,
+        limits: { rounds: 64, calls: 256 },
         stream: items => {
           let first = true
           return streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input: items, tools: AUTHORING_TOOLS,

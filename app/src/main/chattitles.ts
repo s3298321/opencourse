@@ -66,6 +66,7 @@ export async function generateChatTitle(options: {
     const config = await prepareTitleRequest({ provider, model: options.model, reasoning: null, key: options.key, reasoningEfforts: options.reasoningEfforts }, controller.signal)
     task.provider = config.provider
     const result = await streamChat({
+      diagnostics: { mode: scope, chatId, kind: 'title' },
       key: config.key, provider: config.provider, model: config.model, ...(config.reasoning !== null ? { reasoning: config.reasoning } : {}),
       input: [
         { role: 'system', content: TITLE_INSTRUCTIONS },

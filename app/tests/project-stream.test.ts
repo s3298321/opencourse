@@ -16,6 +16,27 @@ function response(events: unknown[], crlf = false) {
   } }) }
 }
 beforeEach(() => mocked.fetch.mockReset())
+describe('request diagnostics and pre-stream retries', () => {
+  it('retries a transient HTTP failure and returns usage without counting reasoning twice', async () => {
+    mocked.fetch.mockResolvedValueOnce(new Response('temporary', { status: 503 }))
+      .mockResolvedValueOnce(response([{ type: 'response.completed', response: { id: 'resp_usage', output: [], usage: {
+        input_tokens: 100, input_tokens_details: { cached_tokens: 60 }, output_tokens: 30,
+        output_tokens_details: { reasoning_tokens: 20 }, total_tokens: 130
+      } } }]))
+    const result = await streamChat({ key: 'key', model: 'gpt-5-mini', input: [], onDelta: () => {} })
+    expect(mocked.fetch).toHaveBeenCalledTimes(2)
+    expect(result.usage).toEqual({ input: 100, cachedInput: 60, output: 30, reasoning: 20, total: 130 })
+    expect(result.responseId).toBe('resp_usage')
+  })
+  it('never retries a usage limit or a disconnected accepted stream', async () => {
+    mocked.fetch.mockResolvedValueOnce(new Response('usage limit', { status: 429 }))
+    await expect(streamChat({ key: 'key', model: 'gpt-5-mini', input: [], onDelta: () => {} })).rejects.toThrow()
+    expect(mocked.fetch).toHaveBeenCalledTimes(1)
+    mocked.fetch.mockReset().mockResolvedValue(response([{ type: 'response.output_text.delta', delta: 'partial' }]))
+    await expect(streamChat({ key: 'key', model: 'gpt-5-mini', input: [], onDelta: () => {} })).rejects.toThrow()
+    expect(mocked.fetch).toHaveBeenCalledTimes(1)
+  })
+})
 describe('a stream OpenAI stops partway', () => {
   it('says why, from response.error, and logs the failure without the answer\'s text', async () => {
     const { log } = await import('../src/main/log')

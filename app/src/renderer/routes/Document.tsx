@@ -32,6 +32,8 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
   const [document, setDocument] = useState<DocumentView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1), [pageInput, setPageInput] = useState('1')
+  const [positionReady, setPositionReady] = useState(false)
+  const savedPage = useRef(1)
   const [readingTop, setReadingTop] = useState(0)
   const [zoom, setZoom] = useState(1), [paneWidth, setPaneWidth] = useState(640)
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -86,15 +88,28 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
     }
     previousOffsets.current = offsets
   }, [offsets, pdf, page, scale])
+  const rememberPage = useCallback((number: number) => {
+    if (!positionReady || !active || !pdf || savedPage.current === number) return
+    savedPage.current = number
+    void window.opencourse.setDocumentPage(documentId, number).catch(error => setError(error.message))
+  }, [positionReady, active, pdf, documentId])
   const jump = useCallback((number: number, top = 0) => {
     if (!Number.isSafeInteger(number) || number < 1 || number > count) return
+    rememberPage(number)
     pendingJump.current = { page: number, top }
     setPage(number); setReadingTop(top); setOffer(null)
     if (pdf && reader.current) {
       reader.current.scrollTop = Math.max(0, positions.current[number - 1]! + top * scale - GAP)
       pendingJump.current = null
     }
-  }, [count, scale, pdf])
+  }, [count, scale, pdf, rememberPage])
+  useLayoutEffect(() => {
+    if (positionReady || !active || !document || !pdf) return
+    const number = Math.max(1, Math.min(pdf.numPages, document.lastPage))
+    savedPage.current = number
+    jump(number)
+    setPositionReady(true)
+  }, [positionReady, active, document, pdf, jump])
   const sections = useMemo(() => [...(document?.sections ?? [])].sort((a, b) => a.page - b.page || (a.top ?? 0) - (b.top ?? 0)), [document?.sections])
   const currentSection = sections.reduce((found, section, index) => section.page < page || (section.page === page && (section.top ?? 0) <= readingTop + 40) ? index : found, -1)
   const goSection = useCallback((direction: 'prev' | 'next') => {
@@ -180,7 +195,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
         {document?.status === 'ready' && document.searchablePages === 0 && <p className="document-notice">This PDF contains images without extractable text. You can read it; text selection and document search need OCR.</p>}
         {unlock && <form className="document-unlock" onSubmit={event => { event.preventDefault(); unlock(password); setPassword('') }}><label>This PDF needs a password<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoFocus /></label><ActionButton icon="lock">Unlock PDF</ActionButton></form>}
         {findOpen && <div className="document-find"><div className="document-find-field"><input ref={findField} type="search" aria-label="Find in document" placeholder="Find in document…" value={query} onChange={event => setQuery(event.target.value)} /><button className="ghost" onClick={() => setFindOpen(false)} aria-label="Close document search">✕</button></div>{search && <div className="document-find-results"><p className="meta">{search.complete ? search.hits.length ? `${search.hits.length}${search.more ? '+' : ''} results` : 'No matches' : `Search index incomplete · ${search.indexedPages} of ${search.pages} pages`}</p>{search.hits.map(hit => <button key={hit.page} className="document-search-hit" onClick={() => jump(hit.page)}><strong>Page {hit.page}</strong><span>{hit.excerpt}</span></button>)}{search.more && <button className="ghost" onClick={() => void window.opencourse.searchDocument(documentId, query, search.hits.length).then(next => setSearch(current => current ? { ...next, hits: [...current.hits, ...next.hits] } : next)).catch(error => setError(error.message))}>More results</button>}</div>}</div>}
-        <div className="pdf-scroll scroll" ref={reader} onScroll={event => { const top = event.currentTarget.scrollTop, next = pageAt(offsets, top + GAP + 1); setPage(current => current === next ? current : next); setReadingTop(Math.max(0, (top - offsets[next - 1]!) / scale)); setOffer(null) }}>
+        <div className="pdf-scroll scroll" ref={reader} onScroll={event => { if (!positionReady || !active || !pdf) return; const top = event.currentTarget.scrollTop, next = pageAt(offsets, top + GAP + 1); rememberPage(next); setPage(current => current === next ? current : next); setReadingTop(Math.max(0, (top - offsets[next - 1]!) / scale)); setOffer(null) }}>
           {!pdf && !unlock && !pdfError && <p className="meta pdf-loading">Opening PDF…</p>}
           {pdf && <div className="pdf-pages" style={{ height: offsets.at(-1), width: Math.max(paneWidth, Object.values(sizes).reduce((width, size) => Math.max(width, size.width), base.width) * scale + 48) }}>{visiblePages.map(number => <PdfPage key={number} pdf={pdf} number={number} scale={scale} top={offsets[number - 1]!} measured={measured} />)}</div>}
         </div>

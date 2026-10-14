@@ -16,6 +16,9 @@ export const COURSE_TOOLS = [
     module_id: { type: 'string', maxLength: 100 }, lesson_id: { type: ['string', 'null'], maxLength: 100 }, offset: { type: 'integer', minimum: 0 }
   })
 ] as const
+export const NOTEBOOK_TOOLS = [...COURSE_TOOLS,
+  tool('read_notebook_cells', 'Read one cell and its saved output from the notebook snapshot for this question. Cells use a zero-based cursor; follow nextOffset before nextCursor. Outputs are not live variables.', { cursor, offset: { type: 'integer', minimum: 0 } })
+] as const
 export const MAX_RETRIEVAL_CHARS = 8_000
 export const MAX_TURN_RETRIEVAL_CHARS = 40_000
 export const READING_LIMITS = { rounds: 6, calls: 12 }

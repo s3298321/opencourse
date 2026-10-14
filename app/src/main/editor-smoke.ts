@@ -97,8 +97,8 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
         document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
         document.querySelector('.dialog-confirm').click(); await wait(()=>document.querySelector('.library'));
         if((await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Leaving did not stop the turn');
-        const card=[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course'));card.click(); await wait(()=>document.querySelector('.detail'));
-        button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
+        const card=await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>visible(c) && c.textContent.includes('Editor smoke course')));card.click();
+        (await wait(()=>button('Edit course'))).click(); await wait(()=>document.querySelector('.course-editor'));
         return 'Clean running turn confirms; Cancel and parking preserve it; confirmed departure stops it';
       `)
       if (!stoppedCleanTurn || authoringRunState(courseId).chatId !== null) throw new Error('Clean authoring lease survived confirmed departure')

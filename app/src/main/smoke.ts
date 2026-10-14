@@ -2305,14 +2305,13 @@ const COACH_FILES_SCRIPT = `(async () => {
   })
 
   await step('a coach can be deleted, and takes its list entry with it', async () => {
-    document.querySelector('.titlebar .crumbs a').click()
-    await waitFor('.coach-card')
+    const remove = await waitFor('.coach-project .coach-delete')
 
     // window.confirm would block a headless run on a real dialog.
     const realConfirm = window.confirm
     window.confirm = () => true
     try {
-      document.querySelector('.coach-card .card-remove').click()
+      remove.click()
       const t0 = Date.now()
       while (Date.now() - t0 < 4000) {
         if ((await window.fixtureAPI.listCoachProjects()).length === 0) break

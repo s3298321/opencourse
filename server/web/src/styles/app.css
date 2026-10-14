@@ -155,7 +155,7 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .back-link:hover { color: var(--fg); gap: 0.5rem; }
 .back-link svg { width: 15px; height: 15px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.75rem; padding: 4rem 1rem; }
-.empty-art { position: relative; width: 140px; height: 110px; margin-bottom: 0.5rem; }
+.empty-art { position: relative; width: 128px; height: 128px; margin-bottom: 0.5rem; }
 .empty-state h2 { font-size: var(--text-xl); }
 .empty-text { color: var(--muted); max-width: 520px; }
 .empty-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin-top: 0.75rem; }
@@ -192,16 +192,17 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .sparkles > :nth-child(6) { top: 48%; left: 92%; width: 11px; height: 11px; }
 .sparkles > :nth-child(7) { top: 80%; left: 40%; width: 8px; height: 8px; }
 .sparkles > :nth-child(8) { top: 38%; left: 3%; width: 8px; height: 8px; }
-/* One star per cell of a jittered 3 × 3 grid. */
-.empty-art .sparkles > :nth-child(1) { top: 16%; left: 15%; width: 15px; height: 15px; }
-.empty-art .sparkles > :nth-child(2) { top: 13%; left: 51%; width: 8px; height: 8px; }
-.empty-art .sparkles > :nth-child(3) { top: 19%; left: 82%; width: 11px; height: 11px; }
-.empty-art .sparkles > :nth-child(4) { top: 48%; left: 18%; width: 7px; height: 7px; }
-.empty-art .sparkles > :nth-child(5) { top: 46%; left: 48%; width: 10px; height: 10px; }
-.empty-art .sparkles > :nth-child(6) { top: 51%; left: 80%; width: 6px; height: 6px; }
-.empty-art .sparkles > :nth-child(7) { top: 79%; left: 14%; width: 12px; height: 12px; }
-.empty-art .sparkles > :nth-child(8) { top: 82%; left: 49%; width: 9px; height: 9px; }
-.empty-art .sparkles > :nth-child(9) { top: 76%; left: 83%; width: 18px; height: 18px; }
+/* A round silhouette, with larger foreground stars giving the cluster depth. */
+.empty-art .sparkles > .oc-sparkle { translate: -50% -50%; }
+.empty-art .sparkles > :nth-child(1) { top: 8%; left: 50%; width: 8px; height: 8px; }
+.empty-art .sparkles > :nth-child(2) { top: 26%; left: 80%; width: 10px; height: 10px; }
+.empty-art .sparkles > :nth-child(3) { top: 59%; left: 91%; width: 7px; height: 7px; }
+.empty-art .sparkles > :nth-child(4) { top: 85%; left: 72%; width: 12px; height: 12px; }
+.empty-art .sparkles > :nth-child(5) { top: 92%; left: 40%; width: 8px; height: 8px; }
+.empty-art .sparkles > :nth-child(6) { top: 66%; left: 10%; width: 9px; height: 9px; }
+.empty-art .sparkles > :nth-child(7) { top: 27%; left: 16%; width: 11px; height: 11px; }
+.empty-art .sparkles > :nth-child(8) { top: 43%; left: 43%; width: 18px; height: 18px; }
+.empty-art .sparkles > :nth-child(9) { top: 65%; left: 62%; width: 13px; height: 13px; }
 /* ---------- covers ---------- */
 .cover { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: var(--chip-bg); }
 .cover img { width: 100%; height: 100%; object-fit: cover; transition: transform 600ms var(--ease); }
@@ -219,12 +220,6 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 /* ---------- catalog ---------- */
 .catalog-hero { position: relative; overflow: hidden; padding: clamp(3rem, 8vw, 6rem) 0 clamp(2.25rem, 5vw, 3.5rem); border-bottom: 1px solid var(--line); }
 .catalog-hero-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1.1rem; }
-.hero-eyebrow {
-  display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.85rem 0.3rem 0.65rem;
-  border-radius: var(--radius-pill); border: 1px solid var(--line-strong); background: var(--glass);
-  font-size: 0.78rem; font-weight: 600; color: var(--chip-fg); letter-spacing: 0.02em;
-}
-.hero-eyebrow .oc-sparkle { width: 12px; height: 12px; }
 .hero-title { font-size: var(--text-display); letter-spacing: -0.045em; line-height: 1.02; max-width: 15ch; padding-bottom: 0.08em; }
 .hero-lede { font-size: var(--text-lg); color: var(--muted); max-width: 620px; }
 .hero-search { display: flex; gap: 0.6rem; width: 100%; max-width: 680px; margin-top: 0.9rem; }

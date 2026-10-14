@@ -36,7 +36,7 @@ export function getDocument(id: string): DocumentView {
   let sections: DocumentSection[] = []
   try { sections = JSON.parse(String(row.sections)) } catch { /* Recoverable cache. */ }
   if (document.status === 'indexing' || (document.status === 'ready' && row.index_version !== DOCUMENT_INDEX_VERSION)) startDocumentIndex(id)
-  return { ...document, sections }
+  return { ...document, sections, lastPage: Number(row.last_page) }
 }
 export function stopDocumentWorkers(): void {
   for (const { worker } of workers.values()) void worker.terminate()
@@ -167,6 +167,11 @@ export function setDocumentCompleted(id: string, completed: boolean): DocumentVi
   db().prepare('UPDATE documents SET completed=? WHERE id=?').run(completed === true ? 1 : 0, id)
   documentEvents.emit('changed', id)
   return getDocument(id)
+}
+export function setDocumentPage(id: string, page: number): void {
+  const document = summary(rowFor(id))
+  if (!Number.isSafeInteger(page) || page < 1 || (document.pages > 0 && page > document.pages)) throw new Error('That page is not in this document.')
+  db().prepare('UPDATE documents SET last_page=? WHERE id=?').run(page, id)
 }
 export async function removeDocument(id: string): Promise<void> {
   const owner = requireUser(), path = documentFile(id)

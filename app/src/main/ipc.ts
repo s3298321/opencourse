@@ -3,7 +3,7 @@ import type { CellTarget, CellRunRequest } from '../core/notebook/types'
 import { authoringEvents, authoringRunState, cancelCourseAuthoring } from './authoring-state'
 import { appInfo } from './app-info'
 import { readPdfResource } from './pdf-resources'
-import { documentEvents, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentCompleted, stopDocumentWorkers } from './documents'
+import { documentEvents, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentCompleted, setDocumentPage, stopDocumentWorkers } from './documents'
 import { cancelAllDocumentChats, cancelDocumentChat, createDocumentChat, deleteDocumentChat, documentSourceIcons, getDocumentChat, listDocumentChats, sendDocumentMessage, setDocumentChatModel, setDocumentChatProvider, setDocumentChatReasoning } from './document-chat'
 import { cancelAllAuthoringChats, cancelAuthoringChat, createAuthoringChat, deleteAuthoringChat, getAuthoringChat, listAuthoringChats, sendAuthoringMessage, setAuthoringChatModel, setAuthoringChatProvider, setAuthoringChatReasoning } from './authoring-chat'
 import type { AuthoringTarget } from '../core/types'
@@ -946,6 +946,7 @@ export function registerIpc(): void {
   ipcMain.handle('documents:resource', (_e, kind: string, filename: string) => { requireUser(); return readPdfResource(kind, filename) })
   ipcMain.handle('documents:search', (_e, id: string, query: string, cursor: number) => searchDocument(id, query, cursor))
   ipcMain.handle('documents:completed', (_e, id: string, completed: boolean) => setDocumentCompleted(id, completed))
+  ipcMain.handle('documents:page', (_e, id: string, page: number) => setDocumentPage(id, page))
   ipcMain.handle('documents:rename', (_e, id: string, title: string) => renameDocument(id, title))
   ipcMain.handle('documents:remove', (_e, id: string) => removeDocument(id))
   ipcMain.handle('documents:retryIndex', (_e, id: string, password?: string) => {

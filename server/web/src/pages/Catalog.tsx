@@ -53,7 +53,6 @@ export function CatalogPageView() {
         <div className="oc-aurora" aria-hidden="true" />
         <Sparkles count={8} className="hero-sparkles" />
         <div className="oc-wrap catalog-hero-inner oc-stagger">
-          <span className="hero-eyebrow"><span className="oc-sparkle" aria-hidden="true" />Course catalog</span>
           <h1 className="hero-title oc-silver-text">{server.name}</h1>
           {server.description && <p className="hero-lede">{server.description}</p>}
           <Form method="get" action="/" role="search" className="hero-search" preventScrollReset>

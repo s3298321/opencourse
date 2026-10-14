@@ -21,7 +21,7 @@ export interface DocumentSummary {
   completed: boolean
   createdAt: string
 }
-export interface DocumentView extends DocumentSummary { sections: DocumentSection[] }
+export interface DocumentView extends DocumentSummary { sections: DocumentSection[]; lastPage: number }
 export interface DocumentHit { page: number; excerpt: string }
 export interface DocumentSearch {
   hits: DocumentHit[]

@@ -194,8 +194,8 @@ export async function rebuildNotebook(courseId: string): Promise<NotebookStatus>
   s.status.stage = 'idle'
   return ensureNotebook(courseId, true)
 }
-export function notebookChatContext(courseId: string): string {
+export function notebookChatContext(courseId: string, selectedCellId?: string): string {
   const s = sessionFor(courseId)
   if (!s.status.enabled) throw new Error('This course has no notebook.')
-  return notebookContextText(getCourse(courseId)!, getNotebook(courseId))
+  return notebookContextText(getCourse(courseId)!, getNotebook(courseId), 24_000, selectedCellId)
 }

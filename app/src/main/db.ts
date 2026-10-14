@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 16
+export const SCHEMA_VERSION = 18
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -134,9 +134,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
  * quarantines the file - every transcript in it - over a column it already has.
  * The table and column are this file's own literals, never input.
  */
-function addColumn(d: DatabaseSync, table: string, column: string): void {
+function addColumn(d: DatabaseSync, table: string, column: string, definition = 'TEXT'): void {
   const columns = d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
-  if (!columns.some((c) => c.name === column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`)
+  if (!columns.some((c) => c.name === column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
 }
 
 let handle: { file: string; db: DatabaseSync } | null = null
@@ -298,6 +298,18 @@ function migrate(d: DatabaseSync): void {
     addColumn(d, 'chats', 'start_source')
     addColumn(d, 'chat_messages', 'source_kind')
     addColumn(d, 'chat_messages', 'quote_metadata')
+  }
+  if (from < 17) addColumn(d, 'documents', 'last_page', 'INTEGER NOT NULL DEFAULT 1')
+  if (from < 18) {
+    d.exec(`CREATE TABLE IF NOT EXISTS text_chat_state (
+      mode TEXT NOT NULL, chat_id TEXT NOT NULL, contract TEXT NOT NULL,
+      context_key TEXT NOT NULL, turn_seq INTEGER NOT NULL, status TEXT NOT NULL,
+      payload TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(mode,chat_id)
+    )`)
+    for (const [mode, table] of [['chat','chats'], ['document','document_chats'], ['project','course_project_chats'], ['authoring','authoring_chats']]) {
+      d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_delete_text_state AFTER DELETE ON ${table}
+        BEGIN DELETE FROM text_chat_state WHERE mode='${mode}' AND chat_id=OLD.id; END`)
+    }
   }
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }

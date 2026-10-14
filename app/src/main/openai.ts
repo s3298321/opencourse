@@ -1,3 +1,7 @@
+import { setTimeout as retryDelay } from 'node:timers/promises'
+import { responseUsage } from '../core/text-chat/usage'
+import type { ResponseUsage } from '../core/text-chat/agent'
+import { requestDiagnostics, type RequestDiagnostics } from './ai-diagnostics'
 import type { ResponseInput } from '../core/projects/agent'
 import { responseRequest, subscriptionModels } from '../core/ai-request'
 import type { AIProvider, ModelContextMetadata } from '../core/types'
@@ -499,6 +503,7 @@ function streamErrorOf(event: Record<string, unknown>, options: ChatStreamOption
 }
 
 export interface ChatStreamOptions {
+  diagnostics?: RequestDiagnostics
   provider?: AIProvider
   key: string
   model: string
@@ -541,6 +546,8 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
   aborted: boolean
   /** The pages the answer cited, with offsets into `text`. Empty unless it searched. */
   citations: ChatCitation[]
+  usage?: ResponseUsage
+  responseId?: string
   output?: Record<string, unknown>[]
 }> {
   const controller = new AbortController()
@@ -570,8 +577,10 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
       return list.map((c) => (c.start < 0 ? c : { ...c, start: c.start + offset, end: c.end + offset }))
     })
   let completed = false
+  let usage: ResponseUsage | undefined, responseId: string | undefined, firstTextMs: number | undefined
+  let requestStatus = 'failed', attempts = 0
   const started = Date.now()
-  const about = { provider: options.provider ?? 'apiKey', model: options.model, reasoning: options.reasoning ?? null }
+  const about = { ...requestDiagnostics.getStore(), ...options.diagnostics, provider: options.provider ?? 'apiKey', model: options.model, reasoning: options.reasoning ?? null }
   let idle: ReturnType<typeof setTimeout> | undefined
   const touch = (): void => {
     clearTimeout(idle)
@@ -581,7 +590,11 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
 
   try {
     touch()
-    const response = await net.fetch(`${BASE}/responses`, {
+    let response: Response | undefined
+    for (let retry = 0; retry <= 2; retry++) {
+      attempts++
+      try {
+        response = await net.fetch(`${BASE}/responses`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${options.key}`,
@@ -591,6 +604,14 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
       body: JSON.stringify(responseRequest(options.provider ?? 'apiKey', options)),
       signal: controller.signal
     })
+        if (![408, 500, 502, 503, 504].includes(response.status) || retry === 2) break
+        await response.body?.cancel()
+      } catch (error) {
+        if (controller.signal.aborted || retry === 2) throw error
+      }
+      await retryDelay(retry === 0 ? 250 : 750, undefined, { signal: controller.signal })
+    }
+    if (!response) throw new OpenAIError(0, 'OpenAI returned no response')
 
     if (!response.ok) {
       const body = await response.text()
@@ -641,9 +662,16 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
         if (options.tools && event.type === 'response.output_item.done' && typeof event.output_index === 'number' && event.item && typeof event.item === 'object') {
           output.set(event.output_index, event.item as Record<string, unknown>)
         }
+        if (['response.completed', 'response.failed', 'response.incomplete'].includes(String(event.type))) {
+          const details = event.response as { id?: string; usage?: unknown } | undefined
+          usage = responseUsage(details?.usage) ?? usage
+          responseId = details?.id ?? responseId
+        }
         if (event.type === 'response.completed') {
           completed = true
-          const response = event.response as { output?: Record<string, unknown>[] } | undefined
+          const response = event.response as { id?: string; usage?: unknown; output?: Record<string, unknown>[] } | undefined
+          usage = responseUsage(response?.usage)
+          responseId = response?.id
           response?.output?.forEach((item, index) => output.set(index, item))
         }
         if (options.webSearch) {
@@ -673,6 +701,7 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
         if (problem) failure = problem
         const chunk = deltaTextOf(event)
         if (chunk) {
+          firstTextMs ??= Date.now() - started
           const key = partKey(event.item_id, event.content_index)
           if (!partStarts.has(key)) partStarts.set(key, text.length)
           text += chunk
@@ -686,15 +715,18 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
       logger.warn('OpenAI disconnected before completing an answer', { ...about, ms: Date.now() - started, chars: text.length })
       throw new OpenAIError(0, 'OpenAI disconnected before completing the response.')
     }
+    requestStatus = 'complete'
     logger.debug('Answer streamed', { ...about, ms: Date.now() - started, chars: text.length, citations: partCitations.size })
     return {
       text,
       aborted: false,
       citations: citations(),
+      ...(usage ? { usage } : {}), ...(responseId ? { responseId } : {}),
       ...(options.tools ? { output: [...output].sort(([a], [b]) => a - b).map(([, item]) => item) } : {})
     }
   } catch (err) {
     if (controller.signal.aborted) {
+      requestStatus = 'stopped'
       // Whose abort was it? The caller's is an outcome; ours is a timeout.
       // A stopped answer keeps the citations for the text it kept.
       if (options.signal?.aborted) return { text, aborted: true, citations: citations().filter((c) => c.end <= text.length) }
@@ -706,6 +738,10 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
     logger.error('The answer stream broke', { ...about, message: error.message, ms: Date.now() - started })
     throw error
   } finally {
+    logger.info('AI request usage', { ...about, responseId, status: requestStatus, attempts, ms: Date.now() - started,
+      firstTextMs: firstTextMs ?? null, inputChars: JSON.stringify(options.input).length,
+      toolSchemaChars: JSON.stringify(options.tools ?? []).length, outputChars: text.length,
+      usage: usage ?? null, compactions: [...output.values()].filter(item => item.type === 'compaction').length })
     clearTimeout(idle)
     clearTimeout(cap)
     options.signal?.removeEventListener('abort', abort)

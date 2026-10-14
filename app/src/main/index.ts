@@ -223,7 +223,13 @@ app.whenReady().then(async () => {
   app.on('before-quit', (event) => {
     if (notebooksStopped) { notebooksStopped = false; return }
     event.preventDefault()
-    void import('./notebooks').then(module => module.stopAllNotebooks()).finally(() => { notebooksStopped = true; app.quit() })
+    void import('./notebooks').then(module => module.stopAllNotebooks()).finally(() => {
+      notebooksStopped = true
+      // Let macOS finish cancelling the native Cmd+Q request before retrying.
+      // Quitting inside this microtask can close the windows while the original
+      // request resets Electron's quitting state, leaving the app in the Dock.
+      setImmediate(() => app.quit())
+    })
   })
   app.on('before-quit', closeDb)
 

@@ -1,3 +1,4 @@
+import type { ResponseInput } from '../src/core/text-chat/agent'
 // @vitest-environment node
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -121,8 +122,8 @@ describe('authoring draft tools and permanent identities', () => {
   })
   it('reads the shipped format/schema and reports invalid draft errors', async () => {
     const { courseId } = fixture()
-    expect((await tool(courseId, 'get_course_format', { section: 'format' })).result.text).toContain('course.json')
-    expect((await tool(courseId, 'get_course_format', { section: 'schema' })).result.text).toContain('schema_version')
+    expect((await tool(courseId, 'get_course_format', { section: 'format', offset: 0 })).result.text).toContain('course.json')
+    expect((await tool(courseId, 'get_course_format', { section: 'schema', offset: 0 })).result.text).toContain('schema_version')
     expect((await tool(courseId, 'validate_course', {})).result.errors.length).toBeGreaterThan(0)
     expect(await saveCourse(courseId, 0, 0)).toMatchObject({ status: 'invalid' })
   })
@@ -266,5 +267,136 @@ describe('authoring conversation context and lifecycle', () => {
     expect(responseRequest('chatgpt', { model: 'model', input: [], tools: [{}] }).tools).toMatchObject([{ name: 'project' }])
     const { courseId } = fixture(); createAuthoringChat(courseId); db().exec('PRAGMA user_version=10'); closeDb()
     expect(db().prepare('PRAGMA user_version').get()).toMatchObject({ user_version: SCHEMA_VERSION }); expect(listAuthoringChats(courseId)).toHaveLength(1)
+  })
+})
+
+describe('durable text continuation', () => {
+  async function setup() {
+    const { runChatAgent } = await import('../src/main/text-chat')
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    const context = { role: 'user', content: '[Authoring context for the following user message]\nsmall snapshot' }
+    const session = { mode: 'authoring' as const, chatId: chat.id, turnSeq: 1, model: 'test-model', provider: 'apiKey' as const, key: 'test-connection', tools: [], context: [context], valid: () => true }
+    const input = [{ role: 'system', content: 'Teach' }, context, { role: 'user', content: 'First question' }]
+    return { runChatAgent, session, input, chat, context }
+  }
+  it('resumes after reopening the database with opaque reasoning and a real assistant message', async () => {
+    const { runChatAgent, session, input } = await setup()
+    const reasoning = { type: 'reasoning', encrypted_content: 'opaque' }
+    const message = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Answer' }] }
+    await runChatAgent({ session, input, signal: new AbortController().signal, tool: vi.fn(), stream: async () => ({ text: 'Answer', aborted: false, output: [reasoning, message] }) })
+    closeDb()
+    const stream = vi.fn(async (_input: ResponseInput[]) => ({ text: 'Next answer', aborted: false }))
+    await runChatAgent({ session: { ...session, turnSeq: 4 }, input: [...input, { role: 'user', content: 'Follow up' }], signal: new AbortController().signal, tool: vi.fn(), stream })
+    expect(stream.mock.calls[0][0]).toEqual([...input, reasoning, message, { role: 'user', content: 'Follow up' }])
+  })
+  it('retains final compaction and replaces changed raw snapshots', async () => {
+    const { runChatAgent, session, input } = await setup()
+    const compact = { type: 'compaction', encrypted_content: 'checkpoint' }
+    await runChatAgent({ session, input, signal: new AbortController().signal, tool: vi.fn(), stream: async () => ({ text: 'Done', aborted: false, output: [compact] }) })
+    const context = { role: 'user', content: 'New selection' }, stream = vi.fn(async (_input: ResponseInput[]) => ({ text: 'Next', aborted: false }))
+    await runChatAgent({ session: { ...session, turnSeq: 4, context: [context] }, input: [input[0], context, { role: 'user', content: 'Follow up' }], signal: new AbortController().signal, tool: vi.fn(), stream })
+    expect(stream.mock.calls[0][0]).toContainEqual(compact)
+    expect(JSON.stringify(stream.mock.calls[0][0])).not.toContain('First question')
+    expect(stream.mock.calls[0][0]).toContainEqual(context)
+  })
+  it.each(['model', 'key', 'sourceVersion', 'tools'] as const)('rebuilds when %s changes', async field => {
+    const { runChatAgent, session, input } = await setup()
+    await runChatAgent({ session, input, signal: new AbortController().signal, tool: vi.fn(), stream: async () => ({ text: 'Old', aborted: false, output: [{ type: 'compaction', encrypted_content: 'old-opaque' }] }) })
+    const changed = { ...session, turnSeq: 4, [field]: field === 'tools' ? [{ type: 'function', name: 'new_tool' }] : 'changed' }
+    const stream = vi.fn(async (_input: ResponseInput[]) => ({ text: 'New', aborted: false }))
+    await runChatAgent({ session: changed, input, signal: new AbortController().signal, tool: vi.fn(), stream })
+    expect(stream.mock.calls[0][0]).toEqual(input)
+  })
+  it('falls back for corrupt state and cascades deletion', async () => {
+    const { runChatAgent, session, input, chat } = await setup()
+    const run = () => runChatAgent({ session, input, signal: new AbortController().signal, tool: vi.fn(), stream: async () => ({ text: 'Answer', aborted: false }) })
+    await run()
+    db().prepare("UPDATE text_chat_state SET payload='broken'").run()
+    await expect(run()).resolves.toEqual({ stopped: false })
+    db().prepare('DELETE FROM authoring_chats WHERE id=?').run(chat.id)
+    expect(db().prepare('SELECT count(*) n FROM text_chat_state').get()).toMatchObject({ n: 0 })
+  })
+  it('invalidates a checkpoint when a later write has an uncertain outcome', async () => {
+    const { runChatAgent, session, input } = await setup()
+    let round = 0
+    await expect(runChatAgent({ session, input, signal: new AbortController().signal,
+      stream: async () => ({ text: '', aborted: false, output: [{ type: 'function_call', name: 'write', call_id: String(round++), arguments: '{}' }] }),
+      tool: async () => { if (round === 2) throw new Error('uncertain'); return 'saved' } })).rejects.toThrow('uncertain')
+    expect(db().prepare('SELECT count(*) n FROM text_chat_state').get()).toMatchObject({ n: 0 })
+  })
+  it('does not delete a newer checkpoint when a cancelled older turn settles', async () => {
+    const { runChatAgent, session, input } = await setup()
+    const controller = new AbortController()
+    let finish!: () => void
+    const pending = new Promise<void>(resolve => { finish = resolve })
+    const older = runChatAgent({ session, input, signal: controller.signal, tool: vi.fn(), stream: async () => {
+      await pending; return { text: '', aborted: true }
+    } })
+    controller.abort()
+    await runChatAgent({ session: { ...session, turnSeq: 4 }, input, signal: new AbortController().signal, tool: vi.fn(), stream: async () => ({ text: 'New answer', aborted: false }) })
+    finish(); await older
+    expect(db().prepare('SELECT turn_seq,status FROM text_chat_state').get()).toMatchObject({ turn_seq: 4, status: 'complete' })
+  })
+  it('rebuilds completely when source metadata is corrupt', async () => {
+    const { runChatAgent, session, input } = await setup()
+    await runChatAgent({ session, input, signal: new AbortController().signal, tool: vi.fn(), stream: async () => ({ text: 'Old answer', aborted: false }) })
+    db().prepare("UPDATE text_chat_state SET sources='broken'").run()
+    const stream = vi.fn(async (_input: ResponseInput[]) => ({ text: 'New answer', aborted: false }))
+    await runChatAgent({ session: { ...session, turnSeq: 4 }, input, signal: new AbortController().signal, tool: vi.fn(), stream })
+    expect(stream.mock.calls[0][0]).toEqual(input)
+  })
+})
+
+describe('authoring efficiency', () => {
+  it('removes redundant payloads while every omitted ref remains discoverable', async () => {
+    const { runTextAgent } = await import('../src/core/text-chat/agent')
+    const { performance } = await import('node:perf_hooks')
+    const { courseId } = fixture(), large = manifest()
+    large.modules[0].lessons![0].blocks = Array.from({ length: 320 }, (_, n) => ({ type: 'markdown' as const, slug: `explanation-${n}`, content: `Concept ${n}: ${'A useful teaching example. '.repeat(15)}` }))
+    await tool(courseId, 'set_course', { course: large })
+    const initial = getAuthoringCourse(courseId).draft, target = { kind: 'block' as const, ref: initial.manifest.modules[0].lessons![0].blocks[250].nodeId! }
+    const compact = authoringContext(initial.manifest, target, initial.draftVersion)
+    const nodes = courseNodes(initial.manifest)
+    const old = { ...compact, outline: nodes.slice(0, 300).map(n => ({ ref: n.id, parent: n.parentId, kind: n.kind, label: n.label })), outlineTruncated: nodes.length > 300 }
+    const oldContextChars = JSON.stringify(old).length, contextChars = JSON.stringify(compact).length
+    expect(contextChars).toBeLessThan(oldContextChars * 0.2)
+    expect(contextChars).toBeLessThanOrEqual(8000)
+    const discovered: string[] = []
+    let cursor: number | null = 0
+    while (cursor !== null) {
+      const result = await tool(courseId, 'list_course_elements', { cursor, draft_version: initial.draftVersion })
+      expect(result.ok).toBe(true)
+      discovered.push(...result.result.elements.map((n: { ref: string }) => n.ref))
+      cursor = result.result.nextCursor
+    }
+    expect(new Set(discovered)).toEqual(new Set(nodes.map(n => n.id)))
+    expect((await tool(courseId, 'read_course', { ref: target.ref })).result.course.content).toContain('Concept 250')
+    const oldReceipts: string[] = [], receipts: string[] = []
+    for (let n = 0; n < 10; n++) {
+      const receipt = await tool(courseId, 'update_element', { fields: { title: `Updated title ${n}` } })
+      const outline = await tool(courseId, 'read_course', {})
+      receipts.push(JSON.stringify(receipt)); oldReceipts.push(JSON.stringify({ ok: true, result: { draftVersion: receipt.result.draftVersion, outline } }))
+      expect(receipts[n].length).toBeLessThan(oldReceipts[n].length * 0.2)
+      expect(receipts[n].length).toBeLessThanOrEqual(4000)
+    }
+    const simulate = async (context: unknown, results: string[]) => {
+      let round = 0, toolCalls = 0, inputChars = 0
+      const start = performance.now()
+      await runTextAgent({ input: [{ role: 'system', content: 'Edit the course.' }, { role: 'user', content: JSON.stringify(context) }, { role: 'user', content: 'Make ten edits.' }], signal: new AbortController().signal, limits: { rounds: 64, calls: 256 },
+        stream: async input => { inputChars += JSON.stringify(input).length; const n = round++; return { text: n === 10 ? 'Done' : '', aborted: false,
+          output: n === 10 ? [] : [{ type: 'function_call', call_id: String(n), name: 'update_element', arguments: JSON.stringify({ fields: { title: `Updated title ${n}` } }) }] } },
+        tool: async () => results[toolCalls++] })
+      return { requests: round, toolCalls, totalRequestInputChars: inputChars, runtimeMs: performance.now() - start }
+    }
+    const baseline = await simulate(old, oldReceipts), optimized = await simulate(compact, receipts)
+    expect(optimized.requests).toBe(baseline.requests); expect(optimized.toolCalls).toBe(baseline.toolCalls)
+    expect(optimized.totalRequestInputChars).toBeLessThan(baseline.totalRequestInputChars * 0.2)
+    const report = { measurement: 'Synthetic offline payload comparison; no network, token billing, or answer-quality measurements.',
+      fixture: { blocks: 320, scriptedEdits: 10 }, baseline: { contextChars: oldContextChars, editResultChars: oldReceipts[0].length, ...baseline },
+      optimized: { contextChars, editResultChars: receipts[0].length, ...optimized },
+      reduction: { contextPercent: 100 * (1 - contextChars / oldContextChars), editResultPercent: 100 * (1 - receipts[0].length / oldReceipts[0].length),
+        totalRequestInputPercent: 100 * (1 - optimized.totalRequestInputChars / baseline.totalRequestInputChars) } }
+    if (process.env.OPENCOURSE_EFFICIENCY_REPORT) writeFileSync(process.env.OPENCOURSE_EFFICIENCY_REPORT, JSON.stringify(report, null, 2) + '\n')
+    console.log('Offline harness efficiency:', JSON.stringify(report))
   })
 })

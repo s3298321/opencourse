@@ -3,7 +3,7 @@ import { newChatId } from '../core/sidechat/ids'
 import { buildInput, MAX_MESSAGE_CHARS, MAX_QUOTE_CHARS } from '../core/sidechat/thread'
 import { webSearchFor } from '../core/sidechat/models'
 import { DOCUMENT_TOOLS, READING_LIMITS, READING_TOOL_INSTRUCTIONS } from '../core/reading/tools'
-import { runProjectAgent } from '../core/projects/agent'
+import { runChatAgent } from './text-chat'
 import { scrubSecrets } from '../core/coach/key'
 import type { AIProvider, ChatCitation, ChatQuote, ChatSendResult, ReasoningEffort } from '../core/types'
 import type { DocumentChatSummary, DocumentChatThread, ReadingSource } from '../core/documents/types'
@@ -143,7 +143,11 @@ export async function sendDocumentMessage(sender: WebContents, id: string, text:
     const modelContext = conversationModelContext(chat.provider ?? 'apiKey', chat.model)
     setImmediate(() => { void (async () => {
       try {
-        const result = await runProjectAgent({ input: buildInput(selectDocumentMessages(id), instructions), signal: controller.signal, limits: READING_LIMITS,
+        const result = await runChatAgent({ input: buildInput(selectDocumentMessages(id), instructions),
+          session: { mode: 'document', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools: DOCUMENT_TOOLS, webSearch, sourceVersion: document.fingerprint,
+            context: [{ role: 'user', content: `[document context]\n\n${selectDocumentMessages(id).filter(m => m.role === 'context').at(-1)?.text ?? ''}` }], valid, sources: localSources },
+          readOnly: () => true,
+          signal: controller.signal, limits: READING_LIMITS,
           stream: async input => {
             const begin = answered.length
             let first = true

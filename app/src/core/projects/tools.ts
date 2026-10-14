@@ -4,6 +4,7 @@ function tool(name: string, description: string, properties: Record<string, unkn
   return { type: 'function', name, description, strict: true, parameters: { type: 'object', properties, required: Object.keys(properties), additionalProperties: false } }
 }
 export const PROJECT_TOOLS = [
+  tool('read_project_requirements', 'Read the complete project requirements and acceptance criteria in bounded pages.', { offset: { type: 'integer', minimum: 0 } }),
   tool('list_project_files', 'List project files recursively, with bounded pages. Dependencies, secrets and symlinks are excluded.', { path, cursor }),
   tool('read_project_file', 'Read current UTF-8 text with line numbers. Binary and excluded files cannot be read. Reads are capped at 64 KiB.', { path, start_line: { type: 'integer', minimum: 1 }, max_lines: { type: 'integer', minimum: 1, maximum: 500 } }),
   tool('search_project_files', 'Search literal text inside project files and return matching lines. Search is bounded and reports omissions.', { query: { type: 'string', minLength: 1, maxLength: 500 }, path, cursor })

@@ -549,7 +549,7 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .settings-section.danger ul { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; }
 button.danger { background: var(--err); color: var(--err-fg); }
 button.secondary.danger { background: var(--chip-bg); color: var(--err); border-color: var(--err-border); }
-button.course-delete[data-builtin-theme] { --danger-button-bg: #6b2430; background: var(--danger-button-bg); color: #fff0f1; border-color: #8c3341; }
+button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme] { --danger-button-bg: #6b2430; background: var(--danger-button-bg); color: #fff0f1; border-color: #8c3341; }
 
 /* ---------- logs ---------- */
 /* Wider than settings: a log is a table, and the message column is the one
@@ -1374,6 +1374,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
   font-family: var(--font-mono); font-size: 0.84rem;
   color: var(--muted); background: var(--code-bg); border-radius: 8px; padding: 0.9rem 1rem;
 }
+.coach-brief-text + .action-button { margin-top: 0.75rem; }
 .coach-brief textarea {
   width: 100%; margin: 0.75rem 0 0.6rem; padding: 0.7rem 0.8rem; resize: vertical;
   font-family: var(--font-mono); font-size: 0.84rem; line-height: 1.5;

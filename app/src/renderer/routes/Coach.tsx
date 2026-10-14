@@ -74,22 +74,6 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
     }
   }
 
-  const remove = async (project: CoachProjectSummary): Promise<void> => {
-    const ok = window.confirm(
-      `Delete “${project.name}”?\n\n` +
-        `This deletes its ${project.sessions} session${project.sessions === 1 ? '' : 's'} and their ` +
-        `transcripts, and the ${project.files} file${project.files === 1 ? '' : 's'} the coach wrote. ` +
-        `It cannot be undone.`
-    )
-    if (!ok) return
-    try {
-      await window.opencourse.deleteCoachProject(project.id)
-      refresh()
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }
-
   const empty = projects?.length === 0
 
   return (
@@ -181,17 +165,6 @@ export default function Coach({ user, navigate, newSignal, route }: Props): JSX.
                   </div>
                   <span className="tag">{project.model}</span>
                 </div>
-                <button
-                  className="ghost card-remove"
-                  disabled={project.busy}
-                  title={project.busy ? 'Finish the session before deleting this coach' : undefined}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    void remove(project)
-                  }}
-                >
-                  Delete
-                </button>
               </div>
             ))}
           </div>

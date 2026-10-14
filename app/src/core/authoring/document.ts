@@ -63,13 +63,23 @@ export function authoringContext(manifest: CourseManifest, target: AuthoringTarg
   const current = nodes.find(n => n.id === ref)
   const ancestry = []
   let parent = current?.parentId
-  while (parent) { const node = nodes.find(n => n.id === parent); if (!node) break; ancestry.unshift({ ref: node.id, label: node.label }); parent = node.parentId }
-  const outline = nodes.filter(n => ['module', 'project', 'lesson', 'markdown', 'python-cell', 'quiz', 'exercise', 'image', 'video', 'visualization', 'flashcard'].includes(n.kind)).map(n => ({ ref: n.id, parent: n.parentId, kind: n.kind, label: n.label }))
+  while (parent) { const node = nodes.find(n => n.id === parent); if (!node) break; ancestry.unshift({ ref: node.id, label: node.label.slice(0, 160) }); parent = node.parentId }
+  const navigation = nodes.filter(n => n.id !== ref && ['module', 'project', 'lesson'].includes(n.kind))
+  const outline = (current ? [current, ...navigation] : navigation).map(n => ({ ref: n.id, parent: n.parentId, kind: n.kind, label: n.label.slice(0, 160) }))
   const authored = authoringManifest(manifest)
   const selected = ref ? findRef(authored, ref) : { ...authored, modules: undefined }
-  return { target, label: current?.label ?? 'Course overview', draftVersion, course: { title: manifest.title, slug: manifest.slug }, ancestry,
-    outline: outline.slice(0, 300), outlineTruncated: outline.length > 300,
-    selected: JSON.stringify(selected).length <= 24000 ? selected : { ref, note: 'Use read_course to inspect the selected element.' } }
+  const compact = { target, label: (current?.label ?? 'Course overview').slice(0, 160), draftVersion,
+    course: { title: manifest.title.slice(0, 160), slug: manifest.slug.slice(0, 160) }, ancestry,
+    outline: [] as typeof outline, outlineTruncated: false,
+    selected: { ref, note: 'Use read_course to inspect the selected element.' } as unknown }
+  // Selection gets priority; the outline is navigation, not a copy of the course.
+  if (JSON.stringify(selected).length <= 4000) compact.selected = selected
+  for (const node of outline) {
+    compact.outline.push(node)
+    if (JSON.stringify(compact).length > 7800) { compact.outline.pop(); break }
+  }
+  compact.outlineTruncated = compact.outline.length < outline.length
+  return compact
 }
 export function findRef(value: unknown, ref: string): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object') return undefined

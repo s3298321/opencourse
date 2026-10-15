@@ -1,9 +1,11 @@
+import { normalizeResearchSources } from '@core/authoring/research'
 import ActionButton from './ActionButton'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { ChatMessage, ChatQuote, QuoteSource, ReasoningEffort } from '@core/types'
 import type { ReadingSource } from '@core/documents/types'
 import { modelReasoning } from '@core/ai'
+import { OPENAI_OVERLOADED, isOpenAIOverload } from '@core/ai-errors'
 import { CHATGPT_USAGE_URL } from './AISettings'
 import ConnectionIcon, { PROVIDER_LABELS } from './ConnectionIcon'
 import { citeAnswer, shortTitle, type CitedSource } from '@core/sidechat/citations'
@@ -17,6 +19,8 @@ import Menu from './Menu'
 import { useScreenActive } from '../screen-activity'
 import ChatTabTitle from './ChatTabTitle'
 import ChatMessageMeta from './ChatMessageMeta'
+
+const noSourceIcons = async (): Promise<Record<string, string | null>> => ({})
 
 interface Props {
   visible?: boolean
@@ -207,6 +211,7 @@ function Sources({ chatId, seq, sources, fetchIcons }: { chatId: string; seq: nu
  */
 function AnswerTurn({ chatId, message, onSource, sourceIcons: fetchIcons }: { chatId: string | null; message: ChatMessage; onSource?: Props['onSource']; sourceIcons?: Props['sourceIcons'] }): JSX.Element {
   const cited = useMemo(() => citeAnswer(message.text, message.citations), [message.text, message.citations])
+  const consulted = normalizeResearchSources(message.researchSources).filter(source => !cited.sources.some(c => c.url === source.url))
   return (
     <div className="chat-turn assistant">
       <div className="chat-answer" data-ask="answer">
@@ -215,6 +220,10 @@ function AnswerTurn({ chatId, message, onSource, sourceIcons: fetchIcons }: { ch
       {(message.status === 'stopped' || message.status === 'failed') && <p className="meta" data-ask="none">{message.status === 'stopped' ? 'Stopped · partial response' : 'Response failed · partial text preserved'}</p>}
       {!!message.localSources?.length && <nav className="chat-local-sources" data-ask="none" aria-label="Reading sources">{message.localSources.map((source, index) => <button className="ghost" key={index} onClick={() => onSource ? onSource(source) : window.dispatchEvent(new CustomEvent('reading:source', { detail: source }))}>{source.kind === 'document' ? `Page ${source.page}` : source.title}</button>)}</nav>}
       {chatId && cited.sources.length > 0 && <Sources chatId={chatId} seq={message.seq} sources={cited.sources} fetchIcons={fetchIcons} />}
+      {consulted.length > 0 && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label="Consulted sources">
+        <summary className="chat-sources-label">Consulted sources ({consulted.length})</summary>
+        <ul>{consulted.map(source => <li key={source.url}><a className="chat-source" href={source.url} title={source.url}>{shortTitle(source.title, source.url)}</a></li>)}</ul>
+      </details>}
       <ChatMessageMeta message={message} />
     </div>
   )
@@ -295,6 +304,15 @@ export default function ChatPanelView({
   useAutoGrow(field, twin, draft, textScale)
 
   const answering = panel.activeId !== null && panel.busy.has(panel.activeId)
+  const overloaded = !!panel.error && isOpenAIOverload(panel.error)
+  const [retrying, setRetrying] = useState(false)
+  const retry = async (): Promise<void> => {
+    if (!panel.retry || answering || panel.sendBlocked || submitting.current) return
+    submitting.current = true
+    setRetrying(true)
+    try { await panel.retry() }
+    finally { submitting.current = false; setRetrying(false) }
+  }
 
   // What was already in a chat when its tab came up is history and appears as
   // it is; only what is said while you watch animates in. Remembered per chat,
@@ -479,9 +497,9 @@ export default function ChatPanelView({
                 key={message.seq}
                 message={message}
                 fresh={settled?.chatId === thread!.chat.id && message.seq > settled.upTo}
-                chatId={variant === 'lesson' || variant === 'notebook' || variant === 'document' ? thread!.chat.id : null}
+                chatId={variant === 'lesson' || variant === 'notebook' || variant === 'document' || variant === 'authoring' ? thread!.chat.id : null}
                 onSource={onSource}
-                sourceIcons={fetchIcons}
+                sourceIcons={fetchIcons ?? (variant === 'authoring' ? noSourceIcons : undefined)}
               />
             ))}
             {panel.streaming !== null && (
@@ -498,7 +516,12 @@ export default function ChatPanelView({
               </div>
             )}
             {panel.activity && <div className={`project-tool-activity meta${panel.toolRunning ? ' running' : ''}`} role="status"><ToolIcon /><span>{panel.activity}</span></div>}
-            {panel.error && <div className="sidechat-error">{panel.error} <button className="ghost" onClick={onAddKey}>Settings</button>{panel.provider === 'chatgpt' && <button className="ghost" onClick={() => void window.opencourse.openExternal(CHATGPT_USAGE_URL)}>Manage usage ↗</button>}</div>}
+            {panel.error && <div className="sidechat-error" role="alert">
+              {overloaded && !panel.error.startsWith(OPENAI_OVERLOADED) ? OPENAI_OVERLOADED : panel.error}{' '}
+              {overloaded && panel.retry && <button className="ghost" disabled={answering || panel.sendBlocked || !panel.ready || retrying} onClick={() => void retry()} title="Continue the interrupted request using current state and completed work">{retrying ? 'Retrying…' : 'Retry'}</button>}
+              {!overloaded && <button className="ghost" onClick={onAddKey}>Settings</button>}
+              {panel.provider === 'chatgpt' && !overloaded && <button className="ghost" onClick={() => void window.opencourse.openExternal(CHATGPT_USAGE_URL)}>Manage usage ↗</button>}
+            </div>}
           </div>
         </div>
         {!following && (
@@ -635,7 +658,7 @@ export default function ChatPanelView({
                 ]}
               />
             )}
-            {(variant === 'lesson' || variant === 'notebook' || variant === 'document') && panel.webSearch && model !== null && (
+            {(variant === 'lesson' || variant === 'notebook' || variant === 'document' || variant === 'authoring') && panel.webSearch && model !== null && (
               <span
                 className={`sidechat-web${searchable ? '' : ' off'}`}
                 role="img"

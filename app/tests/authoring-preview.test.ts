@@ -145,3 +145,39 @@ describe('course authoring previews', () => {
     expect(radios[0].checked).toBe(true); expect(radios[2].checked).toBe(true)
   })
 })
+
+import { ImageBlockView } from '../src/renderer/blocks/Media'
+import { ElementFields } from '../src/renderer/routes/CourseEditorFields'
+import type { ImageBlock } from '../src/core/types'
+
+describe('image credits', () => {
+  const credit = { source_url: 'https://example.org/photo', title: 'A photograph', author: '<script>Creator</script>', author_url: 'https://example.org/author', license: 'CC BY 4.0', license_url: 'https://creativecommons.org/licenses/by/4.0/' }
+  const block: ImageBlock = { nodeId: 'photo', slug: 'photo', type: 'image', src: 'photo.png', alt: 'A visual example', caption: '**Plain caption**', attribution: credit }
+  it('shows the same linked, escaped credits in preview and learner rendering', async () => {
+    await render(block)
+    const preview = container.querySelector('figcaption')!.innerHTML
+    expect(container.querySelector('figcaption')!.textContent).toContain('**Plain caption**')
+    expect(container.querySelectorAll('.image-credit a')).toHaveLength(3)
+    expect(container.querySelector('script')).toBeNull()
+    expect(container.textContent).toContain('<script>Creator</script>')
+    await act(async () => root!.render(createElement(ImageBlockView, { block })))
+    expect(container.querySelector('figcaption')!.innerHTML).toBe(preview)
+    await act(async () => root!.render(createElement(ImageBlockView, { block: { ...block, attribution: { source_url: 'javascript:alert(1)', author: 'Unknown', author_url: 'data:text/html,bad' } } })))
+    expect(container.querySelectorAll('a')).toHaveLength(0)
+  })
+  it('edits credit fields independently of the teaching caption and can clear them', async () => {
+    let current = block
+    const manifest: CourseManifest = { schema_version: '1.8', version: '0.1.0', slug: 'demo', title: 'Demo', modules: [] }
+    function Harness() {
+      const [value, set] = useState(block)
+      current = value
+      return createElement(ElementFields, { element: value, manifest, courseId: 'draft', set: fields => set(prior => ({ ...prior, ...fields })) })
+    }
+    await act(async () => root!.render(createElement(Harness)))
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Image author"]')!, 'Corrected creator')
+    expect(current.attribution).toEqual({ ...credit, author: 'Corrected creator' })
+    expect(current.caption).toBe(block.caption)
+    await click('Clear image credits')
+    expect(current.attribution).toBeUndefined()
+  })
+})

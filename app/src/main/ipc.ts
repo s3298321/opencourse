@@ -88,7 +88,7 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
 import { coachActivity, isCoachProjectBusy } from './coach-activity'
 import { appUpdateInfo, checkForAppUpdate, installAppUpdate, setAppUpdateAutomatic, updateEvents } from './updates'
 import type { ChatDefaults, ThemeImportResult } from '../core/types'
@@ -967,6 +967,8 @@ export function registerIpc(): void {
   ipcMain.handle('chat:modelSettings', () => getChatModelSettings())
   ipcMain.handle('chat:setDefaults', (_e, defaults: ChatDefaults) => setChatDefaults(defaults))
   ipcMain.handle('chat:setEnabledModels', (_e, ids: string[] | null) => setEnabledChatModels(ids))
+  ipcMain.handle('authoringChat:webSearch', () => getAuthoringWebSearch())
+  ipcMain.handle('authoringChat:setWebSearch', (_e, on: boolean) => { const result = setAuthoringWebSearch(on); notifyAIChanged(); return result })
   ipcMain.handle('chat:webSearch', () => getChatWebSearch())
   ipcMain.handle('chat:setWebSearch', (_e, on: boolean) => { const result = setChatWebSearch(on === true); notifyAIChanged(); return result })
   ipcMain.handle('chat:sourceIcons', (_e, chatId: string, seq: number) => getSourceIcons(chatId, seq))

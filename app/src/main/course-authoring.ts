@@ -1,3 +1,4 @@
+import { imageCreditsByPath } from '../core/image-attribution'
 import { stopCourseNotebooks } from './notebooks'
 import { beginCourseMutation, courseBusy } from './course-busy'
 import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
@@ -260,7 +261,8 @@ export async function saveCourse(courseId: string, revision: number, draftVersio
       if (!attachment.managed || attachment.files.some((file) => referenced.has(file))) keep.push(attachment)
       else for (const file of attachment.files) cleanup.push(join(packageDirectory(courseId), file))
     }
-    next.attachments = keep
+    const credits = imageCreditsByPath(draft.manifest)
+    next.attachments = keep.map(a => ({ ...a, ...(credits.has(a.entry) ? { attribution: credits.get(a.entry) } : {}) }))
     commitCourseChange(courseId, next, document.manifest, preview.deleted, cleanup, { nodeRefMap: materialized.nodeRefMap })
     // The saved course is the session's new starting point; the editors holding
     // it stay open on it.
@@ -366,7 +368,7 @@ export type AttachmentKind = 'image' | 'video' | 'visualization'
 export interface AttachmentUpload { attachment: Attachment; htmlEntries: string[] }
 
 /** Internal service seam; normal renderer access selects files through native dialogs. */
-export async function uploadCourseAttachmentPath(courseId: string, source: string, kind: AttachmentKind, authoringToken?: symbol, preferredEntry?: string): Promise<AttachmentUpload> {
+export async function uploadCourseAttachmentPath(courseId: string, source: string, kind: AttachmentKind, authoringToken?: symbol, preferredEntry?: string, provenance?: Pick<Attachment, 'attribution' | 'image_url'>): Promise<AttachmentUpload> {
   assertAuthoringWritable(courseId, authoringToken)
   const owner = requireUser()
   if (isCourseCommitting(courseId)) throw new Error('The course is being saved.')
@@ -404,7 +406,7 @@ export async function uploadCourseAttachmentPath(courseId: string, source: strin
     const id = randomUUID()
     const prefix = `assets/${kind === 'visualization' ? 'viz' : kind === 'image' ? 'images' : 'video'}/${id}`
     const entry = kind === 'visualization' ? (preferredEntry && html.includes(preferredEntry) ? preferredEntry : html.find((f) => /(^|\/)index\.html?$/i.test(f)) ?? html[0]) : files[0]
-    const attachment: Attachment = { id, entry: `${prefix}/${entry}`, files: files.map((f) => `${prefix}/${f}`), managed: true }
+    const attachment: Attachment = { id, entry: `${prefix}/${entry}`, files: files.map((f) => `${prefix}/${f}`), managed: true, ...provenance }
     session.uploads.push(attachment)
     writeJournal(session)
     const destination = join(packageDirectory(courseId), prefix)

@@ -1,15 +1,17 @@
-import type { CourseManifest, CourseProgress, Module } from './types'
+import type { CourseManifest, CourseProgress, Module, ImageAttribution } from './types'
 import { DEFAULT_COURSE_VERSION } from './catalog/semver'
 import type { CourseOrigin } from './catalog/origin'
 
 /** The format version the app writes. Every save and export upgrades to it. */
-export const CURRENT_SCHEMA_VERSION = '1.7'
+export const CURRENT_SCHEMA_VERSION = '1.8'
 
 export interface Attachment {
   id: string
   entry: string
   files: string[]
   managed: boolean
+  attribution?: ImageAttribution
+  image_url?: string
 }
 export interface CourseDocument {
   version: 1

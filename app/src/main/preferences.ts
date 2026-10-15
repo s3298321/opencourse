@@ -59,3 +59,11 @@ export function setCoachAllowDelete(value: boolean): boolean {
   writePreferences({ ...readPreferences(), coachAllowDelete: value })
   return getCoachAllowDelete()
 }
+
+/** Independent from the opt-in learner chat setting. */
+export function getAuthoringWebSearch(): boolean { return readPreferences().authoringWebSearch !== false }
+export function setAuthoringWebSearch(value: boolean): boolean {
+  if (typeof value !== 'boolean') throw new Error('Choose whether course authoring may search the web.')
+  writePreferences({ ...readPreferences(), authoringWebSearch: value })
+  return getAuthoringWebSearch()
+}

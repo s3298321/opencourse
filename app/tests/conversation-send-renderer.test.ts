@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useConversationPanel, type ChatPanel, type ChatTransport, type PanelThread } from '../src/renderer/sidechat/useChat'
 import type { AIScope, ChatSendResult } from '../src/core/types'
 import { REVIEW_REQUEST } from '../src/core/projects/prompt'
+import { OPENAI_OVERLOADED, RETRY_INTERRUPTED_REQUEST } from '../src/core/ai-errors'
 
 let root: Root | undefined
 afterEach(async () => {
@@ -43,7 +44,7 @@ async function fixture(scope: AIScope) {
   const send = vi.fn(async (id: string, text: string) => commit(id, text))
   const transport: ChatTransport = {
     list: async () => structuredClone([...stored.values()].map(thread => thread.chat)),
-    get: async id => structuredClone(stored.get(id) ?? null), create,
+    get: vi.fn(async id => structuredClone(stored.get(id) ?? null)), create,
     remove: async id => { stored.delete(id) }, send, cancel: async () => {},
     setModel: async id => stored.get(id)!.chat, setReasoning: async id => stored.get(id)!.chat, setProvider: async id => stored.get(id)!.chat,
     onDelta: subscribe('delta'), onDone: subscribe('done'), onTitle: subscribe('title'), onError: subscribe('error'), onActivity: subscribe('activity')
@@ -58,8 +59,59 @@ async function fixture(scope: AIScope) {
   root = createRoot(container)
   await act(async () => root!.render(createElement(Fixture)))
   await act(async () => panel.startNew())
-  return { panel: () => panel, create, send, commit, stored, events, container }
+  return { panel: () => panel, create, send, commit, stored, events, container, transport }
 }
+
+describe('overload recovery', () => {
+  it('continues from preserved history once, without resending the original request', async () => {
+    const f = await fixture('authoring')
+    await act(async () => { await f.panel().send('Add a lesson', { text: 'Quoted course text', from: 'preview' }) })
+    f.stored.get('saved')!.messages.push({ seq: 2, role: 'assistant', text: 'Lesson added', status: 'failed', at: 'now' })
+    await act(async () => f.events.error('saved', OPENAI_OVERLOADED))
+    expect(f.panel().thread?.messages.at(-1)?.text).toBe('Lesson added')
+    const retry = f.panel().retry!
+    await act(async () => { expect(await Promise.all([retry(), retry()])).toEqual([true, false]) })
+    expect(f.send).toHaveBeenCalledTimes(2)
+    expect(f.send).toHaveBeenLastCalledWith('saved', RETRY_INTERRUPTED_REQUEST, undefined, false)
+    expect(f.panel().error).toBeNull()
+    expect(f.panel().retry).toBeUndefined()
+    expect(f.panel().thread?.messages.filter(message => message.text === 'Add a lesson')).toHaveLength(1)
+  })
+
+  it('does not retry a different tab when a history read is pending', async () => {
+    const f = await fixture('authoring')
+    await act(async () => { await f.panel().send('Add a lesson') })
+    await act(async () => f.events.error('saved', OPENAI_OVERLOADED))
+    const read = deferred<PanelThread | null>()
+    vi.mocked(f.transport.get).mockImplementationOnce(() => read.promise)
+    let retry!: Promise<boolean>
+    await act(async () => { retry = f.panel().retry!() })
+    await act(async () => f.panel().startNew())
+    await act(async () => f.panel().open('saved'))
+    await act(async () => { read.resolve(structuredClone(f.stored.get('saved')!)); expect(await retry).toBe(false) })
+    expect(f.send).toHaveBeenCalledOnce()
+    expect(f.panel().retry).toBeUndefined()
+  })
+
+  it('refuses retry after another window has added a newer turn', async () => {
+    const f = await fixture('authoring')
+    await act(async () => { await f.panel().send('Add a lesson') })
+    await act(async () => f.events.error('saved', OPENAI_OVERLOADED))
+    f.commit('saved', 'A newer request')
+    await act(async () => { expect(await f.panel().retry!()).toBe(false) })
+    expect(f.send).toHaveBeenCalledOnce()
+  })
+
+  it('offers no retry for a usage limit or for an error with no saved request', async () => {
+    const f = await fixture('authoring')
+    await act(async () => { await f.panel().send('Add a lesson') })
+    await act(async () => f.events.error('saved', 'ChatGPT plan usage limit reached.'))
+    expect(f.panel().retry).toBeUndefined()
+    f.stored.get('saved')!.messages = []
+    await act(async () => f.events.error('saved', OPENAI_OVERLOADED))
+    expect(f.panel().retry).toBeUndefined()
+  })
+})
 
 it('sends a project review from an empty composer and shows the review request', async () => {
   const f = await fixture('project')

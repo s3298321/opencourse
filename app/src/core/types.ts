@@ -34,8 +34,18 @@ export interface PythonCellBlock extends BlockNode {
   content: string
 }
 export interface NotebookDeclaration { cells?: { content: string }[] }
+export interface ImageAttribution {
+  source_url: string
+  title?: string
+  author?: string
+  author_url?: string
+  license?: string
+  license_url?: string
+}
+export interface ImageSearchResult { image_url: string; source_url: string; title: string; description?: string }
 export interface ImageBlock extends BlockNode {
   type: 'image'
+  attribution?: ImageAttribution
   src: string
   alt?: string
   caption?: string
@@ -649,6 +659,9 @@ export interface ChatMessage {
   localSources?: import('./documents/types').ReadingSource[]
   /** The pages an answer cited from a web search. Absent: it did not use the web. */
   citations?: ChatCitation[]
+  /** Retrieved pages, distinct from sources cited in the answer. */
+  imageResults?: ImageSearchResult[]
+  researchSources?: { url: string; title: string }[]
   /** Which lesson this was sent from. Absent on nothing the app writes. */
   lesson?: ChatLessonRef
   /**
@@ -836,6 +849,8 @@ export interface Preferences {
    * billed on the learner's key on top of the answer; absent means off.
    */
   webSearch?: boolean
+  /** Course authoring search is enabled unless explicitly disabled. */
+  authoringWebSearch?: boolean
   /**
    * The applied theme: an installed UUID or a reserved built-in id.
    * Absent means no theme - the app's own look, which is not itself a theme.

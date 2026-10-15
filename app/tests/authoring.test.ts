@@ -13,12 +13,13 @@ import { installCourseFixture } from './helpers/course'
 import type { ChatStreamOptions } from '../src/main/openai'
 const root = mkdtempSync(join(tmpdir(), 'opencourse-authoring-'))
 let dataDir = join(root, 'data'), serial = 0
-const mocked = vi.hoisted(() => ({ stream: vi.fn(), title: vi.fn() }))
+const mocked = vi.hoisted(() => ({ stream: vi.fn(), title: vi.fn(), download: vi.fn(), image: vi.fn() }))
 vi.mock('electron', () => ({ app: { getPath: () => dataDir, getAppPath: () => resolve('.'), on: () => {} }, dialog: {} }))
 vi.mock('../src/main/coachkey', () => ({ readKey: () => 'sk-test' }))
 vi.mock('../src/main/toolchain', () => ({ stopCourseWork: async () => {} }))
 vi.mock('../src/main/pty', () => ({ disposePtysInDirectory: () => {} }))
 vi.mock('../src/main/chattitles', () => ({ cancelChatTitles: () => {}, generateChatTitle: mocked.title }))
+vi.mock('../src/main/image-import', () => ({ downloadImage: mocked.download, validateImage: mocked.image }))
 vi.mock('../src/main/openai', () => ({ streamChat: mocked.stream }))
 const { createUser, switchUser } = await import('../src/main/users')
 const { closeDb, db, SCHEMA_VERSION } = await import('../src/main/db')
@@ -27,7 +28,7 @@ const { beginAuthoringTurn, authoringRunState } = await import('../src/main/auth
 const { runAuthoringTool } = await import('../src/main/authoring-tools')
 const { cancelAllAuthoringChats, cancelAuthoringChat, createAuthoringChat, getAuthoringChat, listAuthoringChats, sendAuthoringMessage } = await import('../src/main/authoring-chat')
 const { packageDirectory } = await import('../src/main/course-store')
-const { removeCourse } = await import('../src/main/import')
+const { removeCourse, importCourseZip } = await import('../src/main/import')
 const { readProgress, writeProgress } = await import('../src/main/progress')
 const { emptyProgress } = await import('../src/core/progress')
 const { extractArchive } = await import('../src/main/unzip')
@@ -36,6 +37,7 @@ let sender: EventEmitter & { id: number; isDestroyed: () => boolean; send: Retur
 beforeEach(() => {
   cancelAllAuthoringChats(); closeDb(); dataDir = join(root, `data-${++serial}`); createUser('Author')
   sender = Object.assign(new EventEmitter(), { id: 42, isDestroyed: () => false, send: vi.fn() })
+  mocked.download.mockReset().mockResolvedValue(Buffer.from('image bytes')); mocked.image.mockReset().mockReturnValue('png')
   mocked.stream.mockReset(); mocked.title.mockReset().mockResolvedValue(undefined)
 })
 afterAll(() => { cancelAllAuthoringChats(); closeDb(); rmSync(root, { recursive: true, force: true }) })
@@ -69,9 +71,54 @@ describe('authoring draft tools and permanent identities', () => {
     expect(await saveCourse(courseId, 0, draft.draftVersion)).toMatchObject({ status: 'ok' })
     closeDb()
     const reopened = getAuthoringCourse(courseId).document.manifest!
-    expect(portableManifest(reopened)).toEqual({ ...course, schema_version: '1.7', version: '0.1.0' })
+    expect(portableManifest(reopened)).toEqual({ ...course, schema_version: '1.8', version: '0.1.0' })
     expect(reopened.modules[0].lessons![0].blocks.map(block => block.type)).toEqual(['markdown', 'quiz', 'exercise', 'image', 'video', 'visualization'])
     expect(courseNodes(reopened).every(node => UUID.test(node.id))).toBe(true)
+  })
+  it('imports images with durable credits through insertion, reuse, duplication, save and ZIP round-trip', async () => {
+    const { courseId } = fixture()
+    const attribution = { source_url: 'https://example.org/original', author: 'Photographer', license: 'CC BY 4.0', license_url: 'https://creativecommons.org/licenses/by/4.0/' }
+    const imported = await tool(courseId, 'import_image', { image_url: 'https://images.example.org/photo.png', attribution })
+    expect(imported.ok).toBe(true)
+    expect(imported.result.attribution).toEqual(attribution)
+    const course = manifest(); course.modules[0].lessons![0].blocks.push({ type: 'image', slug: 'photo', src: imported.result.entry, alt: 'Useful photograph' })
+    expect((await tool(courseId, 'set_course', { course })).ok).toBe(true)
+    const block = getAuthoringCourse(courseId).draft.manifest.modules[0].lessons![0].blocks.at(-1)!
+    expect(block).toMatchObject({ attribution })
+    expect((await tool(courseId, 'duplicate_element', { ref: block.nodeId })).ok).toBe(true)
+    expect((await tool(courseId, 'list_assets', {})).result.attachments[0]).toMatchObject({ attribution })
+    const state = getAuthoringCourse(courseId)
+    expect(await saveCourse(courseId, state.document.revision, state.draft.draftVersion)).toMatchObject({ status: 'ok' })
+    closeDb()
+    expect(getAuthoringCourse(courseId).document.attachments[0]).toMatchObject({ attribution })
+    const archive = join(root, `credited-${serial}.zip`)
+    await exportCourseZipPath(courseId, archive)
+    const reimported = await importCourseZip(archive)
+    expect(reimported.status).toBe('ok')
+    if (reimported.status === 'ok') {
+      const reopened = getAuthoringCourse(reimported.courseId)
+      expect(reopened.document.manifest?.schema_version).toBe('1.8')
+      expect(reopened.document.manifest?.modules[0].lessons![0].blocks.filter(b => b.type === 'image')).toEqual([expect.objectContaining({ attribution }), expect.objectContaining({ attribution })])
+      expect(reopened.document.attachments[0]).toMatchObject({ attribution })
+      expect(readFileSync(join(packageDirectory(reimported.courseId), imported.result.entry), 'utf8')).toBe('image bytes')
+    }
+  })
+  it('does not register failed, cancelled or uncredited imports and removes discarded imports', async () => {
+    const { courseId } = fixture(), args = { image_url: 'https://example.org/photo.png', attribution: { source_url: 'https://example.org/page', license: 'CC0' } }
+    expect((await tool(courseId, 'import_image', { ...args, attribution: { source_url: args.attribution.source_url } })).ok).toBe(false)
+    expect(mocked.download).not.toHaveBeenCalled()
+    mocked.image.mockImplementationOnce(() => { throw new Error('Invalid image') })
+    expect((await tool(courseId, 'import_image', args)).ok).toBe(false)
+    expect(getAuthoringCourse(courseId).document.attachments).toEqual([])
+    const lease = beginAuthoringTurn(courseId, 'test', () => {}), controller = new AbortController()
+    mocked.download.mockImplementationOnce(async () => { controller.abort(); return Buffer.from('image') })
+    expect(JSON.parse(await runAuthoringTool(courseId, 'import_image', args, lease.token, controller.signal)).ok).toBe(false)
+    lease.release()
+    expect(getAuthoringCourse(courseId).document.attachments).toEqual([])
+    const upload = await tool(courseId, 'import_image', args)
+    expect(upload.ok).toBe(true)
+    discardCourseDraft(courseId)
+    expect(existsSync(join(packageDirectory(courseId), upload.result.entry))).toBe(false)
   })
   it('allocates permanent UUIDs on save and remaps chat targets without changing existing identities', async () => {
     const { courseId } = fixture()
@@ -87,7 +134,7 @@ describe('authoring draft tools and permanent identities', () => {
     expect(getAuthoringChat(chat.id).messages[0].authoring?.target).toEqual({ kind: 'lesson', ref: saved.nodeRefMap![ref] })
     const after = getAuthoringCourse(courseId)
     expect(courseNodes(after.document.manifest).every(n => UUID.test(n.id))).toBe(true)
-    expect(portableManifest(after.document.manifest!)).toEqual({ ...manifest(), schema_version: '1.7', version: '0.1.0' })
+    expect(portableManifest(after.document.manifest!)).toEqual({ ...manifest(), schema_version: '1.8', version: '0.1.0' })
     await tool(courseId, 'set_course', { course: { ...authoringManifest(after.draft.manifest), title: 'Renamed' } })
     await saveCourse(courseId, 1, getAuthoringCourse(courseId).draft.draftVersion)
     expect(courseNodes(getAuthoringCourse(courseId).document.manifest).map(n => n.id)).toEqual(courseNodes(after.document.manifest).map(n => n.id))
@@ -398,5 +445,129 @@ describe('authoring efficiency', () => {
         totalRequestInputPercent: 100 * (1 - optimized.totalRequestInputChars / baseline.totalRequestInputChars) } }
     if (process.env.OPENCOURSE_EFFICIENCY_REPORT) writeFileSync(process.env.OPENCOURSE_EFFICIENCY_REPORT, JSON.stringify(report, null, 2) + '\n')
     console.log('Offline harness efficiency:', JSON.stringify(report))
+  })
+})
+
+describe('authoring web research', () => {
+  const source = { url: 'https://docs.python.org/3/tutorial/', title: 'Python tutorial' }
+  const rejection = () => Object.assign(new Error('web_search is not supported by this model'), { status: 400 })
+  const send = async (chatId: string) => {
+    const courseId = getAuthoringChat(chatId).chat.courseId
+    const state = getAuthoringCourse(courseId)
+    await sendAuthoringMessage(sender as never, chatId, 'Teach this technology', { kind: 'overview' }, state.document.revision, state.draft.draftVersion)
+    await settle()
+  }
+  it('defaults on, remains independent of learner search, and is isolated per user', async () => {
+    const { getAuthoringWebSearch, setAuthoringWebSearch, readPreferences, writePreferences } = await import('../src/main/preferences')
+    expect(getAuthoringWebSearch()).toBe(true)
+    writePreferences({ ...readPreferences(), webSearch: false })
+    expect(getAuthoringWebSearch()).toBe(true)
+    setAuthoringWebSearch(false)
+    expect(getAuthoringWebSearch()).toBe(false)
+    expect(readPreferences().webSearch).toBeUndefined()
+    createUser('Another author')
+    expect(getAuthoringWebSearch()).toBe(true)
+    expect(() => setAuthoringWebSearch('yes' as never)).toThrow()
+  })
+  it('keeps research and citations across search, edit and validation rounds and database reload', async () => {
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    mocked.stream.mockImplementationOnce(async (options: ChatStreamOptions) => {
+      expect(options.webSearch).toBe(true)
+      expect(JSON.stringify(options.input)).toContain('Current date (UTC):')
+      options.onSearch?.({ state: 'running' })
+      options.onDelta('Read docs')
+      return { text: 'Read docs', aborted: false, citations: [{ ...source, start: 0, end: 9 }], output: [
+        { type: 'web_search_call', action: { type: 'search', sources: [source] } },
+        { type: 'function_call', call_id: 'create', name: 'set_course', arguments: JSON.stringify({ course: manifest() }) }
+      ] }
+    }).mockImplementationOnce(async (options: ChatStreamOptions) => {
+      expect(options.webSearch).toBe(true)
+      return { text: '', aborted: false, output: [{ type: 'function_call', call_id: 'validate', name: 'validate_course', arguments: '{}' }] }
+    }).mockImplementationOnce(async (options: ChatStreamOptions) => {
+      options.onDelta('Done')
+      return { text: 'Done', aborted: false, citations: [{ ...source, start: 0, end: 4 }], output: [] }
+    })
+    await send(chat.id)
+    closeDb()
+    expect(getAuthoringChat(chat.id).messages.at(-1)).toMatchObject({ text: 'Read docs\n\nDone', researchSources: [source], citations: [{ start: 0, end: 9 }, { start: 11, end: 15 }] })
+    expect(sender.send.mock.calls).toContainEqual(['authoringChat:activity', chat.id, 'Searching the web…'])
+    expect(portableManifest(getAuthoringCourse(courseId).draft.manifest)).toEqual(manifest())
+  })
+  it('retries an initial unsupported-search rejection once with an honest prompt and notice', async () => {
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    mocked.stream.mockRejectedValueOnce(rejection()).mockImplementationOnce(async (options: ChatStreamOptions) => {
+      expect(options.webSearch).toBe(false)
+      expect(JSON.stringify(options.input)).toContain('Web search is unavailable for this turn')
+      options.onDelta('Drafted')
+      return { text: 'Drafted', aborted: false, output: [] }
+    })
+    await send(chat.id)
+    expect(mocked.stream).toHaveBeenCalledTimes(2)
+    expect(getAuthoringChat(chat.id).messages.at(-1)?.text).toContain('Current documentation has not been verified.')
+    expect(getAuthoringChat(chat.id).messages.at(-1)?.status).toBe('complete')
+  })
+  it('falls back to text research only for an initial image capability rejection', async () => {
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    mocked.stream.mockRejectedValueOnce(Object.assign(new Error('image_settings is not supported'), { status: 400 })).mockImplementationOnce(async (options: ChatStreamOptions) => {
+      expect(options.webSearch).toBe(true); expect(options.imageSearch).toBe(false)
+      expect(JSON.stringify(options.input)).toContain('Image search is unavailable')
+      return { text: 'Done', aborted: false, output: [] }
+    })
+    await send(chat.id)
+    expect(mocked.stream).toHaveBeenCalledTimes(2)
+    expect(getAuthoringChat(chat.id).messages.at(-1)?.text).toContain('Continuing with text research')
+  })
+  it('preserves image evidence across tool rounds, reload and transcript recovery', async () => {
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    const image = { image_url: 'https://example.org/image.png', source_url: 'https://example.org/original', title: 'Example' }
+    mocked.stream.mockResolvedValueOnce({ text: '', aborted: false, output: [
+      { type: 'web_search_call', results: [{ type: 'image', ...image }] },
+      { type: 'function_call', call_id: 'list', name: 'list_assets', arguments: '{}' }
+    ] }).mockImplementationOnce(async (options: ChatStreamOptions) => {
+      expect(options.imageSearch).toBe(true)
+      expect(JSON.stringify(options.input)).toContain(image.image_url)
+      return { text: 'Found an image', aborted: false, output: [] }
+    })
+    await send(chat.id); closeDb()
+    expect(getAuthoringChat(chat.id).messages.at(-1)).toMatchObject({ imageResults: [image] })
+    db().prepare('DELETE FROM text_chat_state').run(); sender.send.mockClear()
+    mocked.stream.mockImplementationOnce(async (options: ChatStreamOptions) => {
+      expect(JSON.stringify(options.input)).toContain(image.source_url)
+      return { text: 'Reused evidence', aborted: false, output: [] }
+    })
+    await send(chat.id)
+    expect(sender.send.mock.calls.some(([channel]) => channel === 'authoringChat:error')).toBe(false)
+  })
+  it.each(['web_search', 'image_settings'])('never retries a %s rejection after a draft write', async capability => {
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    mocked.stream.mockResolvedValueOnce({ text: '', aborted: false, output: [{ type: 'function_call', call_id: 'create', name: 'set_course', arguments: JSON.stringify({ course: manifest() }) }] }).mockRejectedValueOnce(Object.assign(new Error(`${capability} is not supported`), { status: 400 }))
+    await send(chat.id)
+    expect(mocked.stream).toHaveBeenCalledTimes(2)
+    expect(db().prepare('SELECT COUNT(*) AS n FROM authoring_tool_calls').get()).toMatchObject({ n: 1 })
+    expect(portableManifest(getAuthoringCourse(courseId).draft.manifest)).toEqual(manifest())
+    expect(sender.send.mock.calls.some(([channel]) => channel === 'authoringChat:error')).toBe(true)
+  })
+  it.each(['stop', 'failure'])('preserves incremental evidence on %s, even before explanatory text', async mode => {
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    mocked.stream.mockImplementationOnce(async (options: ChatStreamOptions) => {
+      options.onResearch?.({ citations: [], sources: [source] })
+      if (mode === 'stop') { cancelAuthoringChat(chat.id); return { text: '', aborted: true, output: [] } }
+      throw new Error('Connection lost')
+    })
+    await send(chat.id)
+    expect(getAuthoringChat(chat.id).messages.at(-1)).toMatchObject({ researchSources: [source], status: mode === 'stop' ? 'stopped' : 'failed' })
+  })
+  it('uses an unavailable prompt when opted out and rebuilds continuation when search changes', async () => {
+    const { setAuthoringWebSearch } = await import('../src/main/preferences')
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    mocked.stream.mockImplementation(async (options: ChatStreamOptions) => { options.onDelta('Done'); return { text: 'Done', aborted: false, output: [] } })
+    await send(chat.id)
+    const before = db().prepare("SELECT contract FROM text_chat_state WHERE mode='authoring'").get()
+    setAuthoringWebSearch(false); sender.send.mockClear()
+    await send(chat.id)
+    const options = mocked.stream.mock.calls.at(-1)![0] as ChatStreamOptions
+    expect(options.webSearch).toBe(false)
+    expect(JSON.stringify(options.input)).toContain('Web search is unavailable for this turn')
+    expect(db().prepare("SELECT contract FROM text_chat_state WHERE mode='authoring'").get()).not.toEqual(before)
   })
 })

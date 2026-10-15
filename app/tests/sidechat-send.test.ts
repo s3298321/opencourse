@@ -16,6 +16,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatQuote, CourseManifest } from '../src/core/types'
 import { TITLE_INSTRUCTIONS } from '../src/core/sidechat/title'
 import { COURSE_TOOLS } from '../src/core/reading/tools'
+import { OPENAI_OVERLOADED } from '../src/core/ai-errors'
 
 const root = mkdtempSync(join(tmpdir(), 'opencourse-sidechat-send-'))
 let dataDir = join(root, 'data')
@@ -503,6 +504,23 @@ describe('when the lesson changes under a chat', () => {
 })
 
 describe('when it goes wrong', () => {
+  it('explains HTTP overload errors clearly after bounded retries', async () => {
+    const chat = createChat(courseId, L1)
+    stream = { status: 503, body: JSON.stringify({ error: { code: 'server_is_overloaded', message: 'Our servers are currently overloaded.' } }) }
+    await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
+    await vi.waitFor(() => expect(pushed.find(event => event.channel === 'chat:error')?.payload).toEqual(OPENAI_OVERLOADED), { timeout: 2500 })
+    expect(answerCalls()).toHaveLength(3)
+  })
+
+  it('reports streamed overload without automatically replaying a partial answer', async () => {
+    const chat = createChat(courseId, L1)
+    stream = { incomplete: true, frames: [textFrame('Partial answer'), `data: ${JSON.stringify({ type: 'response.failed', response: { error: { code: 'server_is_overloaded', message: 'Our servers are currently overloaded.' } } })}\n\n`] }
+    await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
+    await settle()
+    expect(pushed.find(event => event.channel === 'chat:error')?.payload).toEqual(OPENAI_OVERLOADED)
+    expect(selectMessages(chat.id).at(-1)).toMatchObject({ text: 'Partial answer', status: 'failed' })
+    expect(answerCalls()).toHaveLength(1)
+  })
   it('marks a disconnected lesson reply as failed and retains its partial text', async () => {
     const chat = createChat(courseId, L1)
     stream = { frames: [textFrame('Partial answer')], incomplete: true }
@@ -993,4 +1011,14 @@ describe('web search', () => {
     expect(await getSourceIcons(chat.id, seq - 1)).toEqual({})
     await expect(getSourceIcons('ch_000000000000', seq)).rejects.toThrow('does not exist')
   })
+})
+
+it('delivers research evidence incrementally before an interrupted authoring stream', async () => {
+  const { streamChat } = await import('../src/main/openai')
+  const source = { url: 'https://docs.python.org/', title: 'Python' }
+  const evidence = vi.fn()
+  stream = { incomplete: true, frames: [frame({ type: 'response.output_item.done', output_index: 0,
+    item: { type: 'web_search_call', action: { type: 'search', sources: [source] } } }), textFrame('Reading')] }
+  await expect(streamChat({ key: 'sk-test', model: 'gpt-5.6-terra', input: [], tools: [], webSearch: true, onDelta: () => {}, onResearch: evidence })).rejects.toThrow('disconnected')
+  expect(evidence).toHaveBeenCalledWith({ citations: [], sources: [source] })
 })

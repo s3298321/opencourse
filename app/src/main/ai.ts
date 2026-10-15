@@ -105,7 +105,7 @@ export async function getAIModelSettings(scope: AIScope, provider?: AIProvider, 
   }
   const settings = all[scope]
   return { scope, provider: chosen, selectedProvider: settings.provider, profile: profileFor(scope, chosen).profile,
-    ...catalog, connection: connectionStatus(chosen), webSearch: scope === 'chat' && readPreferences().webSearch === true }
+    ...catalog, connection: connectionStatus(chosen), webSearch: scope === 'authoring' ? readPreferences().authoringWebSearch !== false : scope === 'chat' && readPreferences().webSearch === true }
 }
 export function setAIProvider(scope: AIScope, provider: AIProvider): void {
   checkScope(scope); checkProvider(provider)

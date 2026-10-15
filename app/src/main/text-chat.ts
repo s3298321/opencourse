@@ -16,6 +16,7 @@ export interface TextSession {
   key: string
   tools: readonly unknown[]
   webSearch?: boolean
+  imageSearch?: boolean
   context: ResponseInput[]
   valid: () => boolean
   sources?: unknown[]
@@ -52,7 +53,7 @@ export async function runChatAgent(options: ProjectAgentOptions & { session: Tex
   const instructions = options.input.filter(i => 'role' in i && (i.role === 'system' || i.role === 'developer'))
   const contract = hash({ version: 1, owner, provider: session.provider, model: session.model,
     connection: session.provider === 'apiKey' ? hash(session.key) : subscriptionIdentity()?.id ?? hash(session.key),
-    instructions, sourceVersion: session.sourceVersion, tools: session.tools, webSearch: session.webSearch ?? false })
+    instructions, sourceVersion: session.sourceVersion, tools: session.tools, webSearch: session.webSearch ?? false, imageSearch: session.imageSearch ?? false })
   const contextKey = hash(session.context)
   const valid = () => { try { return currentUserId() === owner && session.valid() && !!database.prepare(`SELECT id FROM ${tables[session.mode]} WHERE id=?`).get(session.chatId) } catch { return false } }
   const remove = () => database.prepare('DELETE FROM text_chat_state WHERE mode=? AND chat_id=?').run(session.mode, session.chatId)

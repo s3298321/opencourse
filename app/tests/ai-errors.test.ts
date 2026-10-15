@@ -5,11 +5,15 @@
  * "OpenAI stopped the answer (response.failed)".
  */
 import { describe, expect, it } from 'vitest'
-import { CHATGPT_USAGE_LIMIT, describeStreamFailure, resetHint } from '../src/core/ai-errors'
+import { CHATGPT_USAGE_LIMIT, OPENAI_OVERLOADED, describeStreamFailure, resetHint } from '../src/core/ai-errors'
 
 const NOW = Date.UTC(2026, 9, 7, 12, 0, 0)
 
 describe('describeStreamFailure', () => {
+  it.each(['server_is_overloaded', 'server_overloaded'])('clearly attributes %s to OpenAI and keeps the code for diagnostics', code => {
+    const event = { type: 'response.failed', response: { error: { code, message: 'Our servers are currently overloaded. Please try again later.' } } }
+    expect(describeStreamFailure(event, 'chatgpt')).toEqual({ type: 'response.failed', code, message: OPENAI_OVERLOADED })
+  })
   it('ignores events that are not failures', () => {
     expect(describeStreamFailure({ type: 'response.output_text.delta', delta: 'hi' })).toBeNull()
     expect(describeStreamFailure({ type: 'response.completed', response: {} })).toBeNull()

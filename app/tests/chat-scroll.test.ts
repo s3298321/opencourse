@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatPanelView from '../src/renderer/components/ChatPanel'
 import type { ChatPanel, PanelSummary } from '../src/renderer/sidechat/useChat'
+import { CHATGPT_USAGE_LIMIT, OPENAI_OVERLOADED } from '../src/core/ai-errors'
 
 vi.mock('../src/renderer/markdown-context', () => ({
   useMarkdown: () => ({ render: (text: string) => text, renderInline: (text: string) => text })
@@ -86,6 +87,29 @@ afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
   vi.unstubAllGlobals()
+})
+
+describe('chat error actions', () => {
+  it('shows a clear overload message and a guarded retry instead of usage and settings links', async () => {
+    const retry = vi.fn(async () => true)
+    panel = { ...panel, provider: 'chatgpt', busy: new Set(), streaming: null, error: 'Our servers are currently overloaded. (server_is_overloaded)', retry }
+    await render()
+    const alert = container.querySelector('[role="alert"]')!
+    expect(alert.textContent).toBe(`${OPENAI_OVERLOADED} Retry`)
+    const button = alert.querySelector('button')!
+    await act(async () => button.click())
+    expect(retry).toHaveBeenCalledOnce()
+    panel = { ...panel, sendBlocked: true }
+    await render()
+    expect(container.querySelector<HTMLButtonElement>('[role="alert"] button')!.disabled).toBe(true)
+  })
+
+  it('keeps usage management for a ChatGPT plan limit', async () => {
+    panel = { ...panel, provider: 'chatgpt', busy: new Set(), streaming: null, error: CHATGPT_USAGE_LIMIT }
+    await render()
+    expect(container.querySelector('[role="alert"]')!.textContent).toContain('Manage usage')
+    expect(container.querySelector('[role="alert"]')!.textContent).not.toContain('Retry')
+  })
 })
 
 describe('chat streaming scroll', () => {
@@ -204,4 +228,20 @@ describe('chat streaming scroll', () => {
     expect(top).toBe(400)
     expect(latest()).not.toBeNull()
   })
+})
+
+it('shows authoring web availability and keeps consulted sources distinct, safe and deduplicated', async () => {
+  variant = 'authoring'; panel.busy = new Set(); panel.streaming = null; panel.webSearch = true
+  panel.models = [{ id: 'gpt-5.6-terra', label: 'GPT' }]; panel.thread!.chat.model = 'gpt-5.6-terra'
+  panel.thread!.messages = [{ seq: 1, role: 'assistant', text: 'Updated', at: '2026-10-15T12:00:00Z',
+    citations: [{ url: 'https://docs.python.org/', title: 'Python', start: -1, end: -1 }],
+    researchSources: [{ url: 'https://docs.python.org/', title: 'Duplicate' }, { url: 'https://peps.python.org/', title: 'PEPs' }, { url: 'javascript:alert(1)', title: 'Unsafe' }] }]
+  panel.thread = { ...panel.thread! }
+  await render()
+  expect(container.querySelector('[aria-label="Can search the web"]')).not.toBeNull()
+  const consulted = container.querySelector('[aria-label="Consulted sources"]')!
+  expect(consulted.querySelectorAll('a')).toHaveLength(1)
+  expect(consulted.querySelector('a')?.href).toBe('https://peps.python.org/')
+  expect(container.querySelector('[aria-label="Sources"]')?.textContent).toContain('Python')
+  expect(container.innerHTML).not.toContain('javascript:')
 })

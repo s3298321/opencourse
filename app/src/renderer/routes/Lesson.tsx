@@ -491,7 +491,7 @@ export default function LessonView({
           />
         )}
         {chatInitialized && (
-          <div className="lesson-chat-host" hidden={!chatOpen}><SideChat
+          <div className="lesson-chat-host" data-open={chatOpen} inert={!chatOpen} aria-hidden={!chatOpen}><SideChat
             visible={chatOpen}
             courseId={courseId}
             lesson={{ moduleId, lessonId }}

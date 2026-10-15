@@ -21,8 +21,8 @@ describe('course versions', () => {
     expect(() => compareVersions('1.0', '1.0.0')).toThrow()
   })
   it('starts a new course at the default version, in the current format', () => {
-    expect(emptyManifest()).toMatchObject({ schema_version: '1.7', version: DEFAULT_COURSE_VERSION })
-    expect(currentFormat({ ...projectCourse(), version: '2.0.0' })).toMatchObject({ schema_version: '1.7', version: '2.0.0' })
+    expect(emptyManifest()).toMatchObject({ schema_version: '1.8', version: DEFAULT_COURSE_VERSION })
+    expect(currentFormat({ ...projectCourse(), version: '2.0.0' })).toMatchObject({ schema_version: '1.8', version: '2.0.0' })
   })
 })
 

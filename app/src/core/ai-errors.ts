@@ -28,6 +28,16 @@ export interface StreamFailure {
 
 /** Shared with the HTTP 429 branch, so a limit reads the same however it arrives. */
 export const CHATGPT_USAGE_LIMIT = 'ChatGPT plan usage limit reached. Manage usage in ChatGPT Settings, or try again later.'
+export const OPENAI_OVERLOADED = 'OpenAI is temporarily overloaded. Wait a moment, then retry.'
+
+/** Recognise both current errors and messages from older app versions. */
+export function isOpenAIOverload(message: string, code?: unknown): boolean {
+  return code === 'server_is_overloaded' || code === 'server_overloaded' || message === OPENAI_OVERLOADED ||
+    /server_is_overloaded|server_overloaded|(?:servers?|model|OpenAI).*\boverloaded\b/i.test(message)
+}
+
+/** A new turn checks current state; it never replays the interrupted tool batch. */
+export const RETRY_INTERRUPTED_REQUEST = 'Continue my most recent substantive request after the OpenAI overload (excluding retry messages). Use its original target and quoted passage, even if the current selection has changed. First check the current state and what already completed; preserve completed work and do only what remains. Do not repeat completed actions. If the request is already complete, explain the result.'
 
 const USAGE_CODES = new Set(['usage_limit_reached', 'usage_not_included'])
 
@@ -75,6 +85,7 @@ function sentenceFor(
   error: Record<string, unknown> | null,
   now: number
 ): string | null {
+  if (isOpenAIOverload(message ?? '', code)) return OPENAI_OVERLOADED
   if ((code && USAGE_CODES.has(code)) || (provider === 'chatgpt' && message && /usage limit/i.test(message))) {
     return provider === 'apiKey'
       ? 'This OpenAI account has reached its usage limit. Try again later, or switch connection in Settings.' + resetHint(error, now)

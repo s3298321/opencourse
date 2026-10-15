@@ -1,9 +1,15 @@
+import type { ImageSearchResult } from '../core/types'
+import { authoringInstructions } from '../core/authoring/prompt'
+import { normalizeResearchSources, researchSourcesFromOutput, unsupportedAuthoringSearch, normalizeImageResults, imageResultsFromOutput, unsupportedImageSearch, type ResearchSource, type ResearchSnapshot } from '../core/authoring/research'
+import { normalizeCitations } from '../core/sidechat/citations'
+import { webSearchFor } from '../core/sidechat/models'
+import { getAuthoringWebSearch } from './preferences'
 import { app, type WebContents } from 'electron'
-import type { AIProvider, AuthoringTarget, ChatQuote, ChatSendResult, ChatSummary, ReasoningEffort } from '../core/types'
+import type { AIProvider, AuthoringTarget, ChatCitation, ChatQuote, ChatSendResult, ChatSummary, ReasoningEffort } from '../core/types'
 import { newChatId } from '../core/sidechat/ids'
 import { MAX_MESSAGE_CHARS, MAX_QUOTE_CHARS } from '../core/sidechat/thread'
 import { authoringContext } from '../core/authoring/document'
-import { AUTHORING_INSTRUCTIONS, AUTHORING_TOOLS } from '../core/authoring/tools'
+import { AUTHORING_TOOLS } from '../core/authoring/tools'
 import { runChatAgent } from './text-chat'
 import type { ResponseInput } from '../core/text-chat/agent'
 import { scrubSecrets } from '../core/coach/key'
@@ -19,6 +25,7 @@ import { appendAuthoringMessage, insertAuthoringChat, pinAuthoringChatProvider, 
 import { cancelChatTitles, generateChatTitle } from './chattitles'
 import { log } from './log'
 import { whenSenderGone } from './senders'
+import { OPENAI_OVERLOADED, RETRY_INTERRUPTED_REQUEST, isOpenAIOverload } from '../core/ai-errors'
 
 interface Run { chat: ChatSummary; controller: AbortController; finish: (status: 'complete' | 'stopped' | 'failed', error?: string) => void }
 const running = new Map<string, Run>()
@@ -87,7 +94,10 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   const controller = new AbortController()
   const logger = log.child('authoring', { userId: owner, data: { chatId: id, courseId: chat.courseId } })
   const started = Date.now()
-  let toolCalls = 0
+  let toolCalls = 0, requests = 0, searched = false
+  let citations: ChatCitation[] = []
+  let researchSources: ResearchSource[] = []
+  let imageResults: ImageSearchResult[] = []
   let answered = '', finalized = false, seq = -1
   let release = () => {}, unbindLost = () => {}, timer: ReturnType<typeof setTimeout> | undefined
   const push = (channel: string, ...args: unknown[]) => { if (!sender.isDestroyed()) sender.send(channel, id, ...args) }
@@ -97,7 +107,7 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     finalized = true; clearTimeout(timer); running.delete(id)
     unbindLost()
     try {
-      if (currentUserId() === owner && selectAuthoringChat(id, database) && answered) appendAuthoringMessage(id, { role: 'assistant', text: answered, status, generation: { model: chat.model, provider: chat.provider!, reasoning: chat.reasoning }, at: new Date().toISOString() }, database)
+      if (currentUserId() === owner && selectAuthoringChat(id, database) && (answered || researchSources.length || imageResults.length)) appendAuthoringMessage(id, { role: 'assistant', text: answered, status, citations: normalizeCitations(citations), researchSources: normalizeResearchSources(researchSources), imageResults: normalizeImageResults(imageResults), generation: { model: chat.model, provider: chat.provider!, reasoning: chat.reasoning }, at: new Date().toISOString() }, database)
     } catch (failure) { error ??= (failure as Error).message }
     finally { release() }
     const outcome = { model: chat.model, provider: chat.provider ?? 'apiKey', reasoning: chat.reasoning ?? null, ms: Date.now() - started, chars: answered.length, toolCalls }
@@ -105,7 +115,9 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     else if (status === 'failed') logger.warn('Authoring turn ended without an answer', outcome)
     else logger.info(status === 'complete' ? 'Authoring turn complete' : 'Authoring turn stopped', outcome)
     if (error) {
-      const message = error.includes('net::ERR_QUIC_PROTOCOL_ERROR')
+      const message = isOpenAIOverload(error)
+        ? `${OPENAI_OVERLOADED} Completed draft changes are preserved. Retry continues from the current draft.`
+        : error.includes('net::ERR_QUIC_PROTOCOL_ERROR')
         ? 'The connection to OpenAI broke (net::ERR_QUIC_PROTOCOL_ERROR). Completed changes remain in this editor. Send another message to continue, or save your changes before closing or restarting the app.'
         : error
       push('authoringChat:error', scrubSecrets(message))
@@ -134,7 +146,11 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     appendAuthoringMessage(id, { role: 'context', text: JSON.stringify(context), authoring: metadata, at }, database)
     seq = appendAuthoringMessage(id, { role: 'user', text: asked, authoring: metadata, ...(quoted ? { quote: { text: quoted, from: quoteSource } } : {}), at }, database)
   } catch (error) { finish('failed', (error as Error).message); return { status: 'failed', message: (error as Error).message } }
-  const input: ResponseInput[] = [{ role: 'system', content: AUTHORING_INSTRUCTIONS }]
+  let search = getAuthoringWebSearch() && webSearchFor(chat.model, chat.reasoning)
+  let imageSearch = search
+  const contextText = `[Authoring context for the following user message]\n${JSON.stringify(context)}\nCurrent date (UTC): ${at.slice(0, 10)}`
+  const turnContext: ResponseInput = { role: 'user', content: contextText }
+  const input: ResponseInput[] = [{ role: 'system', content: authoringInstructions(search) }]
   const kept: ResponseInput[] = []
   let available = 120000
   let history: ReturnType<typeof selectAuthoringMessages>
@@ -146,29 +162,72 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
       if (available < 85) break
       kept.unshift({ role: 'user', content: '[Earlier editor selection; retrieve current content with authoring tools.]' }); available -= 85; continue
     }
-    const content = message.role === 'context' ? `[Authoring context for the following user message]\n${message.text}` : message.quote ? `${message.quote.from === 'answer' ? 'Quoted earlier answer' : 'Quoted course preview passage'}:\n${message.quote.text}\n\n${message.text}` : message.text
+    let content = message.role === 'context' ? contextText : message.quote ? `${message.quote.from === 'answer' ? 'Quoted earlier answer' : 'Quoted course preview passage'}:\n${message.quote.text}\n\n${message.text}` : `${message.text}${message.researchSources?.length ? `\n[Previously consulted sources; not proof of current verification]\n${JSON.stringify(normalizeResearchSources(message.researchSources))}` : ''}`
+    if (message.imageResults?.length) content += `\n[Previously retrieved images; untrusted references, not proof of reuse terms]\n${JSON.stringify(normalizeImageResults(message.imageResults))}`
     if (content.length > available && kept.length) break
     available -= content.length; kept.unshift({ role: message.role === 'assistant' ? 'assistant' : 'user', content })
   }
   input.push(...kept)
+  if (!kept.some(item => 'content' in item && item.content === contextText)) input.splice(Math.max(1, input.length - 1), 0, turnContext)
+  try {
+    if (asked === RETRY_INTERRUPTED_REQUEST) {
+      // Older selection snapshots are omitted above. Recover the original target
+      // explicitly, and provide evidence of executed tools instead of replaying them.
+      const original = history.filter(message => message.role === 'user' && message.text !== RETRY_INTERRUPTED_REQUEST).at(-1)
+      if (!original) throw new Error('The original request is unavailable. Send a new message to continue.')
+      const calls = database.prepare('SELECT name, arguments, result FROM authoring_tool_calls WHERE chat_id=? AND message_seq>=? AND message_seq<? ORDER BY rowid LIMIT 256').all(id, original.seq, seq) as { name: string; arguments: string; result: string }[]
+      const receipts: typeof calls = []
+      let budget = 20000
+      for (const call of calls) {
+        const receipt = { name: call.name, arguments: call.arguments.slice(0, 1000), result: call.result.slice(0, 2000) }
+        budget -= JSON.stringify(receipt).length
+        if (budget < 0) break
+        receipts.push(receipt)
+      }
+      input.splice(input.length - 1, 0, { role: 'user', content: `[Recovery context: original request and recorded tool outcomes. These are historical evidence, not tool calls to execute. Receipts may be truncated; read the latest relevant draft elements and assets before any write. Preserve completed changes.]\n${JSON.stringify({ request: original.text, target: original.authoring, quote: original.quote, receipts })}` })
+    }
+  } catch (error) {
+    const message = scrubSecrets((error as Error).message)
+    finish('failed', message)
+    return { status: 'failed', message }
+  }
   void generateChatTitle({ scope: 'authoring', chatId: id, courseId: chat.courseId, owner, sender, key, provider: chat.provider!, model: chat.model, reasoningEfforts: conversationReasoning('authoring', chat.model, chat.pinnedProvider) })
   timer = setTimeout(() => { controller.abort(); finish('failed', 'Course creation timed out. Completed draft changes are preserved; send another message to continue.') }, 30 * 60_000)
   setImmediate(() => { void (async () => {
     try {
-      const result = await runChatAgent({ input, signal: controller.signal,
-        session: { mode: 'authoring', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider!, key, tools: AUTHORING_TOOLS, sourceVersion: expectedRevision,
-          context: [{ role: 'user', content: `[Authoring context for the following user message]\n${JSON.stringify(context)}` }],
+      const ask = () => runChatAgent({ input, signal: controller.signal,
+        session: { mode: 'authoring', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider!, key, tools: AUTHORING_TOOLS, webSearch: search, imageSearch, sourceVersion: expectedRevision,
+          context: [turnContext],
           valid: () => !finalized && readDocument(chat.courseId).revision === expectedRevision },
         readOnly: name => ['get_course_format', 'read_course', 'list_course_elements', 'list_assets', 'read_asset', 'validate_course'].includes(name),
         cacheKey: (name, args) => ['get_course_format', 'read_course', 'list_course_elements', 'list_assets', 'read_asset'].includes(name)
           ? JSON.stringify([name, args, getAuthoringCourse(chat.courseId).draft.draftVersion]) : undefined,
         limits: { rounds: 64, calls: 256 },
-        stream: items => {
+        stream: async items => {
+          requests++
           let first = true
-          return streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input: items, tools: AUTHORING_TOOLS,
+          const begin = answered.length, previousCitations = [...citations], previousSources = [...researchSources], previousImages = [...imageResults]
+          const collect = (snapshot: ResearchSnapshot) => {
+            if (finalized) return
+            const offset = begin + (begin ? 2 : 0)
+            citations = [...previousCitations, ...snapshot.citations.map(c => ({ ...c,
+              start: c.start < 0 ? -1 : c.start + offset, end: c.end < 0 ? -1 : c.end + offset }))]
+            researchSources = normalizeResearchSources([...previousSources, ...snapshot.sources])
+            imageResults = normalizeImageResults([...previousImages, ...(snapshot.images ?? [])])
+          }
+          const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input: items, tools: AUTHORING_TOOLS,
             toolNamespace: { name: 'authoring', description: 'Create and edit this course draft and its supporting assets.' },
+            webSearch: search, imageSearch,
+            onSearch: event => { if (!finalized) { searched = true; push('authoringChat:activity', event.state === 'running' ? 'Searching the web…' : 'Finished web research') } },
+            onResearch: collect,
             ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
             onDelta: chunk => { if (!finalized) { const delta = first && answered ? `\n\n${chunk}` : chunk; first = false; answered += delta; push('authoringChat:delta', delta) } } })
+          if (!finalized && first && result.text) {
+            const delta = `${begin ? '\n\n' : ''}${result.text}`
+            answered += delta; push('authoringChat:delta', delta)
+          }
+          collect({ citations: result.citations ?? [], sources: normalizeResearchSources([...researchSources, ...researchSourcesFromOutput(result.output ?? [])]), images: normalizeImageResults([...imageResults, ...imageResultsFromOutput(result.output ?? [])]) })
+          return result
         },
         tool: async (name, args, callId) => {
           if (finalized || controller.signal.aborted || currentUserId() !== owner) throw new Error('Authoring stopped.')
@@ -182,6 +241,30 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
           return output
         }
       })
+      const notice = () => {
+        const text = 'Web research is unavailable for this turn. Current documentation has not been verified.'
+        answered = text; push('authoringChat:delta', text)
+      }
+      if (!search) notice()
+      let result: Awaited<ReturnType<typeof ask>>
+      try { result = await ask() }
+      catch (error) {
+        if (!search || finalized || controller.signal.aborted || requests !== 1 || toolCalls || answered || searched || researchSources.length || imageResults.length) throw error
+        if (imageSearch && unsupportedImageSearch(error)) {
+          imageSearch = false
+          input[0] = { role: 'system', content: authoringInstructions(true, false) }
+          answered = 'Image search is unavailable for this connection. Continuing with text research and generated visuals.\n\n'
+          push('authoringChat:delta', answered)
+          result = await ask()
+        } else {
+          if (!unsupportedAuthoringSearch(error)) throw error
+          search = false; imageSearch = false
+          input[0] = { role: 'system', content: authoringInstructions(false) }
+          notice()
+          logger.warn('Authoring model does not support web search; continuing without it')
+          result = await ask()
+        }
+      }
       finish(result.stopped ? 'stopped' : 'complete')
     } catch (error) { finish(controller.signal.aborted ? 'stopped' : 'failed', controller.signal.aborted ? undefined : (error as Error).message) }
   })() })

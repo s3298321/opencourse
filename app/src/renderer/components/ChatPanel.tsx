@@ -329,7 +329,7 @@ export default function ChatPanelView({
     })
   }, [thread])
   const [settled, setSettled] = useState<{ chatId: string; upTo: number } | null>(null)
-  if (thread && settled?.chatId !== thread.chat.id) {
+  if (thread && (settled?.chatId !== thread.chat.id || (!screenActive && (thread.messages.at(-1)?.seq ?? -1) > settled.upTo))) {
     setSettled({ chatId: thread.chat.id, upTo: thread.messages.at(-1)?.seq ?? -1 })
   }
 

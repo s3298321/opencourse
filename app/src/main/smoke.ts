@@ -528,7 +528,7 @@ const SCRIPT = `(async () => {
   // to the moment money would be spent has to work, and the moment itself has
   // to say so rather than fail.
   await step('highlighting a passage offers to ask about it, and opens the chat', async () => {
-    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat was already open')
+    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the side chat was already open')
     const prose = await waitFor('.content-inner .prose p')
     const range = document.createRange()
     range.selectNodeContents(prose)
@@ -758,7 +758,7 @@ const SCRIPT = `(async () => {
       .find((a) => /await, create_task/i.test(a.textContent))
     assert(lessonWithExercise, 'no lesson with an exercise in the sidebar')
     lessonWithExercise.click()
-    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chat did not survive the lesson change')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the chat did not survive the lesson change')
     // Navigating scrolls the column to the top once the route has changed, which
     // is a moment after the click: scroll before that and it undoes the offset.
     await until(() => /await, create_task/i.test(document.querySelector('.lesson-head h1')?.textContent ?? ''), 'the exercise lesson')
@@ -780,10 +780,10 @@ const SCRIPT = `(async () => {
     await waitFor('.workbench .cm-content')
     await sleep(400)
 
-    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'Ask disappeared in the editor')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'Ask disappeared in the editor')
     assert(document.querySelector('.titlebar .chat-chip'), 'the editor lost its Ask control')
     document.querySelector('.titlebar .chat-chip').click()
-    await sleep(100)
+    await until(() => document.querySelector('.lesson-chat-host').getBoundingClientRect().width < 1, 'the chat closing transition')
     assert(document.querySelector('.content').hidden, 'the lesson column is still on screen')
     const chapters = document.querySelector('.sidebar').getBoundingClientRect()
     assert(chapters.width > 100, 'the chapter list went away with the lesson')
@@ -826,7 +826,7 @@ const SCRIPT = `(async () => {
     await sleep(400)
     assert(!document.querySelector('.workbench'), 'the editor is still open')
     assert(document.querySelector('.lesson-head h1'), 'the lesson did not come back')
-    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chat did not return with the lesson')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the chat did not return with the lesson')
     const after = document.querySelector('.content').scrollTop
     assert(after === wasAt, 'the lesson came back at ' + after + ', not ' + wasAt)
     return Math.round(left.width) + 'px brief → ' + Math.round(widened) + 'px, ' +
@@ -838,18 +838,18 @@ const SCRIPT = `(async () => {
     // a chip that stops toggling leaves the feature unreachable but for a
     // highlight.
     const chip = await waitFor('.titlebar .chat-chip')
-    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'expected the chat open at this point')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'expected the chat open at this point')
     assert(chip.getAttribute('aria-pressed') === 'true', 'the chip does not show it is on')
     chip.click()
     await sleep(300)
-    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chip did not close the panel')
+    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the chip did not close the panel')
     assert(
       document.querySelector('.titlebar .chat-chip').getAttribute('aria-pressed') === 'false',
       'the chip still shows it is on'
     )
     document.querySelector('.titlebar .chat-chip').click()
     await waitFor('.sidechat-tab')
-    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the chip did not open the panel again')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the chip did not open the panel again')
     return 'closed and opened from the titlebar'
   })
 
@@ -936,7 +936,7 @@ const SCRIPT = `(async () => {
     assert(close, 'no close button on the panel')
     close.click()
     await sleep(300)
-    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the panel is still open')
+    assert(!document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the panel is still open')
     assert(document.querySelector('.lesson-head h1'), 'the lesson went away with the panel')
     return 'closed'
   })
@@ -1151,7 +1151,7 @@ const SCRIPT = `(async () => {
     assert(head.textContent === before, 'came back to ' + head.textContent + ', not ' + before)
     // Both of these are the reason settings remembers where it came from: a
     // modal kept them for free and a route has to be made to.
-    assert(document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat did not survive the trip')
+    assert(document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the side chat did not survive the trip')
     const after = document.querySelector('.content.scroll').scrollTop
     assert(after > 100, 'the lesson was scrolled back to ' + after)
     document.querySelector('.sidechat-close').click()
@@ -2884,7 +2884,7 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
       if (chip.getAttribute('aria-pressed') === 'true') { chip.click(); await sleep(30); }
       chip.click();
       for (let n = 0; n < 100 && !document.querySelector('.sidechat-model'); n++) await sleep(8);
-      const chat = document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)');
+      const chat = document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)');
       if (!chat || !chat.getBoundingClientRect().width) throw new Error('Ask did not open');
       const trigger = document.querySelector('.sidechat-model'); trigger.click();
       for (let n = 0; n < 50 && !document.querySelector('.menu-panel'); n++) await sleep(8);
@@ -2936,7 +2936,7 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
     await check('reduced motion shows fresh messages without animation', `(async () => {
       const find = () => [...document.querySelectorAll('.chat-bubble')].find(b => b.textContent === 'Reduced motion fixture question');
       for (let n = 0; n < 100 && !find(); n++) await new Promise(r => setTimeout(r, 8));
-      if (!find() || find().getAnimations().length || document.querySelector('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)').getAnimations().length) throw new Error('Reduced-motion chat still animates');
+      if (!find() || find().getAnimations().length || document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)').getAnimations().length) throw new Error('Reduced-motion chat still animates');
       return 'Fresh messages and Ask remain static with reduced motion';
     })()`)
     await cdp.sendCommand('Emulation.setEmulatedMedia', { features: [] })

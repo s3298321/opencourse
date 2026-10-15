@@ -212,6 +212,20 @@ describe('chat streaming scroll', () => {
     expect(latest()).toBeNull()
   })
 
+  it('settles message entrances while hidden so reopening shows history immediately', async () => {
+    panel = { ...panel, thread: { ...panel.thread!, messages: [...panel.thread!.messages, {
+      seq: 1, role: 'user', text: 'A new question', at: '2026-10-15T12:00:00Z'
+    }] } }
+    await render()
+    expect(container.querySelector('.chat-turn.user.enter')).not.toBeNull()
+    visible = false
+    await render()
+    visible = true
+    await render()
+    expect(container.querySelector('.chat-turn.user.enter')).toBeNull()
+    expect([...container.querySelectorAll('.chat-bubble')].at(-1)?.textContent).toBe('A new question')
+  })
+
   it('keeps a paused reading position through hidden updates and revealing the panel', async () => {
     await scroll(400)
     visible = false

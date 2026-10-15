@@ -821,7 +821,7 @@ const SCRIPT = `(async () => {
       .find((b) => /back/i.test(b.textContent))
     assert(back, 'no way back to the lesson')
     document.querySelector('.titlebar .chat-chip').click()
-    await sleep(100)
+    await sleep(450)
     back.click()
     await sleep(400)
     assert(!document.querySelector('.workbench'), 'the editor is still open')
@@ -849,6 +849,7 @@ const SCRIPT = `(async () => {
     )
     document.querySelector('.titlebar .chat-chip').click()
     await waitFor('.sidechat-tab')
+    await sleep(450)
     assert(document.querySelector('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the chip did not open the panel again')
     return 'closed and opened from the titlebar'
   })

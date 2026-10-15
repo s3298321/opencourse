@@ -184,7 +184,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await run('a lesson opens at the app\'s own size, with the control at the column\'s foot', `
     ${OPEN_EXAMPLE_LESSON}
     const close = find('.sidechat-close');
-    if (close) { close.click(); await until(() => !find('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'the side chat to close'); }
+    if (close) { close.click(); await until(() => !find('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the side chat to close'); }
     await sleep(200);
     await wait('.content .reading-size');
     if (label() !== '100%') throw new Error('the control reads ' + label());
@@ -281,7 +281,7 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   await pressing('the chat chip pressed again', '.titlebar .chat-chip')
 
   await run('the next lesson keeps the size', `
-    await until(() => label() === '125%' && !find('.sidechat:not(.lesson-chat-host[hidden] *):not(.screen-host[hidden] *)'), 'back to 125% with the chat closed');
+    await until(() => label() === '125%' && !find('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'back to 125% with the chat closed');
     const title = find('.lesson-head h1').textContent;
     const next = find('.lesson-nav button[aria-label^="Next:"]');
     next.click();

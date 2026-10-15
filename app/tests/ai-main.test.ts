@@ -9,6 +9,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatStreamOptions } from '../src/main/openai'
 import { TITLE_INSTRUCTIONS } from '../src/core/sidechat/title'
 import { projectCourse } from './helpers/project'
+import { OPENAI_OVERLOADED, RETRY_INTERRUPTED_REQUEST } from '../src/core/ai-errors'
 const root = mkdtempSync(join(tmpdir(), 'opencourse-ai-main-'))
 let dataDir = root
 const mock = vi.hoisted(() => ({ key: 'sk-test-api', account: 'one', ready: true, fetch: vi.fn(), stream: vi.fn(), title: vi.fn(), token: vi.fn() }))
@@ -59,6 +60,35 @@ async function settled(channel: string) {
   await vi.waitFor(() => expect(sender.send.mock.calls.some(([name]) => name === channel)).toBe(true))
 }
 describe('independent main-process AI routing', () => {
+  it('preserves completed edits and includes original request and tool receipts on repeated overload recovery', async () => {
+    const { authoringRunState } = await import('../src/main/authoring-state')
+    const courseId = authoring.createCourse().document.courseId
+    const c = authoringChats.createAuthoringChat(courseId)
+    mock.stream.mockResolvedValueOnce({ text: '', aborted: false, output: [{ type: 'function_call', call_id: 'edit-title', name: 'update_element', arguments: JSON.stringify({ fields: { title: 'Completed edit' } }) }] })
+      .mockRejectedValueOnce(new Error(OPENAI_OVERLOADED))
+      .mockRejectedValueOnce(new Error(OPENAI_OVERLOADED))
+    const quote = { text: 'Original passage', from: 'preview' as const }
+    await authoringChats.sendAuthoringMessage(sender as never, c.id, 'Update the title', { kind: 'overview' }, 0, 0, quote)
+    await settled('authoringChat:error')
+    expect(sender.send).toHaveBeenCalledWith('authoringChat:error', c.id, expect.stringContaining('Completed draft changes are preserved'))
+    const draft = authoring.getAuthoringCourse(courseId).draft
+    expect(draft).toMatchObject({ draftVersion: 1, manifest: { title: 'Completed edit' } })
+    expect(authoringRunState(courseId)).toEqual({ chatId: null })
+    expect(mock.stream).toHaveBeenCalledTimes(2)
+    for (const channel of ['authoringChat:error', 'authoringChat:done']) {
+      sender.send.mockClear()
+      await authoringChats.sendAuthoringMessage(sender as never, c.id, RETRY_INTERRUPTED_REQUEST, { kind: 'overview' }, 0, 1)
+      await settled(channel)
+      const input = mock.stream.mock.calls.at(-1)![0].input as { role: string; content: string }[]
+      const recovery = input.find(item => item.content?.startsWith('[Recovery context:'))!
+      expect(recovery).toBeDefined()
+      const evidence = JSON.parse(recovery.content.slice(recovery.content.indexOf('\n') + 1))
+      expect(evidence).toMatchObject({ request: 'Update the title', target: { target: { kind: 'overview' } }, quote,
+        receipts: [{ name: 'update_element', arguments: expect.stringContaining('Completed edit'), result: expect.stringContaining('true') }] })
+      expect(authoring.getAuthoringCourse(courseId).draft).toEqual(draft)
+    }
+    expect(mock.stream).toHaveBeenCalledTimes(4)
+  })
   it('keeps completed authoring edits after a QUIC failure and allows a follow-up without replaying the tool', async () => {
     const { log } = await import('../src/main/log')
     const { authoringRunState } = await import('../src/main/authoring-state')

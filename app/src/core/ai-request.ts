@@ -20,23 +20,25 @@ export function subscriptionModels(body: unknown): ChatModel[] {
   })
 }
 export function responseRequest(provider: AIProvider, options: {
-  model: string; modelContext?: ModelContextMetadata; input: ResponseInput[]; tools?: readonly unknown[]; toolNamespace?: { name: string; description: string }; webSearch?: boolean; reasoning?: string
+  model: string; modelContext?: ModelContextMetadata; input: ResponseInput[]; tools?: readonly unknown[]; toolNamespace?: { name: string; description: string }; webSearch?: boolean; imageSearch?: boolean; reasoning?: string
 }): Record<string, unknown> {
   const subscription = provider === 'chatgpt'
   const input = subscription ? options.input.map(item => 'role' in item && item.role === 'system' ? { ...item, role: 'developer' } : item) : options.input
   const tools = subscription && options.tools?.length
     ? [{ type: 'namespace', ...(options.toolNamespace ?? { name: 'project', description: 'Read-only tools for inspecting the learner’s project files.' }), tools: options.tools }]
     : [...(options.tools ?? [])]
-  if (options.webSearch) tools.push({ type: 'web_search' })
+  if (options.webSearch) tools.push({ type: 'web_search', ...(options.imageSearch ? { search_content_types: ['image', 'text'], image_settings: { max_results: 5, caption: true } } : {}) })
+  const searchIncludes = options.webSearch ? ['web_search_call.action.sources', ...(options.imageSearch ? ['web_search_call.results'] : [])] : []
   const compactThreshold = modelCompactThreshold(options.model, options.modelContext)
   return { model: options.model, input, stream: true,
     ...(subscription || options.tools ? { store: false } : {}),
     ...(options.tools ? {
-      include: ['reasoning.encrypted_content'],
+      include: ['reasoning.encrypted_content', ...searchIncludes],
       // Unknown models retain automatic compaction with an API-selected threshold.
       context_management: [{ type: 'compaction', ...(compactThreshold === undefined ? {} : { compact_threshold: compactThreshold }) }],
       ...(!subscription ? { max_output_tokens: 12000 } : {})
     } : {}),
+    ...(!options.tools && options.webSearch ? { include: searchIncludes } : {}),
     ...(tools.length ? { tools } : {}),
     ...(options.reasoning ? { reasoning: { effort: options.reasoning } } : {}) }
 }

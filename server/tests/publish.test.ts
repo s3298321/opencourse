@@ -11,7 +11,7 @@ afterEach(async () => { await server.close() })
 const get = (url: string, token?: string) => server.app.inject({ method: 'GET', url, headers: token ? auth(token) : {} })
 
 describe('publishing versions', () => {
-  it('publishes format 1.7 Python cells and notebook templates through shared validation', async () => {
+  it('publishes format 1.8 Python cells and notebook templates through shared validation', async () => {
     const author = await signUp(server, 'notebook-author')
     const { courseId, local } = localCourse()
     local.notebook = { cells: [{ content: 'print("starter")' }] }
@@ -22,6 +22,18 @@ describe('publishing versions', () => {
     const rejected = await publish(server, author.token, courseId, unsupported, '0.2.0')
     expect(rejected.statusCode).toBe(400)
     expect(rejected.json().error.errors.join(' ')).toContain('requirements')
+  })
+  it('publishes portable image credits and rejects unsafe attribution links', async () => {
+    const author = await signUp(server, 'image-author')
+    const { courseId, local } = localCourse()
+    const image = { type: 'image' as const, slug: 'photo', nodeId: randomUUID(), src: 'assets/photo.png', attribution: { source_url: 'https://example.org/original', author: 'Photographer', license: 'CC BY 4.0' } }
+    local.modules[0].lessons![0].blocks.push(image)
+    const extra = [{ name: image.src, bytes: Buffer.from([137, 80, 78, 71]) }]
+    expect((await publish(server, author.token, courseId, local, '0.1.0', { extra })).statusCode).toBe(201)
+    image.attribution.source_url = 'javascript:alert(1)'
+    const rejected = await publish(server, author.token, courseId, local, '0.2.0', { extra })
+    expect(rejected.statusCode).toBe(400)
+    expect(rejected.json().error.errors.join(' ')).toContain('attribution')
   })
   it('creates a course, then only accepts higher versions - deleted ones included', async () => {
     const author = await signUp(server, 'author')
@@ -91,7 +103,7 @@ describe('publishing versions', () => {
     const valid = publishedManifest(local, courseId)
 
     const old = { ...valid, schema_version: '1.4' }
-    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.7')
+    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.8')
     const unsupported = structuredClone(valid)
     unsupported.runtime = { language: 'c' }
     const rejected = await send(archive(server.dir, unsupported))

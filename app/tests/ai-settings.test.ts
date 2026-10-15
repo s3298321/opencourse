@@ -51,3 +51,21 @@ describe('allowed model bulk selection', () => {
     expect(save).toHaveBeenLastCalledWith(scope, 'apiKey', { enabledModels: ['gpt-test-8'], defaultModel: 'gpt-test-8', defaultReasoning: null })
   })
 })
+
+it('toggles authoring research independently and restores the checkbox on failure', async () => {
+  const { WebSearchSection } = await import('../src/renderer/routes/Settings')
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const setAuthoring = vi.fn(async (on: boolean) => on), setChat = vi.fn(async (on: boolean) => on)
+  vi.stubGlobal('opencourse', { getAuthoringWebSearch: async () => true, setAuthoringWebSearch: setAuthoring, getChatWebSearch: async () => false, setChatWebSearch: setChat })
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+  await act(async () => root!.render(createElement(WebSearchSection, { authoring: true })))
+  const checkbox = container.querySelector<HTMLInputElement>('.settings-authoring-web-search')!
+  expect(checkbox.checked).toBe(true)
+  await act(async () => checkbox.click())
+  expect(setAuthoring).toHaveBeenCalledWith(false); expect(setChat).not.toHaveBeenCalled()
+  expect(checkbox.checked).toBe(false)
+  setAuthoring.mockRejectedValueOnce(new Error('Could not save'))
+  await act(async () => checkbox.click())
+  expect(checkbox.checked).toBe(false)
+  expect(container.textContent).toContain('Could not save')
+})

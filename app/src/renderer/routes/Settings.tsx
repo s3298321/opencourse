@@ -49,7 +49,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
       case 'profile': return user ? <><NameSection user={user} onSession={onSession} /><DangerSection user={user} onSessionChanged={onSessionChanged} /></> : <p className="meta">Choose a user to edit their profile.</p>
       case 'appearance': return <ThemeSection />
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
-      case 'ai': return <><WebSearchSection /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
+      case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
       case 'coach': return <CoachDefaultsSection keyVersion={keyVersion} />
       case 'servers': return <ServerSettings />
       case 'updates': return <UpdatesSection focus={section === 'updates'} />
@@ -367,19 +367,19 @@ function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
   )
 }
 
-function WebSearchSection(): JSX.Element {
+export function WebSearchSection({ authoring = false }: { authoring?: boolean }): JSX.Element {
   const [on, setOn] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void window.opencourse.getChatWebSearch().then(setOn)
+    void (authoring ? window.opencourse.getAuthoringWebSearch() : window.opencourse.getChatWebSearch()).then(setOn).catch(err => setError(err.message))
   }, [])
 
   const toggle = async (next: boolean): Promise<void> => {
     setError(null)
     setOn(next)
     try {
-      setOn(await window.opencourse.setChatWebSearch(next))
+      setOn(await (authoring ? window.opencourse.setAuthoringWebSearch(next) : window.opencourse.setChatWebSearch(next)))
     } catch (err) {
       setOn(!next)
       setError((err as Error).message)
@@ -388,21 +388,20 @@ function WebSearchSection(): JSX.Element {
 
   return (
     <section className="settings-section">
-      <h2>Web search</h2>
+      <h2>{authoring ? 'Course authoring web search' : 'Web search'}</h2>
       <label className="settings-check">
         <input
           type="checkbox"
-          className="settings-web-search"
+          className={authoring ? 'settings-authoring-web-search' : 'settings-web-search'}
           checked={on === true}
           disabled={on === null}
           onChange={(e) => void toggle(e.target.checked)}
         />
-        <span>Let the side chat search the web when a question needs it</span>
+        <span>{authoring ? 'Let the course assistant research the web while creating and editing courses' : 'Let the side chat search the web when a question needs it'}</span>
       </label>
       <p className="meta">
-        The model decides when a question needs it - a release date, a current version, documentation the
-        course or document does not quote. Searches use chat’s selected connection when supported. API-key searches
-        add API charges; subscription searches use eligible plan usage. Answers that use the web list their sources.
+        {authoring ? 'Enabled by default. The assistant checks official documentation when teaching version-sensitive technology. Sources and verification notes stay in the authoring chat. ' : 'The model decides when a question needs it—a release date, a current version, or documentation the course or document does not quote. '}
+        Searches use this feature’s selected connection when supported. API-key searches add API charges; subscription searches use eligible plan usage.
       </p>
       {error && <p className="import-note error">{error}</p>}
     </section>

@@ -1,3 +1,5 @@
+import { downloadImage, validateImage } from './image-import'
+import { imageCreditsByPath, parseImageAttribution } from '../core/image-attribution'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join } from 'node:path'
@@ -19,8 +21,8 @@ function page(text: string, offset: unknown) {
   if (typeof start !== 'number' || !Number.isInteger(start) || start < 0) throw new Error('Invalid offset.')
   return { text: text.slice(start, start + PAGE), offset: start, nextOffset: start + PAGE < text.length ? start + PAGE : null, total: text.length }
 }
-function requiredString(value: unknown, name: string): string {
-  if (typeof value !== 'string' || !value || value.length > 1000) throw new Error(`Invalid ${name}.`)
+function requiredString(value: unknown, name: string, limit = 1000): string {
+  if (typeof value !== 'string' || !value || value.length > limit) throw new Error(`Invalid ${name}.`)
   return value
 }
 function index(value: unknown, length: number): number {
@@ -91,6 +93,7 @@ export async function runAuthoringTool(courseId: string, name: string, raw: unkn
         else {
           const element = findRef(authored, requiredString(args.ref, 'ref'))
           if (!element) throw new Error('That ref no longer exists.')
+          if (element.type === 'image' && fields.src !== undefined && fields.src !== element.src && !('attribution' in fields)) delete element.attribution
           Object.assign(element, fields)
         }
         next = parseAuthoringManifest(authored, previous); break
@@ -146,7 +149,8 @@ export async function runAuthoringTool(courseId: string, name: string, raw: unkn
       case 'list_assets': {
         const start = args.offset ?? 0
         if (typeof start !== 'number' || !Number.isInteger(start) || start < 0) throw new Error('Invalid offset.')
-        result = { attachments: document.attachments.slice(start, start + 30), nextOffset: start + 30 < document.attachments.length ? start + 30 : null }; break
+        const credits = imageCreditsByPath(previous)
+        result = { attachments: document.attachments.slice(start, start + 30).map(a => ({ ...a, ...(credits.has(a.entry) ? { attribution: credits.get(a.entry) } : {}) })), nextOffset: start + 30 < document.attachments.length ? start + 30 : null }; break
       }
       case 'read_asset': {
         const path = requiredString(args.path, 'path')
@@ -154,6 +158,25 @@ export async function runAuthoringTool(courseId: string, name: string, raw: unkn
         const file = resolveInside(packageDirectory(courseId), path)
         if (!file || !statSync(file).isFile() || statSync(file).size > 1024 * 1024 || !/\.(html?|css|js|mjs|json|svg|md|txt|map)$/i.test(path)) throw new Error('Only text assets up to 1 MiB can be read.')
         result = page(new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(file)), args.offset); break
+      }
+      case 'import_image': {
+        const imageUrl = requiredString(args.image_url, 'image_url', 2048)
+        const attribution = parseImageAttribution(args.attribution)
+        if (!attribution.license) throw new Error('Verify reusable terms on the original source and supply the license or public-domain designation before importing.')
+        const bytes = await downloadImage(imageUrl, signal)
+        signal.throwIfAborted()
+        assertAuthoringWritable(courseId, token)
+        const extension = await validateImage(bytes, signal)
+        const staging = mkdtempSync(join(tmpdir(), 'opencourse-image-'))
+        try {
+          const file = join(staging, `image.${extension}`)
+          writeFileSync(file, bytes, { flag: 'wx' })
+          signal.throwIfAborted()
+          const upload = await uploadCourseAttachmentPath(courseId, file, 'image', token, undefined, { attribution, image_url: imageUrl })
+          result = upload.attachment
+          authoringEvents.emit('draft', courseId, getAuthoringCourse(courseId))
+        } finally { rmSync(staging, { recursive: true, force: true }) }
+        break
       }
       case 'write_asset_bundle': {
         const kind = args.kind
@@ -187,6 +210,15 @@ export async function runAuthoringTool(courseId: string, name: string, raw: unkn
       default: throw new Error(`Unknown authoring tool: ${name}`)
     }
     if (next) {
+      const previousCredits = imageCreditsByPath(previous)
+      for (const module of next.modules) if (module.type !== 'project') for (const lesson of module.lessons) for (const block of lesson.blocks) {
+        if (block.type === 'image') {
+          const credit = previousCredits.get(block.src) ?? document.attachments.find(a => a.entry === block.src)?.attribution
+          const old = block.nodeId ? locateElement(previous, block.nodeId)?.element : undefined
+          if (!block.attribution && credit && (!old || !('src' in old) || old.src !== block.src)) block.attribution = structuredClone(credit)
+          if (block.attribution) { parseImageAttribution(block.attribution); Object.assign(next, currentFormat(next)) }
+        }
+      }
       if (signal.aborted) throw new Error('Authoring stopped.')
       const saved = saveDraft(courseId, next, document.revision, draft.draftVersion, token)
       if ('status' in saved) throw new Error('The draft changed. Read it again before applying this edit.')

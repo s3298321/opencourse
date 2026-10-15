@@ -200,7 +200,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
           {pdf && <div className="pdf-pages" style={{ height: offsets.at(-1), width: Math.max(paneWidth, Object.values(sizes).reduce((width, size) => Math.max(width, size.width), base.width) * scale + 48) }}>{visiblePages.map(number => <PdfPage key={number} pdf={pdf} number={number} scale={scale} top={offsets[number - 1]!} measured={measured} />)}</div>}
         </div>
       </main>
-      <div className="lesson-chat-host document-chat-host" hidden={!chatOpen}><ChatPanel visible={chatOpen} variant="document" panel={panel} quote={quote} onQuoteUsed={clearQuote} onClose={() => setChatOpen(false)} storageKey={storageKey} sourceIcons={window.opencourse.getDocumentSourceIcons}
+      <div className="lesson-chat-host document-chat-host" data-open={chatOpen} inert={!chatOpen} aria-hidden={!chatOpen}><ChatPanel visible={chatOpen} variant="document" panel={panel} quote={quote} onQuoteUsed={clearQuote} onClose={() => setChatOpen(false)} storageKey={storageKey} sourceIcons={window.opencourse.getDocumentSourceIcons}
         onSource={source => { if (source.kind === 'document' && source.documentId === documentId) jump(source.page) }} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} /></div>
       {active && offer && <button className="ask-about" style={{ left: Math.min(Math.max(offer.x, 64), window.innerWidth - 64), top: offer.y }} onMouseDown={event => event.preventDefault()} onClick={attach}>Ask about this</button>}
     </div>

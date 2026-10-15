@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:opencourse:course:1.7",
-  "title": "OpenCourse course manifest v1.7",
+  "$id": "urn:opencourse:course:1.8",
+  "title": "OpenCourse course manifest v1.8",
   "type": "object",
   "required": [
     "schema_version",
@@ -20,7 +20,8 @@
         "1.4",
         "1.5",
         "1.6",
-        "1.7"
+        "1.7",
+        "1.8"
       ]
     },
     "slug": {
@@ -311,6 +312,9 @@
         },
         "uid": {
           "$ref": "#/$defs/uid"
+        },
+        "attribution": {
+          "$ref": "#/$defs/imageAttribution"
         }
       }
     },
@@ -822,6 +826,48 @@
           "$ref": "#/$defs/uid"
         }
       }
+    },
+    "imageAttribution": {
+      "type": "object",
+      "required": [
+        "source_url"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^https?://[^\\s]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "author_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^https?://[^\\s]+$"
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "license_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^https?://[^\\s]+$"
+        }
+      }
     }
   },
   "if": {
@@ -830,7 +876,8 @@
         "enum": [
           "1.5",
           "1.6",
-          "1.7"
+          "1.7",
+          "1.8"
         ]
       }
     },

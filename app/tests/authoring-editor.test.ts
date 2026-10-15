@@ -94,7 +94,7 @@ describe('course editor AI mode', () => {
     expect(f.container.querySelector('[aria-label="Move card to lesson"]')).toBeNull()
     expect(f.container.querySelector('.outline-row.selected')?.getAttribute('aria-label')).toBe('Flashcard: card')
     await f.flush()
-    expect(f.state().draft.manifest).toMatchObject({ schema_version: '1.7', version: '0.1.0' })
+    expect(f.state().draft.manifest).toMatchObject({ schema_version: '1.8', version: '0.1.0' })
     expect(f.state().draft.manifest.modules[0].lessons![0].blocks).toHaveLength(1)
     expect(f.state().draft.manifest.modules[0].lessons![0].flashcards).toHaveLength(1)
     await act(async () => f.button('Duplicate').click())

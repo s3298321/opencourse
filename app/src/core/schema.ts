@@ -6,6 +6,7 @@ import type { ErrorObject } from 'ajv'
 import schema from './course-schema.json'
 import type { CourseManifest } from './types'
 import { projectContextText, validateProjectFiles } from './projects/context'
+import { attributionIssues } from './image-attribution'
 import { MAX_CELL_BYTES } from './notebook/types'
 
 const ajv = new Ajv2020({ allErrors: true, strict: false, allowUnionTypes: true })
@@ -58,6 +59,11 @@ export function validateManifest(manifest: unknown): string[] {
           }
           const blockSlugs = new Set<string>()
           for (const [blockIndex, block] of lesson.blocks.entries()) {
+            if (block.type === 'image' && block.attribution) {
+              const path = `/modules/${moduleIndex}/lessons/${lessonIndex}/blocks/${blockIndex}/attribution`
+              if (!schemaAtLeast(course.schema_version, '1.8')) issues.push(`${path}: image credits require schema_version 1.8 or later`)
+              issues.push(...attributionIssues(block.attribution).map(issue => `${path}/${issue}`))
+            }
             if (block.type === 'python-cell' && !schemaAtLeast(course.schema_version, '1.7')) issues.push(`/modules/${moduleIndex}/lessons/${lessonIndex}/blocks/${blockIndex}: Python cells require schema_version 1.7 or later`)
             if (block.type === 'python-cell' && encoder.encode(block.content).length > MAX_CELL_BYTES) issues.push(`/modules/${moduleIndex}/lessons/${lessonIndex}/blocks/${blockIndex}/content: cell source exceeds the 1 MiB limit`)
             if (blockSlugs.has(block.slug)) issues.push(`/modules/${moduleIndex}/lessons/${lessonIndex}/blocks/${blockIndex}/slug: duplicate block slug "${block.slug}" in this lesson`)

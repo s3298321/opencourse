@@ -1,10 +1,10 @@
-# OpenCourse course archive format — v1.7
+# OpenCourse course archive format — v1.8
 
 This document is the source of truth for course authors. A OpenCourse course is a
 self-contained directory holding a `course.json` manifest plus its assets,
 distributed as a `.zip` of that directory. The desktop app ships no courses at
 all: you import an archive, or add a course from an OpenCourse server you have
-connected to, and the app validates it against the v1.7 JSON Schema and renders
+connected to, and the app validates it against the v1.8 JSON Schema and renders
 it directly.
 
 **A course can be about anything.** Nothing in the format is specific to
@@ -17,6 +17,8 @@ Python exercise for computing a Gini coefficient is a first-class course.
 You can get this document, the JSON Schema and a working example course out of
 the app itself — **Library ▸ Get the course format…**. The example imports
 as-is, so it doubles as a starting template.
+
+**What changed in v1.8:** Image blocks support optional structured `attribution`, displayed beneath the image and retained in exports. Versions 1.0–1.7 remain importable.
 
 **What changed in v1.7:** Lessons can contain editable, runnable `python-cell`
 blocks. An optional `notebook` declaration enables a course notebook and supplies
@@ -113,7 +115,7 @@ and the import is refused as a whole — a course is never half-installed.
 
 | Field             | Type                | Required | Description |
 | ----------------- | ------------------- | -------- | ----------- |
-| `schema_version`  | string              | yes      | `"1.0"` to `"1.7"`. The app writes `"1.7"`. |
+| `schema_version`  | string              | yes      | `"1.0"` to `"1.8"`. The app writes `"1.8"`. |
 | `slug`            | string (kebab-case) | yes      | Portable kebab-case name. Every import creates a separate library course, even when slugs match. |
 | `title`           | string              | yes      | Course title shown in the catalog. |
 | `version`         | string              | from 1.5 | The course's own version: three numbers, `MAJOR.MINOR.PATCH`, such as `1.2.0`. No pre-release tags. A new course starts at `0.1.0`. |
@@ -251,7 +253,7 @@ not change its UUID, progress, chat attachments or learner workspace.
 
 The schema requires `slug` on all seven block types, including imported courses.
 Missing, invalid or duplicate names fail validation. The app does not add slugs to
-existing courses; add them to `course.json` before importing. Exported format 1.7
+existing courses; add them to `course.json` before importing. Exported format 1.8
 ZIPs preserve the authored block slugs.
 
 #### `markdown`
@@ -272,6 +274,26 @@ don't reach for a fence language just to get colour.
 ```json
 { "type": "image", "slug": "compiler-diagram", "src": "assets/img/diagram.png", "alt": "Ref diagram", "caption": "Figure 1" }
 ```
+
+An image may include `attribution` (requires format 1.8):
+
+```json
+"attribution": {
+  "source_url": "https://commons.wikimedia.org/wiki/File:Example.jpg",
+  "title": "Original image title",
+  "author": "Credited creator",
+  "author_url": "https://example.org/creator",
+  "license": "CC BY 4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/"
+}
+```
+
+Only `source_url` is required; omit unknown details instead of inventing them.
+Credit URLs must be HTTP(S) URLs without credentials. Credits are plain text with
+clickable links, separate from the teaching caption. The editor can import
+reusable PNG, JPEG, WebP and GIF images from public HTTPS sources into local course
+attachments; lessons never depend on remote image loading. Imported images are
+bounded to 20 MiB and 40 megapixels. Authoring verifies reuse terms before import.
 
 #### `video`
 ```json
@@ -496,7 +518,7 @@ Relative paths remain intact under `assets/viz/`. Replacement uploads receive ne
 immutable paths. Shared attachments stay until no saved or draft content uses them;
 imported supporting files are retained conservatively.
 
-**Export ZIP…** (on the course page) exports the last saved version in format 1.7, with `course.json` at
+**Export ZIP…** (on the course page) exports the last saved version in format 1.8, with `course.json` at
 the archive root and package assets included. Local IDs/documents, drafts, chats,
 progress, workspaces, environments and recovery data are excluded. Reimporting the
 export starts a new course with fresh identities and learner state.
@@ -509,13 +531,13 @@ before a course is exposed.
 
 ### OpenCourse identifiers
 
-The display name is OpenCourse. The current archive format version is 1.7;
+The display name is OpenCourse. The current archive format version is 1.8;
 course assets use `opencourse://`, and the visualization bridge uses
 `/__opencourse/viz-bridge.js` and `opencourse-viz`/`opencourse-app` messages.
 These are the only supported app identifiers; there are no old-brand aliases.
 Course manifests with ordinary relative asset paths remain importable.
 
-The published schema identity is `urn:opencourse:course:1.7`; this is an
+The published schema identity is `urn:opencourse:course:1.8`; this is an
 identifier, not a hosted schema URL. The bundled example uses the course slug
 `opencourse-example`. Keep unrelated course, module, lesson, quiz and exercise IDs
 stable when editing a course.

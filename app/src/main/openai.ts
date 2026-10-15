@@ -1,3 +1,4 @@
+import { imageResultsFromOutput, researchSourcesFromOutput, type ResearchSnapshot } from '../core/authoring/research'
 import { setTimeout as retryDelay } from 'node:timers/promises'
 import { responseUsage } from '../core/text-chat/usage'
 import type { ResponseUsage } from '../core/text-chat/agent'
@@ -22,7 +23,7 @@ import type { AIProvider, ModelContextMetadata } from '../core/types'
  */
 import { net } from 'electron'
 import { scrubSecrets } from '../core/coach/key'
-import { CHATGPT_USAGE_LIMIT, describeStreamFailure, resetHint, type StreamFailure } from '../core/ai-errors'
+import { CHATGPT_USAGE_LIMIT, OPENAI_OVERLOADED, isOpenAIOverload, describeStreamFailure, resetHint, type StreamFailure } from '../core/ai-errors'
 import { log } from './log'
 import { REALTIME_MODELS, WEB_SEARCH_MODEL, filterRealtimeModels } from '../core/coach/models'
 import { COACH_TURN_DETECTION } from '../core/coach/audio'
@@ -56,6 +57,7 @@ function messageFrom(status: number, body: string): string {
   try {
     const parsed = JSON.parse(body) as { error?: { message?: unknown }; message?: unknown }
     const message = parsed.error?.message ?? parsed.message
+    if (isOpenAIOverload(typeof message === 'string' ? message : '', errorObjectFrom(body)?.code)) return OPENAI_OVERLOADED
     if (typeof message === 'string' && message) return message
   } catch {
     /* not JSON; fall through to the raw body */
@@ -518,8 +520,11 @@ export interface ChatStreamOptions {
    * side and the answer arrives on the same stream, with its citations.
    */
   webSearch?: boolean
+  imageSearch?: boolean
   /** Told when a web search starts and when it is done. */
   onSearch?: (event: ChatSearchEvent) => void
+  /** Incremental evidence survives cancellation and failed streams. */
+  onResearch?: (snapshot: ResearchSnapshot) => void
   /** Absent: the request says nothing, and the model thinks as long as it does by default. */
   reasoning?: ReasoningEffort
   /** Called with each chunk of text as it arrives. */
@@ -615,7 +620,9 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
 
     if (!response.ok) {
       const body = await response.text()
-      const error = options.provider === 'chatgpt' && (response.status === 401 || response.status === 403)
+      const error = isOpenAIOverload(body, errorObjectFrom(body)?.code)
+        ? new OpenAIError(response.status, OPENAI_OVERLOADED)
+        : options.provider === 'chatgpt' && (response.status === 401 || response.status === 403)
         ? new OpenAIError(response.status, 'ChatGPT authorization was rejected. Reconnect or choose an available model in Settings.')
         : options.provider === 'chatgpt' && response.status === 429
           ? new OpenAIError(response.status, CHATGPT_USAGE_LIMIT + resetHint(errorObjectFrom(body)))
@@ -706,6 +713,9 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
           if (!partStarts.has(key)) partStarts.set(key, text.length)
           text += chunk
           options.onDelta(chunk)
+        }
+        if (options.webSearch && options.onResearch) {
+          options.onResearch({ citations: citations(), sources: researchSourcesFromOutput([...output.values()]), ...(options.imageSearch ? { images: imageResultsFromOutput([...output.values()]) } : {}) })
         }
       }
     }

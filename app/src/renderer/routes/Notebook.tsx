@@ -120,7 +120,7 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
         {!document.cells.length && <p>Add a Python cell to start experimenting.</p>}
         <ActionButton icon="plus" className="secondary notebook-add" disabled={document.cells.length >= MAX_NOTEBOOK_CELLS} onClick={add}>Add cell</ActionButton>
       </div></div>
-      <div className="lesson-chat-host" hidden={!chatOpen}><SideChat visible={chatOpen} courseId={courseId} notebook beforeSend={document.flush} quote={quote} onQuoteUsed={() => setQuote(null)} onClose={() => setChatOpen(false)} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} textScale={textScale} /></div>
+      <div className="lesson-chat-host" data-open={chatOpen} inert={!chatOpen} aria-hidden={!chatOpen}><SideChat visible={chatOpen} courseId={courseId} notebook beforeSend={document.flush} quote={quote} onQuoteUsed={() => setQuote(null)} onClose={() => setChatOpen(false)} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} textScale={textScale} /></div>
     </div>{active && offer && <button className="ask-about" style={{ left: Math.min(Math.max(offer.x, 64), window.innerWidth - 64), top: offer.y }} onMouseDown={event => event.preventDefault()} onClick={() => attach(offer)}>Ask about this</button>}</AskProvider>
   </>
 }

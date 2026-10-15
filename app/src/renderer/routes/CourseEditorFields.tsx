@@ -5,7 +5,7 @@ import { newDraftRef } from '@core/course-document'
 import { DEFAULT_COURSE_VERSION, isVersion } from '@core/catalog/semver'
 import type { Attachment } from '@core/course-document'
 import { availableBlockSlug } from '@core/block-slugs'
-import type { Block, CourseManifest, ExtraFile, ProjectDefinition, QuizBlock, RuntimeSpec } from '@core/types'
+import type { Block, ImageAttribution, CourseManifest, ExtraFile, ProjectDefinition, QuizBlock, RuntimeSpec } from '@core/types'
 import { getToolchain, TOOLCHAIN_IDS } from '@core/toolchains'
 import type { OutlineElement } from '@core/course-editor'
 import CodeEditor from '../workbench/CodeEditor'
@@ -28,6 +28,13 @@ function Field({ label, name, children, className = '' }: { label: string; name:
 }
 export function TextField({ label, name, value, onChange, multiline = false }: { label: string; name: string; value?: string; onChange: (value: string) => void; multiline?: boolean }): JSX.Element {
   return <Field label={label} name={name}>{multiline ? <textarea aria-label={label} rows={4} value={value ?? ''} onChange={(e) => onChange(e.target.value)} /> : <input aria-label={label} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />}</Field>
+}
+function ImageCredits({ value, onChange }: { value?: ImageAttribution; onChange: (value: ImageAttribution | undefined) => void }): JSX.Element {
+  return <Scope path="attribution"><details className="author-section"><summary>Image credits</summary>
+    {([['source_url', 'Original source URL'], ['title', 'Original image title'], ['author', 'Image author'], ['author_url', 'Author URL'], ['license', 'Image license'], ['license_url', 'License URL']] as const).map(([name, label]) =>
+      <TextField key={name} name={name} label={label} value={value?.[name]} onChange={text => onChange({ source_url: '', ...value, [name]: text || (name === 'source_url' ? '' : undefined) })} />)}
+    <button className="ghost" onClick={() => onChange(undefined)}>Clear image credits</button>
+  </details></Scope>
 }
 function NumberField({ label, name, value, onChange }: { label: string; name: string; value?: number; onChange: (value: number | undefined) => void }): JSX.Element {
   return <Field label={label} name={name}><input aria-label={label} type="number" min={0} value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))} /></Field>
@@ -160,6 +167,7 @@ export function CourseFields({ manifest, set, courseId, versionHint }: { manifes
 }
 
 export function ElementFields({ element, manifest, courseId, set }: { element: OutlineElement; manifest: CourseManifest; courseId: string; set: (fields: Record<string, unknown>) => void }): JSX.Element {
+  const attachments = useContext(Attachments)
   const language = 'runtime' in element && element.runtime?.language || manifest.runtime?.language || 'python'
   if ('answer' in element) return <>
     <h2>Flashcard</h2>
@@ -189,9 +197,10 @@ export function ElementFields({ element, manifest, courseId, set }: { element: O
     <TextField label="Block slug" name="slug" value={block.slug} onChange={(slug) => set({ slug })} />
     {block.type === 'python-cell' && <Source label="Python code" name="content" language="python" docKey={block.nodeId!} value={block.content} onChange={(content) => set({ content })} />}
     {block.type === 'markdown' && <Markdown label="Markdown content" name="content" value={block.content} onChange={(content) => set({ content })} />}
-    {(block.type === 'image' || block.type === 'video' || block.type === 'visualization') && <AttachmentField courseId={courseId} name="src" kind={block.type} value={block.src} onChange={(src) => set({ src })} />}
+    {(block.type === 'image' || block.type === 'video' || block.type === 'visualization') && <AttachmentField courseId={courseId} name="src" kind={block.type} value={block.src} onChange={(src) => set(block.type === 'image' ? { src, attribution: attachments.find(a => a.entry === src)?.attribution } : { src })} />}
     {block.type === 'image' && <TextField label="Alt text" name="alt" value={block.alt} onChange={(alt) => set({ alt })} />}
     {(block.type === 'image' || block.type === 'video') && <TextField label="Caption" name="caption" value={block.caption} onChange={(caption) => set({ caption })} />}
+    {block.type === 'image' && <ImageCredits value={block.attribution} onChange={attribution => set({ attribution })} />}
     {block.type === 'video' && <AttachmentField courseId={courseId} name="poster" kind="image" value={block.poster} onChange={(poster) => set({ poster: poster || undefined })} />}
     {block.type === 'visualization' && <><TextField label="Visualization title" name="title" value={block.title} onChange={(title) => set({ title })} /><NumberField label="Height" name="height" value={block.height} onChange={(height) => set({ height })} /></>}
     {block.type === 'quiz' && <QuizFields quiz={block} set={set} />}

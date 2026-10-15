@@ -1536,16 +1536,33 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 
 /* ---------- side chat ---------- */
 .lesson-body { position: relative; }
-.lesson-chat-host { display: flex; flex: 0 1 auto; min-width: 320px; }
-.lesson-chat-host[hidden] { display: none; }
+.lesson-chat-host {
+  /* Keep the panel at its reading width while its slot grows from the right.
+     The same transition reverses on close, including mid-animation toggles. */
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  visibility: visible;
+  transition: width 380ms cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s;
+}
+.lesson-chat-host[data-open="false"] {
+  width: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0s, 380ms;
+}
+@starting-style {
+  .lesson-chat-host[data-open="true"] { width: 0; }
+}
 .lesson-chat-host > .sidechat { height: 100%; }
-.exercise-chat-open .lesson-chat-host { flex: 0 0 360px; width: 360px; }
-.exercise-chat-open .lesson-chat-host > .sidechat { width: 360px !important; min-width: 360px; }
+.exercise-editor-open .lesson-chat-host > .sidechat { width: 360px !important; min-width: 360px; }
 .exercise-editor-open .sidechat-grip { display: none; }
 @media (min-width: 1201px) { .exercise-chat-open .workbench-main { min-width: 360px; } }
 @media (max-width: 1200px) {
-  .exercise-chat-open .lesson-chat-host { position: absolute; z-index: 9; top: 0; bottom: 0; right: 0; box-shadow: -12px 0 32px rgb(var(--shadow-rgb) / 0.25); }
-  .exercise-chat-open .lesson-chat-host > .sidechat { background-color: var(--bg); }
+  .exercise-editor-open .lesson-chat-host { position: absolute; z-index: 9; top: 0; bottom: 0; right: 0; box-shadow: -12px 0 32px rgb(var(--shadow-rgb) / 0.25); }
+  .exercise-editor-open .lesson-chat-host > .sidechat { background-color: var(--bg); }
 }
 /* Geometry copied from the workbench: a flex sibling of the lesson column with
    its own drag grip, so the two can sit open side by side. */
@@ -1754,6 +1771,10 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
   color: var(--muted);
 }
 .chat-sources ol { margin: 0; padding: 0; list-style: none; }
+.chat-consulted-sources > summary { cursor: pointer; }
+.chat-consulted-sources > summary:hover { color: var(--fg); }
+.chat-consulted-sources > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.chat-consulted-sources:not([open]) > summary { margin-bottom: 0; }
 .chat-source {
   display: flex; align-items: center; gap: 0.5rem;
   min-width: 0;
@@ -2152,8 +2173,6 @@ button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user
 }
 .search-panel { animation: surface-enter 200ms var(--ease); }
 /* Menus render in a body portal and follow their trigger while the pane moves. */
-.sidechat { animation: chat-panel-enter 380ms cubic-bezier(0.2, 0.7, 0.2, 1); }
-@keyframes chat-panel-enter { from { opacity: 0; transform: translateX(28px); } }
 @keyframes surface-fade { from { opacity: 0; } }
 @keyframes surface-enter { from { opacity: 0; transform: translateY(4px); } }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
@@ -2333,3 +2352,5 @@ select:not([multiple]):not([size]) {
 
 .course-reader-host { position: relative; }
 .course-reader-host > .screen-host[hidden] { display: flex; position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
+
+.image-credit { display: block; margin-top: 0.25rem; overflow-wrap: anywhere; }

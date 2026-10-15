@@ -56,6 +56,7 @@ export function normalizePreferences(raw: unknown): Preferences {
       ? { defaultCoachModel: coachModel } : {}),
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
+    ...(typeof values.authoringWebSearch === 'boolean' ? { authoringWebSearch: values.authoringWebSearch } : {}),
     ...(values['coachAllowDelete'] === true ? { coachAllowDelete: true } : {}),
     ...(typeof theme === 'string' && (UUID.test(theme) || theme === WHITE_THEME_ID) ? { theme } : {}),
     ...(typeof values['activeServer'] === 'string' && UUID.test(values['activeServer']) ? { activeServer: values['activeServer'] } : {}),

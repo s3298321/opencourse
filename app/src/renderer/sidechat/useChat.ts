@@ -27,6 +27,7 @@ import type { AIConnection, AIProvider, AIScope, ChatDefaults, ChatPickerModels,
 import { modelReasoning } from '@core/ai'
 import { MAX_MESSAGE_CHARS } from '@core/sidechat/thread'
 import { REVIEW_REQUEST } from '@core/projects/prompt'
+import { isOpenAIOverload, RETRY_INTERRUPTED_REQUEST } from '@core/ai-errors'
 
 /** Fast enough to read as typing, slow enough to cost nothing. */
 const TICK_MS = 100
@@ -71,6 +72,8 @@ export interface ChatPanel {
   resume: () => Promise<void>
   remove: (id: string) => Promise<void>
   send: (text: string, quote?: ChatQuote, review?: boolean) => Promise<boolean>
+  /** Explicit continuation of an overloaded turn, using freshly loaded history. */
+  retry?: () => Promise<boolean>
   stop: () => void
   setModel: (model: string) => Promise<void>
   /** Null is the model's own default. */
@@ -137,6 +140,8 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   const [streaming, setStreaming] = useState<string | null>(null)
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const errorRef = useRef(error); errorRef.current = error
+  const activeEpoch = useRef(0)
   // The picker list of each connection: the default's, and the other one's for
   // a conversation pinned to it.
   const [catalogs, setCatalogs] = useState<Partial<Record<AIProvider, ChatPickerModels>>>({})
@@ -150,6 +155,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   const unlistedRef = useRef(unlisted)
   const defaults = useRef<ChatDefaults & { provider: AIProvider }>({ model: '', reasoning: null, provider: 'apiKey' })
   const sending = useRef(false)
+  const retrying = useRef(false)
   const [pendingMessages, setPendingMessages] = useState<ReadonlyMap<string, PendingMessage>>(new Map())
   const pendingRef = useRef(pendingMessages)
   const keepPending = useCallback((change: (next: Map<string, PendingMessage>) => void): void => {
@@ -321,6 +327,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
 
   /* --- what the panel can do -------------------------------------------- */
   const open = useCallback((id: string) => {
+    activeEpoch.current++
     const ids = tabIdsRef.current
     tabIdsRef.current = ids.includes(id) ? ids : [...ids, id]
     setTabIds(tabIdsRef.current)
@@ -485,6 +492,22 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     if (activeId && !isDraft(activeId)) void transport.cancel(activeId)
   }, [activeId, transport])
 
+  const retry = useCallback(async (): Promise<boolean> => {
+    if (!activeId || !error || !isOpenAIOverload(error) || sending.current || retrying.current || buffers.current.has(activeId)) return false
+    const id = activeId, epoch = activeEpoch.current, lastSeq = thread?.messages.at(-1)?.seq
+    if (thread?.chat.id !== id || lastSeq === undefined || !thread.messages.some(message => message.role === 'user')) return false
+    retrying.current = true
+    try {
+      const current = await transport.get(id)
+      // A tab switch, deletion or newer turn invalidates this recovery action.
+      if (activeRef.current !== id || activeEpoch.current !== epoch || errorRef.current !== error || !current || current.messages.at(-1)?.seq !== lastSeq || buffers.current.has(id)) return false
+      return await send(RETRY_INTERRUPTED_REQUEST)
+    } catch (err) {
+      if (activeRef.current === id) setError((err as Error).message)
+      return false
+    } finally { retrying.current = false }
+  }, [activeId, error, thread, transport, send])
+
   // What the active tab uses: its own connection's models, or the default's.
   const activeSummary = activeId ? (unlisted.get(activeId) ?? chats.find((chat) => chat.id === activeId) ?? (thread?.chat.id === activeId ? thread.chat : undefined)) : undefined
   const activeProvider: AIProvider = activeSummary?.provider ?? defaultProvider
@@ -596,6 +619,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     resume,
     remove,
     send,
+    retry: error && isOpenAIOverload(error) && shown?.chat.id === activeId && shown.messages.some(message => message.role === 'user') ? retry : undefined,
     stop,
     setModel,
     setReasoning,

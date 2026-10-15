@@ -395,6 +395,8 @@ const api = {
   setChatDefaults: (defaults: ChatDefaults): Promise<ChatDefaults> => ipcRenderer.invoke('chat:setDefaults', defaults),
   setEnabledChatModels: (ids: string[] | null): Promise<string[] | null> =>
     ipcRenderer.invoke('chat:setEnabledModels', ids),
+  getAuthoringWebSearch: (): Promise<boolean> => ipcRenderer.invoke('authoringChat:webSearch'),
+  setAuthoringWebSearch: (on: boolean): Promise<boolean> => ipcRenderer.invoke('authoringChat:setWebSearch', on),
   getChatWebSearch: (): Promise<boolean> => ipcRenderer.invoke('chat:webSearch'),
   setChatWebSearch: (on: boolean): Promise<boolean> => ipcRenderer.invoke('chat:setWebSearch', on),
   // Icons for the pages one stored answer cited, as data: URLs keyed by host.

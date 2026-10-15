@@ -1,3 +1,4 @@
+import { imageCreditsByPath } from '../core/image-attribution'
 import { randomUUID } from 'node:crypto'
 import { join, posix } from 'node:path'
 import type { Attachment } from '../core/course-document'
@@ -45,9 +46,10 @@ export function importedAttachments(root: string, manifest: CourseManifest | nul
     }
   }
   walk(root)
+  const credits = imageCreditsByPath(manifest)
   return [...new Set(referencedAssets(manifest))].map((entry) => {
     const folder = posix.dirname(entry)
     const bundle = /\.html?$/i.test(entry)
-    return { id: randomUUID(), entry, managed: false, files: bundle ? files.filter((f) => folder === '.' || f.startsWith(folder + '/')) : [entry] }
+    return { id: randomUUID(), entry, ...(credits.has(entry) ? { attribution: credits.get(entry) } : {}), managed: false, files: bundle ? files.filter((f) => folder === '.' || f.startsWith(folder + '/')) : [entry] }
   })
 }

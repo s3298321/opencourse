@@ -2,6 +2,7 @@ import { act, createElement as h, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DocumentView } from '../src/core/documents/types'
+import type { UserProfile } from '../src/core/types'
 import DocumentReader from '../src/renderer/routes/Document'
 import { ScreenHost } from '../src/renderer/screen-activity'
 
@@ -29,6 +30,7 @@ const view = (id: string, lastPage: number): DocumentView => ({
   status: 'ready', error: null, createdAt: 'now', sections: []
 })
 beforeEach(() => {
+  localStorage.clear()
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   pdfState.pdf = { numPages: 10 }
@@ -50,8 +52,8 @@ afterEach(async () => {
   await act(async () => root.unmount())
   document.body.replaceChildren(); vi.unstubAllGlobals()
 })
-const render = async (id = 'first', active = true) => act(async () => root.render(h(ScreenHost, { active }, h(DocumentReader, {
-  key: id, documentId: id, user: null, route: { name: 'document', documentId: id },
+const render = async (id = 'first', active = true, user: UserProfile | null = null) => act(async () => root.render(h(ScreenHost, { active }, h(DocumentReader, {
+  key: `${user?.id}:${id}`, documentId: id, user, route: { name: 'document', documentId: id },
   navigate: () => {}, navSignal: null, findSignal: 0
 }))))
 const currentPage = () => Number(container.querySelector<HTMLInputElement>('#document-page')!.value)
@@ -151,6 +153,87 @@ describe('document heading outline', () => {
   const heading = (title: string) => container.querySelector<HTMLButtonElement>(`.document-section[title="${title}"]`)!
   const visible = (title: string) => !heading(title).closest('[hidden]')
   const action = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('.document-outline-actions button')].find(button => button.textContent === label)!
+  it('restores nested collapse choices without revealing the restored reading position', async () => {
+    documents.get('first')!.lastPage = 3
+    documents.get('first')!.sections[2]!.top = 0
+    await render()
+    await act(async () => button('Collapse Section').click())
+    await act(async () => button('Collapse Chapter').click())
+    await act(async () => root.render(null))
+    pdfState.pdf = null
+    await render()
+    expect(visible('Section')).toBe(false)
+    pdfState.pdf = { numPages: 10 }
+    await render()
+    expect(currentPage()).toBe(3)
+    expect(visible('Section')).toBe(false)
+    await act(async () => button('Expand Chapter').click())
+    expect(visible('Section')).toBe(true)
+    expect(visible('Detail')).toBe(false)
+    await act(async () => root.render(null))
+    await render()
+    expect(visible('Section')).toBe(true)
+    expect(visible('Detail')).toBe(false)
+    // Subsequent navigation still reveals the active heading and saves that expansion.
+    await scrollToPage(4)
+    await scrollToPage(3)
+    expect(visible('Detail')).toBe(true)
+    await act(async () => root.render(null))
+    await render()
+    expect(visible('Detail')).toBe(true)
+  })
+  it('persists collapse all and expand all across reopening', async () => {
+    await render()
+    await act(async () => action('Collapse all').click())
+    await act(async () => root.render(null))
+    await render()
+    expect(action('Collapse all').disabled).toBe(true)
+    expect(visible('Section')).toBe(false)
+    await act(async () => action('Expand all').click())
+    await act(async () => root.render(null))
+    await render()
+    expect(action('Expand all').disabled).toBe(true)
+    expect(visible('Detail')).toBe(true)
+  })
+  it('keeps outline choices separate for each document and user', async () => {
+    const firstUser: UserProfile = { id: 'alice', name: 'Alice', color: 'blue', createdAt: 'now' }
+    const secondUser: UserProfile = { ...firstUser, id: 'bob', name: 'Bob' }
+    documents.get('second')!.sections = documents.get('first')!.sections
+    await render('first', true, firstUser)
+    await act(async () => button('Collapse Chapter').click())
+    await render('second', true, firstUser)
+    expect(visible('Detail')).toBe(true)
+    await act(async () => button('Collapse Section').click())
+    await render('first', true, secondUser)
+    expect(visible('Detail')).toBe(true)
+    await act(async () => button('Collapse Section').click())
+    await render('first', true, firstUser)
+    expect(visible('Section')).toBe(false)
+    await act(async () => button('Expand Chapter').click())
+    expect(visible('Detail')).toBe(true)
+    await render('second', true, firstUser)
+    expect(visible('Section')).toBe(true)
+    expect(visible('Detail')).toBe(false)
+    await render('first', true, secondUser)
+    expect(visible('Section')).toBe(true)
+    expect(visible('Detail')).toBe(false)
+  })
+  it.each(['broken JSON', 'null', '{}', '42'])('ignores invalid saved outline state %s', async saved => {
+    localStorage.setItem('document-outline:undefined:first', saved)
+    await render()
+    expect(visible('Detail')).toBe(true)
+    await act(async () => button('Collapse Chapter').click())
+    expect(visible('Section')).toBe(false)
+  })
+  it('keeps the outline usable when storage is unavailable', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Storage unavailable') })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable') })
+    await render()
+    await act(async () => button('Collapse Chapter').click())
+    expect(visible('Section')).toBe(false)
+    await act(async () => action('Expand all').click())
+    expect(visible('Detail')).toBe(true)
+  })
   it.each([{ scrollHeight: 1200, expectedTop: 600 }, { scrollHeight: 550, expectedTop: 350 }])('reveals and aligns the marked page heading within a $scrollHeight-pixel outline', async ({ scrollHeight, expectedTop }) => {
     const document = documents.get('first')!
     document.lastPage = 5; document.readPage = 3

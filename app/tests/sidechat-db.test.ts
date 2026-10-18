@@ -40,7 +40,7 @@ const {
   updateChatModel,
   updateChatReasoning
 } = await import('../src/main/chatdb')
-const { insertProjectChat, selectProjectChat, appendProjectMessage, selectProjectMessages } = await import('../src/main/projectchatdb')
+const { insertProjectChat, selectProjectChat, selectProjectChats, appendProjectMessage, selectProjectMessages, updateProjectChat } = await import('../src/main/projectchatdb')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -61,6 +61,27 @@ function startChat(courseId = 'python-asyncio', lesson = LESSON): string {
   insertChat({ id, courseId, model: 'gpt-5.6-terra', startedIn: lesson, at: AT })
   return id
 }
+
+describe('history message dates', () => {
+  it.each(['lesson', 'project'] as const)('uses the latest sent message in %s chats despite settings and context changes', kind => {
+    createUser('Ada')
+    const id = kind === 'lesson' ? startChat() : newChatId()
+    if (kind === 'project') insertProjectChat({ id, courseId: 'python-asyncio', moduleId: 'project', model: 'gpt-5.1', reasoning: null, createdAt: AT, updatedAt: AT })
+    const select = () => kind === 'lesson' ? selectChat(id) : selectProjectChat(id)
+    const list = () => kind === 'lesson' ? selectChats('python-asyncio') : selectProjectChats('python-asyncio', 'project')
+    const append = kind === 'lesson' ? appendMessage : appendProjectMessage
+    expect(select()?.lastMessageAt).toBeNull()
+    append(id, { role: 'user', text: 'Question', at: AT })
+    const answerAt = '2026-09-14T10:01:00.000Z'
+    append(id, { role: 'assistant', text: 'Answer', at: answerAt })
+    append(id, { role: 'context', text: 'New context', at: '2026-09-15T10:00:00.000Z' })
+    if (kind === 'lesson') updateChatModel(id, 'gpt-5.1', null)
+    else updateProjectChat(id, 'gpt-5.1', null)
+    closeDb()
+    expect(select()).toMatchObject({ lastMessageAt: answerAt, messages: 2 })
+    expect(list()[0].lastMessageAt).toBe(answerAt)
+  })
+})
 
 describe('the v9 message-generation migration', () => {
   it('preserves old timestamps without attributing old answers to today’s model, and persists metadata for new responses', () => {

@@ -123,5 +123,12 @@ describe('review session persistence', () => {
     revealReviewAnswer(session.id, session.card!.id, 1, now)
     const done = rateReviewCard(session.id, session.card!.id, 'again', 1, now)
     expect(done).toMatchObject({ reviewed: 1, card: null, ratings: { again: 1 }, summary: { practiced: 1 } })
+    expect(() => startReviewSession(course.courseId, 10, 1, new Date(now.getTime() + 10 * 60000))).toThrow('No cards are due')
+    const due = new Date(done.summary.nextDue!)
+    expect(due.getTime() - now.getTime()).toBe(86400000)
+    const nextDay = startReviewSession(course.courseId, 10, 1, due)
+    expect(nextDay.card?.id).toBe(session.card!.id)
+    const stored = db().prepare('SELECT configuration FROM flashcard_states WHERE card_id=?').get(session.card!.id) as { configuration: string }
+    expect(JSON.parse(stored.configuration)).toMatchObject({ version: 2, parameters: { enable_short_term: false } })
   })
 })

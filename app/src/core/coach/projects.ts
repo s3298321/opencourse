@@ -8,6 +8,7 @@
  */
 import type { CoachProject } from '../types'
 import { isProjectId } from './ids'
+import { BACKEND_MODEL, isBackendModelId } from './models'
 
 export const MAX_PROJECT_NAME = 60
 export const MAX_INSTRUCTIONS = 8000
@@ -64,6 +65,7 @@ export function normalizeProject(raw: unknown): CoachProject | null {
     id: value['id'] as string,
     name,
     model: typeof value['model'] === 'string' && value['model'] ? value['model'] : '',
+    backendModel: typeof value['backendModel'] === 'string' && isBackendModelId(value['backendModel']) ? value['backendModel'] : BACKEND_MODEL,
     voice: typeof value['voice'] === 'string' && value['voice'] ? value['voice'] : '',
     instructions: normalizeInstructions(value['instructions']),
     allowDelete: value['allowDelete'] === true,
@@ -78,6 +80,7 @@ export function projectFromRow(row: Record<string, unknown>): CoachProject | nul
     id: row['id'],
     name: row['name'],
     model: row['model'],
+    backendModel: row['backend_model'],
     voice: row['voice'],
     instructions: row['instructions'],
     allowDelete: row['allow_delete'] === 1 || row['allow_delete'] === true,

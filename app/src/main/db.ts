@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 18
+export const SCHEMA_VERSION = 22
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -311,15 +311,34 @@ function migrate(d: DatabaseSync): void {
         BEGIN DELETE FROM text_chat_state WHERE mode='${mode}' AND chat_id=OLD.id; END`)
     }
   }
+  if (from < 19) {
+    addColumn(d, 'sessions', 'metadata', "TEXT NOT NULL DEFAULT '{}'")
+    d.exec(`CREATE TABLE IF NOT EXISTS coach_transcript_fragments (
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL,
+      start_ms REAL NOT NULL, end_ms REAL NOT NULL,
+      PRIMARY KEY (session_id, event_id)
+    )`)
+  }
+  if (from < 20) addColumn(d, 'projects', 'backend_model', "TEXT NOT NULL DEFAULT 'gpt-6-luna'")
+  // Reading progress is explicit, independent of the automatically restored viewing position.
+  if (from < 21) addColumn(d, 'documents', 'read_page', 'INTEGER NOT NULL DEFAULT 0')
+  // PDF completion is derived from marked reading progress; retire the manual flag.
+  if (from < 22) {
+    const columns = d.prepare('PRAGMA table_info(documents)').all() as { name: string }[]
+    if (columns.some(column => column.name === 'completed')) d.exec('ALTER TABLE documents DROP COLUMN completed')
+  }
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 
 /**
  * A session left `live` means the app went away mid-conversation - a force
- * quit, a crash, a lost renderer. Nothing can resume it (the Realtime API has
- * no resume), so no session may survive a launch still claiming to be running.
+ * quit, a crash, a lost renderer. The app does not reconnect a previous session,
+ * so none may survive a launch still claiming to be running.
  */
 function sweepLiveSessions(d: DatabaseSync): void {
+  d.exec(`UPDATE sessions SET metadata = json_set(metadata, '$.finalization', 'unconfirmed')
+    WHERE status = 'live' AND json_extract(metadata, '$.finalization') = 'pending'`)
   d.prepare(`UPDATE sessions SET status = 'ended', ended_at = ?, error = ? WHERE status = 'live'`).run(
     new Date().toISOString(),
     'interrupted'

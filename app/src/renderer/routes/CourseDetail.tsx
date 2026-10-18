@@ -10,6 +10,7 @@ import type { CourseProgress, CourseView, ReviewCount, ReviewSummary, UserProfil
 import { reviewRecommendation } from '../review-display'
 import { itemRoute, type Route, type Screen } from '../routes'
 import Html from '../components/Html'
+import CourseDescription from '../components/CourseDescription'
 import CompletionMark from '../components/CompletionMark'
 import CourseServerPanel from '../components/CourseServerPanel'
 import { useScreenActive } from '../screen-activity'
@@ -111,7 +112,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
             </div>
 
             {course.description && (
-              <Html className="prose" source={course.description} />
+              <CourseDescription key={courseId} source={course.description} />
             )}
 
             {note && <p role="status">{note}</p>}
@@ -136,7 +137,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
               </ActionButton>
               <div className="course-review-row">
                 <div className="course-review-control">
-                  <ActionButton icon="review" className="secondary" disabled={reviewBusy || !review?.eligible} onClick={() => {
+                  <ActionButton icon="review" className="secondary" disabled={reviewBusy || !review?.eligible || review.due + review.new === 0} onClick={() => {
                     setReviewBusy(true); setNote(null)
                     void window.opencourse.startReviewSession(courseId, reviewCount).then(session => navigate({ name: 'review', session })).catch(err => setNote(err.message)).finally(() => setReviewBusy(false))
                   }}>{reviewBusy ? 'Starting' : 'Review'}</ActionButton>
@@ -144,10 +145,10 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
                     {[10, 15, 20].map(count => <option key={count} value={count}>{count} cards</option>)}
                   </select>
                 </div>
-                {review && <div className={`course-review-summary${review.total === 0 ? ' no-flashcards' : ''}`} role="status">
-                  <strong>{reviewRecommendation(review)}</strong>
-                  {!!review.eligible && <span className="meta">{review.due} due · {review.new} new · {review.practiced}/{review.eligible} practiced{review.estimatedRecall !== null ? ` · ${Math.round(review.estimatedRecall * 100)}% estimated recall` : ''}{review.eligible < review.total ? ` · ${review.total - review.eligible} locked` : ''}</span>}
-                </div>}
+                {review && <>
+                  <strong className={`course-review-summary${review.total === 0 ? ' no-flashcards' : ''}`} role="status">{reviewRecommendation(review)}</strong>
+                  {!!review.eligible && <span className="meta course-review-counts">{review.due} due · {review.new} new · {review.practiced}/{review.eligible} practiced{review.estimatedRecall !== null ? ` · ${Math.round(review.estimatedRecall * 100)}% estimated recall` : ''}{review.eligible < review.total ? ` · ${review.total - review.eligible} locked` : ''}</span>}
+                </>}
               </div>
             </div>
 

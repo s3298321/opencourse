@@ -18,10 +18,14 @@ export interface DocumentSummary {
   searchablePages: number
   status: 'indexing' | 'ready' | 'error'
   error: string | null
-  completed: boolean
+  /** Last page explicitly marked as read; zero until the reader marks progress. */
+  readPage: number
   createdAt: string
 }
-export interface DocumentView extends DocumentSummary { sections: DocumentSection[]; lastPage: number }
+export interface DocumentView extends DocumentSummary {
+  sections: DocumentSection[]
+  lastPage: number
+}
 export interface DocumentHit { page: number; excerpt: string }
 export interface DocumentSearch {
   hits: DocumentHit[]

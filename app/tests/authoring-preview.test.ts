@@ -83,7 +83,7 @@ describe('course authoring previews', () => {
     ] }
     const manifest: CourseManifest = { schema_version: '1.3', slug: 'draft', title: 'Draft', modules: [{ nodeId: 'module', slug: 'module', title: 'Module', lessons: [lesson] }] }
     await act(async () => root!.render(createElement(LessonPreview, { lesson, manifest, courseId: 'draft' })))
-    expect(container.querySelector('.lesson-head')?.textContent).toContain('Lesson 1 of 1 · about 8 minutesLearn')
+    expect(container.querySelector('.lesson-head')?.textContent).toContain('Lesson 1 of 1 · 8 minutesLearn')
     expect(container.querySelector('.objectives li')?.textContent).toBe('Understand this')
     expect(container.querySelector('.block.prose.takeaways strong')?.textContent).toBe('Notes')
     expect(container.querySelector('img')?.src).toBe('opencourse://draft/draft/image.png')

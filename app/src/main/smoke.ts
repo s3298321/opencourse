@@ -1350,10 +1350,10 @@ const SCRIPT = `(async () => {
     const reasoning = document.querySelector('.settings-default-chat-reasoning')
     assert(reasoning.disabled && reasoning.value === '', 'unsupported reasoning was retained')
     document.querySelector('[data-settings-category="coach"]').click()
-    await select('.settings-default-coach-model', 'gpt-realtime')
-    assert(await window.fixtureAPI.getDefaultCoachModel() === 'gpt-realtime', 'coach default was not stored')
+    await select('.settings-default-coach-model', 'gpt-live-1')
+    assert(await window.fixtureAPI.getDefaultCoachModel() === 'gpt-live-1', 'coach default was not stored')
     const coach = await window.fixtureAPI.createCoachProject({ name: 'Defaults check' })
-    assert(coach.model === 'gpt-realtime', 'new coach ignored the default')
+    assert(coach.model === 'gpt-live-1', 'new coach ignored the default')
     await window.fixtureAPI.deleteCoachProject(coach.id)
     await window.fixtureAPI.setChatDefaults(before)
     await window.fixtureAPI.setDefaultCoachModel(coachBefore)
@@ -2134,12 +2134,12 @@ const COACH_FILES_SCRIPT = `(async () => {
     return 'three refused, nothing stored'
   })
 
-  await step('the model picker offers realtime models even with no key', async () => {
+  await step('the model picker offers Live models even with no key', async () => {
     const list = await window.fixtureAPI.listCoachModels()
     assert(list.source === 'fallback', 'source was ' + list.source)
     assert(list.models.length > 0, 'the list is empty')
-    assert(list.models.every((m) => /realtime/.test(m.id)), list.models.map((m) => m.id).join(', '))
-    return list.models.length + ' models, all realtime'
+    assert(list.models.every((m) => m.id === 'gpt-live-1'), list.models.map((m) => m.id).join(', '))
+    return list.models.length + ' models, all Live'
   })
 
   await step('the key lives in settings, and settings never shows it back', async () => {
@@ -2360,7 +2360,7 @@ async function seedCoachFiles(win: BrowserWindow): Promise<string> {
     id: sessionId,
     projectId: project.id,
     startedAt: new Date(Date.now() - 12 * 60_000).toISOString(),
-    model: 'gpt-realtime-2.1',
+    model: 'gpt-live-1',
     instructions: 'You are a French vocabulary coach.'
   })
   saveTurns(sessionId, [

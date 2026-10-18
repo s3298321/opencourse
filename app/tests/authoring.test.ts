@@ -32,7 +32,7 @@ const { removeCourse, importCourseZip } = await import('../src/main/import')
 const { readProgress, writeProgress } = await import('../src/main/progress')
 const { emptyProgress } = await import('../src/core/progress')
 const { extractArchive } = await import('../src/main/unzip')
-const { appendAuthoringMessage } = await import('../src/main/authoring-chatdb')
+const { appendAuthoringMessage, updateAuthoringChat } = await import('../src/main/authoring-chatdb')
 let sender: EventEmitter & { id: number; isDestroyed: () => boolean; send: ReturnType<typeof vi.fn> }
 beforeEach(() => {
   cancelAllAuthoringChats(); closeDb(); dataDir = join(root, `data-${++serial}`); createUser('Author')
@@ -51,6 +51,19 @@ async function settle() { for (let n = 0; n < 200; n++) { if (sender.send.mock.c
 const manifest = () => projectCourse()
 
 describe('authoring draft tools and permanent identities', () => {
+  it('lists the last message date separately from context and chat settings', () => {
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    expect(chat.lastMessageAt).toBeNull()
+    appendAuthoringMessage(chat.id, { role: 'user', text: 'Improve the course', at: '2026-10-05T10:00:00Z' })
+    const at = '2026-10-05T10:01:00Z'
+    appendAuthoringMessage(chat.id, { role: 'assistant', text: 'Updated the course', at })
+    appendAuthoringMessage(chat.id, { role: 'context', text: 'Another lesson', at: '2026-10-06T10:00:00Z' })
+    updateAuthoringChat(chat.id, 'gpt-5.1', null)
+    closeDb()
+    expect(getAuthoringChat(chat.id).chat).toMatchObject({ lastMessageAt: at, messages: 2 })
+    expect(listAuthoringChats(courseId)[0].lastMessageAt).toBe(at)
+  })
+
   it('generates every block type and project supporting files without model-supplied local identities', async () => {
     const { courseId } = fixture(), course = manifest()
     const image = await tool(courseId, 'write_asset_bundle', { kind: 'image', entry: 'diagram.svg', files: [{ path: 'diagram.svg', content: '<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20">Diagram</text></svg>' }] })

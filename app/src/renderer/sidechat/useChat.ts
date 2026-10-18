@@ -52,6 +52,8 @@ export interface ChatPanel {
   /** Whether Settings lets a question search the web. The model decides whether it does. */
   webSearch: boolean
   ready: boolean
+  /** The saved connections and their available models are still being checked. */
+  connectionLoading: boolean
   /** The connection the active tab uses: its own choice, or the default. */
   provider: AIProvider
   connection: AIConnection
@@ -145,6 +147,8 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   // The picker list of each connection: the default's, and the other one's for
   // a conversation pinned to it.
   const [catalogs, setCatalogs] = useState<Partial<Record<AIProvider, ChatPickerModels>>>({})
+  const [connectionLoading, setConnectionLoading] = useState(true)
+  const connectionChecks = useRef(0)
   const [defaultProvider, setDefaultProvider] = useState<AIProvider>('apiKey')
   const [webSearch, setWebSearch] = useState(false)
   const [version, setVersion] = useState(0)
@@ -199,30 +203,37 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   }, [transport])
 
   const refreshKey = useCallback(async (): Promise<void> => {
-    const result = await window.opencourse.listChatModels(scope)
-    const provider = result.defaultProvider ?? result.connection?.provider ?? result.provider ?? 'apiKey'
-    const other: AIProvider = provider === 'apiKey' ? 'chatgpt' : 'apiKey'
-    // The other connection's list is only for a conversation pinned to it, so
-    // trouble reaching it is that conversation's to report, not the panel's.
-    const second = await window.opencourse.listChatModels(scope, other).catch(() => null)
-    const lists: Partial<Record<AIProvider, ChatPickerModels>> = { [provider]: result, ...(second ? { [other]: second } : {}) }
-    setCatalogs(lists); setDefaultProvider(provider); setWebSearch(result.webSearch)
-    // What main would give a chat created now. A draft keeps a model it was
-    // given only while its connection still offers that model, as a stored chat does.
-    defaults.current = { ...(result.defaults ?? { model: '', reasoning: null }), provider }
-    keepUnlisted(next => {
-      for (const [id, chat] of next) {
-        if (!isDraft(id)) continue
-        const own = chat.pinnedProvider ?? provider
-        const list = lists[own]
-        if (chat.model && chat.provider === own && list?.models.some(m => m.id === chat.model)) continue
-        next.set(id, chat.pinnedProvider && list
-          ? { ...chat, ...(list.defaults ?? { model: '', reasoning: null }), provider: own }
-          : { ...chat, ...defaults.current, pinnedProvider: undefined })
-      }
-    })
-    await refreshList()
-    if (activeRef.current) await loadThread(activeRef.current)
+    connectionChecks.current += 1
+    setConnectionLoading(true)
+    try {
+      const result = await window.opencourse.listChatModels(scope)
+      const provider = result.defaultProvider ?? result.connection?.provider ?? result.provider ?? 'apiKey'
+      const other: AIProvider = provider === 'apiKey' ? 'chatgpt' : 'apiKey'
+      // The other connection's list is only for a conversation pinned to it, so
+      // trouble reaching it is that conversation's to report, not the panel's.
+      const second = await window.opencourse.listChatModels(scope, other).catch(() => null)
+      const lists: Partial<Record<AIProvider, ChatPickerModels>> = { [provider]: result, ...(second ? { [other]: second } : {}) }
+      setCatalogs(lists); setDefaultProvider(provider); setWebSearch(result.webSearch)
+      // What main would give a chat created now. A draft keeps a model it was
+      // given only while its connection still offers that model, as a stored chat does.
+      defaults.current = { ...(result.defaults ?? { model: '', reasoning: null }), provider }
+      keepUnlisted(next => {
+        for (const [id, chat] of next) {
+          if (!isDraft(id)) continue
+          const own = chat.pinnedProvider ?? provider
+          const list = lists[own]
+          if (chat.model && chat.provider === own && list?.models.some(m => m.id === chat.model)) continue
+          next.set(id, chat.pinnedProvider && list
+            ? { ...chat, ...(list.defaults ?? { model: '', reasoning: null }), provider: own }
+            : { ...chat, ...defaults.current, pinnedProvider: undefined })
+        }
+      })
+      await refreshList()
+      if (activeRef.current) await loadThread(activeRef.current)
+    } finally {
+      connectionChecks.current -= 1
+      if (connectionChecks.current === 0) setConnectionLoading(false)
+    }
   }, [scope, refreshList, loadThread, keepUnlisted])
 
   useEffect(() => { if (visible) void refreshKey().catch((error: Error) => setError(error.message)) }, [visible, refreshKey, version])
@@ -605,6 +616,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     models,
     webSearch,
     ready: connection.ready,
+    connectionLoading,
     provider: activeProvider,
     connection,
     defaultProvider,

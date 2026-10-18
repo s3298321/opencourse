@@ -8,7 +8,7 @@ import { modelReasoning } from '@core/ai'
 import { OPENAI_OVERLOADED, isOpenAIOverload } from '@core/ai-errors'
 import { CHATGPT_USAGE_URL } from './AISettings'
 import ConnectionIcon, { PROVIDER_LABELS } from './ConnectionIcon'
-import { citeAnswer, shortTitle, type CitedSource } from '@core/sidechat/citations'
+import { citeAnswer, shortTitle, stripWebCitationTokens, type CitedSource } from '@core/sidechat/citations'
 import { REASONING_LABELS, webSearchFor } from '@core/sidechat/models'
 import { MAX_MESSAGE_CHARS } from '@core/sidechat/thread'
 import Html from './Html'
@@ -56,6 +56,16 @@ function tabLabel(title: string, fallback: string): string {
   const text = title.trim()
   if (!text) return fallback
   return text.length > 26 ? `${text.slice(0, 26)}…` : text
+}
+
+function HistoryMessageTime({ at }: { at?: string | null }): JSX.Element | null {
+  if (!at) return null
+  const date = new Date(at)
+  if (Number.isNaN(date.getTime())) return null
+  const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'long' }).format(date)
+  return <> · <time dateTime={at} title={`Last message: ${fullDate}`} aria-label={`Last message: ${fullDate}`}>
+    {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', hourCycle: 'h23' }).format(date)}
+  </time></>
 }
 
 function Answer({ text }: { text: string }): JSX.Element {
@@ -185,8 +195,8 @@ function Sources({ chatId, seq, sources, fetchIcons }: { chatId: string; seq: nu
     }
   }, [cacheKey, chatId, seq, fetchIcons])
   return (
-    <nav className="chat-sources" data-ask="none" aria-label="Sources">
-      <div className="chat-sources-label">Sources</div>
+    <nav className="chat-sources" data-ask="none" aria-label="Cited sources">
+      <div className="chat-sources-label">Cited sources</div>
       <ol>
         {sources.map((source) => (
           <li key={source.n}>
@@ -212,16 +222,20 @@ function Sources({ chatId, seq, sources, fetchIcons }: { chatId: string; seq: nu
 function AnswerTurn({ chatId, message, onSource, sourceIcons: fetchIcons }: { chatId: string | null; message: ChatMessage; onSource?: Props['onSource']; sourceIcons?: Props['sourceIcons'] }): JSX.Element {
   const cited = useMemo(() => citeAnswer(message.text, message.citations), [message.text, message.citations])
   const consulted = normalizeResearchSources(message.researchSources).filter(source => !cited.sources.some(c => c.url === source.url))
+  const localSourcesLabel = message.localSources?.every(source => source.kind === 'document') ? 'Consulted pages' : 'Consulted sources'
   return (
     <div className="chat-turn assistant">
       <div className="chat-answer" data-ask="answer">
         <Answer text={cited.markdown} />
       </div>
       {(message.status === 'stopped' || message.status === 'failed') && <p className="meta" data-ask="none">{message.status === 'stopped' ? 'Stopped · partial response' : 'Response failed · partial text preserved'}</p>}
-      {!!message.localSources?.length && <nav className="chat-local-sources" data-ask="none" aria-label="Reading sources">{message.localSources.map((source, index) => <button className="ghost" key={index} onClick={() => onSource ? onSource(source) : window.dispatchEvent(new CustomEvent('reading:source', { detail: source }))}>{source.kind === 'document' ? `Page ${source.page}` : source.title}</button>)}</nav>}
+      {!!message.localSources?.length && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label={localSourcesLabel}>
+        <summary className="chat-sources-label">{localSourcesLabel} ({message.localSources.length})</summary>
+        <nav className="chat-local-sources" aria-label="Reading sources">{message.localSources.map((source, index) => <button className="ghost" key={index} onClick={() => onSource ? onSource(source) : window.dispatchEvent(new CustomEvent('reading:source', { detail: source }))}>{source.kind === 'document' ? `Page ${source.page}` : source.title}</button>)}</nav>
+      </details>}
       {chatId && cited.sources.length > 0 && <Sources chatId={chatId} seq={message.seq} sources={cited.sources} fetchIcons={fetchIcons} />}
-      {consulted.length > 0 && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label="Consulted sources">
-        <summary className="chat-sources-label">Consulted sources ({consulted.length})</summary>
+      {consulted.length > 0 && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label="Other research sources">
+        <summary className="chat-sources-label">Other research sources ({consulted.length})</summary>
         <ul>{consulted.map(source => <li key={source.url}><a className="chat-source" href={source.url} title={source.url}>{shortTitle(source.title, source.url)}</a></li>)}</ul>
       </details>}
       <ChatMessageMeta message={message} />
@@ -442,6 +456,7 @@ export default function ChatPanelView({
         <span className="spacer" />
         <button
           className={`sidechat-history-toggle${historyOpen ? ' active' : ''}`}
+          aria-expanded={historyOpen}
           onClick={() => setHistoryOpen((open) => !open)}
         >
           History
@@ -452,12 +467,16 @@ export default function ChatPanelView({
         <div className="sidechat-history">
           {panel.chats.length === 0 && <div className="meta">No conversations yet.</div>}
           {panel.chats.map((chat) => (
-            <div key={chat.id} className="sidechat-history-row" onClick={() => panel.open(chat.id)}>
+            <div key={chat.id} className="sidechat-history-row" onClick={() => {
+              panel.open(chat.id)
+              setHistoryOpen(false)
+            }}>
               <div>
                 <div>{chat.title || 'A new chat'}</div>
                 <div className="meta">
                   {chat.historyLabel ?? (chat.startedIn ? 'Conversation' : 'Project')} · {chat.messages} message
                   {chat.messages === 1 ? '' : 's'}
+                  <HistoryMessageTime at={chat.lastMessageAt} />
                 </div>
               </div>
               <button
@@ -476,7 +495,10 @@ export default function ChatPanelView({
       )}
 
       {!panel.ready && (
-        <div className="sidechat-note">
+        panel.connectionLoading ? <div className="sidechat-note sidechat-connection-loading" role="status">
+          <i className="sidechat-connection-spinner" aria-hidden="true" />
+          <span>Checking AI connection…</span>
+        </div> : <div className="sidechat-note">
           <span>{panel.connection.message ?? `Connect ${PROVIDER_LABELS[panel.provider]} in Settings.`}</span>
           <ActionButton icon="settings" onClick={onAddKey}>Open Settings</ActionButton>
         </div>
@@ -505,7 +527,7 @@ export default function ChatPanelView({
             {panel.streaming !== null && (
               <div className={`chat-turn assistant partial${panel.streaming === '' ? ' thinking' : ''}`}>
                 {panel.streaming ? (
-                  <Answer text={panel.streaming} />
+                  <Answer text={stripWebCitationTokens(panel.streaming)} />
                 ) : (
                   <span className="chat-typing" role="status" aria-label="Thinking">
                     <i />

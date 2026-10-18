@@ -5,6 +5,7 @@ import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
 import Menu from './Menu'
 import Brand from './Brand'
 import UpdateButton from './UpdateButton'
+import Pomodoro from './Pomodoro'
 import { screenOf, sectionOf, type Route } from '../routes'
 import type { Workspace } from '../workspaces'
 import { useScreenActive } from '../screen-activity'
@@ -56,8 +57,10 @@ export function TitleBarChrome({ back, user, navigate, route, actions, switchWor
   const theme = useActiveTheme()
   const section = route ? sectionOf(route) : null
   const controlsRef = useRef<HTMLDivElement>(null)
+  const leftRef = useRef<HTMLDivElement>(null)
   const switchRef = useRef<HTMLDivElement>(null)
   const [controlsWidth, setControlsWidth] = useState(80)
+  const [leftWidth, setLeftWidth] = useState(104)
 
   useLayoutEffect(() => {
     const workspaceSwitch = switchRef.current
@@ -80,16 +83,21 @@ export function TitleBarChrome({ back, user, navigate, route, actions, switchWor
   useLayoutEffect(() => {
     const controls = controlsRef.current
     if (!controls) return
-    const measure = (): void => setControlsWidth(Math.max(80, controls.getBoundingClientRect().width))
+    const measure = (): void => {
+      setControlsWidth(Math.max(80, controls.getBoundingClientRect().width))
+      setLeftWidth(leftRef.current?.getBoundingClientRect().width ?? 104)
+    }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(controls)
+    if (leftRef.current) observer.observe(leftRef.current)
     return () => observer.disconnect()
   }, [])
 
   return (
-    <div className="titlebar" data-dark-chrome={theme.id === WHITE_THEME_ID ? '' : undefined} data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined} style={{ '--titlebar-controls-width': `${controlsWidth}px` } as CSSProperties}>
+    <div className="titlebar" data-dark-chrome={theme.id === WHITE_THEME_ID ? '' : undefined} data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined} style={{ '--titlebar-controls-width': `${controlsWidth}px`, '--titlebar-left-width': `${leftWidth}px` } as CSSProperties}>
       {back ? <div className="crumbs"><a role="button" tabIndex={0} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); back.onClick() } }} onClick={back.onClick}>← {back.label}</a></div> : <Brand />}
+      <div className="titlebar-left" ref={leftRef}>{user && <Pomodoro key={user.id} />}</div>
       <div className="titlebar-right" ref={controlsRef}>
         <UpdateButton
           openSettings={navigate && route ? () => navigate({ name: 'settings', from: screenOf(route), section: 'updates' }) : undefined}

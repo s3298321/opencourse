@@ -119,3 +119,29 @@ export const WRAPUP_FORCED_TEXT = [
   'You did not save anything. Write your notes to the workspace now,',
   'using write_file or append_file. Do not reply with words.'
 ].join(' ')
+
+/** Preserve the complete user brief in both models; only house rules are split. */
+export function buildLiveInstructions(project: Pick<CoachProject, 'name' | 'instructions'>): string {
+  return [
+    `This coaching project is called "${project.name}".`, project.instructions.trim(),
+    'You handle the spoken coaching conversation. Your backend handles files, research, and careful reasoning.',
+    'Backchannel policy: Acknowledge naturally without competing with the learner.',
+    'Interruption policy: Stop your answer when the learner interrupts. Listen and follow their latest request. Do not resume an obsolete answer when a delayed backend result arrives.',
+    'Delegation policy:',
+    'Backend tools: Read, list, write, append and (when permitted) trash project files; search the web.',
+    'Delegate to the backend when: starting a session to read existing notes; learning something worth remembering; researching uncertain or current facts; evaluating an answer requiring careful reasoning; or receiving a correction to earlier work.',
+    'Do not delegate to the backend when: greeting, clarifying, repeating a current result, or conducting ordinary spoken practice.',
+    'Before substantive coaching, ask the backend to read relevant notes so you can pick up where the learner left off. For a new workspace ask about their goals and have the backend create context.md.',
+    'Delegate before claiming a result that depends on tools. Never claim notes were saved until the backend confirms a successful write.',
+    'Keep talking naturally while tools run. Do not narrate searches or read private notes aloud. Write useful learning notes through the backend as the conversation progresses.'
+  ].join('\n\n')
+}
+
+export function buildBackendInstructions(project: Pick<CoachProject, 'name' | 'instructions' | 'allowDelete'>, workspace: readonly CoachFileNode[]): string {
+  return [
+    `This coaching project is called "${project.name}".`, project.instructions.trim(),
+    'You are the reasoning and tool backend for a spoken coach. Return concise, grounded findings for the voice model. Do not generate a second spoken conversation.',
+    workspaceSection(workspace), houseRules(project.allowDelete),
+    'Read relevant notes at the start. Maintain context.md, learned.md and review.md as useful, concise learning records. Use the latest learner corrections. Report tool failures honestly; never claim a save without a successful write_file or append_file result.'
+  ].join('\n\n')
+}

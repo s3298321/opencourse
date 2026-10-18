@@ -9,9 +9,10 @@
 import type { CoachProject } from '../types'
 import { WRITABLE_EXTENSIONS } from './files'
 
-/** A function tool as the Realtime API's `session.update` wants it. */
-export interface RealtimeTool {
+/** A custom function exposed to the Live Responses backend. */
+export interface CoachFunctionTool {
   type: 'function'
+  strict?: false
   name: string
   description: string
   parameters: {
@@ -41,7 +42,7 @@ const pathArg = {
     'dot, dash and underscore. No spaces, no accents, no leading dot.'
 }
 
-const FILE_TOOLS: RealtimeTool[] = [
+const FILE_TOOLS: CoachFunctionTool[] = [
   {
     type: 'function',
     name: 'write_file',
@@ -85,14 +86,14 @@ const FILE_TOOLS: RealtimeTool[] = [
   }
 ]
 
-const DELETE_TOOL: RealtimeTool = {
+const DELETE_TOOL: CoachFunctionTool = {
   type: 'function',
   name: 'delete_file',
   description: 'Move a file in your workspace to the trash. The learner can still recover it.',
   parameters: { type: 'object', properties: { path: pathArg }, required: ['path'], additionalProperties: false }
 }
 
-const WEB_SEARCH_TOOL: RealtimeTool = {
+const WEB_SEARCH_TOOL: CoachFunctionTool = {
   type: 'function',
   name: 'web_search',
   description:
@@ -116,12 +117,12 @@ const WEB_SEARCH_TOOL: RealtimeTool = {
  * What this project's coach can do. `delete_file` is absent unless the project
  * turns it on - the requirement is that the *user* can delete, not the model.
  */
-export function toolsFor(project: Pick<CoachProject, 'allowDelete'>): RealtimeTool[] {
-  return [...FILE_TOOLS, ...(project.allowDelete ? [DELETE_TOOL] : []), WEB_SEARCH_TOOL]
+export function toolsFor(project: Pick<CoachProject, 'allowDelete'>): CoachFunctionTool[] {
+  return [...FILE_TOOLS, ...(project.allowDelete ? [DELETE_TOOL] : []), WEB_SEARCH_TOOL].map(tool => ({ ...tool, strict: false }))
 }
 
 /** Every tool that exists, for tests and for the prompt's own description. */
-export const COACH_TOOLS: readonly RealtimeTool[] = [...FILE_TOOLS, DELETE_TOOL, WEB_SEARCH_TOOL]
+export const COACH_TOOLS: readonly CoachFunctionTool[] = [...FILE_TOOLS, DELETE_TOOL, WEB_SEARCH_TOOL]
 
 export const TOOL_NAMES: readonly string[] = COACH_TOOLS.map((tool) => tool.name)
 
@@ -133,7 +134,7 @@ function str(value: unknown): string | null {
  * Turns `(name, raw JSON)` into something main can act on, or into an error
  * written for the model.
  *
- * The Realtime API sends arguments as a JSON *string* assembled from deltas, so
+ * The Responses API sends arguments as a JSON *string* assembled from deltas, so
  * a truncated or empty one is a normal thing to see, not a bug.
  */
 export function parseToolCall(name: string, rawArgs: string): ParsedToolCall | { error: string } {

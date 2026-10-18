@@ -2,8 +2,7 @@
  * Starting and ending a live session, with OpenAI and the microphone stubbed.
  *
  * The behaviour worth pinning here is all about failure: a refused microphone
- * must not have cost an API call, an expired secret must be re-minted exactly
- * once, and a session must never be left claiming to be live - whether the
+ * must not have cost an API call, an ambiguous creation must never be repeated, and a session must never be left claiming to be live - whether the
  * renderer went away, the app quit, or the machine was pulled out of the wall.
  */
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -31,11 +30,8 @@ function respond(url: string): { status: number; body: string } {
   for (const [fragment, queue] of Object.entries(responses)) {
     if (url.includes(fragment) && queue.length) return queue.shift() as { status: number; body: string }
   }
-  if (url.includes('client_secrets')) {
-    return { status: 200, body: JSON.stringify({ value: 'ek_test_secret', expires_at: Math.floor(Date.now() / 1000) + 600 }) }
-  }
-  if (url.includes('/calls')) return { status: 200, body: 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n' }
-  return { status: 200, body: JSON.stringify({ data: [{ id: 'gpt-realtime-2.1' }] }) }
+  if (url.includes('/live/sessions')) return { status: 201, body: JSON.stringify({ session: { id: 'live_remote' }, transport: { type: 'webrtc', sdp: 'v=0\r\nanswer\r\n' } }) }
+  return { status: 200, body: JSON.stringify({ data: [{ id: 'gpt-live-1' }] }) }
 }
 
 vi.mock('electron', () => ({
@@ -72,7 +68,7 @@ vi.mock('electron', () => ({
 
 const { createUser, deleteUser, listUsers, requireUser, switchUser } = await import('../src/main/users')
 const { closeDb } = await import('../src/main/db')
-const { selectSessionRow, selectSessions } = await import('../src/main/coachdb')
+const { selectSessionRow, selectSessions, selectToolCalls, selectSessionSummary } = await import('../src/main/coachdb')
 const { createProject, updateProject, deleteProject } = await import('../src/main/coach')
 const { getCoachAllowDelete, setCoachAllowDelete } = await import('../src/main/preferences')
 const { isCoachProjectBusy } = await import('../src/main/coach-activity')
@@ -164,7 +160,7 @@ describe('starting a session', () => {
     expect(row?.project_id).toBe(projectId)
     // The brief is snapshotted, so changing it later cannot rewrite history.
     expect(row?.instructions).toBe(started.instructions)
-    expect(started.model).toBe('gpt-realtime-2.1')
+    expect(started.model).toBe('gpt-live-1')
   })
 
   it('tells the coach what is in its workspace before a word is said', async () => {
@@ -183,22 +179,20 @@ describe('starting a session', () => {
     expect(serialised).not.toContain('sk-')
   })
 
-  it('sends the whole session shape when it mints, so the call is right from the first byte', async () => {
-    await start()
-    const mint = calls.find((call) => call.url.includes('client_secrets'))
-    expect(mint).toBeTruthy()
-    const body = JSON.parse(mint?.body ?? '{}')
-    expect(body.session.type).toBe('realtime')
-    expect(body.session.model).toBe('gpt-realtime-2.1')
-    expect(body.session.audio.output.voice).toBeTruthy()
-    // Without input transcription, half the conversation never reaches the database.
-    expect(body.session.audio.input.transcription).toBeTruthy()
-    expect(body.session.audio.input.noise_reduction).toEqual({ type: 'far_field' })
-    expect(body.session.audio.input.turn_detection).toEqual({
-      type: 'semantic_vad', eagerness: 'low', create_response: true, interrupt_response: true
-    })
-    expect(body.session.tools.map((tool: { name: string }) => tool.name)).toContain('write_file')
-    expect(mint?.auth).toContain(GOOD)
+  it('creates a Live session with separate prompts and sequential tools after microphone setup', async () => {
+    const started = await start()
+    if (started.status !== 'ok') throw new Error(started.status)
+    expect(calls).toHaveLength(0)
+    await connectSession(started.sessionId, 'v=0\r\noffer')
+    const request = calls[0]
+    const body = JSON.parse(request.body)
+    expect(request.url).toContain('/live/sessions')
+    expect(request.auth).toBe(`Bearer ${GOOD}`)
+    expect(body.session).toMatchObject({ model: 'gpt-live-1', store: false, audio: { output: { voice: 'marin' } }, delegation: { type: 'responses', responses: { model: 'gpt-6-luna', parallel_tool_calls: false } } })
+    expect(body.session.delegation.responses.tools.map((t: {name: string}) => t.name)).toContain('write_file')
+    expect(body.session.instructions).toContain('Delegation policy')
+    expect(body.session.delegation.responses.instructions).toContain('ASCII')
+    expect(body.session.audio.input).toBeUndefined()
   })
 
   it('withholds the delete tool until the global setting allows it', async () => {
@@ -231,11 +225,14 @@ describe('starting a session', () => {
     expect(getCoachAllowDelete()).toBe(true)
   })
 
-  it('reports an OpenAI refusal as an outcome, not an exception', async () => {
-    responses = { client_secrets: [{ status: 429, body: JSON.stringify({ error: { message: 'slow down' } }) }] }
+  it('reports an OpenAI refusal without creating a second billable session', async () => {
+    responses = { '/live/sessions': [{ status: 429, body: JSON.stringify({ error: { message: 'slow down' } }) }] }
     const started = await start()
-    expect(started).toEqual({ status: 'failed', message: 'slow down' })
-    expect(selectSessions(projectId)).toHaveLength(0)
+    if (started.status !== 'ok') throw new Error(started.status)
+    await expect(connectSession(started.sessionId, 'v=0')).rejects.toThrow('HTTP 429')
+    await expect(connectSession(started.sessionId, 'v=0')).rejects.toThrow('HTTP 429')
+    expect(calls).toHaveLength(1)
+    endSession(started.sessionId, {status: 'failed'})
     expect(wantsMic()).toBe(false)
   })
 })
@@ -266,6 +263,7 @@ describe('project deletion while connecting or running', () => {
     const run = vi.spyOn(tools, 'runCoachTool').mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
     try {
       const pending = executeCoachTool(started.sessionId, 1, 'web_search', '{}')
+      await Promise.resolve()
       endSession(started.sessionId, {status: 'ended'})
       expect(() => deleteProject(projectId)).toThrow(/Finish/)
       finish({ok: true, output: '{}', summary: 'Search complete'})
@@ -281,52 +279,20 @@ describe('project deletion while connecting or running', () => {
 })
 
 describe('connecting', () => {
-  it('trades the offer for an answer, using the secret the renderer never saw', async () => {
+  it('coalesces duplicate requests and returns no credentials', async () => {
     const started = await start()
     if (started.status !== 'ok') throw new Error(started.status)
-    calls = []
-
-    const { answerSdp } = await connectSession(started.sessionId, 'v=0\r\noffer\r\n')
-    expect(answerSdp).toContain('v=0')
-    const sdpCall = calls.find((call) => call.url.includes('/calls'))
-    expect(sdpCall?.auth).toBe('Bearer ek_test_secret')
-    expect(sdpCall?.body).toContain('offer')
+    const results = await Promise.all([connectSession(started.sessionId, 'v=0 offer'), connectSession(started.sessionId, 'v=0 offer')])
+    expect(calls).toHaveLength(1)
+    expect(results[0]).toEqual({answerSdp: 'v=0\r\nanswer\r\n', remoteSessionId: 'live_remote'})
+    expect(results[1]).toEqual(results[0])
   })
-
-  it('re-mints once when OpenAI refuses the secret, and then gives up', async () => {
+  it('rejects another window and unknown sessions', async () => {
     const started = await start()
     if (started.status !== 'ok') throw new Error(started.status)
-    calls = []
-    responses = {
-      '/calls': [
-        { status: 401, body: JSON.stringify({ error: { message: 'expired' } }) },
-        { status: 200, body: 'v=0\r\nanswer\r\n' }
-      ]
-    }
-
-    const { answerSdp } = await connectSession(started.sessionId, 'v=0\r\noffer\r\n')
-    expect(answerSdp).toContain('answer')
-    expect(calls.filter((call) => call.url.includes('client_secrets'))).toHaveLength(1)
-    expect(calls.filter((call) => call.url.includes('/calls'))).toHaveLength(2)
-  })
-
-  it('stops after the second refusal instead of looping on a bill', async () => {
-    const started = await start()
-    if (started.status !== 'ok') throw new Error(started.status)
-    responses = {
-      '/calls': [
-        { status: 401, body: '{}' },
-        { status: 401, body: '{}' },
-        { status: 401, body: '{}' }
-      ]
-    }
-
-    await expect(connectSession(started.sessionId, 'v=0\r\n')).rejects.toThrow()
-    expect(calls.filter((call) => call.url.includes('/calls')).length).toBeLessThanOrEqual(3)
-  })
-
-  it('refuses to connect a session that is not running', async () => {
-    await expect(connectSession('cs_000000000000', 'v=0\r\n')).rejects.toThrow(/not running/)
+    await expect(connectSession(started.sessionId, 'v=0', 999)).rejects.toThrow('another window')
+    await expect(connectSession('cs_000000000000', 'v=0')).rejects.toThrow('not running')
+    expect(calls).toHaveLength(0)
   })
 })
 
@@ -455,6 +421,83 @@ describe('coach diagnostics', () => {
       expect(records.at(-1)?.data).toMatchObject({ errorCode: 'rate_limit_exceeded', errorType: 'tokens' })
       expect(records.at(-1)?.level).toBe('warn')
       expect(JSON.stringify(records.at(-1))).not.toContain('PRIVATE CONTENT')
+      reportCoachResponse(result.sessionId, 1, {
+        event: 'session.error', clientEventId: 'coach_7', errorCode: 'missing_required_parameter',
+        errorType: 'invalid_request_error', wrappingUp: true
+      })
+      expect(records.at(-1)?.level).toBe('warn')
+      expect(records.at(-1)?.data).toMatchObject({
+        event: 'session.error', clientEventId: 'coach_7', errorCode: 'missing_required_parameter', wrappingUp: true
+      })
+      reportCoachResponse(result.sessionId, 1, {
+        event: 'session.error', clientEventId: 'PRIVATE CONTENT', errorCode: 'PRIVATE CONTENT', errorType: 'PRIVATE CONTENT'
+      })
+      expect(JSON.stringify(records.at(-1))).not.toContain('PRIVATE CONTENT')
     } finally { log.removeSink('coach-test') }
+  })
+})
+
+
+describe('Live ownership and exactly-once tools', () => {
+  it('freezes the selected background model for connection and session titles', async () => {
+    updateProject(projectId, { backendModel: 'gpt-6-sol' })
+    const result = await start()
+    if (result.status !== 'ok') throw new Error('not started')
+    expect(result.backendModel).toBe('gpt-6-sol')
+    updateProject(projectId, { backendModel: 'gpt-6-luna' })
+    await connectSession(result.sessionId, 'v=0 offer', 1)
+    expect(JSON.parse(calls.at(-1)!.body).session.delegation.responses.model).toBe('gpt-6-sol')
+    expect(selectSessionSummary(result.sessionId)?.metadata?.backendModel).toBe('gpt-6-sol')
+  })
+  it('lists available background models separately from voice models, with an offline fallback', async () => {
+    const { listCoachBackendModels } = await import('../src/main/openai')
+    responses['/models'] = [{ status: 200, body: JSON.stringify({ data: ['gpt-live-1', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5-mini', 'gpt-4o-audio-preview', 'o3', 'gpt-5-pro'].map(id => ({ id })) }) }]
+    const result = await listCoachBackendModels(GOOD)
+    expect(result.source).toBe('api')
+    expect(result.models.map(m => m.id)).toEqual(['gpt-6-luna', 'gpt-5-mini', 'gpt-6-sol', 'o3'])
+    responses['/models'] = [{ status: 503, body: 'unavailable' }]
+    expect(await listCoachBackendModels(GOOD)).toMatchObject({ source: 'fallback', models: [{ id: 'gpt-6-luna' }, { id: 'gpt-6-sol' }] })
+  })
+  it('sends the frozen voice/backend config, preserving optional tool arguments', async () => {
+    const result = await start()
+    if (result.status !== 'ok') throw new Error('not started')
+    await connectSession(result.sessionId, 'v=0 offer', 1)
+    const body = JSON.parse(calls.at(-1)!.body)
+    expect(body).toMatchObject({transport: {type: 'webrtc', sdp: 'v=0 offer'}, session: {
+      model: 'gpt-live-1', instructions: result.instructions,
+      delegation: {type: 'responses', responses: {model: 'gpt-6-luna', instructions: result.backendInstructions, tool_choice: 'auto', parallel_tool_calls: false}}
+    }})
+    expect(body.session.delegation.responses.reasoning).toBeUndefined()
+    expect(body.session.delegation.responses.tools.every((t: any) => t.strict === false)).toBe(true)
+    expect(selectSessionSummary(result.sessionId)?.metadata).toMatchObject({backendModel: 'gpt-6-luna', remoteSessionId: 'live_remote'})
+  })
+  it('executes repeated append events once in main and resumes those notes in another session', async () => {
+    const result = await start()
+    if (result.status !== 'ok') throw new Error('not started')
+    const args = JSON.stringify({path: 'context.md', content: 'French: practised passé composé.'})
+    const results = await Promise.all([
+      executeCoachTool(result.sessionId, 1, 'append_file', args, 'call_repeat'),
+      executeCoachTool(result.sessionId, 1, 'append_file', args, 'call_repeat')
+    ])
+    expect(results.every(r => r.ok)).toBe(true)
+    expect(toolCaps(result.sessionId).toolCalls).toBe(1)
+    expect(selectToolCalls(result.sessionId)).toHaveLength(1)
+    await expect(executeCoachTool(result.sessionId, 1, 'append_file', '{}', 'call_repeat')).rejects.toThrow('identity')
+    endSession(result.sessionId, {status: 'ended'})
+    const second = await start()
+    if (second.status !== 'ok') throw new Error('not started')
+    expect(second.backendInstructions).toContain('context.md')
+    const read = await executeCoachTool(second.sessionId, 1, 'read_file', JSON.stringify({path: 'context.md'}), 'call_resume')
+    expect(read.ok).toBe(true)
+    expect(read.output.match(/French:/g)).toHaveLength(1)
+    expect(read.output).toContain('passé composé')
+  })
+  it('does not let a destroyed renderer prevent cleanup', async () => {
+    const gone = {...sender(19), isDestroyed: () => false, send: () => {throw new Error('destroyed')}}
+    const result = await startSession(gone as any, projectId)
+    if (result.status !== 'ok') throw new Error('not started')
+    expect(() => endForSender(19, 'window lost')).not.toThrow()
+    expect(liveSessionCount()).toBe(0)
+    expect(wantsMic()).toBe(false)
   })
 })

@@ -333,7 +333,7 @@ describe('which models the picker offers', () => {
 describe('preferences.json', () => {
   it('keeps valid defaults and discards unsupported model or reasoning choices', () => {
     expect(normalizePreferences({ defaultChatModel: 'gpt-5.1', defaultChatReasoning: 'high', defaultCoachModel: 'gpt-realtime' }))
-      .toEqual({ defaultChatModel: 'gpt-5.1', defaultChatReasoning: 'high', defaultCoachModel: 'gpt-realtime' })
+      .toEqual({ defaultChatModel: 'gpt-5.1', defaultChatReasoning: 'high', defaultCoachModel: 'gpt-live-1' })
     expect(normalizePreferences({ defaultChatModel: 'gpt-4.1', defaultChatReasoning: 'high', defaultCoachModel: 'whisper-1' }))
       .toEqual({ defaultChatModel: 'gpt-4.1' })
     expect(normalizePreferences({ defaultChatModel: 42, defaultChatReasoning: 'unknown', defaultCoachModel: 'gpt-realtime-transcribe' }))

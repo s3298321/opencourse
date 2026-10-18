@@ -22,7 +22,7 @@ vi.mock('electron', () => ({
 
 const { newSessionId } = await import('../src/core/coach/ids')
 const { createUser, deleteUser, listUsers, switchUser } = await import('../src/main/users')
-const { userDbFile, coachProjectDir, coachProjectsRoot } = await import('../src/main/paths')
+const { userDbFile, coachProjectDir, coachProjectsRoot, userPreferencesFile } = await import('../src/main/paths')
 const { SCHEMA_VERSION, closeDb, db } = await import('../src/main/db')
 const {
   deleteSessionRow,
@@ -31,12 +31,16 @@ const {
   insertSession,
   recordToolCall,
   saveTurns,
+  saveFragments,
+  selectFragments,
+  selectSessionSummary,
   selectSessions,
   selectToolCalls,
   selectTurns
 } = await import('../src/main/coachdb')
-const { createProject, deleteProject, listProjects, updateProject, workspaceDir } = await import('../src/main/coach')
-const { getDefaultCoachModel, setDefaultCoachModel } = await import('../src/main/preferences')
+const { updateSessionMetadata } = await import('../src/main/coachdb')
+const { createProject, deleteProject, getProject, listProjects, updateProject, workspaceDir } = await import('../src/main/coach')
+const { getDefaultCoachModel, setDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel } = await import('../src/main/preferences')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -56,20 +60,64 @@ const startSession = (projectId: string, model = 'gpt-realtime-2.1'): string => 
 }
 
 describe('the schema', () => {
-  it('uses the saved speech model for new coaches, preserves existing choices, and isolates users', () => {
-    const user = createUser('Ada')
-    const existing = createProject({ name: 'French' })
-    expect(() => setDefaultCoachModel('gpt-5.1')).toThrow('speech-to-speech')
-    setDefaultCoachModel('gpt-realtime')
+  it('persists user defaults, applies them to new coaches, and honors per-coach choices', () => {
+    const ada = createUser('Ada')
+    const existing = createProject({ name: 'Existing' })
+    expect(getDefaultCoachBackendModel()).toBe('gpt-6-luna')
+    setDefaultCoachModel('gpt-live-1')
+    setDefaultCoachBackendModel('gpt-6-sol')
     closeDb()
-    expect(getDefaultCoachModel()).toBe('gpt-realtime')
-    expect(createProject({ name: 'Chess' }).model).toBe('gpt-realtime')
-    expect(createProject({ name: 'Spanish', model: 'gpt-realtime-2.1-mini' }).model).toBe('gpt-realtime-2.1-mini')
-    expect(listProjects().find((project) => project.id === existing.id)!.model).toBe('gpt-realtime-2.1')
+    const next = createProject({ name: 'New coach' })
+    expect(next).toMatchObject({ model: 'gpt-live-1', backendModel: 'gpt-6-sol' })
+    expect(getProject(existing.id)?.backendModel).toBe('gpt-6-luna')
+    expect(createProject({ name: 'Override', backendModel: 'gpt-5-mini' }).backendModel).toBe('gpt-5-mini')
+    expect(() => setDefaultCoachBackendModel('gpt-live-1')).toThrow('background model')
+    expect(getDefaultCoachBackendModel()).toBe('gpt-6-sol')
     createUser('Grace')
-    expect(getDefaultCoachModel()).toBe('gpt-realtime-2.1')
-    switchUser(user.id)
-    expect(getDefaultCoachModel()).toBe('gpt-realtime')
+    expect(getDefaultCoachBackendModel()).toBe('gpt-6-luna')
+    switchUser(ada.id)
+    expect(getDefaultCoachBackendModel()).toBe('gpt-6-sol')
+  })
+  it('migrates existing coaches to the default background model without losing transcripts', () => {
+    createUser('Ada')
+    const project = createProject({ name: 'French' })
+    const session = startSession(project.id)
+    saveTurns(session, [{ seq: 0, role: 'user', text: 'Bonjour', at: 'now' }])
+    db().exec('ALTER TABLE projects DROP COLUMN backend_model; PRAGMA user_version = 19')
+    closeDb()
+    expect(getProject(project.id)?.backendModel).toBe('gpt-6-luna')
+    expect(selectTurns(session)[0].text).toBe('Bonjour')
+    expect((db().prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(SCHEMA_VERSION)
+  })
+  it('saves the background model in the database and recovery mirror', () => {
+    const user = createUser('Ada')
+    const project = createProject({ name: 'French' })
+    expect(project.backendModel).toBe('gpt-6-luna')
+    updateProject(project.id, { backendModel: 'gpt-6-sol' })
+    closeDb()
+    expect(getProject(project.id)?.backendModel).toBe('gpt-6-sol')
+    expect(JSON.parse(readFileSync(join(coachProjectDir(user.id, project.id), 'project.json'), 'utf8')).backendModel).toBe('gpt-6-sol')
+    closeDb()
+    writeFileSync(userDbFile(user.id), 'corrupt')
+    listProjects()
+    expect(getProject(project.id)?.backendModel).toBe('gpt-6-sol')
+  })
+  it('rejects audio and other specialized models as the coaching backend', () => {
+    createUser('Ada')
+    const project = createProject({ name: 'French' })
+    for (const backendModel of ['gpt-live-1', 'gpt-4o-audio-preview', 'text-embedding-3-small', 'gpt-5.1-chat-latest', 'gpt-5-pro', '']) {
+      expect(() => updateProject(project.id, { backendModel })).toThrow('background model')
+    }
+    expect(getProject(project.id)?.backendModel).toBe('gpt-6-luna')
+  })
+  it('uses Live for new coaches and rejects non-conversational models', () => {
+    createUser('Ada')
+    expect(() => setDefaultCoachModel('gpt-live-transcribe')).toThrow('speech-to-speech')
+    expect(() => createProject({ name: 'Bad', model: 'gpt-realtime' })).toThrow('GPT-Live')
+    setDefaultCoachModel('gpt-live-1')
+    closeDb()
+    expect(getDefaultCoachModel()).toBe('gpt-live-1')
+    expect(createProject({ name: 'Chess' }).model).toBe('gpt-live-1')
   })
   it('opens at the current version with the tables the app writes to', () => {
     createUser('Ada')
@@ -200,6 +248,21 @@ describe('a session that did not end cleanly', () => {
 })
 
 describe('flushing turns', () => {
+  it('keeps a generated title across reopen and late transcript or metadata flushes', () => {
+    createUser('Ada')
+    const project = createProject({ name: 'French' })
+    const session = startSession(project.id)
+    saveTurns(session, [{ seq: 0, role: 'user', text: 'Bonjour', at: 'now' }])
+    finishSession(session, 'ended')
+    expect(selectSessionSummary(session)?.title).toBe('Bonjour')
+    updateSessionMetadata(session, { generatedTitle: 'Horizons des trous noirs' })
+    updateSessionMetadata(session, { finalization: 'confirmed' })
+    saveTurns(session, [{ seq: 1, role: 'assistant', text: 'À bientôt', at: 'later' }])
+    closeDb()
+    expect(selectSessionSummary(session)?.title).toBe('Horizons des trous noirs')
+    expect(selectSessions(project.id)[0].title).toBe('Horizons des trous noirs')
+    expect(selectTurns(session)).toHaveLength(2)
+  })
   it('is idempotent, so a renderer that re-sends a flush does not double up', () => {
     createUser('Ada')
     const project = createProject({ name: 'French' })
@@ -310,10 +373,10 @@ describe('projects', () => {
     expect(mirror.name).toBe('French')
   })
 
-  it('defaults to a realtime model, a voice and the coaching prompt', () => {
+  it('defaults to a Live model, a voice and the coaching prompt', () => {
     createUser('Ada')
     const project = createProject({ name: 'French' })
-    expect(project.model).toBe('gpt-realtime-2.1')
+    expect(project.model).toBe('gpt-live-1')
     expect(project.voice).toBeTruthy()
     expect(project.instructions).toContain('coach')
     expect(project.allowDelete).toBe(false)
@@ -376,4 +439,56 @@ describe('staged project deletion recovery', () => {
     expect(listProjects().map(project => project.name)).toContain('French')
   })
 
+})
+
+
+describe('Live migration and durable captions', () => {
+  it('migrates rows and preferences, repairs interrupted mirrors, and preserves history and voices', () => {
+    const user = createUser('Ada')
+    const project = createProject({ name: 'French', voice: 'cedar', instructions: 'Mon brief exact.' })
+    const session = startSession(project.id, 'gpt-realtime-2.1')
+    saveTurns(session, [{seq: 0, role: 'user', text: 'bonjour', at: 'now'}])
+    finishSession(session, 'ended')
+    db().prepare('UPDATE projects SET model = ? WHERE id = ?').run('gpt-realtime-2.1', project.id)
+    const mirrorPath = join(coachProjectDir(user.id, project.id), 'project.json')
+    writeFileSync(mirrorPath, JSON.stringify({...project, model: 'gpt-realtime-2.1'}))
+    writeFileSync(userPreferencesFile(user.id), JSON.stringify({defaultCoachModel: 'gpt-realtime-mini', readingScale: 1.2}))
+    expect(getDefaultCoachModel()).toBe('gpt-live-1')
+    expect(JSON.parse(readFileSync(userPreferencesFile(user.id), 'utf8')).defaultCoachModel).toBe('gpt-live-1')
+    expect(listProjects()[0].model).toBe('gpt-live-1')
+    const migrated = readFileSync(mirrorPath, 'utf8')
+    expect(JSON.parse(migrated)).toMatchObject({voice: 'cedar', instructions: 'Mon brief exact.', model: 'gpt-live-1'})
+    listProjects()
+    expect(readFileSync(mirrorPath, 'utf8')).toBe(migrated)
+    // Simulate SQLite having committed while the mirror still has the old model.
+    writeFileSync(mirrorPath, JSON.stringify({...project, model: 'gpt-realtime'}))
+    listProjects()
+    expect(JSON.parse(readFileSync(mirrorPath, 'utf8')).model).toBe('gpt-live-1')
+    expect(selectSessionSummary(session)?.model).toBe('gpt-realtime-2.1')
+    expect(selectTurns(session)[0].text).toBe('bonjour')
+  })
+  it('migrates a Realtime project recovered from a backup mirror', () => {
+    const user = createUser('Ada')
+    const project = createProject({name: 'Recovered', voice: 'echo'})
+    const mirror = join(coachProjectDir(user.id, project.id), 'project.json')
+    writeFileSync(mirror, JSON.stringify({...project, model: 'gpt-4o-realtime-preview'}))
+    deleteProjectRow(project.id)
+    expect(listProjects()[0].model).toBe('gpt-live-1')
+    expect(JSON.parse(readFileSync(mirror, 'utf8'))).toMatchObject({model: 'gpt-live-1', voice: 'echo'})
+  })
+  it('deduplicates fragments durably, accepts late captions, and uses the same live/history grouping', () => {
+    createUser('Ada')
+    const project = createProject({name: 'French'})
+    const id = startSession(project.id, 'gpt-live-1')
+    const late = {eventId: 'u2', role: 'user' as const, text: ' très bien ', startMs: 800, endMs: 1000}
+    saveFragments(id, [late, {eventId: 'a1', role: 'assistant', text: 'Oui', startMs: 500, endMs: 600}])
+    saveFragments(id, [late, {eventId: 'u1', role: 'user', text: 'Je vais', startMs: 0, endMs: 400}])
+    closeDb()
+    expect(selectFragments(id)).toHaveLength(3)
+    expect(selectTurns(id).map(t => t.text)).toEqual(['Je vais très bien ', 'Oui'])
+    expect(() => saveFragments(id, [{...late, startMs: -1}])).toThrow()
+    expect(selectFragments(id)).toHaveLength(3)
+    deleteSessionRow(id)
+    expect(selectFragments(id)).toHaveLength(0)
+  })
 })

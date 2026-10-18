@@ -3,10 +3,10 @@ import type { AIProvider, ChatMessage, ProjectChatSummary, ReasoningEffort } fro
 import { registeredCourse, registeredElement } from './course-registry'
 import { db } from './db'
 import { isAIProvider } from '../core/ai'
-interface Row { id: string; course_slug: string; module_slug: string; model: string; provider: AIProvider; pinned_provider: string | null; reasoning: ReasoningEffort | null; created_at: string; updated_at: string; title: string; messages: number }
-const SUMMARY = `SELECT c.*, COALESCE(c.generated_title, (SELECT text FROM course_project_messages WHERE chat_id = c.id AND role = 'user' ORDER BY seq LIMIT 1), '') AS title, (SELECT COUNT(*) FROM course_project_messages WHERE chat_id = c.id AND role != 'context') AS messages FROM course_project_chats c`
+interface Row { id: string; course_slug: string; module_slug: string; model: string; provider: AIProvider; pinned_provider: string | null; reasoning: ReasoningEffort | null; created_at: string; updated_at: string; title: string; messages: number; last_message_at: string | null }
+const SUMMARY = `SELECT c.*, COALESCE(c.generated_title, (SELECT text FROM course_project_messages WHERE chat_id = c.id AND role = 'user' ORDER BY seq LIMIT 1), '') AS title, (SELECT COUNT(*) FROM course_project_messages WHERE chat_id = c.id AND role != 'context') AS messages, (SELECT json_extract(payload, '$.at') FROM course_project_messages WHERE chat_id=c.id AND role!='context' ORDER BY seq DESC LIMIT 1) AS last_message_at FROM course_project_chats c`
 function summary(row: Row): ProjectChatSummary {
-  return { id: row.id, courseId: row.course_slug, moduleId: row.module_slug, model: row.model, provider: row.provider === 'chatgpt' ? 'chatgpt' : 'apiKey', ...(isAIProvider(row.pinned_provider) ? { pinnedProvider: row.pinned_provider } : {}), reasoning: row.reasoning, createdAt: row.created_at, updatedAt: row.updated_at, title: row.title.slice(0, 120), messages: row.messages, historyLabel: 'Project conversation' }
+  return { id: row.id, courseId: row.course_slug, moduleId: row.module_slug, model: row.model, provider: row.provider === 'chatgpt' ? 'chatgpt' : 'apiKey', ...(isAIProvider(row.pinned_provider) ? { pinnedProvider: row.pinned_provider } : {}), reasoning: row.reasoning, createdAt: row.created_at, updatedAt: row.updated_at, lastMessageAt: row.last_message_at, title: row.title.slice(0, 120), messages: row.messages, historyLabel: 'Project conversation' }
 }
 export function selectProjectChats(courseId: string, moduleId: string): ProjectChatSummary[] {
   return (db().prepare(`${SUMMARY} WHERE c.course_slug = ? AND c.module_slug = ? ORDER BY c.updated_at DESC, c.rowid DESC LIMIT 200`).all(courseId, moduleId) as unknown as Row[]).map(summary)

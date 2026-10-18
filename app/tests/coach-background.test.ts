@@ -3,9 +3,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CoachProject } from '@core/types'
 const live = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), abandon: vi.fn(), status: 'idle' }))
-vi.mock('../src/renderer/coach/realtime', () => ({
+vi.mock('../src/renderer/coach/live', () => ({
   MAX_SESSION_MS: 2_700_000,
-  RealtimeSession: class {
+  LiveSession: class {
     async start() { live.start(); live.status = 'live' }
     async stop() { live.stop(); live.status = 'ended' }
     abandon() { live.abandon() }

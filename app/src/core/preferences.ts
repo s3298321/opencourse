@@ -4,11 +4,12 @@
  * setting it broke, never the app.
  */
 import { defaultChatModel, isChatModelId, isReasoningEffort, reasoningEffortsFor } from './sidechat/models'
-import { isRealtimeModelId } from './coach/models'
+import { isBackendModelId, isLiveModelId, migrateCoachModel } from './coach/models'
 import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
 import { WHITE_THEME_ID } from './theme/builtin-ids'
+import { normalizePomodoroSettings } from './pomodoro'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -40,7 +41,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   const preferred = typeof model === 'string' && model.length <= 100 && isChatModelId(model) &&
     (!chatModels || chatModels.includes(model)) ? model : undefined
   const reasoning = values['defaultChatReasoning']
-  const coachModel = values['defaultCoachModel']
+  const coachModel = typeof values['defaultCoachModel'] === 'string' ? migrateCoachModel(values['defaultCoachModel']) : undefined
   // Only a literal true turns search on. It costs money on every use, so a
   // hand-edited "yes" or 1 reads as the default - off - rather than as consent.
   const webSearch = (raw as Record<string, unknown>)['webSearch'] === true
@@ -48,12 +49,15 @@ export function normalizePreferences(raw: unknown): Preferences {
   const theme = values['theme']
   const readingScale = normalizeReadingScale(values['readingScale'])
   const kept: Preferences = {
+    ...(values.pomodoro && typeof values.pomodoro === 'object' ? { pomodoro: normalizePomodoroSettings(values.pomodoro) } : {}),
     ...(chatModels ? { chatModels } : {}),
     ...(preferred ? { defaultChatModel: preferred } : {}),
     ...(isReasoningEffort(reasoning) && reasoningEffortsFor(defaultChatModel(chatModels, preferred)).includes(reasoning)
       ? { defaultChatReasoning: reasoning } : {}),
-    ...(typeof coachModel === 'string' && coachModel.length <= 100 && isRealtimeModelId(coachModel)
+    ...(typeof coachModel === 'string' && coachModel.length <= 100 && isLiveModelId(coachModel)
       ? { defaultCoachModel: coachModel } : {}),
+    ...(typeof values.defaultCoachBackendModel === 'string' && isBackendModelId(values.defaultCoachBackendModel)
+      ? { defaultCoachBackendModel: values.defaultCoachBackendModel } : {}),
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
     ...(typeof values.authoringWebSearch === 'boolean' ? { authoringWebSearch: values.authoringWebSearch } : {}),

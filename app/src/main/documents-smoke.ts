@@ -85,17 +85,18 @@ export async function documentsChecks(win: BrowserWindow): Promise<Result[]> {
       find('[aria-label="Close document search"]').click();
       return 'Bookmark jumps to page 30; indexed Find results navigate to pages';
     `)
-    await run('documents: completion is manual and workspace switches preserve reader and draft', `
+    await run('documents: progress is manual and workspace switches preserve reader and draft', `
       const reader=find('.pdf-scroll'),old=reader.scrollTop;
       const field=find('.sidechat-input');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(field,'An unsent document question');field.dispatchEvent(new Event('input',{bubbles:true}));
-      find('.document-completed').click();await sleep(100);
-      assert(find('.document-completed').getAttribute('aria-pressed')==='true','Completion did not save');
+      const markedPage=Number(find('#document-page').value);
+      find('.document-reading-progress .action-button').click();await sleep(100);
+      assert(find('[aria-label="Reading progress"]').value===markedPage,'Progress did not save');
       document.querySelector('[data-section="coach"]').click();await sleep(100);
       document.querySelector('[data-section="documents"]').click();await sleep(100);
       assert(find('.pdf-scroll')===reader,'Reader was remounted');
       assert(Math.abs(reader.scrollTop-old)<3,'Reading position lost');
       assert(find('.sidechat-input').value==='An unsent document question','Draft lost');
-      return 'Whole-document completion, reading position, quote and chat draft retained';
+      return 'Marked reading progress, reading position, quote and chat draft retained';
     `)
     // Seed a completed answer as a deterministic stand-in for the separate mocked AI tests.
     const chat = createDocumentChat(id, 1)

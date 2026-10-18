@@ -612,15 +612,38 @@ Reset review progress on a saved card immediately clears the current user's
 schedule and history after confirmation, independently of draft saving.
 
 The overview offers Continue and Review, with a 10/15/20-card selector (default
-10). Review picks due cards, then unlocked unseen cards, then early reviews
-prioritized by estimated recall. Each card appears once per session; smaller
-decks produce smaller sessions. Reveal the answer and rate Again (forgot or
+10). Review picks due cards, then unlocked unseen cards. Cards scheduled for the
+future are not used to fill the requested count; Review is disabled when no due
+or new cards remain. Each card appears once per session; smaller available
+queues produce smaller sessions. Reveal the answer and rate Don't know (forgot or
 incorrect), Hard (recalled with difficulty), Good (correct), or Easy (effortless).
 Space reveals, keys 1–4 rate, and Escape exits. Each accepted rating saves
 immediately; exiting or closing the app retains rated cards' progress.
 
-Scheduling uses FSRS with a 90% retention target, short learning steps of 1/10
-minutes, relearning at 10 minutes, and no interval fuzz. Recommendations show due
+Scheduling uses ts-fsrs 5.4.2's long-term scheduler with a 90% model retention
+target, no within-day learning/relearning steps, and no interval fuzz. This
+fits sessions that show each card once: all newly scheduled intervals are at
+least one day. Intervals adapt to the card's review history and actual elapsed
+time, including late reviews. With the current default parameters, a new card's
+first intervals are 1/2/3/8 days for Don't know/Hard/Good/Easy; these are not a
+fixed ladder for subsequent reviews. Rating buttons show only their labels and
+keyboard shortcuts; scheduling runs in the background.
+
+Configuration version 2 is recorded with new ratings. Existing history and due
+dates are preserved; cards saved under the previous minute-step configuration
+adopt the day-based schedule on their next rating, without resetting progress.
+The retention target is not a guarantee of observed recall, and the default
+FSRS parameters are not individually optimized.
+
+The choice of a one-day minimum is a product policy for separate study sessions,
+not a universal scientific optimum. Research supports
+[retrieval practice](https://learninglab.psych.purdue.edu/downloads/2008/2008_Karpicke_Roediger_Science.pdf)
+and [spacing that depends on the retention horizon](https://www.yorku.ca/ncepeda/publications/CVRWP2008.pdf).
+Minute-scale learning steps are useful for repeat attempts within one sitting;
+this app instead uses the library's
+[supported long-term mode](https://open-spaced-repetition.github.io/ts-fsrs/interfaces/FSRSParameters.html).
+
+Recommendations show due
 and new cards, or the earliest next scheduled review. Estimated recall averages
 FSRS retrievability across reviewed unlocked cards; it is an estimate, not a
 course-completion score. Rating logs and card states live in the local user's

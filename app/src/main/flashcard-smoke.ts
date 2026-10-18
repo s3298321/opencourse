@@ -43,7 +43,7 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
       if(lesson.flashcards.length!==2 || lesson.flashcards.some(card=>'answer' in card)) throw new Error('Learner answers leaked');
       if((await window.opencourse.getReviewSummary(course.courseId)).eligible!==0) throw new Error('Cards unlocked before completion');
       await window.opencourse.toggleLesson(course.courseId,course.modules[0].slug,lesson.slug);
-      await wait(()=>!button('Review').disabled); window.__FLASHCARD_PROGRESS=await window.opencourse.getProgress(course.courseId); return '2 cards unlocked; answers hidden';
+      await wait(()=>!button('Review').disabled); return '2 cards unlocked; answers hidden';
     `)
     await run('create and edit a card in the edit session', `
       button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
@@ -75,12 +75,14 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
       const originalConfirm=window.confirm; window.confirm=()=>true;
       button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved')); window.confirm=originalConfirm;
       document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.library'));
-      [...document.querySelectorAll('.course-card')].find(card=>card.textContent.includes('The OpenCourse example course')).click(); await wait(()=>document.querySelector('.detail'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(card=>card.textContent.includes('The OpenCourse example course')))).click(); await wait(()=>document.querySelector('.detail'));
       const select=document.querySelector('[aria-label="Number of flashcards"]'); if(select.value!=='10') throw new Error('Wrong default'); select.value='20'; select.dispatchEvent(new Event('change',{bubbles:true}));
       await sleep(50); return 'Default 10; selected 20; eligible deck 3';
     `)
     await shot('overview')
     await run('review question and reveal', `
+      // Capture after the editor round trip: reopening the course updates lastOpenedAt.
+      window.__FLASHCARD_PROGRESS=await window.opencourse.getProgress(window.__FLASHCARD_COURSE);
       button('Review').click(); await wait(()=>document.querySelector('.review-question'));
       if(!document.querySelector('.review-card-meta').textContent.includes('of 3')) throw new Error('Small deck not capped');
       if(document.querySelector('.review-answer')) throw new Error('Answer revealed too early'); return 'Question only';
@@ -89,6 +91,8 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     await run('self-rating and image card', `
       document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); await wait(()=>document.querySelector('.review-answer'));
       if(document.querySelectorAll('.review-ratings button').length!==4) throw new Error('Missing ratings');
+      const labels=[...document.querySelectorAll('.review-ratings button')].map(button=>button.textContent);
+      if(!labels[0].includes("Don't know") || labels.some(label=>label.includes('Due '))) throw new Error('Ratings should show labels without due dates');
       document.dispatchEvent(new KeyboardEvent('keydown',{key:'1',bubbles:true})); await wait(()=>document.querySelector('.review-image'));
       document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); await wait(()=>document.querySelector('.review-answer'));
       return 'Again saved; illustrated card revealed';
@@ -97,16 +101,21 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     win.setSize(720, 620)
     await shot('answer-narrow')
     await run('narrow-window scroll and rating controls', `
-      const content=document.querySelector('.review-content'); content.scrollTop=content.scrollHeight;
-      await sleep(100);
+      const content=document.querySelector('.review-content');
       const controls=[...document.querySelectorAll('.review-ratings button')];
-      if(content.scrollWidth>content.clientWidth+1 || controls.some(control=>{const rect=control.getBoundingClientRect(); return rect.left<0 || rect.right>innerWidth || rect.bottom>innerHeight;})) throw new Error('Rating controls are unreachable in a narrow window');
-      return 'All four ratings visible after scrolling; no horizontal overflow';
+      const visible=()=>controls.every(control=>{const rect=control.getBoundingClientRect(); return rect.left>=0 && rect.right<=innerWidth && rect.top>=0 && rect.bottom<=innerHeight;});
+      content.scrollTop=0; await sleep(50);
+      if(!visible()) throw new Error('Rating controls must stay visible at the top of a long card');
+      content.scrollTop=content.scrollHeight;
+      await sleep(100);
+      if(content.scrollWidth>content.clientWidth+1 || !visible()) throw new Error('Rating controls are unreachable in a narrow window');
+      return 'All four ratings stay visible at both scroll extremes; no horizontal overflow';
     `)
     await shot('answer-narrow-ratings')
     win.setSize(1240, 860)
     await run('finish and preserve lesson progress', `
       document.dispatchEvent(new KeyboardEvent('keydown',{key:'3',bubbles:true})); await wait(()=>document.querySelector('.review-question').textContent.includes('joins object files'));
+      if(document.querySelector('.review-content').scrollTop!==0) throw new Error('Next question retained the previous scroll position');
       document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); await wait(()=>document.querySelector('.review-answer'));
       document.dispatchEvent(new KeyboardEvent('keydown',{key:'4',bubbles:true})); await wait(()=>document.querySelector('.review-complete'));
       const progress=await window.opencourse.getProgress(window.__FLASHCARD_COURSE);
@@ -118,9 +127,11 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     const rows = db().prepare('SELECT COUNT(*) AS n FROM flashcard_reviews').get() as { n: number }
     if (rows.n !== 3) throw new Error(`Expected 3 saved ratings, got ${rows.n}`)
     await run('explicit card reset in editor', `
-      button('Back to course').click(); await wait(()=>document.querySelector('.detail')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
+      button('Back to course').click(); await wait(()=>document.querySelector('.course-review-summary')?.textContent.includes('Next review'));
+      if(!button('Review').disabled) throw new Error('Review must not backfill with future cards');
+      button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       (await wait(()=>document.querySelector('[aria-label="Flashcard: compile-link"]'))).click();
-      const originalConfirm=window.confirm; window.confirm=()=>true; (await wait(()=>button('Reset review progress'))).click(); await wait(()=>document.querySelector('.author-header [role="status"]').textContent.includes('Review progress reset')); window.confirm=originalConfirm;
+      const originalConfirm=window.confirm; window.confirm=()=>true; (await wait(()=>button('Reset review progress'))).click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.includes('Review progress reset')); window.confirm=originalConfirm;
       if((await window.opencourse.getReviewSummary(window.__FLASHCARD_COURSE)).new!==1) throw new Error('Reset failed'); return 'Card reset independently of drafts';
     `)
     writeFileSync(join(output, 'results.json'), JSON.stringify({ ok: true, results }, null, 2))

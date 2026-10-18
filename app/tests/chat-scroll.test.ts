@@ -64,7 +64,7 @@ beforeEach(async () => {
     chats: [summary], tabs: [summary], activeId: summary.id,
     thread: { chat: summary, messages: [{ seq: 0, role: 'user', text: 'Explain this', at: '2026-10-10T12:00:00Z' }] },
     streaming: 'Beginning of the answer', busy: new Set([summary.id]), error: null,
-    models: [], webSearch: false, ready: true, provider: 'apiKey',
+    models: [], webSearch: false, ready: true, connectionLoading: false, provider: 'apiKey',
     connection: { provider: 'apiKey', ready: true }, defaultProvider: 'apiKey', connections: {},
     loading: false, activity: null, toolRunning: false, setActive: vi.fn(), open: vi.fn(), close: vi.fn(),
     startNew: vi.fn(), resume: vi.fn(), remove: vi.fn(), send: vi.fn(), stop: vi.fn(),
@@ -87,6 +87,85 @@ afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
   vi.unstubAllGlobals()
+})
+
+describe('chat connection status', () => {
+  it.each(['lesson', 'project', 'authoring'] as const)('shows a loader while %s connection details are pending, then removes it when ready', async kind => {
+    variant = kind
+    panel = { ...panel, ready: false, connectionLoading: true }
+    await render()
+    const status = container.querySelector('.sidechat-connection-loading')!
+    expect(status.getAttribute('role')).toBe('status')
+    expect(status.textContent).toBe('Checking AI connection…')
+    expect(status.querySelector('.sidechat-connection-spinner')).not.toBeNull()
+    expect(container.textContent).not.toContain('Open Settings')
+    panel = { ...panel, ready: true, connectionLoading: false }
+    await render()
+    expect(container.querySelector('.sidechat-note')).toBeNull()
+  })
+
+  it('only offers setup after the connection check confirms it is required', async () => {
+    panel = { ...panel, ready: false, connectionLoading: false,
+      connection: { provider: 'apiKey', ready: false, message: 'Connect OpenAI in Settings.' } }
+    await render()
+    expect(container.querySelector('.sidechat-connection-loading')).toBeNull()
+    expect(container.querySelector('.sidechat-note')?.textContent).toBe('Connect OpenAI in Settings.Open Settings')
+  })
+})
+
+describe('chat history', () => {
+  it.each(['one', 'two'])('collapses history when selecting chat %s, including the current chat', async id => {
+    panel = { ...panel, chats: [chat('one'), chat('two')] }
+    await render()
+    const toggle = container.querySelector<HTMLButtonElement>('.sidechat-history-toggle')!
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const rows = container.querySelectorAll<HTMLDivElement>('.sidechat-history-row')
+    await act(async () => rows[id === 'one' ? 0 : 1].click())
+    expect(panel.open).toHaveBeenCalledWith(id)
+    expect(container.querySelector('.sidechat-history')).toBeNull()
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('shows each chat’s last message date and time, omitting missing or invalid dates', async () => {
+    const at = '2026-10-05T20:10:00.000Z'
+    panel = { ...panel, chats: [
+      { ...chat('one'), lastMessageAt: at, updatedAt: '2026-10-15T12:00:00Z' },
+      { ...chat('two'), lastMessageAt: null },
+      { ...chat('three'), lastMessageAt: 'invalid' }
+    ] }
+    await render()
+    await act(async () => container.querySelector<HTMLButtonElement>('.sidechat-history-toggle')!.click())
+    const times = container.querySelectorAll<HTMLTimeElement>('.sidechat-history time')
+    expect(times).toHaveLength(1)
+    expect(times[0].dateTime).toBe(at)
+    expect(times[0].textContent).toContain('2026')
+    expect(times[0].textContent).toMatch(/\d{2}:\d{2}/)
+    expect(times[0].getAttribute('aria-label')).toContain('Last message:')
+    expect(times[0].title).toContain('2026')
+  })
+
+  it('keeps history open when deleting a chat', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    await act(async () => container.querySelector<HTMLButtonElement>('.sidechat-history-toggle')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.sidechat-history-row button')!.click())
+    expect(panel.remove).toHaveBeenCalledWith('one')
+    expect(panel.open).not.toHaveBeenCalled()
+    expect(container.querySelector('.sidechat-history')).not.toBeNull()
+    vi.mocked(window.confirm).mockRestore()
+  })
+})
+
+describe('web citation display', () => {
+  it('hides internal references in saved answers and incomplete streaming tokens', async () => {
+    panel = { ...panel,
+      thread: { chat: chat('one'), messages: [{ seq: 0, role: 'assistant', at: '2026-10-15T12:00:00Z', text: 'Saved answer.\uE200cite\uE202turn1view0\uE201' }] },
+      streaming: 'Live answer.\uE200cite\uE202turn2view'
+    }
+    await render()
+    const answers = [...container.querySelectorAll('.chat-turn.assistant .chat-body')].map(answer => answer.textContent)
+    expect(answers).toEqual(['Saved answer.', 'Live answer.'])
+  })
 })
 
 describe('chat error actions', () => {
@@ -253,9 +332,13 @@ it('shows authoring web availability and keeps consulted sources distinct, safe 
   panel.thread = { ...panel.thread! }
   await render()
   expect(container.querySelector('[aria-label="Can search the web"]')).not.toBeNull()
-  const consulted = container.querySelector('[aria-label="Consulted sources"]')!
+  const consulted = container.querySelector<HTMLDetailsElement>('[aria-label="Other research sources"]')!
+  expect(consulted.open).toBe(false)
+  expect(consulted.querySelector('summary')?.textContent).toBe('Other research sources (1)')
   expect(consulted.querySelectorAll('a')).toHaveLength(1)
   expect(consulted.querySelector('a')?.href).toBe('https://peps.python.org/')
-  expect(container.querySelector('[aria-label="Sources"]')?.textContent).toContain('Python')
+  const cited = container.querySelector('[aria-label="Cited sources"]')!
+  expect(cited.querySelector('.chat-sources-label')?.textContent).toBe('Cited sources')
+  expect(cited.textContent).toContain('Python')
   expect(container.innerHTML).not.toContain('javascript:')
 })

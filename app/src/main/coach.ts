@@ -12,8 +12,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { join } from 'node:path'
 import type { CoachProject, CoachProjectSummary } from '../core/types'
 import { newProjectId } from '../core/coach/ids'
-import { DEFAULT_VOICE } from '../core/coach/models'
-import { getDefaultCoachModel } from './preferences'
+import { DEFAULT_VOICE, migrateCoachModel, isLiveModelId, isBackendModelId } from '../core/coach/models'
+import { getDefaultCoachBackendModel, getDefaultCoachModel } from './preferences'
 import { DEFAULT_INSTRUCTIONS, normalizeInstructions, normalizeProject, normalizeProjectName } from '../core/coach/projects'
 import {
   deleteProjectRow,
@@ -30,6 +30,7 @@ import { isCoachProjectBusy } from './coach-activity'
 export interface CoachProjectDraft {
   name: string
   model?: string
+  backendModel?: string
   voice?: string
   instructions?: string
   allowDelete?: boolean
@@ -100,7 +101,7 @@ function adoptOrphans(known: Set<string>): CoachProject[] {
     if (!project || project.id !== entry.name) continue
     try {
       insertProject(project)
-      adopted.push(project)
+      adopted.push(migrateProject(project))
     } catch {
       /* a race with another window: the row is there now, which is all we wanted */
     }
@@ -108,9 +109,29 @@ function adoptOrphans(known: Set<string>): CoachProject[] {
   return adopted
 }
 
+/** Repair the mirror even when an earlier launch stopped after updating SQLite. */
+function migrateProject(project: CoachProject): CoachProject {
+  const model = migrateCoachModel(project.model)
+  const next = model === project.model ? project : { ...project, model }
+  if (next !== project) updateProjectRow(next)
+  const mirror = readMirror(project.id)
+  if (mirror?.model !== model || mirror?.backendModel !== next.backendModel) writeMirror(next)
+  return next
+}
+
+function checkedModel(model: string): string {
+  if (!isLiveModelId(model)) throw new Error('Choose a supported GPT-Live conversation model.')
+  return model
+}
+
+function checkedBackendModel(model: string): string {
+  if (!isBackendModelId(model)) throw new Error('Choose a supported background model with function tools.')
+  return model
+}
+
 export function listProjects(): CoachProjectSummary[] {
   recoverDeletions()
-  const projects = selectProjects()
+  const projects = selectProjects().map(migrateProject)
   const orphans = adoptOrphans(new Set(projects.map((p) => p.id)))
   const all = orphans.length ? [...projects, ...orphans] : projects
   const counts = sessionCounts()
@@ -131,12 +152,13 @@ export function listProjects(): CoachProjectSummary[] {
 }
 
 export function getProject(id: string): CoachProject | null {
-  return selectProject(id)
+  const project = selectProject(id)
+  return project ? migrateProject(project) : null
 }
 
 /** Throws where the renderer sent something impossible; that is an exception, not an outcome. */
 export function requireProject(id: string): CoachProject {
-  const project = selectProject(id)
+  const project = getProject(id)
   if (!project) throw new Error(`unknown coach project: ${id}`)
   return project
 }
@@ -146,7 +168,8 @@ export function createProject(draft: CoachProjectDraft, now = new Date()): Coach
   const project: CoachProject = {
     id: newProjectId(),
     name: normalizeProjectName(draft.name),
-    model: typeof draft.model === 'string' && draft.model ? draft.model : getDefaultCoachModel(),
+    model: checkedModel(typeof draft.model === 'string' && draft.model ? draft.model : getDefaultCoachModel()),
+    backendModel: checkedBackendModel(draft.backendModel ?? getDefaultCoachBackendModel()),
     voice: typeof draft.voice === 'string' && draft.voice ? draft.voice : DEFAULT_VOICE,
     instructions: normalizeInstructions(draft.instructions ?? DEFAULT_INSTRUCTIONS),
     allowDelete: draft.allowDelete === true,
@@ -165,7 +188,8 @@ export function updateProject(id: string, patch: Partial<CoachProjectDraft>, now
   const next: CoachProject = {
     ...current,
     ...(patch.name !== undefined ? { name: normalizeProjectName(patch.name) } : {}),
-    ...(patch.model !== undefined && patch.model ? { model: patch.model } : {}),
+    ...(patch.model !== undefined && patch.model ? { model: checkedModel(patch.model) } : {}),
+    ...(patch.backendModel !== undefined ? { backendModel: checkedBackendModel(patch.backendModel) } : {}),
     ...(patch.voice !== undefined && patch.voice ? { voice: patch.voice } : {}),
     ...(patch.instructions !== undefined ? { instructions: normalizeInstructions(patch.instructions) } : {}),
     ...(patch.allowDelete !== undefined ? { allowDelete: patch.allowDelete === true } : {}),

@@ -2,15 +2,33 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { normalizePreferences } from '../core/preferences'
-import { DEFAULT_MODEL, isRealtimeModelId } from '../core/coach/models'
+import { BACKEND_MODEL, DEFAULT_MODEL, isBackendModelId, isLiveModelId } from '../core/coach/models'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from '../core/reading-scale'
 import type { Preferences } from '../core/types'
 import { userPreferencesFile } from './paths'
 import { requireUser } from './users'
+import { normalizePomodoroSettings, validPomodoroMinutes, type PomodoroSettings } from '../core/pomodoro'
+
+export function getPomodoroSettings(): PomodoroSettings {
+  return normalizePomodoroSettings(readPreferences().pomodoro)
+}
+
+export function setPomodoroSettings(settings: PomodoroSettings): PomodoroSettings {
+  if (!validPomodoroMinutes(settings?.studyMinutes) || !validPomodoroMinutes(settings?.breakMinutes)) {
+    throw new Error('Choose whole minutes between 1 and 180.')
+  }
+  writePreferences({ ...readPreferences(), pomodoro: settings })
+  return getPomodoroSettings()
+}
 
 export function readPreferences(): Preferences {
   try {
-    return normalizePreferences(JSON.parse(readFileSync(userPreferencesFile(requireUser()), 'utf8')))
+    const raw = JSON.parse(readFileSync(userPreferencesFile(requireUser()), 'utf8'))
+    const normalized = normalizePreferences(raw)
+    if (raw.defaultCoachModel !== normalized.defaultCoachModel && typeof raw.defaultCoachModel === 'string' && raw.defaultCoachModel.includes('realtime')) {
+      try { writePreferences(normalized) } catch { /* Keep usable preferences; retry migration on the next read. */ }
+    }
+    return normalized
   } catch {
     return {}
   }
@@ -31,8 +49,20 @@ export function getDefaultCoachModel(): string {
   return readPreferences().defaultCoachModel ?? DEFAULT_MODEL
 }
 
+export function getDefaultCoachBackendModel(): string {
+  return readPreferences().defaultCoachBackendModel ?? BACKEND_MODEL
+}
+
+export function setDefaultCoachBackendModel(model: string): string {
+  if (typeof model !== 'string' || !isBackendModelId(model)) {
+    throw new Error('Choose a supported background model with function tools.')
+  }
+  writePreferences({ ...readPreferences(), defaultCoachBackendModel: model })
+  return getDefaultCoachBackendModel()
+}
+
 export function setDefaultCoachModel(model: string): string {
-  if (typeof model !== 'string' || model.length > 100 || !isRealtimeModelId(model)) {
+  if (typeof model !== 'string' || model.length > 100 || !isLiveModelId(model)) {
     throw new Error('Choose a speech-to-speech model.')
   }
   writePreferences({ ...readPreferences(), defaultCoachModel: model })

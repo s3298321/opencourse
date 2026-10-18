@@ -2,7 +2,7 @@ import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { CoachFileNode, CoachModel, CoachProject as Project, CoachSessionSummary, UserProfile } from '@core/types'
-import { VOICES } from '@core/coach/models'
+import { BACKEND_MODELS, VOICES } from '@core/coach/models'
 import CoachFileTree from '../components/CoachFileTree'
 import CoachSession from '../components/CoachSession'
 import CoachSessions from '../components/CoachSessions'
@@ -32,6 +32,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
   const [tree, setTree] = useState<CoachFileNode[] | null>(null)
   const [viewing, setViewing] = useState<CoachFileNode | null>(null)
   const [models, setModels] = useState<CoachModel[] | null>(null)
+  const [backendModels, setBackendModels] = useState<readonly CoachModel[]>(BACKEND_MODELS)
   const [sessions, setSessions] = useState<CoachSessionSummary[] | null>(null)
 
   const refresh = useCallback(() => {
@@ -59,6 +60,14 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
   useEffect(refresh, [refresh])
   useEffect(refreshFiles, [refreshFiles])
   useEffect(refreshSessions, [refreshSessions])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.opencourse.listCoachBackendModels().then(({ models }) => {
+      if (!cancelled) setBackendModels(models)
+    }).catch(() => { /* Keep the default choices when offline. */ })
+    return () => { cancelled = true }
+  }, [])
 
   // Falls back to a curated list when the key is missing or OpenAI is not
   // reachable, so the picker is never empty.
@@ -142,7 +151,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                 <h1>{project.name}</h1>
                 <div className="coach-settings">
                   <label>
-                    <span className="meta">Model</span>
+                    <span className="meta">Voice model</span>
                     <select
                       value={project.model}
                       onChange={(e) => void patch({ model: e.target.value })}
@@ -166,6 +175,16 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                           {voice}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="meta">Background model</span>
+                    <select value={project.backendModel}
+                      onChange={(e) => void patch({ backendModel: e.target.value })}>
+                      {backendModels.every(m => m.id !== project.backendModel) && (
+                        <option value={project.backendModel}>{project.backendModel}</option>
+                      )}
+                      {backendModels.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
                     </select>
                   </label>
                 </div>

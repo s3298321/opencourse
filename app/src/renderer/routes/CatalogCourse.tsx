@@ -5,6 +5,7 @@ import type { CourseOverview } from '@core/catalog/api'
 import type { UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import Html from '../components/Html'
+import CourseDescription from '../components/CourseDescription'
 import { useCatalogCover } from '../components/Catalog'
 import type { Route, Screen } from '../routes'
 
@@ -84,7 +85,7 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
           </div>
           {note && <p className={`import-note${note.error ? ' error' : ''}`} role="status">{note.text}</p>}
 
-          {course.description && <Html className="prose" source={course.description} />}
+          {course.description && <CourseDescription key={`${serverId}:${courseId}`} source={course.description} />}
 
           {course.prerequisites.length > 0 && (
             <div className="panel">

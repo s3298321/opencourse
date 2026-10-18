@@ -27,7 +27,7 @@ export type Screen =
   | { name: 'coachProject'; projectId: string }
   | { name: 'coachSession'; projectId: string; sessionId: string }
 
-export type SettingsSection = 'profile' | 'appearance' | 'connections' | 'ai' | 'coach' | 'servers' | 'updates' | 'about'
+export type SettingsSection = 'profile' | 'appearance' | 'pomodoro' | 'connections' | 'ai' | 'coach' | 'servers' | 'updates' | 'about'
 
 export type Overlay =
   /** Optional category to open directly from a control elsewhere. */

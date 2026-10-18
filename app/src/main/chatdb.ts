@@ -20,6 +20,7 @@ import { db, tx } from './db'
 /** A chat's row, plus the two things every list of chats wants. */
 const SUMMARY_COLUMNS = `c.*,
   (SELECT COUNT(*) FROM chat_messages m WHERE m.chat_id = c.id AND m.role <> 'context') AS message_count,
+  (SELECT m.at FROM chat_messages m WHERE m.chat_id = c.id AND m.role <> 'context' ORDER BY m.seq DESC LIMIT 1) AS last_message_at,
   (SELECT m.text FROM chat_messages m WHERE m.chat_id = c.id AND m.role = 'user' ORDER BY m.seq LIMIT 1) AS opener`
 
 function chatSummary(row: Record<string, unknown>): ChatSummary {
@@ -34,6 +35,7 @@ function chatSummary(row: Record<string, unknown>): ChatSummary {
     startedIn: row['course_id'] && !row['start_lesson_id'] ? null : { moduleId: String(row['module_slug']), lessonId: String(row['lesson_slug']) },
     title: typeof row['generated_title'] === 'string' ? row['generated_title'] : typeof row['opener'] === 'string' ? row['opener'] : '',
     messages: Number(row['message_count'] ?? 0),
+    lastMessageAt: typeof row['last_message_at'] === 'string' ? row['last_message_at'] : null,
     createdAt: String(row['created_at']),
     updatedAt: String(row['updated_at'])
   }

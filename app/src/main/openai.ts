@@ -25,9 +25,10 @@ import { net } from 'electron'
 import { scrubSecrets } from '../core/coach/key'
 import { CHATGPT_USAGE_LIMIT, OPENAI_OVERLOADED, isOpenAIOverload, describeStreamFailure, resetHint, type StreamFailure } from '../core/ai-errors'
 import { log } from './log'
-import { REALTIME_MODELS, WEB_SEARCH_MODEL, filterRealtimeModels } from '../core/coach/models'
-import { COACH_TURN_DETECTION } from '../core/coach/audio'
+import { BACKEND_MODELS, LIVE_MODELS, WEB_SEARCH_MODEL, filterLiveModels, filterBackendModels } from '../core/coach/models'
 import { CHAT_MODELS, filterChatModels } from '../core/sidechat/models'
+import { COACH_TITLE_INSTRUCTIONS } from '../core/coach/title'
+import { normalizeChatTitle } from '../core/sidechat/title'
 import type { ChatCitation, ChatModel, CoachModel, ReasoningEffort } from '../core/types'
 
 const BASE = 'https://api.openai.com/v1'
@@ -83,14 +84,14 @@ interface RequestOptions {
   contentType?: string
   accept?: string
   timeoutMs?: number
+  privateErrors?: string
 }
 
 async function request(path: string, options: RequestOptions): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TIMEOUT_MS)
   const started = Date.now()
-  // The path without its query: realtime calls carry the model there, which is
-  // worth keeping, but nothing else ever should be.
+  // Keep only the endpoint; query strings can contain sensitive data.
   const endpoint = path.split('?')[0]
   try {
     const response = await net.fetch(`${BASE}${path}`, {
@@ -105,7 +106,7 @@ async function request(path: string, options: RequestOptions): Promise<string> {
     })
     const text = await response.text()
     if (!response.ok) {
-      const error = new OpenAIError(response.status, messageFrom(response.status, text))
+      const error = new OpenAIError(response.status, options.privateErrors ? `${options.privateErrors} (HTTP ${response.status})` : messageFrom(response.status, text))
       logger.warn('OpenAI refused a request', { endpoint, status: response.status, message: error.message, ms: Date.now() - started })
       throw error
     }
@@ -155,14 +156,25 @@ export interface ModelList {
  * should still offer a working choice rather than an empty dropdown, and the
  * curated list is what it falls back to.
  */
-export async function listRealtimeModels(key: string): Promise<ModelList> {
-  if (!key) return { models: [...REALTIME_MODELS], source: 'fallback' }
+export async function listLiveModels(key: string): Promise<ModelList> {
+  if (!key) return { models: [...LIVE_MODELS], source: 'fallback' }
   try {
-    const found = filterRealtimeModels(await listModelIds(key))
-    if (!found.length) return { models: [...REALTIME_MODELS], source: 'fallback' }
+    const found = filterLiveModels(await listModelIds(key))
+    if (!found.length) return { models: [...LIVE_MODELS], source: 'fallback' }
     return { models: found, source: 'api' }
   } catch (err) {
-    return { models: [...REALTIME_MODELS], source: 'fallback', error: (err as Error).message }
+    return { models: [...LIVE_MODELS], source: 'fallback', error: (err as Error).message }
+  }
+}
+
+/** Use the coach's API key, independently of the text-chat provider settings. */
+export async function listCoachBackendModels(key: string): Promise<ModelList> {
+  if (!key) return { models: [...BACKEND_MODELS], source: 'fallback' }
+  try {
+    const models = filterBackendModels(await listModelIds(key))
+    return models.length ? { models, source: 'api' } : { models: [...BACKEND_MODELS], source: 'fallback' }
+  } catch (error) {
+    return { models: [...BACKEND_MODELS], source: 'fallback', error: (error as Error).message }
   }
 }
 
@@ -232,7 +244,7 @@ function readResponsesBody(body: string): WebSearchResult {
 }
 
 /**
- * The coach's `web_search` tool. The Realtime API has no built-in web search,
+ * The coach's application-owned `web_search` tool, preserving its own limits,
  * so it is a function tool that main fulfils here, with the same key.
  */
 export async function webSearch(
@@ -261,91 +273,62 @@ export async function webSearch(
   return readResponsesBody(text)
 }
 
-/* --- the realtime session -------------------------------------------------- */
+/* --- the Live session -------------------------------------------------- */
 
-export interface ClientSecret {
-  value: string
-  /** Unix seconds, as OpenAI reports it. Used to decide whether to re-mint. */
-  expiresAt: number
+/** A separate, tool-free request after closing voice; never inserts text into the conversation. */
+export async function generateCoachTitle(key: string, model: string, transcript: string): Promise<string | null> {
+  const body = await request('/responses', {
+    key, method: 'POST', contentType: 'application/json', timeoutMs: 45_000,
+    privateErrors: 'The coach session title could not be generated.',
+    body: JSON.stringify({ model, store: false, instructions: COACH_TITLE_INSTRUCTIONS,
+      input: JSON.stringify({ transcript }), max_output_tokens: 1024 })
+  })
+  const result = JSON.parse(body)
+  if (result.status !== 'completed' || !Array.isArray(result.output)) return null
+  const text = result.output.filter((item: any) => item.type === 'message' && item.role === 'assistant')
+    .flatMap((item: any) => Array.isArray(item.content) ? item.content : [])
+    .filter((part: any) => part.type === 'output_text' && typeof part.text === 'string')
+    .map((part: any) => part.text).join('\n')
+  return normalizeChatTitle(text)
 }
 
-export interface RealtimeSessionConfig {
+export interface LiveSessionConfig {
   model: string
   voice: string
   instructions: string
+  backendModel: string
+  backendInstructions: string
   tools: unknown[]
 }
 
-/**
- * Mints the short-lived secret that authorises one call.
- *
- * The session's whole configuration - model, voice, instructions, tools, how
- * the learner's speech gets transcribed - is attached here, so the connection
- * is already the right shape before a single byte of audio moves.
- */
-export async function mintClientSecret(key: string, config: RealtimeSessionConfig): Promise<ClientSecret> {
-  const body = JSON.stringify({
-    session: {
-      type: 'realtime',
-      model: config.model,
-      instructions: config.instructions,
-      tools: config.tools,
-      tool_choice: 'auto',
-      audio: {
-        input: {
-          // Without this there is no transcript of the learner's own speech,
-          // and half the conversation never reaches the database.
-          transcription: { model: 'gpt-4o-mini-transcribe' },
-          noise_reduction: { type: 'far_field' },
-          // Semantic VAD gives the learner time to finish, and lets them
-          // interrupt naturally without waiting for a transcript round trip.
-          turn_detection: COACH_TURN_DETECTION
-        },
-        output: { voice: config.voice }
-      }
-    }
+/** One creation attempt only: a timed-out request may already have started billing. */
+export async function createLiveSession(key: string, config: LiveSessionConfig, offerSdp: string): Promise<{ answerSdp: string; remoteSessionId: string }> {
+  const text = await request('/live/sessions', {
+    key, method: 'POST', contentType: 'application/json', timeoutMs: 30_000,
+    privateErrors: `GPT-Live could not start. Check your API key, billing, and access to ${config.model} and ${config.backendModel}, then start a new session.`,
+    body: JSON.stringify({
+      session: {
+        model: config.model, instructions: config.instructions, store: false,
+        audio: { output: { voice: config.voice } },
+        delegation: { type: 'responses', responses: {
+          model: config.backendModel, instructions: config.backendInstructions,
+          tools: config.tools, tool_choice: 'auto', parallel_tool_calls: false
+        } }
+      },
+      transport: { type: 'webrtc', sdp: offerSdp }
+    })
   })
-
-  const text = await request('/realtime/client_secrets', {
-    key,
-    method: 'POST',
-    body,
-    contentType: 'application/json'
-  })
-  const parsed = JSON.parse(text) as { value?: unknown; expires_at?: unknown }
-  const value = typeof parsed.value === 'string' ? parsed.value : ''
-  if (!value) throw new OpenAIError(0, 'OpenAI did not return a client secret')
-  return {
-    value,
-    expiresAt: typeof parsed.expires_at === 'number' ? parsed.expires_at : Math.floor(Date.now() / 1000) + 60
+  const result = JSON.parse(text) as { session?: { id?: string }; transport?: { type?: string; sdp?: string } }
+  if (typeof result.session?.id !== 'string' || !result.session.id || result.transport?.type !== 'webrtc' || !result.transport.sdp?.includes('v=0')) {
+    throw new OpenAIError(0, 'OpenAI returned an invalid Live connection. Start a new session to retry.')
   }
-}
-
-/**
- * Trades the renderer's SDP offer for OpenAI's answer.
- *
- * This runs in main so the renderer never holds a credential at all - not even
- * the short-lived one. The media path is unaffected: audio still flows directly
- * between the renderer and OpenAI over WebRTC, which is not something CSP
- * governs. `connect-src 'self'` stays as it is.
- */
-export async function exchangeSdp(secret: string, offerSdp: string, model: string): Promise<string> {
-  const answer = await request(`/realtime/calls?model=${encodeURIComponent(model)}`, {
-    key: secret,
-    method: 'POST',
-    body: offerSdp,
-    contentType: 'application/sdp',
-    accept: 'application/sdp',
-    timeoutMs: 30_000
-  })
-  if (!answer.includes('v=0')) throw new OpenAIError(0, 'OpenAI returned something that is not an SDP answer')
-  return answer
+  return { answerSdp: result.transport.sdp, remoteSessionId: result.session.id }
 }
 
 /* --- the side chat --------------------------------------------------------- */
 
 /**
- * What the picker shows. Same arrangement as listRealtimeModels: a failed call
+ * What the picker shows. Same arrangement as listLiveModels: a failed call
  * is not an error, because an offline machine should still offer a working
  * choice rather than an empty dropdown.
  */

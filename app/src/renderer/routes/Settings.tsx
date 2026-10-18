@@ -6,6 +6,7 @@ import TitleBar from '../components/TitleBar'
 import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
 import ThemeSection from '../components/ThemeSettings'
+import PomodoroSettings from '../components/PomodoroSettings'
 import ServerSettings from '../components/ServerSettings'
 import ConnectionIcon from '../components/ConnectionIcon'
 import { formatDownloadSize, useAppUpdate } from '../components/useAppUpdate'
@@ -21,6 +22,7 @@ interface Props {
 
 const CATEGORIES: Array<{ id: SettingsSection; label: string }> = [
   { id: 'profile', label: 'Profile' }, { id: 'appearance', label: 'Appearance' },
+  { id: 'pomodoro', label: 'Pomodoro' },
   { id: 'connections', label: 'Connections' }, { id: 'ai', label: 'AI & Chat' },
   { id: 'coach', label: 'Coach' }, { id: 'servers', label: 'Course Servers' },
   { id: 'updates', label: 'Updates' }, { id: 'about', label: 'About' }
@@ -48,6 +50,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
     switch (category) {
       case 'profile': return user ? <><NameSection user={user} onSession={onSession} /><DangerSection user={user} onSessionChanged={onSessionChanged} /></> : <p className="meta">Choose a user to edit their profile.</p>
       case 'appearance': return <ThemeSection />
+      case 'pomodoro': return user ? <PomodoroSettings /> : <p className="meta">Choose a user to configure Pomodoro.</p>
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
       case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
       case 'coach': return <CoachDefaultsSection keyVersion={keyVersion} />
@@ -418,6 +421,8 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
   }, [])
   const [models, setModels] = useState<CoachModel[]>([])
   const [model, setModel] = useState<string | null>(null)
+  const [backendModels, setBackendModels] = useState<CoachModel[]>([])
+  const [backendModel, setBackendModel] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -425,24 +430,31 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
   useEffect(() => {
     let cancelled = false
     setModel(null)
+    setBackendModel(null)
     setError(null)
-    void Promise.all([window.opencourse.listCoachModels(), window.opencourse.getDefaultCoachModel()])
-      .then(([list, selected]) => {
+    void Promise.all([
+      window.opencourse.listCoachModels(), window.opencourse.getDefaultCoachModel(),
+      window.opencourse.listCoachBackendModels(), window.opencourse.getDefaultCoachBackendModel()
+    ])
+      .then(([list, selected, backendList, selectedBackend]) => {
         if (cancelled) return
         setModels(list.models)
         setModel(selected)
+        setBackendModels(backendList.models)
+        setBackendModel(selectedBackend)
       })
       .catch((err: Error) => !cancelled && setError(err.message))
     return () => { cancelled = true }
   }, [keyVersion])
 
-  const save = async (next: string): Promise<void> => {
+  const save = async (next: string, background = false): Promise<void> => {
     if (busy) return
     setBusy(true)
     setSaved(false)
     setError(null)
     try {
-      setModel(await window.opencourse.setDefaultCoachModel(next))
+      if (background) setBackendModel(await window.opencourse.setDefaultCoachBackendModel(next))
+      else setModel(await window.opencourse.setDefaultCoachModel(next))
       setSaved(true)
     } catch (err) {
       setError((err as Error).message)
@@ -464,11 +476,10 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
         <span>Let coaches delete their files</span>
       </label>
       <p className="meta">Files go to the coach’s trash. Enabling applies to new sessions; disabling blocks deletion immediately.</p>
-      <h3>Coach model</h3>
-      <p className="meta">Choose the speech-to-speech model new coaches start with.</p>
+      <h3>Defaults for new coaches</h3>
       <div className="settings-defaults">
         <label>
-          <span>Default speech-to-speech model</span>
+          <span>Default voice model</span>
           <select
             className="settings-default-coach-model"
             value={model ?? ''}
@@ -478,6 +489,19 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
             {model === null && <option value="">Loading models…</option>}
             {model && !models.some((option) => option.id === model) && <option value={model} disabled>{model} (unavailable)</option>}
             {models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Default background model</span>
+          <select
+            className="settings-default-coach-backend-model"
+            value={backendModel ?? ''}
+            disabled={backendModel === null || busy}
+            onChange={(e) => void save(e.target.value, true)}
+          >
+            {backendModel === null && <option value="">Loading models…</option>}
+            {backendModel && !backendModels.some(option => option.id === backendModel) && <option value={backendModel} disabled>{backendModel} (unavailable)</option>}
+            {backendModels.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
           </select>
         </label>
       </div>

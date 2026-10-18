@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import type { CoachSessionSummary } from '@core/types'
 
-/** A session's own title is its opening line - what the learner came in asking. */
+/** Generated topic title, with the opening line retained while naming is pending. */
 function title(session: CoachSessionSummary): string {
   const opener = session.title.trim()
   if (opener) return opener.length > 70 ? `${opener.slice(0, 70)}…` : opener

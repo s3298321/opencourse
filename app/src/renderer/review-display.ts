@@ -1,9 +1,6 @@
 import type { ReviewRating, ReviewSummary } from '@core/types'
 
-export const ratingLabels: Record<ReviewRating, string> = { again: 'Again', hard: 'Hard', good: 'Good', easy: 'Easy' }
-export const ratingDescriptions: Record<ReviewRating, string> = {
-  again: 'Forgot or answered incorrectly', hard: 'Recalled with difficulty', good: 'Recalled correctly', easy: 'Recalled effortlessly'
-}
+export const ratingLabels: Record<ReviewRating, string> = { again: "Don't know", hard: 'Hard', good: 'Good', easy: 'Easy' }
 export function reviewTime(at: string, now = new Date()): string {
   const date = new Date(at), minutes = Math.max(1, Math.round((date.getTime() - now.getTime()) / 60000))
   if (date <= now) return 'now'

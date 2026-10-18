@@ -5,7 +5,7 @@ import type { CoachProject } from '@core/types'
 import { useAppShell } from './AppShell'
 import { useScreenActive } from '../screen-activity'
 import { atBottom } from '@core/coach/scroll'
-import { MAX_SESSION_MS, RealtimeSession, type SessionView } from '../coach/realtime'
+import { MAX_SESSION_MS, LiveSession, type SessionView } from '../coach/live'
 
 /**
  * The live panel: start, talk, stop.
@@ -54,7 +54,7 @@ export default function CoachSession({
 }): JSX.Element {
   const shell = useAppShell()
   const active = useScreenActive()
-  const session = useRef<RealtimeSession | null>(null)
+  const session = useRef<LiveSession | null>(null)
   const dirty = useRef(false)
   const [view, setView] = useState<SessionView | null>(null)
   const [starting, setStarting] = useState(false)
@@ -118,7 +118,7 @@ export default function CoachSession({
   }, [])
 
   const start = useCallback(async () => {
-    if (session.current || starting) return
+    if (starting || (session.current && ['idle', 'connecting', 'live', 'wrapping-up'].includes(session.current.view().status.kind))) return
     setStarting(true)
     setProblem(null)
     setStopRequested(false)
@@ -137,7 +137,7 @@ export default function CoachSession({
         return
       }
 
-      const live = new RealtimeSession(result, () => {
+      const live = new LiveSession(result, () => {
         dirty.current = true
       })
       session.current = live
@@ -160,7 +160,7 @@ export default function CoachSession({
     setStopRequested(true)
     await live.stop(skipWrapUp ? { skipWrapUp: true } : {})
     setView(live.view())
-    session.current = null
+    if (session.current === live) session.current = null
     onSessionChanged()
   }, [stopRequested, onSessionChanged])
 

@@ -30,31 +30,11 @@ npm run build
 npm run smoke
 ```
 
-Normal tests never call the real API. Passing mocked protocol tests is not sufficient for release.
-
-## Real API gate
-
-Build first. Set `OPENAI_API_KEY` in the environment and provide an absolute path in `OPENCOURSE_LIVE_AUDIO` to a WAV containing French speech, pauses and a request to remember learning progress. Do not put secrets or personal speech in the repository. Then run:
-
-```sh
-OPENCOURSE_TEST_COACH_LIVE=1 npm test -- tests/coach-live-api.test.ts
-```
-
-This billable check launches the actual Electron app with a disposable profile and uses the WAV as its microphone. It exercises the production WebRTC controller, both caption streams, delegated workspace writes, backend usage, silent note-saving and confirmed graceful close. A second session must read the note written by the first. The report includes check names and a failed phase, never API credentials, captions or note contents. Key/model listing checks remain available through `OPENCOURSE_TEST_OPENAI=1 npm test -- tests/openai-live.test.ts`.
-
-A missing key or audio fixture is an outstanding check, not a passing result. The automated speech fixture does not verify physical microphone behavior.
-
-## Manual microphone release gate
-
-Run both with speakers and with headphones:
-
-- Practise French, including short acknowledgments while the learner is speaking. Check both captions and historical transcript spacing.
-- Interrupt naturally and use Stop speaking during research and a note write. Check that the microphone stays live, accepted writes finish once, and old speech never replays.
-- Navigate to the learning workspace and back while speaking. Verify the indicator, timer, scroll position and continuing session.
-- Finish during a tool call, then test Stop now. Check immediate local silence, stopped capture, saved notes or an honest save failure, and confirmed or explicitly unconfirmed finalization.
-- Start a second session and verify the coach uses the notes from the first. Test a dropped connection and unavailable model access without automatic engine switching.
-
-Release remains blocked until the real API gate and these hardware checks pass.
+Release validation uses the automated suites above, CI, and the app build. All
+checks run unattended without API keys, speech recordings, or physical microphone
+checks. Provider transport and media devices use deterministic test doubles;
+these checks validate application behavior, not external service availability or
+hardware acoustics.
 
 ## Implementation references
 

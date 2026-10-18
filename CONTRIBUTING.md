@@ -32,10 +32,11 @@ restarts the app, so new IPC handlers load with the UI that calls them.
 | `npm run dmg` | Unsigned `OpenCourse-mac-arm64.dmg` in `app/dist/` |
 
 Opt-in suites that need something real:
-`OPENCOURSE_TEST_PYTHON=1 npx vitest run tests/python-runtime.test.ts`,
-`OPENCOURSE_TEST_OPENAI=1 OPENAI_API_KEY=sk-… npx vitest run tests/openai-live.test.ts`
-(run it when touching `src/main/openai.ts`), and
+`OPENCOURSE_TEST_PYTHON=1 npx vitest run tests/python-runtime.test.ts` and
 `OPENCOURSE_TEST_SERVER=1 npx vitest run tests/server-live.test.ts`.
+
+Tests and release checks run unattended without API keys or manual review. AI
+transport and microphone behavior use deterministic test doubles.
 
 Tests, smoke and shots only use committed courses: `docs/example-course` and
 `app/tests/fixtures/courses`. `content/` is gitignored authoring input, and

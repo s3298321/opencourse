@@ -5,6 +5,7 @@
  */
 export const isolatedRun = Boolean(
   process.env['OPENCOURSE_SMOKE'] ||
+  process.env['OPENCOURSE_COACH_LIVE_SMOKE'] ||
   process.env['OPENCOURSE_SHOTS'] ||
   process.env['OPENCOURSE_LIVE_CHECK'] ||
   process.env['OPENCOURSE_FLASHCARD_SMOKE']

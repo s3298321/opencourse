@@ -1,8 +1,8 @@
 /**
  * A live coaching session, from main's side.
  *
- * Main holds three things the renderer must not: the API key, the ephemeral
- * secret, and the record of what is running. The renderer owns the peer
+ * Main holds three things the renderer must not: the API key, the configuration
+ * snapshot, and the record of what is running. The renderer owns the peer
  * connection and the microphone - audio flows straight from it to OpenAI over
  * WebRTC - but every credential and every decision about whether a session may
  * exist is made here.
@@ -15,15 +15,17 @@
  */
 import { app, systemPreferences, type WebContents } from 'electron'
 import { newSessionId } from '../core/coach/ids'
-import { buildInstructions } from '../core/coach/prompt'
+import { buildLiveInstructions, buildBackendInstructions } from '../core/coach/prompt'
 import { MAX_TOOL_CALLS_PER_SESSION, MAX_WEB_SEARCHES_PER_SESSION, toolsFor } from '../core/coach/tools'
 import type { CoachSessionSummary, CoachStartResult, TranscriptTurn } from '../core/types'
 import { requireProject } from './coach'
-import { finishSession, insertSession, saveTurns, selectSessionRow, selectSessionSummary } from './coachdb'
+import { finishSession, insertSession, saveTurns, saveFragments, updateSessionMetadata, recordToolCall, selectSessionRow, selectSessionSummary } from './coachdb'
 import { listFiles } from './coachfiles'
 import { readKey } from './coachkey'
 import { holdMic } from './mic'
-import { mintClientSecret, exchangeSdp, type ClientSecret } from './openai'
+import { createLiveSession, type LiveSessionConfig } from './openai'
+import { isLiveModelId } from '../core/coach/models'
+import type { CoachTranscriptFragment, CoachSessionMetadata, CoachEndOutcome } from '../core/types'
 import { log } from './log'
 import { holdCoachProject } from './coach-activity'
 import { getCoachAllowDelete } from './preferences'
@@ -38,7 +40,10 @@ interface Live {
   projectId: string
   model: string
   senderId: number
-  secret: ClientSecret
+  config: LiveSessionConfig
+  connection?: Promise<{ answerSdp: string; remoteSessionId: string }>
+  calls: Map<string, { name: string; args: string; result: Promise<CoachToolResult> }>
+  sender: WebContents
   toolCalls: number
   searches: number
   started: number
@@ -48,6 +53,7 @@ interface Live {
 }
 
 const live = new Map<string, Live>()
+const owners = new Map<string, { owner: string; senderId: number }>()
 const watched = new WeakSet<WebContents>()
 
 /** A session is bound to the renderer that started it. */
@@ -70,6 +76,7 @@ function close(entry: Live, status: 'ended' | 'failed', error?: string): void {
   if (status === 'failed') coachLog.warn('Coach session ended early', { ...fields, reason: error ?? null })
   else coachLog.info('Coach session ended', fields)
   try {
+    if (selectSessionSummary(entry.sessionId)?.metadata?.finalization === 'pending') updateSessionMetadata(entry.sessionId, { finalization: 'unconfirmed' })
     finishSession(entry.sessionId, status, error)
   } catch {
     // The database may already be closed on the way out of the app. The sweep
@@ -77,14 +84,18 @@ function close(entry: Live, status: 'ended' | 'failed', error?: string): void {
   }
 }
 
+function notifyShutdown(entry: Live): void {
+  try { if (!entry.sender.isDestroyed?.()) entry.sender.send?.('coach:shutdown', entry.sessionId) } catch { /* A destroyed renderer cannot receive shutdown. */ }
+}
+
 export function endForSender(senderId: number, reason: string): void {
   for (const entry of [...live.values()]) {
-    if (entry.senderId === senderId) close(entry, 'failed', reason)
+    if (entry.senderId === senderId) { notifyShutdown(entry); close(entry, 'failed', reason) }
   }
 }
 
 export function endAllSessions(): void {
-  for (const entry of [...live.values()]) close(entry, 'failed', 'OpenCourse quit')
+  for (const entry of [...live.values()]) { notifyShutdown(entry); close(entry, 'failed', 'OpenCourse quit') }
 }
 
 app.on('before-quit', endAllSessions)
@@ -96,9 +107,8 @@ export function liveSessionCount(): number {
 /**
  * Starts a session, in the order that wastes the least.
  *
- * The microphone is asked for *before* the secret is minted: a denied mic
- * should not have cost an API call, and the system prompt fires at a moment we
- * chose rather than halfway through a handshake.
+ * OS permission is checked here; the renderer acquires and validates the actual
+ * microphone before connectSession creates a remote, billable session.
  */
 export async function startSession(sender: WebContents, projectId: string): Promise<CoachStartResult> {
   const project = requireProject(projectId)
@@ -127,22 +137,13 @@ export async function startSession(sender: WebContents, projectId: string): Prom
     // The coach should start knowing what it already wrote down.
     if (currentUserId() !== owner) { releaseMic(); throw new Error('The user changed while connecting.') }
     const effectiveProject = { ...project, allowDelete: getCoachAllowDelete() }
-    const instructions = buildInstructions(effectiveProject, listFiles(projectId))
+    if (!isLiveModelId(project.model)) throw new Error('Choose a supported GPT-Live model in this coach’s settings.')
+    if (sender.isDestroyed?.()) throw new Error('The window closed while connecting.')
+    const instructions = buildLiveInstructions(effectiveProject)
+    const backendInstructions = buildBackendInstructions(effectiveProject, listFiles(projectId))
     const tools = toolsFor(effectiveProject)
 
-    let secret: ClientSecret
-    try {
-      secret = await mintClientSecret(key, {
-        model: project.model,
-        voice: project.voice,
-        instructions,
-        tools
-      })
-    } catch (err) {
-      releaseMic()
-      coachLog.error('A coach session could not be started', { projectId, model: project.model, error: err })
-      return { status: 'failed', message: (err as Error).message }
-    }
+    const config: LiveSessionConfig = { model: project.model, voice: project.voice, instructions, backendModel: project.backendModel, backendInstructions, tools }
 
     if (currentUserId() !== owner) { releaseMic(); throw new Error('The user changed while connecting.') }
     const sessionId = newSessionId()
@@ -150,13 +151,15 @@ export async function startSession(sender: WebContents, projectId: string): Prom
     // The model and the brief are snapshotted: an old transcript should show the
     // coach that actually produced it, not today's settings.
     insertSession({ id: sessionId, projectId, startedAt, model: project.model, instructions })
+    updateSessionMetadata(sessionId, { backendModel: project.backendModel, backendInstructions, backendSettings: { reasoning: 'default', toolChoice: 'auto', parallelToolCalls: false, tools: tools.map(tool => tool.name) }, voice: project.voice, finalization: 'pending' })
+    owners.set(sessionId, { owner, senderId: sender.id })
 
     live.set(sessionId, {
       sessionId,
       projectId,
       model: project.model,
       senderId: sender.id,
-      secret,
+      config, calls: new Map(), sender,
       toolCalls: 0,
       searches: 0,
       started: Date.now(),
@@ -176,6 +179,7 @@ export async function startSession(sender: WebContents, projectId: string): Prom
       voice: project.voice,
       instructions,
       tools,
+      backendModel: project.backendModel, backendInstructions,
       startedAt
     }
   } finally {
@@ -189,50 +193,43 @@ function requireLive(sessionId: string): Live {
   return entry
 }
 
-/** Roughly a minute of slack, so a secret does not expire mid-handshake. */
-function expired(secret: ClientSecret): boolean {
-  return secret.expiresAt * 1000 - Date.now() < 10_000
-}
-
-/**
- * The signalling round trip. Re-mints once if OpenAI refuses the secret, which
- * is what an expired one looks like from here.
- */
-export async function connectSession(sessionId: string, offerSdp: string): Promise<{ answerSdp: string }> {
+/** Freeze config at start and reuse the same promise, including failures. */
+export async function connectSession(sessionId: string, offerSdp: string, senderId?: number): Promise<{ answerSdp: string; remoteSessionId: string }> {
   const entry = requireLive(sessionId)
-  const key = readKey()
-  if (!key) throw new Error('no OpenAI key')
-
-  const remint = async (): Promise<void> => {
-    const project = requireProject(entry.projectId)
-    entry.secret = await mintClientSecret(key, {
-      model: project.model,
-      voice: project.voice,
-      instructions: selectSessionRow(sessionId)?.instructions ?? project.instructions,
-      tools: toolsFor({ ...project, allowDelete: getCoachAllowDelete() })
+  assertCoachSender(sessionId, senderId ?? entry.senderId)
+  if (typeof offerSdp !== 'string' || offerSdp.length > 131072 || !offerSdp.includes('v=0')) throw new Error('Invalid connection offer.')
+  if (!entry.connection) {
+    const key = readKey()
+    if (!key) throw new Error('no OpenAI key')
+    entry.connection = createLiveSession(key, entry.config, offerSdp).then(result => {
+      // Return even after stop so the renderer can finish the handshake and close it.
+      if (currentUserId() === entry.owner) updateSessionMetadata(sessionId, { remoteSessionId: result.remoteSessionId })
+      return result
     })
   }
+  return entry.connection
+}
 
-  if (expired(entry.secret)) await remint()
+/** Late final flushes belong to the same window and user as the original session. */
+export function assertCoachOwner(sessionId: string, senderId: number): void {
+  const owner = owners.get(sessionId)
+  if (!owner || owner.senderId !== senderId || owner.owner !== requireUser()) throw new Error('This coach session belongs to another window or user.')
+}
 
-  try {
-    return { answerSdp: await exchangeSdp(entry.secret.value, offerSdp, entry.model) }
-  } catch (err) {
-    const status = (err as { status?: number }).status
-    if (status !== 401 && status !== 403) {
-      coachLog.error('The coach could not connect', { sessionId, model: entry.model, error: err })
-      throw err
-    }
-    // One retry, then give up: a loop here bills for nothing.
-    coachLog.info('The session secret was refused; minting a new one', { sessionId, status })
-    try {
-      await remint()
-      return { answerSdp: await exchangeSdp(entry.secret.value, offerSdp, entry.model) }
-    } catch (retry) {
-      coachLog.error('The coach could not connect', { sessionId, model: entry.model, error: retry })
-      throw retry
-    }
+export function flushFragments(sessionId: string, fragments: readonly CoachTranscriptFragment[], metadata?: CoachSessionMetadata): void {
+  saveFragments(sessionId, fragments)
+  if (metadata) updateSessionMetadata(sessionId, validatedMetadata(metadata))
+}
+
+function validatedMetadata(raw: CoachSessionMetadata): CoachSessionMetadata {
+  const result: CoachSessionMetadata = {}
+  if (typeof raw.voiceSeconds === 'number' && Number.isFinite(raw.voiceSeconds) && raw.voiceSeconds >= 0) result.voiceSeconds = raw.voiceSeconds
+  if (['pending', 'confirmed', 'unconfirmed'].includes(raw.finalization ?? '')) result.finalization = raw.finalization
+  if (typeof raw.closeReason === 'string' && /^[a-z_]{1,60}$/.test(raw.closeReason)) result.closeReason = raw.closeReason
+  if (raw.backendUsage && Object.values(raw.backendUsage).every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0)) {
+    result.backendUsage = { inputTokens: raw.backendUsage.inputTokens, outputTokens: raw.backendUsage.outputTokens, totalTokens: raw.backendUsage.totalTokens }
   }
+  return result
 }
 
 /** The caps a tool call is checked against, and the counters behind them. */
@@ -270,8 +267,10 @@ export function flushTurns(sessionId: string, turns: readonly TranscriptTurn[]):
 
 export function endSession(
   sessionId: string,
-  outcome: { status: 'ended' | 'failed'; error?: string; turns?: readonly TranscriptTurn[] }
+  outcome: CoachEndOutcome
 ): CoachSessionSummary | null {
+  if (outcome.fragments?.length) saveFragments(sessionId, outcome.fragments)
+  if (outcome.metadata) updateSessionMetadata(sessionId, validatedMetadata(outcome.metadata))
   if (outcome.turns?.length) {
     try {
       saveTurns(sessionId, outcome.turns)
@@ -281,7 +280,7 @@ export function endSession(
   }
   const entry = live.get(sessionId)
   if (entry) close(entry, outcome.status, outcome.error)
-  else finishSession(sessionId, outcome.status, outcome.error)
+  else if (selectSessionRow(sessionId)?.status === 'live') finishSession(sessionId, outcome.status, outcome.error)
   return selectSessionSummary(sessionId)
 }
 
@@ -293,35 +292,51 @@ export function assertCoachSender(sessionId: string, senderId: number): void {
 export function reportCoachResponse(sessionId: string, senderId: number, raw: CoachResponseDiagnostic): void {
   if (!live.has(sessionId)) return // a diagnostic can land just after teardown
   assertCoachSender(sessionId, senderId)
-  if (!raw || !['response.started', 'response.done', 'speech.started', 'wrapup.started'].includes(raw.event)) throw new Error('Invalid coach diagnostic.')
+  if (!raw || !['response.started', 'response.done', 'speech.started', 'wrapup.started', 'session.error'].includes(raw.event)) throw new Error('Invalid coach diagnostic.')
   const entry = requireLive(sessionId)
   const identifier = (value: unknown): string | undefined => typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,100}$/.test(value) ? value : undefined
   const fields = {
     sessionId, projectId: entry.projectId, event: raw.event,
     responseId: identifier(raw.responseId), status: identifier(raw.status), reason: identifier(raw.reason),
+    clientEventId: identifier(raw.clientEventId),
     errorCode: identifier(raw.errorCode), errorType: identifier(raw.errorType),
     expected: raw.expected === true, wrappingUp: raw.wrappingUp === true,
     pendingTools: Number.isInteger(raw.pendingTools) ? Math.max(0, Math.min(60, raw.pendingTools!)) : 0
   }
   const logger = log.child('coach', { userId: entry.owner })
-  if (raw.event === 'response.done' && ['cancelled', 'failed', 'incomplete'].includes(fields.status ?? '') && !fields.expected) logger.warn('Coach response interrupted', fields)
+  if (raw.event === 'session.error') logger.warn('Coach session request failed', fields)
+  else if (raw.event === 'response.done' && ['cancelled', 'failed', 'incomplete'].includes(fields.status ?? '') && !fields.expected) logger.warn('Coach response interrupted', fields)
   else logger.info('Coach response lifecycle', fields)
 }
 
 /** Reserve the budget before awaiting, and hold the project through late tools. */
-export async function executeCoachTool(sessionId: string, senderId: number, name: string, args: string): Promise<CoachToolResult> {
+export async function executeCoachTool(sessionId: string, senderId: number, name: string, args: string, callId?: string): Promise<CoachToolResult> {
   assertCoachSender(sessionId, senderId)
   const entry = requireLive(sessionId)
+  const id = callId ?? `local_${entry.toolCalls}`
+  if (!/^[a-zA-Z0-9_.:-]{1,200}$/.test(id)) throw new Error('Invalid tool call identity.')
+  const existing = entry.calls.get(id)
+  if (existing) {
+    if (existing.name !== name || existing.args !== args) throw new Error('Tool call identity was reused with different arguments.')
+    return existing.result
+  }
   const release = holdCoachProject(entry.projectId)
   const logger = log.child('coach', { userId: entry.owner })
   const started = Date.now()
-  try {
-    const caps = toolCaps(sessionId)
-    countToolCall(sessionId, name)
-    const result = await runCoachTool(sessionId, name, args, caps)
+  const caps = toolCaps(sessionId)
+  countToolCall(sessionId, name)
+  const seq = entry.toolCalls
+  // Reserve identity before entering asynchronous tool execution.
+  const result = Promise.resolve().then(async () => {
+    if (currentUserId() !== entry.owner) return { ok: false, output: '{"ok":false,"error":"The user changed."}', summary: 'Tool cancelled because the user changed.' }
+    return runCoachTool(sessionId, name, args, caps)
+  }).then(result => {
+    if (currentUserId() === entry.owner) recordToolCall(sessionId, { seq, callId: id, name, arguments: args, result: result.output, ok: result.ok, at: new Date().toISOString() })
     const fields = { sessionId, projectId: entry.projectId, tool: /^[a-z_]{1,40}$/.test(name) ? name : 'unknown', ok: result.ok, durationMs: Date.now() - started }
     if (result.ok) logger.info('Coach tool completed', fields)
     else logger.warn('Coach tool failed', fields)
     return result
-  } finally { release() }
+  }).finally(release)
+  entry.calls.set(id, { name, args, result })
+  return result
 }

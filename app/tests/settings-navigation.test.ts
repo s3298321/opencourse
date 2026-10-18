@@ -22,7 +22,7 @@ describe('categorized Settings', () => {
   it('defaults to Profile, keeps visited inputs, and exposes three external links', async () => {
     await render()
     expect(container.querySelector('[aria-current="page"]')?.textContent).toBe('Profile')
-    expect(container.querySelectorAll('.settings-category')).toHaveLength(8)
+    expect(container.querySelectorAll('.settings-category')).toHaveLength(9)
     const name = container.querySelector<HTMLInputElement>('.settings-name')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Unfinished name')

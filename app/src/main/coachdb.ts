@@ -9,6 +9,8 @@
  */
 import type { CoachProject, CoachSessionSummary, CoachToolRecord, TranscriptTurn } from '../core/types'
 import { projectFromRow } from '../core/coach/projects'
+import { liveTranscript, validFragment } from '../core/coach/live-transcript'
+import type { CoachTranscriptFragment, CoachSessionMetadata } from '../core/types'
 import { db, tx } from './db'
 
 /* --- projects -------------------------------------------------------------- */
@@ -16,13 +18,14 @@ import { db, tx } from './db'
 export function insertProject(project: CoachProject): void {
   db()
     .prepare(
-      `INSERT INTO projects (id, name, model, voice, instructions, allow_delete, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO projects (id, name, model, backend_model, voice, instructions, allow_delete, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       project.id,
       project.name,
       project.model,
+      project.backendModel,
       project.voice,
       project.instructions,
       project.allowDelete ? 1 : 0,
@@ -34,12 +37,13 @@ export function insertProject(project: CoachProject): void {
 export function updateProjectRow(project: CoachProject): void {
   db()
     .prepare(
-      `UPDATE projects SET name = ?, model = ?, voice = ?, instructions = ?, allow_delete = ?, updated_at = ?
+      `UPDATE projects SET name = ?, model = ?, backend_model = ?, voice = ?, instructions = ?, allow_delete = ?, updated_at = ?
        WHERE id = ?`
     )
     .run(
       project.name,
       project.model,
+      project.backendModel,
       project.voice,
       project.instructions,
       project.allowDelete ? 1 : 0,
@@ -117,6 +121,7 @@ export function selectSessionRow(
 
 function sessionSummary(row: Record<string, unknown>, turns: number, title: string): CoachSessionSummary {
   const status = String(row['status'])
+  const metadata = readMetadata(row['metadata'])
   return {
     id: String(row['id']),
     projectId: String(row['project_id']),
@@ -124,9 +129,10 @@ function sessionSummary(row: Record<string, unknown>, turns: number, title: stri
     ...(row['ended_at'] ? { endedAt: String(row['ended_at']) } : {}),
     status: status === 'live' || status === 'failed' ? status : 'ended',
     model: String(row['model']),
+    metadata,
     ...(row['error'] ? { error: String(row['error']) } : {}),
     turns,
-    title
+    title: metadata.generatedTitle || title
   }
 }
 
@@ -212,4 +218,35 @@ export function selectToolCalls(sessionId: string): CoachToolRecord[] {
     ok: row['ok'] === 1,
     at: String(row['at'])
   }))
+}
+
+function readMetadata(raw: unknown): CoachSessionMetadata {
+  try { return JSON.parse(String(raw ?? '{}')) as CoachSessionMetadata } catch { return {} }
+}
+
+export function updateSessionMetadata(id: string, patch: CoachSessionMetadata): void {
+  const row = db().prepare('SELECT metadata FROM sessions WHERE id = ?').get(id) as { metadata: string } | undefined
+  if (!row) return
+  db().prepare('UPDATE sessions SET metadata = ? WHERE id = ?').run(JSON.stringify({ ...readMetadata(row.metadata), ...patch }), id)
+}
+
+export function selectFragments(sessionId: string): CoachTranscriptFragment[] {
+  const rows = db().prepare('SELECT * FROM coach_transcript_fragments WHERE session_id = ? ORDER BY start_ms, end_ms, rowid').all(sessionId) as Record<string, unknown>[]
+  return rows.map(r => ({ eventId: String(r.event_id), role: r.role as 'user' | 'assistant', text: String(r.text), startMs: Number(r.start_ms), endMs: Number(r.end_ms) }))
+}
+
+/** Fragments are canonical. Rebuild the materialized turns atomically, including late deltas. */
+export function saveFragments(sessionId: string, fragments: readonly CoachTranscriptFragment[]): void {
+  if (!Array.isArray(fragments) || fragments.length > 2000 || !fragments.every(validFragment)) throw new Error('Invalid coach transcript fragments.')
+  if (!fragments.length) return // Metadata-only flushes must never erase legacy turns.
+  const session = db().prepare('SELECT started_at FROM sessions WHERE id = ?').get(sessionId) as { started_at: string } | undefined
+  if (!session) throw new Error('That session does not exist.')
+  tx(d => {
+    const insert = d.prepare('INSERT OR IGNORE INTO coach_transcript_fragments (session_id, event_id, role, text, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?)')
+    for (const f of fragments) insert.run(sessionId, f.eventId, f.role, f.text, f.startMs, f.endMs)
+    const turns = liveTranscript(selectFragments(sessionId), session.started_at)
+    d.prepare('DELETE FROM turns WHERE session_id = ?').run(sessionId)
+    const write = d.prepare('INSERT INTO turns (session_id, seq, role, text, at) VALUES (?, ?, ?, ?, ?)')
+    for (const t of turns) write.run(sessionId, t.seq, t.role, t.text, t.at)
+  })
 }

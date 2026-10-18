@@ -1,6 +1,7 @@
 import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { DocumentSummary } from '@core/documents/types'
+import { documentProgressPercent } from '@core/documents/progress'
 import type { UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import type { Route, Screen } from '../routes'
@@ -26,7 +27,7 @@ export default function Documents({ user, route, navigate, importSignal, onImpor
     finally { setBusy(false); setDragging(false) }
   }, [navigate])
   useEffect(() => { if (active && importSignal > 0) { onImportHandled(); void importPdf() } }, [importSignal, active, importPdf, onImportHandled])
-  const visible = documents?.filter(document => document.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()) && (filter === null || (filter === 'completed') === document.completed))
+  const visible = documents?.filter(document => document.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()) && (filter === null || (filter === 'completed') === (documentProgressPercent(document) === 100)))
   const remove = async (document: DocumentSummary): Promise<void> => {
     if (!window.confirm(`Remove “${document.title}” and its chats from this library? The original PDF is kept.`)) return
     try { await window.opencourse.removeDocument(document.id) } catch (error) { setError((error as Error).message) }
@@ -59,8 +60,8 @@ export default function Documents({ user, route, navigate, importSignal, onImpor
             </div>
             <div>
           {documents === null ? <p className="meta">Loading documents…</p> : documents.length === 0 ? <div className="empty-library document-empty"><span className="document-glyph" aria-hidden="true">▤</span><h3>Bring something to read</h3><p>Import a PDF or drop one here.</p></div> : visible?.length === 0 ? <p className="meta">No documents match this filter.</p> : <div className="documents-cards">{visible?.map(document => <article className="document-card" key={document.id}>
-            <button className="document-card-open" onClick={() => navigate({ name: 'document', documentId: document.id })}><span className="document-glyph" aria-hidden="true">▤</span><div><h3>{document.title}</h3><div className="meta">{document.pages ? `${document.pages} pages · ` : ''}{(document.bytes / 1024 / 1024).toFixed(1)} MB</div><div className="meta">{document.completed ? 'Completed' : 'To read'}{document.status === 'indexing' ? ' · Building search index…' : document.status === 'error' ? ' · Text index unavailable' : document.searchablePages === 0 ? ' · Image-only PDF' : ''}</div></div></button>
-            <div className="document-card-actions"><button className="ghost" onClick={() => void window.opencourse.setDocumentCompleted(document.id, !document.completed).catch(error => setError(error.message))}>{document.completed ? 'Mark incomplete' : 'Mark completed'}</button><button className="ghost" onClick={() => void remove(document)}>Remove</button></div>
+            <button className="document-card-open" onClick={() => navigate({ name: 'document', documentId: document.id })}><span className="document-glyph" aria-hidden="true">▤</span><div><h3>{document.title}</h3><div className="meta">{document.pages ? `${document.pages} pages · ` : ''}{(document.bytes / 1024 / 1024).toFixed(1)} MB</div><div className="meta">{documentProgressPercent(document)}% read{document.status === 'indexing' ? ' · Building search index…' : document.status === 'error' ? ' · Text index unavailable' : document.searchablePages === 0 ? ' · Image-only PDF' : ''}</div></div></button>
+            <div className="document-card-actions"><button className="ghost" onClick={() => void remove(document)}>Remove</button></div>
           </article>)}</div>}
             </div>
           </div>

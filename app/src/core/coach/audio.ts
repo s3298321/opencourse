@@ -1,8 +1,3 @@
-/** The server owns speech boundaries, interruptions and automatic replies. */
-export const COACH_TURN_DETECTION = {
-  type: 'semantic_vad', eagerness: 'low', create_response: true, interrupt_response: true
-} as const
-
 export const COACH_MICROPHONE_CONSTRAINTS: MediaTrackConstraints = {
   echoCancellation: { exact: true }, noiseSuppression: true, autoGainControl: true
 }

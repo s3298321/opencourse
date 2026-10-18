@@ -2,7 +2,7 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { isDraft, useChatPanel, type ChatPanel, type PanelSummary } from '../src/renderer/sidechat/useChat'
-import type { ChatSendResult, ReasoningEffort } from '../src/core/types'
+import type { ChatPickerModels, ChatSendResult, ReasoningEffort } from '../src/core/types'
 
 let root: Root | undefined
 afterEach(async () => {
@@ -12,7 +12,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-async function fixture(scope: 'chat' | 'project') {
+async function fixture(scope: 'chat' | 'project', listChatModels?: () => Promise<ChatPickerModels>) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   const summary = (id: string): PanelSummary => ({ id, title: id === 'new' ? '' : 'Existing conversation', model: 'gpt-5.1', provider: 'apiKey', reasoning: null, courseId: 'demo', messages: 0, createdAt: 'now', updatedAt: 'now' })
   let chats = [summary('old'), summary('other')]
@@ -25,8 +25,8 @@ async function fixture(scope: 'chat' | 'project') {
   const send = vi.fn(async (id: string): Promise<ChatSendResult> => { stored.set(id, (stored.get(id) ?? 0) + 1); return { status: 'ok' } as ChatSendResult })
   const prefix = scope === 'chat' ? 'Chat' : 'ProjectChat'
   const api: Record<string, unknown> = {
-    listChatModels: async () => ({ models: [{ id: 'gpt-5.1', label: 'GPT-5.1' }, { id: 'gpt-5.2', label: 'GPT-5.2', reasoningEfforts: ['low', 'high'] }],
-      defaults: { model: 'gpt-5.1', reasoning: null }, webSearch: false, connection: { provider: 'apiKey', ready: true } }),
+    listChatModels: listChatModels ?? (async () => ({ models: [{ id: 'gpt-5.1', label: 'GPT-5.1' }, { id: 'gpt-5.2', label: 'GPT-5.2', reasoningEfforts: ['low', 'high'] }],
+      defaults: { model: 'gpt-5.1', reasoning: null }, webSearch: false, connection: { provider: 'apiKey', ready: true } })),
     onAIChanged: () => () => {}
   }
   api[`list${prefix}s`] = async () => structuredClone(chats)
@@ -123,5 +123,29 @@ describe.each(['chat', 'project'] as const)('%s tab lifecycle', scope => {
     expect(f.panel().chats.some(chat => chat.id === 'old')).toBe(false)
     expect(isDraft(f.panel().activeId)).toBe(true)
     expect(f.create).not.toHaveBeenCalled()
+  })
+})
+
+describe('connection checks', () => {
+  it.each([true, false])('keeps the connection pending independently of chat history until readiness resolves to %s', async ready => {
+    let resolve!: (result: ChatPickerModels) => void
+    const result = new Promise<ChatPickerModels>(done => { resolve = done })
+    const f = await fixture('chat', () => result)
+    expect(f.panel().loading).toBe(false)
+    expect(f.panel().connectionLoading).toBe(true)
+    expect(f.panel().ready).toBe(false)
+    await act(async () => resolve({ models: [], source: 'cache', webSearch: false, connection: { provider: 'apiKey', ready } }))
+    expect(f.panel().connectionLoading).toBe(false)
+    expect(f.panel().ready).toBe(ready)
+  })
+
+  it('ends the loader and reports a failed connection check', async () => {
+    let reject!: (error: Error) => void
+    const result = new Promise<ChatPickerModels>((_resolve, fail) => { reject = fail })
+    const f = await fixture('chat', () => result)
+    expect(f.panel().connectionLoading).toBe(true)
+    await act(async () => reject(new Error('Connection check failed')))
+    expect(f.panel().connectionLoading).toBe(false)
+    expect(f.panel().error).toBe('Connection check failed')
   })
 })

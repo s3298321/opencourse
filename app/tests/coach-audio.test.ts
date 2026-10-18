@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { COACH_MICROPHONE_CONSTRAINTS, COACH_TURN_DETECTION, configureEchoCancellation } from '@core/coach/audio'
+import { COACH_MICROPHONE_CONSTRAINTS, configureEchoCancellation } from '@core/coach/audio'
 
 function track(modes: (boolean | string)[], enabled = true) {
   return {
@@ -10,11 +10,8 @@ function track(modes: (boolean | string)[], enabled = true) {
 }
 
 describe('continuous coach audio', () => {
-  it('requires acoustic echo cancellation at capture and delegates turns to semantic VAD', () => {
+  it('requires acoustic echo cancellation at capture', () => {
     expect(COACH_MICROPHONE_CONSTRAINTS.echoCancellation).toEqual({ exact: true })
-    expect(COACH_TURN_DETECTION).toEqual({
-      type: 'semantic_vad', eagerness: 'low', create_response: true, interrupt_response: true
-    })
   })
 
   it('selects cancellation of all playback when the microphone supports it', async () => {

@@ -5,11 +5,13 @@ import type { AIProvider, ChatMessage, ReasoningEffort } from '../core/types'
 import type { DocumentChatSummary } from '../core/documents/types'
 
 const columns = `c.*,(SELECT COUNT(*) FROM document_messages m WHERE m.chat_id=c.id AND m.role!='context') AS messages,
+  (SELECT CASE WHEN json_valid(payload) THEN json_extract(payload, '$.at') END FROM document_messages m WHERE m.chat_id=c.id AND m.role!='context' ORDER BY seq DESC LIMIT 1) AS last_message_at,
   (SELECT text FROM document_messages m WHERE m.chat_id=c.id AND m.role='user' ORDER BY seq LIMIT 1) AS opener`
 function summary(row: Record<string, unknown>): DocumentChatSummary {
   return { id: String(row.id), documentId: String(row.document_id), startedOn: Number(row.started_on), model: String(row.model), reasoning: isReasoningEffort(row.reasoning) ? row.reasoning : null,
     provider: row.provider === 'chatgpt' ? 'chatgpt' : 'apiKey', ...(isAIProvider(row.pinned_provider) ? { pinnedProvider: row.pinned_provider } : {}),
     title: String(row.generated_title ?? row.opener ?? ''), messages: Number(row.messages), historyLabel: `Page ${row.started_on}`,
+    lastMessageAt: typeof row.last_message_at === 'string' ? row.last_message_at : null,
     createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
 }
 export function selectDocumentChat(id: string): DocumentChatSummary | null {

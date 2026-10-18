@@ -6,7 +6,7 @@
  * This is the check that catches the thing unit tests structurally cannot - a
  * renamed field, a moved endpoint, a model id that no longer exists. It costs a
  * few tenths of a cent. Run it when touching src/main/openai.ts, and at the
- * start of any work on the realtime session.
+ * start of any work on the Live session.
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -16,10 +16,10 @@ const enabled = Boolean(process.env['OPENCOURSE_TEST_OPENAI']) && key !== ''
 // openai.ts asks Electron for net.fetch; outside Electron, the global will do.
 vi.mock('electron', () => ({ net: { fetch: (...args: Parameters<typeof fetch>) => fetch(...args) } }))
 
-const { OpenAIError, listChatModels, listModelIds, listRealtimeModels, streamChat, validateKey } = await import(
+const { OpenAIError, listChatModels, listModelIds, listLiveModels, streamChat, validateKey } = await import(
   '../src/main/openai'
 )
-const { isRealtimeModelId } = await import('../src/core/coach/models')
+const { isLiveModelId } = await import('../src/core/coach/models')
 const { DEFAULT_CHAT_MODEL, isChatModelId, reasoningEffortsFor } = await import('../src/core/sidechat/models')
 const { CITE_MARK, citeAnswer } = await import('../src/core/sidechat/citations')
 const { sideChatInstructions } = await import('../src/core/sidechat/prompt')
@@ -44,12 +44,12 @@ describe.skipIf(!enabled)('the OpenAI API, for real', () => {
   }, 30_000)
 
   it('offers at least one speech-to-speech model this account can actually use', async () => {
-    const list = await listRealtimeModels(key)
+    const list = await listLiveModels(key)
     expect(list.source).toBe('api')
     expect(list.models.length).toBeGreaterThan(0)
-    expect(list.models.every((model) => isRealtimeModelId(model.id))).toBe(true)
+    expect(list.models.every((model) => isLiveModelId(model.id))).toBe(true)
     // If this ever fails, the curated fallback in core/coach/models.ts is stale.
-    console.log('realtime models available:', list.models.map((model) => model.id).join(', '))
+    console.log('Live models available:', list.models.map((model) => model.id).join(', '))
   }, 30_000)
 
   it('reports a bad request as an OpenAIError rather than throwing something raw', async () => {

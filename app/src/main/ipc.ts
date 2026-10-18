@@ -2,8 +2,9 @@ import { watchNotebook, ensureNotebook, getNotebook, saveNotebook, clearNotebook
 import type { CellTarget, CellRunRequest } from '../core/notebook/types'
 import { authoringEvents, authoringRunState, cancelCourseAuthoring } from './authoring-state'
 import { appInfo } from './app-info'
+import { nameCoachSession } from './coachtitles'
 import { readPdfResource } from './pdf-resources'
-import { documentEvents, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentCompleted, setDocumentPage, stopDocumentWorkers } from './documents'
+import { documentEvents, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentPage, setDocumentProgress, stopDocumentWorkers } from './documents'
 import { cancelAllDocumentChats, cancelDocumentChat, createDocumentChat, deleteDocumentChat, documentSourceIcons, getDocumentChat, listDocumentChats, sendDocumentMessage, setDocumentChatModel, setDocumentChatProvider, setDocumentChatReasoning } from './document-chat'
 import { cancelAllAuthoringChats, cancelAuthoringChat, createAuthoringChat, deleteAuthoringChat, getAuthoringChat, listAuthoringChats, sendAuthoringMessage, setAuthoringChatModel, setAuthoringChatProvider, setAuthoringChatReasoning } from './authoring-chat'
 import type { AuthoringTarget } from '../core/types'
@@ -88,7 +89,9 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { getPomodoroSettings, setPomodoroSettings } from './preferences'
+import type { PomodoroSettings } from '../core/pomodoro'
 import { coachActivity, isCoachProjectBusy } from './coach-activity'
 import { appUpdateInfo, checkForAppUpdate, installAppUpdate, setAppUpdateAutomatic, updateEvents } from './updates'
 import type { ChatDefaults, ThemeImportResult } from '../core/types'
@@ -105,6 +108,8 @@ import { createFolder, listFiles, moveFile, purgeFile, readTextFile, trashFile }
 import { clearKey, forgetVolatileKeys, hasKey, readKey, setKey, storedKeyHint } from './coachkey'
 import {
   executeCoachTool,
+  assertCoachOwner,
+  flushFragments,
   reportCoachResponse,
   connectSession,
   endAllSessions,
@@ -112,7 +117,7 @@ import {
   flushTurns,
   startSession,
 } from './coachsession'
-import { listRealtimeModels, validateKey, type ModelList } from './openai'
+import { listLiveModels, listCoachBackendModels, validateKey, type ModelList } from './openai'
 import { getCourse, listCourses } from './courses'
 import { importCourseZip, removeCourse } from './import'
 import { userWorkspaceRoot } from './paths'
@@ -545,6 +550,8 @@ export function registerIpc(): void {
      core/reading-scale.ts. Snapped to a step on the way in. */
 
   ipcMain.handle('reading:scale', () => getReadingScale())
+  ipcMain.handle('pomodoro:settings', () => getPomodoroSettings())
+  ipcMain.handle('pomodoro:setSettings', (_e, settings: PomodoroSettings) => setPomodoroSettings(settings))
   ipcMain.handle('reading:setScale', (_e, scale: number) => setReadingScale(scale))
 
   /* --- themes --------------------------------------------------------------
@@ -806,12 +813,15 @@ export function registerIpc(): void {
   ipcMain.handle('coach:clearKey', (): void => { cancelAllAuthoringChats('apiKey'); clearKey(); notifyAIConnectionChanged() })
 
   /** One round trip: the call that fills this list is the call that checks the key. */
-  ipcMain.handle('coach:listModels', (): Promise<ModelList> => listRealtimeModels(readKey()))
+  ipcMain.handle('coach:listModels', (): Promise<ModelList> => listLiveModels(readKey()))
+  ipcMain.handle('coach:listBackendModels', (): Promise<ModelList> => listCoachBackendModels(readKey()))
   ipcMain.handle('coach:allowDelete', () => getCoachAllowDelete())
   ipcMain.handle('coach:setAllowDelete', (_e, value: boolean) => { const result = setCoachAllowDelete(value); broadcast('coach:changed'); return result })
   ipcMain.handle('coach:projectRunState', (_e, projectId: string) => { if (!getProject(projectId)) throw new Error('That coach is gone.'); return { busy: isCoachProjectBusy(projectId) } })
   ipcMain.handle('coach:response', (e, sessionId: string, diagnostic: import('../core/types').CoachResponseDiagnostic) => reportCoachResponse(sessionId, e.sender.id, diagnostic))
   ipcMain.handle('coach:defaultModel', () => getDefaultCoachModel())
+  ipcMain.handle('coach:defaultBackendModel', () => getDefaultCoachBackendModel())
+  ipcMain.handle('coach:setDefaultBackendModel', (_e, model: string) => setDefaultCoachBackendModel(model))
   ipcMain.handle('coach:setDefaultModel', (_e, model: string) => setDefaultCoachModel(model))
 
   ipcMain.handle('coach:listProjects', (): CoachProjectSummary[] => listProjects())
@@ -819,15 +829,15 @@ export function registerIpc(): void {
   ipcMain.handle('coach:getProject', (_e, projectId: string): CoachProject | null => getProject(projectId))
 
   ipcMain.handle('coach:createProject', (_e, draft: CoachProjectDraft): CoachProject => {
-    const { name, model, voice, instructions } = draft
-    const project = createProject({ name, model, voice, instructions })
+    const { name, model, backendModel, voice, instructions } = draft
+    const project = createProject({ name, model, backendModel, voice, instructions })
     broadcast('coach:changed')
     return project
   })
 
   ipcMain.handle('coach:updateProject', (_e, projectId: string, patch: Partial<CoachProjectDraft>): CoachProject => {
-    const { name, model, voice, instructions } = patch
-    const project = updateProject(projectId, { name, model, voice, instructions })
+    const { name, model, backendModel, voice, instructions } = patch
+    const project = updateProject(projectId, { name, model, backendModel, voice, instructions })
     broadcast('coach:changed')
     return project
   })
@@ -876,19 +886,20 @@ export function registerIpc(): void {
 
   /*
    * A live session. The renderer drives the peer connection and the microphone;
-   * main keeps the key, the ephemeral secret and the record of what is running.
+   * main keeps the key, the configuration and the record of what is running.
    * Nothing returned from here contains a credential.
    */
   ipcMain.handle('coach:startSession', (e, projectId: string): Promise<CoachStartResult> =>
     startSession(e.sender, projectId)
   )
 
-  ipcMain.handle('coach:connect', (_e, sessionId: string, offerSdp: string) => connectSession(sessionId, offerSdp))
+  ipcMain.handle('coach:connect', (e, sessionId: string, offerSdp: string) => connectSession(sessionId, offerSdp, e.sender.id))
 
   ipcMain.handle(
     'coach:tool',
-    async (e, sessionId: string, name: string, args: string): Promise<CoachToolOutcome> => {
-      const result = await executeCoachTool(sessionId, e.sender.id, name, args)
+    async (e, sessionId: string, name: string, args: string, callId: string): Promise<CoachToolOutcome> => {
+      if (typeof callId !== 'string' || !callId) throw new Error('Missing tool call identity.')
+      const result = await executeCoachTool(sessionId, e.sender.id, name, args, callId)
       if (result.ok && name !== 'web_search' && name !== 'read_file' && name !== 'list_files') {
         broadcast('coach:filesChanged', requireSessionProject(sessionId))
       }
@@ -896,20 +907,33 @@ export function registerIpc(): void {
     }
   )
 
-  ipcMain.handle('coach:saveTurns', (_e, sessionId: string, turns: TranscriptTurn[]): void =>
-    flushTurns(sessionId, turns)
-  )
+  ipcMain.handle('coach:saveTurns', (e, sessionId: string, turns: TranscriptTurn[]): void => {
+    assertCoachOwner(sessionId, e.sender.id); flushTurns(sessionId, turns)
+  })
+  ipcMain.handle('coach:saveFragments', (e, sessionId: string, fragments: import('../core/types').CoachTranscriptFragment[], metadata?: import('../core/types').CoachSessionMetadata): void => {
+    assertCoachOwner(sessionId, e.sender.id); flushFragments(sessionId, fragments, metadata)
+  })
 
   ipcMain.handle(
     'coach:endSession',
-    (_e, sessionId: string, outcome: { status: 'ended' | 'failed'; error?: string; turns?: TranscriptTurn[] }) => {
+    (e, sessionId: string, outcome: import('../core/types').CoachEndOutcome) => {
+      assertCoachOwner(sessionId, e.sender.id)
       const summary = endSession(sessionId, outcome)
+      void nameCoachSession(sessionId, () => broadcast('coach:changed'))
       broadcast('coach:changed')
       return summary
     }
   )
 
-  ipcMain.handle('coach:listSessions', (_e, projectId: string): CoachSessionSummary[] => selectSessions(projectId))
+  ipcMain.handle('coach:listSessions', (_e, projectId: string): CoachSessionSummary[] => {
+    const sessions = selectSessions(projectId)
+    for (const session of sessions) {
+      if (session.status !== 'live' && session.turns && !session.metadata?.generatedTitle) {
+        void nameCoachSession(session.id, () => broadcast('coach:changed'))
+      }
+    }
+    return sessions
+  })
 
   ipcMain.handle('coach:getTranscript', (_e, sessionId: string): CoachTranscript | null => {
     const session = selectSessionSummary(sessionId)
@@ -945,8 +969,8 @@ export function registerIpc(): void {
   ipcMain.handle('documents:range', (_e, id: string, begin: number, end: number) => readDocumentRange(id, begin, end))
   ipcMain.handle('documents:resource', (_e, kind: string, filename: string) => { requireUser(); return readPdfResource(kind, filename) })
   ipcMain.handle('documents:search', (_e, id: string, query: string, cursor: number) => searchDocument(id, query, cursor))
-  ipcMain.handle('documents:completed', (_e, id: string, completed: boolean) => setDocumentCompleted(id, completed))
   ipcMain.handle('documents:page', (_e, id: string, page: number) => setDocumentPage(id, page))
+  ipcMain.handle('documents:progress', (_e, id: string, page: number) => setDocumentProgress(id, page))
   ipcMain.handle('documents:rename', (_e, id: string, title: string) => renameDocument(id, title))
   ipcMain.handle('documents:remove', (_e, id: string) => removeDocument(id))
   ipcMain.handle('documents:retryIndex', (_e, id: string, password?: string) => {

@@ -66,7 +66,9 @@ function currentCard(session: ActiveSession, cardId: string): Candidate {
 export function startReviewSession(courseId: string, count: ReviewCount, senderId: number, now = new Date()): ReviewSession {
   if (![10, 15, 20].includes(count)) throw new Error('Choose 10, 15, or 20 cards.')
   const course = requireCourse(courseId), cards = candidates(course), queue = reviewQueue(cards, count, now)
-  if (!queue.length) throw new Error('Complete a lesson with flashcards to unlock review.')
+  if (!queue.length) throw new Error(cards.some(card => card.eligible)
+    ? 'No cards are due for review yet.'
+    : 'Complete a lesson with flashcards to unlock review.')
   endWindowReviews(senderId)
   const session: ActiveSession = { id: randomUUID(), userId: requireUser(), senderId, courseId, revision: course.revision, queue,
     index: 0, revealed: false, expectedVersion: cards.find(card => card.id === queue[0])!.version,

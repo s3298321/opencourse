@@ -164,6 +164,16 @@ interface Span {
   to: number
 }
 
+/** Provider citation references are identifiers, not links a reader can open. */
+function citationTokens(text: string): Span[] {
+  return [...text.matchAll(/\uE200cite\uE202[^\uE201]*\uE201/g)].map(match => ({ from: match.index, to: match.index + match[0].length }))
+}
+
+/** Hide unresolved citation references, including a token still arriving over the stream. */
+export function stripWebCitationTokens(text: string): string {
+  return text.replace(/\uE200cite\uE202[^\uE201]*\uE201/g, '').replace(/\uE200[^\uE201]*$/, '')
+}
+
 /**
  * What is already spoken for: links being replaced, and points where a marker
  * is going in. A replacement may not swallow either; several markers may go
@@ -230,7 +240,7 @@ function wordEnd(text: string, at: number): number {
  * link) or a point to insert at (`from === to`), or null if nowhere can be
  * trusted.
  */
-function locate(text: string, citation: ChatCitation, taken: Taken): Span | null {
+function locate(text: string, citation: ChatCitation, taken: Taken, tokens: Span[]): Span | null {
   const { url, start, end } = citation
   const candidates: Span[] = []
   if (start >= 0) {
@@ -240,6 +250,11 @@ function locate(text: string, citation: ChatCitation, taken: Taken): Span | null
     if (from !== -1 && to !== -1 && (from !== start || to !== end)) candidates.push({ from, to })
   }
   const inRange = candidates.filter((c) => c.to <= text.length)
+
+  // Some responses annotate an internal reference instead of a Markdown URL.
+  // Use the annotation's actual URL; the turn identifiers cannot resolve it.
+  const token = tokens.find(span => inRange.some(c => c.from < span.to && c.to > span.from))
+  if (token) return overlaps(token, taken) ? { from: token.to, to: token.to } : token
 
   // An offset is trusted when the text it points at mentions the page.
   const verified = inRange.find((c) => spellings(url).some((s) => text.slice(c.from, c.to).includes(s)))
@@ -279,12 +294,13 @@ function linkTitle(title: string): string {
  * cites it.
  */
 export function citeAnswer(text: string, citations: readonly ChatCitation[] | undefined): CitedAnswer {
-  if (!citations?.length) return { markdown: text, sources: [] }
+  if (!citations?.length) return { markdown: stripWebCitationTokens(text), sources: [] }
 
   // The private-use characters mean something to the renderer, so any already
   // in the text are swapped for an invisible one of the same length - the
   // offsets still line up, and nothing in an answer can forge a marker.
   const source = text.replace(/[]/g, '​')
+  const tokens = citationTokens(source)
 
   // In text order, so occurrences of a page cited twice are claimed in turn.
   const ordered = [...citations].sort((a, b) => (a.start < 0 ? 1 : b.start < 0 ? -1 : a.start - b.start))
@@ -297,7 +313,7 @@ export function citeAnswer(text: string, citations: readonly ChatCitation[] | un
     const page = pages.get(key)
     if (!page) pages.set(key, { url: citation.url, title: citation.title })
     else if (!page.title && citation.title) page.title = citation.title
-    const span = locate(source, citation, taken)
+    const span = locate(source, citation, taken, tokens)
     if (span) {
       if (span.from === span.to) taken.points.push(span.from)
       else taken.links.push(span)
@@ -335,7 +351,7 @@ export function citeAnswer(text: string, citations: readonly ChatCitation[] | un
     .replace(new RegExp(`(${slot})(?:\\1)+`, 'g'), '$1')
 
   const byNumber = new Map([...numbers].map(([key, n]) => [n, key]))
-  const markdown = rewritten.replace(new RegExp(`${SLOT_OPEN}(\\d+)${SLOT_CLOSE}`, 'g'), (_, digits: string) => {
+  const markdown = stripWebCitationTokens(rewritten).replace(new RegExp(`${SLOT_OPEN}(\\d+)${SLOT_CLOSE}`, 'g'), (_, digits: string) => {
     const page = pages.get(byNumber.get(Number(digits)) ?? '')
     return page ? `${CITE_MARK}[${digits}](${destination(page.url)} ${linkTitle(page.title || hostOf(page.url))})` : ''
   })

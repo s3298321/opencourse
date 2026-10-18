@@ -71,17 +71,6 @@ export default function Users({
     }
   }
 
-  const remove = async (user: UserProfile): Promise<void> => {
-    const ok = window.confirm(
-      `Delete ${user.name}?\n\nThis removes their courses, their progress, and every exercise file and ` +
-        `virtualenv they have on this Mac. It cannot be undone.`
-    )
-    if (!ok) return
-    await window.opencourse.deleteUser(user.id)
-    setError(null)
-    refresh()
-  }
-
   return (
     <>
       <TitleBar />
@@ -102,9 +91,6 @@ export default function Users({
                     </span>
                     <span className="user-name">{user.name}</span>
                     <span className="meta">{lastSeen(user)}</span>
-                  </button>
-                  <button className="ghost user-delete" disabled={busy} onClick={() => void remove(user)}>
-                    Delete
                   </button>
                 </div>
               ))}

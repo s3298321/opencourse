@@ -8,6 +8,7 @@ import type { ReviewAnswer, ReviewCount, ReviewRating, ReviewSession, ReviewSumm
 import type { LogPage, LogQuery } from '../core/logging/query'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { BRAND } from '../core/brand'
+import type { PomodoroSettings } from '../core/pomodoro'
 import type {
   ActiveTheme,
   ThemeImportResult,
@@ -100,8 +101,8 @@ const api = {
   importDocument: (): Promise<DocumentImportResult> => ipcRenderer.invoke('documents:import'),
   importDroppedDocument: (file: File): Promise<DocumentImportResult> => ipcRenderer.invoke('documents:importDrop', webUtils.getPathForFile(file)),
   removeDocument: (id: string): Promise<void> => ipcRenderer.invoke('documents:remove', id),
-  setDocumentCompleted: (id: string, completed: boolean): Promise<DocumentView> => ipcRenderer.invoke('documents:completed', id, completed),
   setDocumentPage: (id: string, page: number): Promise<void> => ipcRenderer.invoke('documents:page', id, page),
+  setDocumentProgress: (id: string, page: number): Promise<DocumentView> => ipcRenderer.invoke('documents:progress', id, page),
   renameDocument: (id: string, title: string): Promise<DocumentView> => ipcRenderer.invoke('documents:rename', id, title),
   readDocumentRange: (id: string, begin: number, end: number): Promise<Uint8Array> => ipcRenderer.invoke('documents:range', id, begin, end),
   readPdfResource: (kind: string, filename: string): Promise<Uint8Array> => ipcRenderer.invoke('documents:resource', kind, filename),
@@ -214,6 +215,8 @@ const api = {
 
   // --- the reader's text size on a lesson screen: one of READING_SCALES ---
   getReadingScale: (): Promise<number> => ipcRenderer.invoke('reading:scale'),
+  getPomodoroSettings: (): Promise<PomodoroSettings> => ipcRenderer.invoke('pomodoro:settings'),
+  setPomodoroSettings: (settings: PomodoroSettings): Promise<PomodoroSettings> => ipcRenderer.invoke('pomodoro:setSettings', settings),
   setReadingScale: (scale: number): Promise<number> => ipcRenderer.invoke('reading:setScale', scale),
 
   getProgress: (courseId: string): Promise<CourseProgress> => ipcRenderer.invoke('progress:get', courseId),
@@ -290,8 +293,12 @@ const api = {
   clearOpenAIKey: (): Promise<void> => ipcRenderer.invoke('coach:clearKey'),
   listCoachModels: (): Promise<{ models: CoachModel[]; source: 'api' | 'fallback'; error?: string }> =>
     ipcRenderer.invoke('coach:listModels'),
+  listCoachBackendModels: (): Promise<{ models: CoachModel[]; source: 'api' | 'fallback'; error?: string }> =>
+    ipcRenderer.invoke('coach:listBackendModels'),
   getDefaultCoachModel: (): Promise<string> => ipcRenderer.invoke('coach:defaultModel'),
   setDefaultCoachModel: (model: string): Promise<string> => ipcRenderer.invoke('coach:setDefaultModel', model),
+  getDefaultCoachBackendModel: (): Promise<string> => ipcRenderer.invoke('coach:defaultBackendModel'),
+  setDefaultCoachBackendModel: (model: string): Promise<string> => ipcRenderer.invoke('coach:setDefaultBackendModel', model),
 
   getCoachAllowDelete: (): Promise<boolean> => ipcRenderer.invoke('coach:allowDelete'),
   setCoachAllowDelete: (value: boolean): Promise<boolean> => ipcRenderer.invoke('coach:setAllowDelete', value),
@@ -304,12 +311,13 @@ const api = {
   createCoachProject: (draft: {
     name: string
     model?: string
+    backendModel?: string
     voice?: string
     instructions?: string
   }): Promise<CoachProject> => ipcRenderer.invoke('coach:createProject', draft),
   updateCoachProject: (
     projectId: string,
-    patch: { name?: string; model?: string; voice?: string; instructions?: string }
+    patch: { name?: string; model?: string; backendModel?: string; voice?: string; instructions?: string }
   ): Promise<CoachProject> => ipcRenderer.invoke('coach:updateProject', projectId, patch),
   deleteCoachProject: (projectId: string): Promise<void> => ipcRenderer.invoke('coach:deleteProject', projectId),
   revealCoachProject: (projectId: string): Promise<void> => ipcRenderer.invoke('coach:revealProject', projectId),
@@ -339,15 +347,17 @@ const api = {
   // exchange goes back through main.
   startCoachSession: (projectId: string): Promise<CoachStartResult> =>
     ipcRenderer.invoke('coach:startSession', projectId),
-  connectCoachSession: (sessionId: string, offerSdp: string): Promise<{ answerSdp: string }> =>
+  connectCoachSession: (sessionId: string, offerSdp: string): Promise<{ answerSdp: string; remoteSessionId: string }> =>
     ipcRenderer.invoke('coach:connect', sessionId, offerSdp),
-  runCoachTool: (sessionId: string, name: string, args: string): Promise<CoachToolOutcome> =>
-    ipcRenderer.invoke('coach:tool', sessionId, name, args),
+  runCoachTool: (sessionId: string, name: string, args: string, callId: string): Promise<CoachToolOutcome> =>
+    ipcRenderer.invoke('coach:tool', sessionId, name, args, callId),
   saveCoachTurns: (sessionId: string, turns: TranscriptTurn[]): Promise<void> =>
     ipcRenderer.invoke('coach:saveTurns', sessionId, turns),
+  saveCoachFragments: (sessionId: string, fragments: import('../core/types').CoachTranscriptFragment[], metadata?: import('../core/types').CoachSessionMetadata): Promise<void> => ipcRenderer.invoke('coach:saveFragments', sessionId, fragments, metadata),
+  onCoachShutdown: (handler: (sessionId: string) => void): (() => void) => subscribe('coach:shutdown', handler),
   endCoachSession: (
     sessionId: string,
-    outcome: { status: 'ended' | 'failed'; error?: string; turns?: TranscriptTurn[] }
+    outcome: import('../core/types').CoachEndOutcome
   ): Promise<CoachSessionSummary | null> => ipcRenderer.invoke('coach:endSession', sessionId, outcome),
   listCoachSessions: (projectId: string): Promise<CoachSessionSummary[]> =>
     ipcRenderer.invoke('coach:listSessions', projectId),

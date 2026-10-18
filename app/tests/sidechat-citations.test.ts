@@ -8,7 +8,7 @@
  * page must still be listed.
  */
 import { describe, expect, it } from 'vitest'
-import { CITE_MARK, citeAnswer, hostOf, normalizeCitations, shortTitle } from '@core/sidechat/citations'
+import { CITE_MARK, citeAnswer, hostOf, normalizeCitations, shortTitle, stripWebCitationTokens } from '@core/sidechat/citations'
 import { fetchableUrl, iconLinks, isFetchableHost, sniffImage } from '@core/sidechat/favicon'
 import { webSearchFor } from '@core/sidechat/models'
 import { SIDE_CHAT_INSTRUCTIONS, sideChatInstructions } from '@core/sidechat/prompt'
@@ -33,6 +33,37 @@ function markers(markdown: string): string[] {
 }
 
 describe('citeAnswer', () => {
+  it('hides internal web references when no source URLs were supplied', () => {
+    const text = 'I checked the documentation.\uE200cite\uE202turn1view0\uE202turn1view1\uE202turn0view1\uE202turn0view2\uE201'
+    expect(citeAnswer(text, undefined)).toEqual({ markdown: 'I checked the documentation.', sources: [] })
+    expect(citeAnswer(text, [])).toEqual({ markdown: 'I checked the documentation.', sources: [] })
+  })
+
+  it('replaces an annotated internal reference with links to each supplied source', () => {
+    const text = 'Claim.\uE200cite\uE202turn1view0\uE202turn1view1\uE201 Next.'
+    const start = text.indexOf('\uE200'), end = text.indexOf('\uE201') + 1
+    const { markdown, sources } = citeAnswer(text, [
+      { url: PY, title: 'Docs', start, end },
+      { url: PEP, title: 'PEP', start, end }
+    ])
+    expect(markdown).toBe(`Claim.${CITE_MARK}[1](<${PY}> "Docs")${CITE_MARK}[2](<${PEP}> "PEP") Next.`)
+    expect(sources.map(source => source.url)).toEqual([PY, PEP])
+  })
+
+  it('keeps annotation offsets intact when an unresolved reference precedes a valid citation', () => {
+    const text = `Old claim.\uE200cite\uE202turn0view0\uE201 More ([docs.python.org](${PY})).`
+    const { markdown, sources } = citeAnswer(text, [cite(text, PY, 'Docs')])
+    expect(markdown).toBe(`Old claim. More${CITE_MARK}[1](<${PY}> "Docs").`)
+    expect(sources).toHaveLength(1)
+  })
+
+  it('preserves source URLs without inventing links from unresolved turn identifiers', () => {
+    const text = 'Claim.\uE200cite\uE202turn0view0\uE201'
+    const { markdown, sources } = citeAnswer(text, [{ url: PY, title: 'Docs', start: -1, end: -1 }])
+    expect(markdown).toBe('Claim.')
+    expect(sources[0].url).toBe(PY)
+  })
+
   it('replaces the inline link with a numbered marker against the word it supports', () => {
     const text = `Python 3.14 ships free threading ([docs.python.org](${PY})). Done.`
     const { markdown, sources } = citeAnswer(text, [cite(text, PY, 'asyncio — Python 3.14 documentation')])
@@ -151,6 +182,17 @@ describe('citeAnswer', () => {
     const { markdown } = citeAnswer(text, [cite(text, PY, 'Docs')])
     expect(markers(markdown)).toEqual([`1:${PY}`])
     expect(markdown.startsWith('​[9]')).toBe(true)
+  })
+})
+
+describe('streaming web citation references', () => {
+  it.each(['\uE200', '\uE200c', '\uE200cite', '\uE200cite\uE202', '\uE200cite\uE202turn1view0'])('hides an unfinished token %j', token => {
+    expect(stripWebCitationTokens(`Answer.${token}`)).toBe('Answer.')
+  })
+
+  it('hides complete tokens while preserving surrounding prose and ordinary identifiers', () => {
+    expect(stripWebCitationTokens('One.\uE200cite\uE202turn0view0\uE201 Two.\uE200cite\uE202turn1view0\uE201')).toBe('One. Two.')
+    expect(stripWebCitationTokens('Call cite(turn1view0) in the example.')).toBe('Call cite(turn1view0) in the example.')
   })
 })
 

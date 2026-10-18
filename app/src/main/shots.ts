@@ -514,7 +514,7 @@ async function seedCoachWorkspace(win: BrowserWindow): Promise<void> {
     id: sessionId,
     projectId: project.id,
     startedAt: new Date(Date.now() - 14 * 60_000).toISOString(),
-    model: 'gpt-realtime-2.1',
+    model: 'gpt-live-1',
     instructions: 'You are a French vocabulary coach. Sam is preparing for a trip in March.'
   })
   saveTurns(
@@ -729,7 +729,9 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     ...['white-apply', 'white-library', 'white-lesson', 'white-workbench'].map((target) => ({ target, photo: true })),
     { target: 'white-off', photo: false }
   ]
-  const selectedSteps = process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' ? whiteSteps : steps
+  const coachSteps = steps.filter(step => ['users', 'create-user'].includes(step.target) || step.target.startsWith('coach-') || step.target === 'back-to-coach')
+  const selectedSteps = process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' ? whiteSteps
+    : process.env['OPENCOURSE_SHOTS_ONLY'] === 'coach' ? coachSteps : steps
 
   const { zips, drop } = buildArchives()
   const tidy = (): void => {

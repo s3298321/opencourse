@@ -495,6 +495,7 @@ export interface CoachProject {
   id: string
   name: string
   model: string
+  backendModel: string
   voice: string
   /** The project's own system prompt: what the coach is for. User-editable. */
   instructions: string
@@ -518,7 +519,37 @@ export interface CoachProjectSummary {
   files: number
 }
 
+export interface CoachTranscriptFragment {
+  eventId: string
+  role: 'user' | 'assistant'
+  text: string
+  startMs: number
+  endMs: number
+}
+
+export interface CoachSessionMetadata {
+  generatedTitle?: string
+  backendModel?: string
+  backendInstructions?: string
+  backendSettings?: { reasoning: 'default'; toolChoice: 'auto'; parallelToolCalls: false; tools: string[] }
+  voice?: string
+  remoteSessionId?: string
+  voiceSeconds?: number
+  backendUsage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+  finalization?: 'pending' | 'confirmed' | 'unconfirmed'
+  closeReason?: string
+}
+
+export interface CoachEndOutcome {
+  status: 'ended' | 'failed'
+  error?: string
+  turns?: TranscriptTurn[]
+  fragments?: CoachTranscriptFragment[]
+  metadata?: CoachSessionMetadata
+}
+
 export interface CoachSessionSummary {
+  metadata?: CoachSessionMetadata
   id: string
   projectId: string
   startedAt: string
@@ -539,8 +570,9 @@ export interface TranscriptTurn {
 }
 
 export interface CoachResponseDiagnostic {
-  event: 'response.started' | 'response.done' | 'speech.started' | 'wrapup.started'
+  event: 'response.started' | 'response.done' | 'speech.started' | 'wrapup.started' | 'session.error'
   responseId?: string
+  clientEventId?: string
   status?: string
   reason?: string
   errorCode?: string
@@ -767,6 +799,8 @@ export interface ChatSummary {
   title: string
   /** How much was said, so the list can show it without loading it. */
   messages: number
+  /** Timestamp of the latest non-context message; null when nothing has been sent. */
+  lastMessageAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -834,6 +868,7 @@ export interface ChatPickerModels {
  * a table, because it is small and a person might reasonably edit it by hand.
  */
 export interface Preferences {
+  pomodoro?: import('./pomodoro').PomodoroSettings
   ai?: AISettings
   titleGeneration?: TitleGenerationConfig
   /** Which chat models the side chat's picker offers. Absent: every one the key can reach. */
@@ -841,6 +876,7 @@ export interface Preferences {
   defaultChatModel?: string
   defaultChatReasoning?: ReasoningEffort
   defaultCoachModel?: string
+  defaultCoachBackendModel?: string
   /** All coaches may trash files only while this user opts in. */
   coachAllowDelete?: boolean
   projectEditor?: string
@@ -913,6 +949,8 @@ export type CoachStartResult =
       voice: string
       instructions: string
       tools: unknown[]
+      backendModel: string
+      backendInstructions: string
       startedAt: string
     }
   | { status: 'no-key' }

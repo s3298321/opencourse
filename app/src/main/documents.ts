@@ -14,7 +14,7 @@ import { fullTextQuery } from '../core/documents/text'
 export const documentEvents = new EventEmitter()
 const workers = new Map<string, { worker: Worker; owner: string }>()
 function summary(row: Record<string, unknown>): DocumentSummary {
-  return { id: String(row.id), title: String(row.title_override ?? row.title), bytes: Number(row.bytes), fingerprint: String(row.fingerprint), pages: Number(row.pages), indexedPages: Number(row.indexed_pages), searchablePages: Number(row.searchable_pages), status: row.status === 'ready' ? 'ready' : row.status === 'error' ? 'error' : 'indexing', error: typeof row.error === 'string' ? row.error : null, completed: row.completed === 1, createdAt: String(row.created_at) }
+  return { id: String(row.id), title: String(row.title_override ?? row.title), bytes: Number(row.bytes), fingerprint: String(row.fingerprint), pages: Number(row.pages), indexedPages: Number(row.indexed_pages), searchablePages: Number(row.searchable_pages), status: row.status === 'ready' ? 'ready' : row.status === 'error' ? 'error' : 'indexing', error: typeof row.error === 'string' ? row.error : null, readPage: Number(row.read_page), createdAt: String(row.created_at) }
 }
 function rowFor(id: string): Record<string, unknown> {
   if (typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Invalid document ID.')
@@ -162,16 +162,17 @@ export function renameDocument(id: string, title: string): DocumentView {
   documentEvents.emit('changed', id)
   return getDocument(id)
 }
-export function setDocumentCompleted(id: string, completed: boolean): DocumentView {
-  rowFor(id)
-  db().prepare('UPDATE documents SET completed=? WHERE id=?').run(completed === true ? 1 : 0, id)
-  documentEvents.emit('changed', id)
-  return getDocument(id)
-}
 export function setDocumentPage(id: string, page: number): void {
   const document = summary(rowFor(id))
   if (!Number.isSafeInteger(page) || page < 1 || (document.pages > 0 && page > document.pages)) throw new Error('That page is not in this document.')
   db().prepare('UPDATE documents SET last_page=? WHERE id=?').run(page, id)
+}
+export function setDocumentProgress(id: string, page: number): DocumentView {
+  const document = summary(rowFor(id))
+  if (!Number.isSafeInteger(page) || page < 1 || page > 100_000 || (document.pages > 0 && page > document.pages)) throw new Error('That page is not in this document.')
+  db().prepare('UPDATE documents SET read_page=? WHERE id=?').run(page, id)
+  documentEvents.emit('changed', id)
+  return getDocument(id)
 }
 export async function removeDocument(id: string): Promise<void> {
   const owner = requireUser(), path = documentFile(id)

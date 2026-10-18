@@ -31,13 +31,18 @@ export default function CoachTranscript({ projectId, sessionId, user, navigate, 
 
   useEffect(() => {
     let cancelled = false
-    void window.opencourse.getCoachTranscript(sessionId).then((found) => {
-      if (cancelled) return
-      if (found) setTranscript(found)
-      else setMissing(true)
-    })
+    const refresh = (): void => {
+      void window.opencourse.getCoachTranscript(sessionId).then((found) => {
+        if (cancelled) return
+        if (found) setTranscript(found)
+        else setMissing(true)
+      })
+    }
+    refresh()
+    const unsubscribe = window.opencourse.onCoachChanged(refresh)
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [sessionId])
 
@@ -68,7 +73,8 @@ export default function CoachTranscript({ projectId, sessionId, user, navigate, 
           <div className="coach-project">
             <div className="library-head">
               <div>
-                <h1>{when(session.startedAt)}</h1>
+                <h1>{session.metadata?.generatedTitle || when(session.startedAt)}</h1>
+                {session.metadata?.generatedTitle && <p className="meta">{when(session.startedAt)}</p>}
                 <p className="lede">
                   <span className="tag">{session.model}</span>
                   <span className="tag">
@@ -113,6 +119,11 @@ export default function CoachTranscript({ projectId, sessionId, user, navigate, 
 
             <details className="panel coach-brief">
               <summary>The brief this session ran with</summary>
+              {session.metadata?.backendModel && <p className="meta">Voice: {session.model} · Reasoning: {session.metadata.backendModel}</p>}
+              {session.metadata?.backendSettings && <p className="meta">Default reasoning · Automatic tool choice · Sequential tools: {session.metadata.backendSettings.tools.join(", ")}</p>}
+              {session.metadata?.backendInstructions && <details><summary>Backend instructions</summary><pre className="coach-brief-text">{session.metadata.backendInstructions}</pre></details>}
+              {session.metadata?.finalization && <p className="meta">Finalization: {session.metadata.finalization}{session.metadata.voiceSeconds !== undefined ? ` · ${session.metadata.voiceSeconds.toFixed(1)} seconds of voice` : ''}</p>}
+
               <pre className="coach-brief-text">{transcript.instructions}</pre>
             </details>
           </div>

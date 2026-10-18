@@ -4,9 +4,11 @@ import type { ReviewRating, ReviewSummary } from './types'
 
 export const REVIEW_RATINGS: ReviewRating[] = ['again', 'hard', 'good', 'easy']
 export const REVIEW_CONFIGURATION = {
-  version: 1, library: 'ts-fsrs@5.4.2',
-  parameters: generatorParameters({ request_retention: 0.9, enable_fuzz: false, enable_short_term: true,
-    learning_steps: ['1m', '10m'], relearning_steps: ['10m'] })
+  version: 2, library: 'ts-fsrs@5.4.2',
+  // Sessions show each card once. Use FSRS's long-term scheduler rather than
+  // minute-scale steps that require repeated attempts within the same sitting.
+  parameters: generatorParameters({ request_retention: 0.9, enable_fuzz: false, enable_short_term: false,
+    learning_steps: [], relearning_steps: [] })
 }
 const scheduler = fsrs(REVIEW_CONFIGURATION.parameters)
 const ratings: Record<ReviewRating, Grade> = { again: Rating.Again, hard: Rating.Hard, good: Rating.Good, easy: Rating.Easy }
@@ -39,9 +41,7 @@ export function reviewQueue(cards: ReviewCandidate[], count: number, now: Date):
   const due = eligible.filter(card => card.state && card.state.due <= now)
     .sort((a, b) => a.state!.due.getTime() - b.state!.due.getTime() || stable(a, b))
   const unseen = eligible.filter(card => !card.state).sort((a, b) => a.order - b.order || stable(a, b))
-  const early = eligible.filter(card => card.state && card.state.due > now)
-    .sort((a, b) => recall(a.state!, now) - recall(b.state!, now) || a.state!.due.getTime() - b.state!.due.getTime() || stable(a, b))
-  return [...due, ...unseen, ...early].slice(0, count).map(card => card.id)
+  return [...due, ...unseen].slice(0, count).map(card => card.id)
 }
 export function summarizeReview(cards: ReviewCandidate[], now: Date): ReviewSummary {
   const eligible = cards.filter(card => card.eligible), practiced = eligible.filter(card => card.state)

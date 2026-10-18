@@ -27,6 +27,7 @@ export const CHAT_MODELS: readonly ChatModel[] = [
  */
 const NOT_CHAT = [
   'realtime',
+  'live',
   'transcribe',
   'embedding',
   'whisper',

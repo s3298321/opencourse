@@ -21,12 +21,6 @@ import { quitVetoed, runPendingInstall, startUpdates } from './updates'
 // Long Responses streams can fail with ERR_QUIC_PROTOCOL_ERROR. Keep HTTPS on
 // TCP (HTTP/2 or HTTP/1.1), retaining Chromium's system proxy support.
 app.commandLine.appendSwitch('disable-quic')
-if (process.env['OPENCOURSE_COACH_LIVE_SMOKE'] && !app.isPackaged) {
-  app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
-  app.commandLine.appendSwitch('use-fake-device-for-media-stream')
-  const speech = process.env['OPENCOURSE_LIVE_AUDIO']
-  if (speech) app.commandLine.appendSwitch('use-file-for-fake-audio-capture', speech)
-}
 app.setName(BRAND.displayName)
 nativeTheme.themeSource = 'dark'
 app.setPath('userData', join(app.getPath('appData'), BRAND.name))
@@ -122,7 +116,7 @@ function createWindow(): BrowserWindow {
       webviewTag: false,
       // Automated layout/selection checks must receive animation frames even
       // while the user switches to another app. Normal launches stay throttled.
-      backgroundThrottling: !Boolean(process.env['OPENCOURSE_COACH_LIVE_SMOKE'] || process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS'] || process.env['OPENCOURSE_FLASHCARD_SMOKE'])
+      backgroundThrottling: !Boolean(process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS'] || process.env['OPENCOURSE_FLASHCARD_SMOKE'])
     }
   })
   const updateGlass = (): void => applyWindowLook(win)
@@ -156,8 +150,7 @@ function createWindow(): BrowserWindow {
     // dimensions for screenshots and responsive layout checks.
     if (!process.env['OPENCOURSE_SMOKE'] && !process.env['OPENCOURSE_SHOTS'] && !process.env['OPENCOURSE_FLASHCARD_SMOKE']) win.maximize()
     win.show()
-    if (process.env['OPENCOURSE_COACH_LIVE_SMOKE'] && !app.isPackaged) void import('./coach-live-smoke').then(({ runCoachLiveSmoke }) => runCoachLiveSmoke(win))
-    else if (process.env['OPENCOURSE_SMOKE']) void import('./smoke').then(({ runSmoke }) => runSmoke(win))
+    if (process.env['OPENCOURSE_SMOKE']) void import('./smoke').then(({ runSmoke }) => runSmoke(win))
     else if (process.env['OPENCOURSE_SHOTS']) void import('./shots').then(({ runShots }) => runShots(win))
     else if (process.env['OPENCOURSE_FLASHCARD_SMOKE']) void import('./flashcard-smoke').then(({ runFlashcardSmoke }) => runFlashcardSmoke(win))
   })

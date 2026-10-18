@@ -1,14 +1,24 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentSection } from '@core/documents/types'
 
 interface Heading { section: DocumentSection; children: Heading[]; parent?: Heading }
 
-export default function DocumentOutline({ sections, currentId, jump, revealSignal }: {
+export default function DocumentOutline({ sections, currentId, jump, revealSignal, storageKey, positionReady }: {
   sections: DocumentSection[]; currentId?: string; jump: (page: number, top?: number) => void; revealSignal: number
+  storageKey: string; positionReady: boolean
 }) {
   const prefix = useId()
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(storageKey) ?? 'null')
+      return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [])
+    } catch { return new Set() }
+  })
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify([...collapsed])) } catch { /* Storage is optional. */ }
+  }, [storageKey, collapsed])
   const lastCurrent = useRef<string | undefined>(undefined)
+  const hasPosition = useRef(false)
   const lastReveal = useRef(0), pendingReveal = useRef<string | null>(null)
   const rows = useRef(new Map<string, HTMLDivElement>())
   const { roots, headings } = useMemo(() => {
@@ -24,11 +34,15 @@ export default function DocumentOutline({ sections, currentId, jump, revealSigna
     return { roots, headings }
   }, [sections])
   useLayoutEffect(() => {
+    // Restoring the saved reading position must not reopen saved collapsed branches.
+    if (!positionReady) return
     // An explicit progress jump also reveals the path when the current section hasn't changed.
     const reveal = lastReveal.current !== revealSignal
     lastReveal.current = revealSignal
-    if (lastCurrent.current === currentId && !reveal) return
+    const moved = hasPosition.current && lastCurrent.current !== currentId
+    hasPosition.current = true
     lastCurrent.current = currentId
+    if (!moved && !reveal) return
     pendingReveal.current = reveal ? currentId ?? null : null
     let parent = currentId ? headings.get(currentId)?.parent : undefined
     const ancestors: string[] = []
@@ -39,7 +53,7 @@ export default function DocumentOutline({ sections, currentId, jump, revealSigna
       ancestors.forEach(id => next.delete(id))
       return next
     })
-  }, [currentId, headings, revealSignal])
+  }, [currentId, headings, revealSignal, positionReady])
   useLayoutEffect(() => {
     const row = pendingReveal.current ? rows.current.get(pendingReveal.current) : undefined
     // Wait for the expanded ancestors to reach the DOM before measuring the heading.

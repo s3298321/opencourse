@@ -68,6 +68,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
   useEffect(() => window.opencourse.onDocumentsChanged(id => { if (id === documentId) refresh() }), [documentId, refresh])
   const { pdf, error: pdfError, unlock } = usePdf(documentId, document?.bytes ?? 0)
   const storageKey = `document-chat:${user?.id}:${documentId}`
+  const outlineStorageKey = `document-outline:${user?.id}:${documentId}`
   const panel = useDocumentChat(documentId, page, active && chatOpen, storageKey)
   useEffect(() => { setPageInput(String(page)) }, [page])
   useEffect(() => {
@@ -209,7 +210,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
     <div className="body document-reader" ref={host}>
       <aside className="document-sidebar">
         <div className="document-sidebar-head">{document ? <DocumentTitle title={document.title} onRename={async title => { setDocument(await window.opencourse.renameDocument(documentId, title)) }} /> : <h2>Loading document…</h2>}</div>
-        <nav className="document-outline" aria-label="Document headings">{document?.sections.length ? <DocumentOutline key={documentId} sections={document.sections} currentId={sections[currentSection]?.id} jump={jump} revealSignal={outlineRevealSignal} /> : <div className="document-outline-empty"><p className="meta">{document?.status === 'indexing' ? 'Finding headings…' : 'No reliable headings found. Navigate by page.'}</p><label>Go to page<input aria-label="Outline page number" type="number" min="1" max={count} defaultValue="1" onKeyDown={event => { if (event.key === 'Enter') jump(Number(event.currentTarget.value)) }} /></label></div>}</nav>
+        <nav className="document-outline" aria-label="Document headings">{document?.sections.length ? <DocumentOutline key={outlineStorageKey} storageKey={outlineStorageKey} positionReady={positionReady} sections={document.sections} currentId={sections[currentSection]?.id} jump={jump} revealSignal={outlineRevealSignal} /> : <div className="document-outline-empty"><p className="meta">{document?.status === 'indexing' ? 'Finding headings…' : 'No reliable headings found. Navigate by page.'}</p><label>Go to page<input aria-label="Outline page number" type="number" min="1" max={count} defaultValue="1" onKeyDown={event => { if (event.key === 'Enter') jump(Number(event.currentTarget.value)) }} /></label></div>}</nav>
       </aside>
       <main className="document-center">
         <div className="document-toolbar">

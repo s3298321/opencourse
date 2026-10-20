@@ -510,7 +510,8 @@ test('reading chat tabs: local drafts, retained history, reopening and deletion'
     })
   }
   let created = 0
-  await page.route('**/api/v1/me/ai', route => route.fulfill({ json: { configured: true, enabled: true } }))
+  await page.route('**/api/v1/me/ai', route => route.fulfill({ json: { configured: true, enabled: true, model: 'gpt-4.1-mini', reasoning: null, enabledModels: null, title: null, webSearch: false, hint: 'test' } }))
+  await page.route('**/api/v1/me/ai/models', route => route.fulfill({ json: { source: 'api', models: [{ id: 'gpt-4.1-mini', label: 'gpt-4.1-mini' }] } }))
   await page.route('**/api/v1/learning/chats**', async route => {
     const req = route.request(), path = new URL(req.url()).pathname, id = path.split('/')[5]
     if (req.method() === 'DELETE') { stored.delete(id); return route.fulfill({ json: { ok: true } }) }

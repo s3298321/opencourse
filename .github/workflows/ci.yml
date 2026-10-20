@@ -66,6 +66,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Web learning journeys
+        run: npm run e2e
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
 
   site:
     runs-on: ubuntu-24.04

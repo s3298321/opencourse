@@ -21,8 +21,16 @@
       "ajv": ["./node_modules/ajv"],
       "ajv/*": ["./node_modules/ajv/*"],
       "yauzl": ["./node_modules/@types/yauzl"],
-      "markdown-it": ["./node_modules/@types/markdown-it"]
+      "markdown-it": ["./node_modules/@types/markdown-it"],
+      "ts-fsrs": ["./node_modules/ts-fsrs"]
     }
   },
-  "include": ["src/**/*.ts", "shared/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "e2e/**/*.ts", "vitest.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "shared/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "e2e/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

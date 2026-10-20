@@ -3,7 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
@@ -24,8 +28,18 @@
       "shiki/core": ["../node_modules/shiki/dist/core.d.mts"],
       "shiki/engine/javascript": ["../node_modules/shiki/dist/engine-javascript.d.mts"],
       "shiki/*": ["../node_modules/shiki/dist/*"],
-      "pdfjs-dist": ["../node_modules/pdfjs-dist"]
+      "pdfjs-dist": ["../node_modules/pdfjs-dist"],
+      "react": ["../node_modules/@types/react"],
+      "react/*": ["../node_modules/@types/react/*"],
+      "react-dom": ["../node_modules/@types/react-dom"],
+      "react-dom/*": ["../node_modules/@types/react-dom/*"],
+      "ts-fsrs": ["../node_modules/ts-fsrs"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "../shared/**/*.ts", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../shared/**/*.ts",
+    "vite.config.ts"
+  ]
 }

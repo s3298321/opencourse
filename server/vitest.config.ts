@@ -12,7 +12,8 @@ export default defineConfig({
       { find: /^@core\/(.*)$/, replacement: here('../app/src/core/$1') },
       { find: '@app/unzip', replacement: here('../app/src/main/unzip.ts') },
       { find: /^ajv(\/.*)?$/, replacement: here('node_modules/ajv$1') },
-      { find: /^yauzl$/, replacement: here('node_modules/yauzl') }
+      { find: /^yauzl$/, replacement: here('node_modules/yauzl') },
+      { find: /^ts-fsrs$/, replacement: here('node_modules/ts-fsrs') }
     ]
   },
   test: {

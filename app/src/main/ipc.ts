@@ -1,7 +1,11 @@
+import { registerLearningLifecycle, removeLearningDownload, startLearningSync, stopLearningSync, syncAll, syncServer, syncStatuses, learningRequest, enrollFromDesktop } from './learning'
+import { anyBinding, bindingFor, learningEvents, learningPreference } from './learning-store'
+import { publication, savePublication, chooseDocumentCover, documentCoverPreview, publishDocument } from './document-publish'
+import { addDocument, applyDocumentUpdate, catalogDocument, deleteDocumentVersion, documentHomes, documentTags, documentUpdates, leaveDocument, libraryDocuments, myDocuments, previewDocumentPublish, publishedDocument, publishLocalDocument, reindexDocumentVersion, relistDocument, searchDocuments, setCurrentDocumentVersion, unpublishDocument, type DocumentQuery } from './document-catalog'
 import { watchNotebook, ensureNotebook, getNotebook, saveNotebook, clearNotebookOutput, runCell, stopLessonCell, stopNotebook, stopAllNotebooks, rebuildNotebook } from './notebooks'
 import type { CellTarget, CellRunRequest } from '../core/notebook/types'
 import { authoringEvents, authoringRunState, cancelCourseAuthoring } from './authoring-state'
-import { appInfo } from './app-info'
+import { appInfo, appLinks } from './app-info'
 import { nameCoachSession } from './coachtitles'
 import { readPdfResource } from './pdf-resources'
 import { documentEvents, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentPage, setDocumentProgress, stopDocumentWorkers } from './documents'
@@ -23,7 +27,7 @@ import type { CourseManifest } from '../core/types'
 import { cancelAllProjectChats, cancelProjectChat, createProjectChat, deleteProjectChat, getProjectChat, listProjectChats, sendProjectMessage, setProjectChatModel, setProjectChatProvider, setProjectChatReasoning } from './projectchat'
 import { openCourseProject, openProjectEditor, requireCourseProject, revealProject } from './courseprojects'
 /** Typed IPC surface. Everything the renderer can ask the main process to do. */
-import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell, type WebContents } from 'electron'
 import type { AIProfile, AIProvider, AIScope, TitleGenerationConfig } from '../core/types'
 import { aiEvents, aiPickerModels, getAIModelSettings, getTitleGenerationSettings, setTitleGenerationSettings, notifyAIChanged, notifyAIConnectionChanged, setAIProfile, setAIProvider, smokeCatalogs } from './ai'
 import { cancelSubscriptionLogin, connectSubscription, disconnectSubscription, forgetSubscriptionUser, releaseSubscriptionSession, selectSubscriptionAccount, subscriptionEvents, subscriptionStatus } from './subscription'
@@ -129,7 +133,8 @@ import { createPty, killPty, ptySessionCount, resizePty, writePty } from './pty'
 import { saveSpecBundle, saveThemeSpecBundle } from './spec'
 import { applyTheme, getActiveTheme, importThemeZip, listThemes, removeTheme, themeFontData, type DuplicateChoice } from './themes'
 import { themeChanged, themesListChanged } from './theme-sync'
-import { createUser, deleteUser, getSession, listUsers, renameUser, requireUser, switchUser } from './users'
+import { createUser, currentUserId, deleteUser, getSession, listUsers, renameUser, requireUser, switchUser } from './users'
+import { discover, healthEvents, refreshHealth, retryServer, setHealthScope, wakeServers } from './server-health'
 import { log } from './log'
 import { deleteUserLogs, selectLogScopes, selectLogs } from './logdb'
 import { normalizeLogQuery, type LogPage } from '../core/logging/query'
@@ -271,6 +276,32 @@ function holdEditor(sender: WebContents): number {
 }
 
 export function registerIpc(): void {
+  startLearningSync()
+  registerLearningLifecycle()
+  learningEvents.on('content', () => broadcast('courses:changed'))
+  learningEvents.on('status', () => broadcast('learning:changed'))
+  learningEvents.on('servers', () => broadcast('servers:changed'))
+  // A server going away or coming back changes what every server screen can
+  // offer; one that is back gets the sync it missed.
+  setHealthScope(() => currentUserId() ? listConnections().map((c) => c.url) : [])
+  healthEvents.on('changed', (_url: string, status: string) => {
+    broadcast('servers:changed')
+    if (status === 'online') void syncAll(true)
+  })
+  powerMonitor.on('resume', wakeServers)
+  ipcMain.handle('learning:removeDownload',(_e,id:string)=>removeLearningDownload(id))
+  ipcMain.handle('documents:catalogCover',(_e,server:string,id:string,version:string)=>catalogCover(server,id,version,'documents'))
+  ipcMain.handle('learning:preference', (_e,id:string,name:'readingScale'|'pdfZoom',value?:number)=>learningPreference(id,name,value))
+  ipcMain.handle('learning:status', () => syncStatuses())
+  ipcMain.handle('learning:sync', async (_e, id?: string) => { if (id) await syncServer(id,true); else await syncAll(true); return syncStatuses() })
+  ipcMain.handle('learning:request', (_e, id: string, path: string, method: 'GET'|'POST'|'PUT'|'DELETE', body?: unknown) => learningRequest(id,path,method,body))
+  ipcMain.handle('learning:binding', (_e, localId: string) => { const b = anyBinding(localId); if (!b) return null; return { draftKey:`${requireUser()}:${b.local_id}`, connectionId:b.connection_id, source:{kind:b.kind,id:b.remote_id,version:b.version}, connected:Boolean(bindingFor(localId)) } })
+  ipcMain.handle('learning:enroll', (_e, id: string, kind: 'course'|'document', contentId: string, version?: string) => enrollFromDesktop(id,kind,contentId,version))
+  ipcMain.handle('documents:publication', (_e, id: string) => publication(id))
+  ipcMain.handle('documents:savePublication', (_e, id: string, metadata: Parameters<typeof savePublication>[1]) => savePublication(id,metadata))
+  ipcMain.handle('documents:chooseCover', (_e, id: string) => chooseDocumentCover(id))
+  ipcMain.handle('documents:coverPreview', (_e, id: string) => documentCoverPreview(id))
+  ipcMain.handle('documents:publish', (_e, id: string, server: string) => publishDocument(id,server))
   ipcMain.handle('notebook:status', (event, courseId: string) => watchNotebook(event.sender, courseId))
   ipcMain.handle('notebook:ensure', (event, courseId: string, retry = false) => { watchNotebook(event.sender, courseId); return ensureNotebook(courseId, retry === true) })
   ipcMain.handle('notebook:get', (_event, courseId: string) => getNotebook(courseId))
@@ -318,13 +349,16 @@ export function registerIpc(): void {
   ipcMain.handle('subscription:disconnect', disconnectSubscription)
   /* --- who is using the app ---------------------------------------------- */
 
-  ipcMain.handle('session:get', (): Session => getSession())
+  ipcMain.handle('session:get', (): Session => { startLearningSync(); refreshHealth(); return getSession() })
   ipcMain.handle('users:list', (): UserProfile[] => listUsers())
   ipcMain.handle('users:create', async (_e, name: string): Promise<UserProfile> => {
+    stopLearningSync()
     await stopAllNotebooks()
     endAllReviews()
     releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); cancelAllDocumentChats(); stopDocumentWorkers(); endAllSessions(); closeDb(); forgetVolatileKeys()
     const user = createUser(name)
+    startLearningSync()
+    refreshHealth()
     // After the session moved, so the line is already theirs.
     log.child('users').info('User created and selected')
     return user
@@ -333,6 +367,7 @@ export function registerIpc(): void {
   // rewrites a file whose path main builds.
   ipcMain.handle('users:rename', (_e, name: string): UserProfile => renameUser(name))
   ipcMain.handle('users:switch', async (_e, id: string): Promise<UserProfile> => {
+    stopLearningSync()
     await stopAllNotebooks()
     endAllReviews()
     forgetEditSessions()
@@ -352,12 +387,15 @@ export function registerIpc(): void {
     closeDb()
     forgetVolatileKeys()
     const user = switchUser(id)
+    startLearningSync()
+    refreshHealth()
     log.child('users').info('User selected')
     // Themes are per user: the window and the stylesheet follow whoever is in.
     themeChanged()
     return user
   })
   ipcMain.handle('users:delete', async (_e, id: string): Promise<Session> => {
+    stopLearningSync()
     await stopAllNotebooks()
     endAllReviews()
     forgetEditSessions()
@@ -384,6 +422,7 @@ export function registerIpc(): void {
       log.child('users', { userId: null }).error('A deleted user\'s log lines could not be removed', { error })
     }
     log.child('users', { userId: null }).info('A user was deleted')
+    startLearningSync()
     themeChanged()
     return getSession()
   })
@@ -446,8 +485,13 @@ export function registerIpc(): void {
   ipcMain.handle('authoring:export', (_e, courseId: string) => exportCourseZip(courseId))
   // Servers. Every call answers with a ServerResult, so a refusal arrives as the
   // server's own words rather than as Electron's "Error invoking remote method".
-  const changedServers = <T>(result: T): T => { broadcast('servers:changed'); return result }
-  ipcMain.handle('servers:list', () => listConnections())
+  const changedServers = <T>(result: T): T => { broadcast('servers:changed'); void syncAll(true); return result }
+  ipcMain.handle('servers:list', () => { const list = listConnections(); discover(list.map((c) => c.url)); return list })
+  ipcMain.handle('servers:retry', async (_e, id: string) => {
+    const connection = listConnections().find((c) => c.id === id)
+    if (connection) await retryServer(connection.url)
+    return listConnections()
+  })
   ipcMain.handle('servers:probe', (_e, url: string) => serverResult(() => probeServer(url)))
   ipcMain.handle('servers:signUpStart', (_e, url: string, email: string) => serverResult(() => startRegistration(url, email)))
   ipcMain.handle('servers:signUpResend', (_e, flowId: string) => serverResult(() => resendRegistrationCode(flowId)))
@@ -488,6 +532,26 @@ export function registerIpc(): void {
   ipcMain.handle('publish:deleteVersion', (_e, serverId: string, courseId: string, version: string) => serverResult(() => deletePublishedVersion(serverId, courseId, version)))
   ipcMain.handle('publish:unpublish', (_e, serverId: string, courseId: string) => serverResult(() => unpublishCourse(serverId, courseId)))
   ipcMain.handle('publish:relist', (_e, serverId: string, courseId: string) => serverResult(() => relistCourse(serverId, courseId)))
+  // Server documents: the same shape as the course calls above, every refusal a ServerResult.
+  const changedDocuments = <T extends { ok: boolean }>(result: T): T => { if (result.ok) broadcast('documents:changed', ''); return result }
+  ipcMain.handle('documentCatalog:search', (_e, serverId: string, query: DocumentQuery) => serverResult(() => searchDocuments(serverId, query)))
+  ipcMain.handle('documentCatalog:tags', (_e, serverId: string) => serverResult(() => documentTags(serverId)))
+  ipcMain.handle('documentCatalog:overview', (_e, serverId: string, id: string) => serverResult(() => catalogDocument(serverId, id)))
+  ipcMain.handle('documentCatalog:inLibrary', (_e, serverId: string, ids: string[]) => libraryDocuments(serverId, ids))
+  ipcMain.handle('documentCatalog:add', async (_e, serverId: string, id: string) => changedDocuments(await serverResult(() => addDocument(serverId, id))))
+  ipcMain.handle('documents:updates', () => documentUpdates())
+  ipcMain.handle('documents:applyUpdate', async (_e, id: string) => changedDocuments(await serverResult(() => applyDocumentUpdate(id))))
+  ipcMain.handle('documents:leave', async (_e, id: string) => { const result = await serverResult(() => leaveDocument(id)); if (result.ok) await syncAll(true); return changedDocuments(result) })
+  ipcMain.handle('documents:homes', (_e, id: string) => documentHomes(id))
+  ipcMain.handle('documentPublish:preview', (_e, id: string, serverId: string) => serverResult(() => previewDocumentPublish(id, serverId)))
+  ipcMain.handle('documentPublish:run', async (_e, id: string, serverId: string, note?: string) => changedDocuments(await serverResult(() => publishLocalDocument(id, serverId, note))))
+  ipcMain.handle('documentPublish:mine', (_e, serverId: string) => serverResult(() => myDocuments(serverId)))
+  ipcMain.handle('documentPublish:get', (_e, serverId: string, id: string) => serverResult(() => publishedDocument(serverId, id)))
+  ipcMain.handle('documentPublish:setCurrent', (_e, serverId: string, id: string, version: string) => serverResult(() => setCurrentDocumentVersion(serverId, id, version)))
+  ipcMain.handle('documentPublish:deleteVersion', (_e, serverId: string, id: string, version: string) => serverResult(() => deleteDocumentVersion(serverId, id, version)))
+  ipcMain.handle('documentPublish:reindex', (_e, serverId: string, id: string, version: string) => serverResult(() => reindexDocumentVersion(serverId, id, version)))
+  ipcMain.handle('documentPublish:unpublish', (_e, serverId: string, id: string) => serverResult(() => unpublishDocument(serverId, id)))
+  ipcMain.handle('documentPublish:relist', (_e, serverId: string, id: string) => serverResult(() => relistDocument(serverId, id)))
   ipcMain.handle('courses:list' , () => listCourses())
 
   ipcMain.handle('courses:import', async (_e): Promise<ImportResult> => {
@@ -540,6 +604,7 @@ export function registerIpc(): void {
      comes from, stays in main. */
 
   ipcMain.handle('app:info', () => appInfo())
+  ipcMain.handle('app:links', () => appLinks())
   ipcMain.handle('appUpdate:state', () => appUpdateInfo())
   ipcMain.handle('appUpdate:check', () => checkForAppUpdate(true))
   ipcMain.handle('appUpdate:install', () => installAppUpdate())

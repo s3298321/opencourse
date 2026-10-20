@@ -73,3 +73,15 @@ it('keeps the previous background default if saving fails', async () => {
   expect(background.disabled).toBe(false)
   expect(container.querySelector('.import-note.error')?.textContent).toBe('Could not save preferences')
 })
+
+it('hides Coach default and per-coach model choices without an API key', async () => {
+  api.listCoachModels = async () => ({ models: [] })
+  api.listCoachBackendModels.mockResolvedValue({ models: [] })
+  await renderSettings()
+  expect(container.querySelector('.settings-default-coach-model')).toBeNull()
+  expect(container.querySelector('.settings-default-coach-backend-model')).toBeNull()
+  expect(container.textContent).toContain('Add an OpenAI API key')
+  await render()
+  expect(container.textContent).not.toContain('Voice model')
+  expect(container.textContent).not.toContain('Background model')
+})

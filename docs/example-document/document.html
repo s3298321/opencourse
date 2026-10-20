@@ -1,0 +1,250 @@
+<!doctype html>
+<!--
+  The source of document.pdf, the PDF a development server publishes
+  (server/scripts/seed.ts, run by `npm run dev`). Rebuild it from the repository
+  root after `npm install` in server/ (the font comes from there):
+
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+    --no-pdf-header-footer --generate-pdf-document-outline \
+    --print-to-pdf=docs/example-document/document.pdf docs/example-document/document.html
+
+  The headings become the PDF's bookmarks, which the reader shows as sections.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The OpenCourse example document</title>
+<style>
+  @font-face { font-family: Inter; font-weight: 100 900; src: url("../../server/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  @font-face { font-family: Inter; font-weight: 100 900; src: url("../../server/node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+  @font-face { font-family: Inter; font-weight: 100 900; src: url("../../server/node_modules/@fontsource-variable/inter/files/inter-greek-wght-normal.woff2") format("woff2"); unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF; }
+  @page { size: A4; margin: 22mm 20mm 24mm; }
+  :root { --ink: #1d1d1f; --muted: #6e6e73; --rule: #d9d9de; --accent: #4f6bed; }
+  body { font-family: Inter, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.55; }
+  h1 { font-size: 26pt; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 6pt; }
+  h2 { font-size: 16pt; letter-spacing: -0.01em; margin: 0 0 8pt; padding-top: 4pt; }
+  h3 { font-size: 12pt; margin: 16pt 0 4pt; }
+  p { margin: 0 0 8pt; }
+  .lede { font-size: 13pt; color: var(--muted); margin-bottom: 18pt; }
+  .chapter { break-before: page; }
+  .kicker { color: var(--accent); font-size: 9pt; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4pt; }
+  .note { border-left: 3pt solid var(--accent); padding: 6pt 10pt; background: #f3f4fd; margin: 10pt 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8pt 0 12pt; font-size: 9.5pt; }
+  th, td { text-align: left; padding: 5pt 8pt; border-bottom: 0.75pt solid var(--rule); }
+  th { font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  figure { margin: 12pt 0; text-align: center; }
+  figcaption { color: var(--muted); font-size: 9pt; margin-top: 4pt; }
+  code { font-family: Menlo, monospace; font-size: 9pt; }
+  ol, ul { margin: 0 0 8pt; padding-left: 18pt; }
+  .contents { list-style: none; padding-left: 0; }
+  .contents li { margin-bottom: 2pt; }
+</style>
+</head>
+<body>
+
+<div class="kicker">OpenCourse · test document</div>
+<h1>The OpenCourse example document</h1>
+<p class="lede">A small PDF for development servers. It has a few pages, an outline,
+a table, a figure and some words you can search for, so the document catalog and
+the reader have something real to show.</p>
+
+<p>Every development server publishes this file when it starts with
+<code>npm run dev</code>, next to the example course. It is not meant to teach
+anything: each chapter exists to exercise one part of reading a PDF.</p>
+
+<ul class="contents">
+  <li>1. Reading pages</li>
+  <li>2. The outline</li>
+  <li>3. Searching the text</li>
+  <li>4. Tables and figures</li>
+  <li>5. A longer chapter</li>
+  <li>6. Text beyond ASCII</li>
+</ul>
+
+<div class="note">The searchable phrase for this page is <strong>quiet harbour</strong>.
+Search for it and the result should point at page 1.</div>
+
+<section class="chapter">
+<div class="kicker">Chapter 1</div>
+<h2>Reading pages</h2>
+<p>A PDF is read a page at a time. Each page is drawn at the width of the reading
+column, so narrowing the window should make the page smaller rather than make the
+page scroll sideways.</p>
+<p>Marking a page as read records how far you have got. Reload the reader and the
+progress should still be there; the percentage counts pages, not words, so this
+short chapter is worth as much as the long one later on.</p>
+<p>The searchable phrase for this chapter is <strong>copper kettle</strong>.</p>
+</section>
+
+<section class="chapter">
+<div class="kicker">Chapter 2</div>
+<h2>The outline</h2>
+<p>The headings of this document were turned into PDF bookmarks when it was printed.
+A reader that shows an outline should list the six chapters, and choosing one
+should open its page.</p>
+<h3>A sub-section</h3>
+<p>Bookmarks can nest. This heading is one level below its chapter, so an outline
+that understands nesting will show it indented under “The outline”.</p>
+<h3>Another sub-section</h3>
+<p>And a second one, so the nesting is not a coincidence of a single child.</p>
+<p>The searchable phrase for this chapter is <strong>lantern festival</strong>.</p>
+</section>
+
+<section class="chapter">
+<div class="kicker">Chapter 3</div>
+<h2>Searching the text</h2>
+<p>The server extracts the text of every page once, after the document is
+published, and a search looks through that text. Each chapter of this document has
+one phrase that appears nowhere else:</p>
+<table>
+  <thead><tr><th>Phrase</th><th>Where it is</th></tr></thead>
+  <tbody>
+    <tr><td>quiet harbour</td><td>The title page</td></tr>
+    <tr><td>copper kettle</td><td>Chapter 1</td></tr>
+    <tr><td>lantern festival</td><td>Chapter 2</td></tr>
+    <tr><td>granite staircase</td><td>Chapter 4</td></tr>
+    <tr><td>tidal observatory</td><td>Chapter 5</td></tr>
+    <tr><td>Übergrößenträger</td><td>Chapter 6</td></tr>
+  </tbody>
+</table>
+<p>The table above repeats every phrase, so searching for one should find two pages:
+this one and the page it belongs to. A search for a word that is in no chapter,
+such as <em>xylophone</em>, should find only this page.</p>
+</section>
+
+<section class="chapter">
+<div class="kicker">Chapter 4</div>
+<h2>Tables and figures</h2>
+<p>Tables and drawings are where a renderer is most likely to lose something. The
+table has right-aligned numbers and the figure is vector art, so both should stay
+sharp at any zoom.</p>
+<table>
+  <thead><tr><th>Month</th><th class="num">Pages read</th><th class="num">Sessions</th><th class="num">Minutes</th></tr></thead>
+  <tbody>
+    <tr><td>January</td><td class="num">42</td><td class="num">9</td><td class="num">310</td></tr>
+    <tr><td>February</td><td class="num">57</td><td class="num">12</td><td class="num">402</td></tr>
+    <tr><td>March</td><td class="num">38</td><td class="num">8</td><td class="num">265</td></tr>
+    <tr><td>April</td><td class="num">71</td><td class="num">15</td><td class="num">498</td></tr>
+  </tbody>
+</table>
+<figure>
+  <svg width="420" height="190" viewBox="0 0 420 190" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bar chart of pages read per month">
+    <line x1="40" y1="160" x2="400" y2="160" stroke="#6e6e73" stroke-width="1"/>
+    <g fill="#4f6bed">
+      <rect x="70" y="76" width="50" height="84" rx="3"/>
+      <rect x="155" y="46" width="50" height="114" rx="3"/>
+      <rect x="240" y="84" width="50" height="76" rx="3"/>
+      <rect x="325" y="18" width="50" height="142" rx="3"/>
+    </g>
+    <g font-family="Inter, sans-serif" font-size="11" fill="#1d1d1f" text-anchor="middle">
+      <text x="95" y="177">Jan</text><text x="180" y="177">Feb</text><text x="265" y="177">Mar</text><text x="350" y="177">Apr</text>
+      <text x="95" y="70">42</text><text x="180" y="40">57</text><text x="265" y="78">38</text><text x="350" y="12">71</text>
+    </g>
+  </svg>
+  <figcaption>Figure 1. Pages read per month, from the table above.</figcaption>
+</figure>
+<p>The searchable phrase for this chapter is <strong>granite staircase</strong>.</p>
+</section>
+
+<section class="chapter">
+<div class="kicker">Chapter 5</div>
+<h2>A longer chapter</h2>
+<p>This chapter runs over more than one page, so a section in the outline covers a
+range of pages rather than one, and reading it through means marking more than a
+single page.</p>
+<p>Spaced repetition rests on a simple observation: something recalled just before
+it would have been forgotten is remembered for longer than something recalled while
+it is still fresh. Each successful recall can therefore wait a little longer than
+the last, and a learner who reviews at those widening intervals spends their time on
+what is about to slip rather than on what they already know.</p>
+<p>Retrieval practice makes a related point. Reading a passage again feels
+productive, because the text becomes familiar, but familiarity is not recall.
+Closing the book and trying to state what it said is harder, and the difficulty is
+the part that does the work. A quiz at the end of a lesson is retrieval practice in
+its plainest form.</p>
+<p>Interleaving mixes kinds of problems within one session instead of practising one
+kind at a time. It is slower while it happens and produces better results later,
+because the learner has to decide which method a problem needs before applying it,
+and that decision is exactly what a block of identical problems never asks for.</p>
+<p>Elaboration asks why and how: why does this step follow from the last, how does
+this idea connect to one already known. Explanations that a learner builds for
+themselves tie new material to old, and material tied to more things is found again
+by more routes.</p>
+<p>Concrete examples give an abstract idea something to hold. Two or three examples
+that differ on the surface but share the idea underneath work better than one,
+because they show which features matter and which are incidental.</p>
+<p>Dual coding pairs words with pictures — a diagram beside a description, a
+timeline beside a narrative. The two are remembered by different means, and either
+one can bring back the other.</p>
+<p>None of these techniques is new, and none needs software. What software can do is
+remember the schedule, keep the questions, and notice which pages were read and
+which were skipped, so that the learner's attention goes on the material rather
+than on the bookkeeping.</p>
+<p>The rest of this chapter is filler, there to push it onto a second page. Lorem
+ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante
+venenatis dapibus posuere velit aliquet. Maecenas faucibus mollis interdum. Cras
+mattis consectetur purus sit amet fermentum. Nullam quis risus eget urna mollis
+ornare vel eu leo. Donec ullamcorper nulla non metus auctor fringilla.</p>
+<p>Vestibulum id ligula porta felis euismod semper. Aenean lacinia bibendum nulla
+sed consectetur. Etiam porta sem malesuada magna mollis euismod. Cum sociis natoque
+penatibus et magnis dis parturient montes, nascetur ridiculus mus. Morbi leo risus,
+porta ac consectetur ac, vestibulum at eros. Praesent commodo cursus magna, vel
+scelerisque nisl consectetur et.</p>
+<p>Curabitur blandit tempus porttitor. Sed posuere consectetur est at lobortis.
+Donec sed odio dui. Nulla vitae elit libero, a pharetra augue. Fusce dapibus,
+tellus ac cursus commodo, tortor mauris condimentum nibh, ut fermentum massa justo
+sit amet risus. Duis mollis, est non commodo luctus, nisi erat porttitor ligula,
+eget lacinia odio sem nec elit.</p>
+<p>Maecenas sed diam eget risus varius blandit sit amet non magna. Donec id elit non
+mi porta gravida at eget metus. Etiam porta sem malesuada magna mollis euismod.
+Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Integer
+posuere erat a ante venenatis dapibus posuere velit aliquet. Aenean eu leo quam.
+Pellentesque ornare sem lacinia quam venenatis vestibulum.</p>
+<p>Nullam id dolor id nibh ultricies vehicula ut id elit. Cras justo odio, dapibus
+ac facilisis in, egestas eget quam. Donec ullamcorper nulla non metus auctor
+fringilla. Sed posuere consectetur est at lobortis. Morbi leo risus, porta ac
+consectetur ac, vestibulum at eros. Etiam porta sem malesuada magna mollis euismod.
+Cras mattis consectetur purus sit amet fermentum.</p>
+<p>Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh, ut
+fermentum massa justo sit amet risus. Nulla vitae elit libero, a pharetra augue.
+Vestibulum id ligula porta felis euismod semper. Integer posuere erat a ante
+venenatis dapibus posuere velit aliquet. Donec sed odio dui. Curabitur blandit
+tempus porttitor. Aenean lacinia bibendum nulla sed consectetur.</p>
+<p>Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia
+odio sem nec elit. Maecenas faucibus mollis interdum. Praesent commodo cursus magna,
+vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum
+faucibus dolor auctor. Cum sociis natoque penatibus et magnis dis parturient montes,
+nascetur ridiculus mus.</p>
+<p>Etiam porta sem malesuada magna mollis euismod. Nullam quis risus eget urna
+mollis ornare vel eu leo. Donec ullamcorper nulla non metus auctor fringilla. Sed
+posuere consectetur est at lobortis. Maecenas sed diam eget risus varius blandit
+sit amet non magna. Aenean eu leo quam. Pellentesque ornare sem lacinia quam
+venenatis vestibulum.</p>
+<p>Integer posuere erat a ante venenatis dapibus posuere velit aliquet. Cras justo
+odio, dapibus ac facilisis in, egestas eget quam. Morbi leo risus, porta ac
+consectetur ac, vestibulum at eros. Curabitur blandit tempus porttitor. Vestibulum
+id ligula porta felis euismod semper. Fusce dapibus, tellus ac cursus commodo,
+tortor mauris condimentum nibh.</p>
+<p>The searchable phrase for this chapter is <strong>tidal observatory</strong>, and
+it sits at the very end so that finding it proves the second page was indexed.</p>
+</section>
+
+<section class="chapter">
+<div class="kicker">Chapter 6</div>
+<h2>Text beyond ASCII</h2>
+<p>Text extraction has to survive more than English. Each line below should come
+back from a search exactly as written:</p>
+<ul>
+  <li>French: les élèves révisent leurs leçons à l’école.</li>
+  <li>German: Der Übergrößenträger trägt große Lasten.</li>
+  <li>Czech: Příliš žluťoučký kůň úpěl ďábelské ódy.</li>
+  <li>Greek: Η γνώση είναι δύναμη.</li>
+  <li>Punctuation: “curly quotes”, an en dash – and an em dash —, and an ellipsis…</li>
+</ul>
+<p>The searchable word for this chapter is <strong>Übergrößenträger</strong>.</p>
+<p>That is the end of the example document.</p>
+</section>
+
+</body>
+</html>

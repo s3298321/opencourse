@@ -1,0 +1,189 @@
+.menu-trigger:where(.shared-menu) {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: none; color: var(--accent); border: 0;
+  padding: 0.15rem 0.5rem; border-radius: 6px;
+  font-size: 12px; font-weight: 600;
+}
+.menu-trigger:where(.shared-menu):hover { filter: none; background: var(--chip-bg); }
+.menu-trigger:where(.shared-menu).open { background: var(--chip-bg); }
+.menu-trigger:where(.shared-menu):focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+.menu-caret {
+  width: 0; height: 0; flex: none; opacity: 0.6;
+  border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;
+  border-top: 4px solid currentColor;
+  transition: transform 0.15s ease;
+}
+.menu-trigger:where(.shared-menu).open .menu-caret { transform: rotate(180deg); }
+
+.menu-panel:where(.shared-menu) {
+  position: fixed; z-index: 60;
+  min-width: 11rem; max-width: 20rem;
+  max-height: 60vh; overflow-y: auto;
+  padding: 0.25rem;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 0.14);
+}
+.menu-panel:where(.shared-menu):focus { outline: none; }
+
+
+.shared-menu .menu-item {
+  display: flex; align-items: baseline; gap: 0.5rem; width: 100%;
+  background: none; color: var(--fg); border: 0; border-radius: 5px;
+  padding: 0.3rem 0.55rem; text-align: left;
+  font-size: 0.82rem; font-weight: 500;
+}
+.shared-menu .menu-item:hover { filter: none; }
+.shared-menu .menu-item.active, .shared-menu .menu-item.checked { background: var(--selected); color: var(--fg); box-shadow: inset 0 0 0 1px var(--selected-edge); }
+.shared-menu .menu-item.danger { color: var(--err); }
+.shared-menu .menu-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shared-menu .menu-item-hint { color: var(--muted); font-size: 0.74rem; }
+.shared-menu .menu-item-icon { display: inline-flex; align-self: center; flex: none; }
+.shared-menu .menu-heading {
+  padding: 0.3rem 0.55rem 0.2rem;
+  color: var(--muted); font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+/* Where an answer leans on a web page: a small numbered pill, the same number
+   as the page's row in the list underneath. A link, so it opens the page. */
+:is(.chat-turn .prose, .learning-message .oc-prose) sup.cite { line-height: 0; vertical-align: 0.35em; margin-left: 0.12em; }
+:is(.chat-turn .prose, .learning-message .oc-prose) sup.cite + sup.cite { margin-left: 0.18em; }
+:is(.chat-turn .prose, .learning-message .oc-prose) sup.cite a {
+  display: inline-block;
+  min-width: 1.35em;
+  padding: 0.08em 0.32em;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-fg);
+  font-size: calc(0.66rem * var(--reading-scale, 1)); font-weight: 600; line-height: 1.35;
+  text-align: center; text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+:is(.chat-turn .prose, .learning-message .oc-prose) sup.cite a:hover { background: var(--selected); color: var(--fg); }
+/* The pill is the sign that it leaves the app; prose's ↗ on top of it is noise. */
+:is(.chat-turn .prose, .learning-message .oc-prose) sup.cite a::after { content: none; }
+
+/* The pages under an answer that used the web. One row each - number, icon,
+   title, site - because the column is narrow and titles are long: the title
+   gives way first, the site after it, and the number and icon never. */
+.chat-sources { margin-top: 0.65rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.chat-sources-label {
+  margin: 0 0 0.25rem 0.1rem;
+  font-size: calc(0.68rem * var(--reading-scale, 1)); font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted);
+}
+.chat-sources ol { margin: 0; padding: 0; list-style: none; }
+.chat-consulted-sources > summary { cursor: pointer; }
+.chat-consulted-sources > summary:hover { color: var(--fg); }
+.chat-consulted-sources > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.chat-consulted-sources:not([open]) > summary { margin-bottom: 0; }
+.chat-source {
+  display: flex; align-items: center; gap: 0.5rem;
+  min-width: 0;
+  padding: 0.28rem 0.4rem;
+  border-radius: 6px;
+  color: var(--fg); text-decoration: none;
+  font-size: calc(0.8rem * var(--reading-scale, 1)); line-height: 1.3;
+}
+.chat-source:hover { background: var(--chip-bg); text-decoration: none; }
+.chat-source-n {
+  flex: none;
+  min-width: 1.35em;
+  padding: 0.08em 0.32em;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-fg);
+  font-size: calc(0.66rem * var(--reading-scale, 1)); font-weight: 600; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.chat-source:hover .chat-source-n { background: var(--card); }
+.source-icon {
+  flex: none;
+  width: 16px; height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.source-icon.letter {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: hsl(var(--hue) 55% 46%);
+  color: #fff;
+  font-size: 0.6rem; font-weight: 700;
+}
+.chat-source-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-source-host {
+  flex: 0 1 auto; max-width: 40%; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--muted); font-size: calc(0.72rem * var(--reading-scale, 1));
+}
+
+.chat-quote {
+  margin: 0.1rem 0 0.4rem;
+  padding: 0.05rem 0 0.05rem 0.55rem;
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Before the first word of an answer arrives. */
+.chat-typing { display: inline-flex; gap: 4px; padding: 0.45rem 0; }
+.chat-typing i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted);
+  animation: chat-typing 1.2s ease-in-out infinite;
+}
+.chat-typing i:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Flush with the answer's text and tucked under it; it pulses only while the
+   call runs, which ends when the model starts writing again. */
+.project-tool-activity { display: flex; align-items: center; gap: 8px; padding: 0 0 0.75rem; overflow-wrap: anywhere; }
+.chat-turn:not(.thinking) + .project-tool-activity { margin-top: -0.6rem; }
+.project-tool-activity.running { animation: tool-pulse 1.4s ease-in-out infinite; }
+@keyframes tool-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .project-tool-activity.running { animation: none; } }
+.project-tool-activity > svg { flex-shrink: 0; }
+.project-tool-activity > span { min-width: 0; }
+
+@media (prefers-reduced-motion: reduce) { .chat-typing i { animation: none; } }
+
+.sidechat-quote {
+  margin: 0.45rem 0.45rem 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 4px 9px 9px 4px;
+  background: var(--chip-bg);
+  padding: 0.3rem 0.4rem 0.35rem 0.55rem;
+  cursor: auto;
+  animation: chat-rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: bottom left;
+}
+.sidechat-quote-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.35rem;
+}
+.sidechat-quote-label {
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.03em;
+  text-transform: uppercase; color: var(--muted);
+}
+.sidechat-quote-head .ghost { padding: 0 0.2rem; line-height: 1; }
+.sidechat-quote blockquote {
+  margin: 0.15rem 0 0;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  font-size: calc(0.78rem * var(--reading-scale, 1));
+  line-height: 1.45;
+  /* Whole lines, so a scrolled quote never looks like a clipped one. */
+  max-height: calc(0.78rem * var(--reading-scale, 1) * 1.45 * 4);
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+@keyframes chat-rise { from { opacity: 0; transform: translateY(4px) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .sidechat-quote { animation: none; } }

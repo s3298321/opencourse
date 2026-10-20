@@ -99,7 +99,7 @@ export function SignUpPage() {
   const navigate = useNavigate()
   const notify = useToast()
   const next = safeNext(params.get('next'))
-  const [step, setStep] = useState<'email' | 'code' | 'details'>('email')
+  const [step, setStep] = useState<'email' | 'code' | 'details' | 'existing'>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [ticket, setTicket] = useState('')
@@ -149,8 +149,8 @@ export function SignUpPage() {
 
   if (step === 'code') {
     return (
-      <AuthCard title="Check your email" subtitle={<>We sent a code to <strong>{email.trim()}</strong>. If that address already has an account, the email says so instead.</>} steps={{ labels: ['Email', 'Code', 'Account'], at: 1 }}>
-        <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void run(async () => { const r = await api.registerVerify(email.trim(), code); setTicket(r.ticket); setStep('details') }) }}>
+      <AuthCard title="Check your email" subtitle={<>We sent a code to <strong>{email.trim()}</strong>.</>} steps={{ labels: ['Email', 'Code', 'Account'], at: 1 }}>
+        <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void run(async () => { const r = await api.registerVerify(email.trim(), code); if (r.existingAccount) setStep('existing'); else { setTicket(r.ticket!); setStep('details') } }) }}>
           <FormError message={error} />
           <div className="code-row"><Mail aria-hidden className="code-icon" /><CodeInput value={code} onChange={(c) => { setCode(c); setError(null) }} autoFocus invalid={Boolean(error)} disabled={busy} /></div>
           <button type="submit" className="oc-btn lg block" disabled={busy || !isCode(code)}>{busy ? 'Checking' : 'Confirm'}</button>
@@ -162,6 +162,13 @@ export function SignUpPage() {
       </AuthCard>
     )
   }
+
+  if (step === 'existing') return <AuthCard title="Connect to your existing account" subtitle="This email already has an account. Enter its password to sign in.">
+    <form className="auth-form" onSubmit={e => { e.preventDefault(); void run(async () => { const r = await api.login(email.trim(), password); session.set(r.account); navigate(next, { replace: true }) }) }}>
+      <FormError message={error} /><TextField label="Email" value={email} readOnly autoComplete="username" />
+      <PasswordField label="Password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+      <button className="oc-btn" disabled={busy}>Sign in</button><Link to="/forgot">Forgot password?</Link>
+    </form></AuthCard>
 
   const passwordIssue = password ? passwordProblem(password) : null
   const ready = nameState?.ok && nameState.name === username && !passwordIssue && password.length > 0

@@ -78,3 +78,13 @@ describe('title generation settings', () => {
     expect(f.container.querySelector('[role=alert]')?.textContent).toBe('Could not save settings')
   })
 })
+
+it('hides a saved title model when its connection is disconnected', async () => {
+  const f = await fixture()
+  await f.provider('OpenAI API key')
+  const settings = await f.get()
+  f.get.mockResolvedValue({ ...settings, connection: { provider: 'apiKey', ready: false, message: 'Add an OpenAI API key in Settings.' } })
+  await act(async () => root!.render(createElement(TitleGenerationSection, { version: 1 })))
+  expect(f.container.querySelector('select')).toBeNull()
+  expect(f.container.textContent).toContain('Add an OpenAI API key')
+})

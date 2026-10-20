@@ -14,7 +14,7 @@ let serversChanged: () => void
 let courses: CourseSummary[]
 let servers: ServerConnection[]
 const navigate = vi.fn()
-const server = (id: string, url: string): ServerConnection => ({ id, url, name: 'School', description: '', account: null, active: false })
+const server = (id: string, url: string): ServerConnection => ({ id, url, name: 'School', description: '', account: null, active: false, status: 'unknown' })
 const course = (id: string, url?: string): CourseSummary => ({
   courseId: id, slug: id, title: id, lessonCount: 3, projectCount: 0, description: 'A course description.',
   ...(url ? { origin: { server: url, serverName: 'School', role: 'learner' as const, publisher: 'author' } } : {})

@@ -1,3 +1,4 @@
+import { anyBinding, enqueue } from './learning-store'
 import { randomUUID } from 'node:crypto'
 import type { Course, Flashcard, ReviewAnswer, ReviewCount, ReviewRating, ReviewSession, ReviewSummary } from '../core/types'
 import { deserializeCard, previewIntervals, REVIEW_CONFIGURATION, REVIEW_RATINGS, reviewQueue, scheduleCard, serializeCard, summarizeReview } from '../core/review'
@@ -66,9 +67,7 @@ function currentCard(session: ActiveSession, cardId: string): Candidate {
 export function startReviewSession(courseId: string, count: ReviewCount, senderId: number, now = new Date()): ReviewSession {
   if (![10, 15, 20].includes(count)) throw new Error('Choose 10, 15, or 20 cards.')
   const course = requireCourse(courseId), cards = candidates(course), queue = reviewQueue(cards, count, now)
-  if (!queue.length) throw new Error(cards.some(card => card.eligible)
-    ? 'No cards are due for review yet.'
-    : 'Complete a lesson with flashcards to unlock review.')
+  if (!queue.length) throw new Error('Complete a lesson with flashcards to unlock review.')
   endWindowReviews(senderId)
   const session: ActiveSession = { id: randomUUID(), userId: requireUser(), senderId, courseId, revision: course.revision, queue,
     index: 0, revealed: false, expectedVersion: cards.find(card => card.id === queue[0])!.version,
@@ -100,6 +99,8 @@ export function rateReviewCard(id: string, cardId: string, rating: ReviewRating,
   const view = sessionView(next, now)
   view.summary = summarizeReview(candidates(requireCourse(session.courseId)).map(card => card.id === cardId ? { ...card, state: result.card } : card), now)
   tx(d => {
+    const binding = anyBinding(session.courseId)
+    if (binding) enqueue(binding, `review:${cardId}`, { card: serializeCard(result.card), rating }, now.getTime())
     const latest = d.prepare('SELECT version FROM flashcard_states WHERE card_id=?').get(cardId) as { version: number } | undefined
     if ((latest?.version ?? 0) !== current.version) throw new Error('This card changed in another window.')
     d.prepare(`INSERT INTO flashcard_states(card_id,course_id,due,state,configuration,version) VALUES(?,?,?,?,?,?)
@@ -126,6 +127,6 @@ export function endAllReviews(): void { sessions.clear() }
 export function resetFlashcardProgress(courseId: string, cardId: string): void {
   const course = requireCourse(courseId)
   if (!course.modules.some(module => module.type !== 'project' && module.lessons.some(lesson => lesson.flashcards?.some(card => card.id === cardId)))) throw new Error('This saved card no longer exists.')
-  tx(d => { d.prepare('DELETE FROM flashcard_states WHERE course_id=? AND card_id=?').run(courseId, cardId) })
+  tx(d => { const b=anyBinding(courseId); if(b) enqueue(b, `review:${cardId}`, null); d.prepare('DELETE FROM flashcard_states WHERE course_id=? AND card_id=?').run(courseId, cardId) })
   invalidateCourseReviews(courseId)
 }

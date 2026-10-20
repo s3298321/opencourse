@@ -501,3 +501,9 @@ describe('Live ownership and exactly-once tools', () => {
     expect(wantsMic()).toBe(false)
   })
 })
+
+it('does not offer Coach models without a key', async () => {
+  const { listLiveModels, listCoachBackendModels } = await import('../src/main/openai')
+  expect(await listLiveModels('')).toEqual({ models: [], source: 'fallback' })
+  expect(await listCoachBackendModels('')).toEqual({ models: [], source: 'fallback' })
+})

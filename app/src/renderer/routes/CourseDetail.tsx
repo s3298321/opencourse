@@ -7,7 +7,7 @@ import { summarizeProgress } from '@core/progress'
 import TitleBar from '../components/TitleBar'
 import ScreenPlaceholder from '../components/ScreenPlaceholder'
 import type { CourseProgress, CourseView, ReviewCount, ReviewSummary, UserProfile } from '@core/types'
-import { reviewRecommendation } from '../review-display'
+import { reviewRecommendation } from '../../learning-ui/review-display'
 import { itemRoute, type Route, type Screen } from '../routes'
 import Html from '../components/Html'
 import CourseDescription from '../components/CourseDescription'
@@ -46,6 +46,27 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
     setNote(null)
     try {
       await window.opencourse.removeCourse(courseId)
+      navigate({ name: 'library' })
+    } catch (err) {
+      setNote((err as Error).message)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  // Leaving My learning removes the download too; progress, chats and exercise files are kept.
+  const leave = async (): Promise<void> => {
+    if (!course || deleteBusy) return
+    const origin = course.origin?.serverName ?? 'the server'
+    if (!window.confirm(`Remove “${course.title}” from My learning on ${origin}? Every device and the server’s website stop listing it, and its download is removed from this device. Your progress and chats are kept.`)) return
+    setDeleteBusy(true)
+    setNote(null)
+    try {
+      const b = await window.opencourse.learningBinding(courseId)
+      if (!b?.connected) throw new Error('Reconnect to the original account first.')
+      await window.opencourse.learningRequest(b.connectionId, `/me/learning/course/${b.source.id}`, 'DELETE')
+      await window.opencourse.syncLearning(b.connectionId)
+      await window.opencourse.removeLearningDownload(courseId)
       navigate({ name: 'library' })
     } catch (err) {
       setNote((err as Error).message)
@@ -98,7 +119,8 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
             <CourseServerPanel course={course} navigate={navigate} actions={<>
               <ActionButton icon="edit" className="secondary" onClick={() => navigate({ name: 'courseEditor', courseId })}>Edit course</ActionButton>
               <ActionButton icon="download" className="secondary" onClick={() => { void window.opencourse.exportCourse(courseId).then(({ saved }) => { if (saved) setNote(`Saved to ${saved}`) }).catch((err) => setNote(err.message)) }}>Export ZIP</ActionButton>
-            </>} trailingActions={
+            </>} trailingActions={course.origin?.serverId ?
+              <ActionButton icon="close" className="secondary" disabled={deleteBusy} onClick={() => void leave()}>Remove from My learning</ActionButton> :
               <ActionButton icon="trash" className="danger course-delete" data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined} disabled={deleteBusy} onClick={() => void deleteCourse()}>Delete course</ActionButton>
             } />
             <h1>{course.title}</h1>
@@ -137,7 +159,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
               </ActionButton>
               <div className="course-review-row">
                 <div className="course-review-control">
-                  <ActionButton icon="review" className="secondary" disabled={reviewBusy || !review?.eligible || review.due + review.new === 0} onClick={() => {
+                  <ActionButton icon="review" className="secondary" disabled={reviewBusy || !review?.eligible} onClick={() => {
                     setReviewBusy(true); setNote(null)
                     void window.opencourse.startReviewSession(courseId, reviewCount).then(session => navigate({ name: 'review', session })).catch(err => setNote(err.message)).finally(() => setReviewBusy(false))
                   }}>{reviewBusy ? 'Starting' : 'Review'}</ActionButton>

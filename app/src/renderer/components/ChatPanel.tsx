@@ -29,6 +29,7 @@ interface Props {
   onSource?: (source: ReadingSource) => void
   sourceIcons?: (id: string, seq: number) => Promise<Record<string, string | null>>
   storageKey?: string
+  composer?: { text: string; setText: (text: string) => void }
   /** What the learner highlighted - in the lesson or in an answer - waiting to be asked about. */
   quote: ChatQuote | null
   onQuoteUsed: () => void
@@ -298,6 +299,7 @@ export default function ChatPanelView({
   onClose,
   onAddKey,
   storageKey,
+  composer,
   onSource,
   sourceIcons: fetchIcons,
   textScale = 1
@@ -308,7 +310,9 @@ export default function ChatPanelView({
   const [width, setWidth] = useState(() =>
     Math.max(MIN_WIDTH, Math.min(420, window.innerWidth - MIN_CONTENT - 268))
   )
-  const [draft, setDraft] = useState(() => { try { return storageKey ? localStorage.getItem(`${storageKey}:composer`) ?? '' : '' } catch { return '' } })
+  const [localDraft, setLocalDraft] = useState(() => { try { return storageKey ? localStorage.getItem(`${storageKey}:composer`) ?? '' : '' } catch { return '' } })
+  const draft = composer?.text ?? localDraft
+  const setDraft = composer?.setText ?? setLocalDraft
   useEffect(() => { if (storageKey) { try { localStorage.setItem(`${storageKey}:composer`, draft) } catch { /* Optional. */ } } }, [storageKey, draft])
   const [historyOpen, setHistoryOpen] = useState(false)
   const submitting = useRef(false)
@@ -353,13 +357,14 @@ export default function ChatPanelView({
   // an available model. Main has already reset models removed from the allowlist.
   const active = panel.tabs.find((t) => t.id === panel.activeId)
   const provider = active?.provider ?? panel.provider
-  const connectionLabel = `${PROVIDER_LABELS[provider]}${panel.connection.account ? ` (${panel.connection.account})` : ''}`
+  const connectionLabel = `${panel.settingsManagedBy ? `${panel.settingsManagedBy} · ` : ''}${PROVIDER_LABELS[provider]}${panel.connection.account ? ` (${panel.connection.account})` : ''}`
   const model = active?.model || null
   const reasoning = active?.reasoning ?? null
   const modelChoices = useMemo(() => {
+    if (!panel.ready) return []
     const ids = panel.models.map((m) => m.id)
     return model && !ids.includes(model) ? [model, ...ids] : ids
-  }, [panel.models, model])
+  }, [panel.models, model, panel.ready])
   // The levels this model takes. None at all hides the picker: the request
   // then says nothing about reasoning, which every model accepts.
   const efforts = useMemo(() => (model ? modelReasoning(model, panel.models) : []), [model, panel.models])
@@ -408,14 +413,14 @@ export default function ChatPanelView({
     if (!text || answering || panel.sendBlocked || submitting.current) return
     const attached = quote ?? undefined
     submitting.current = true
-    setDraft('')
+    if (!composer) setLocalDraft('')
     try {
       if (await panel.send(text, attached)) {
         if (attached) onQuoteUsed()
-      } else setDraft(current => current || text)
-    } catch { setDraft(current => current || text) }
+      } else if (!composer) setLocalDraft(current => current || text)
+    } catch { if (!composer) setLocalDraft(current => current || text) }
     finally { submitting.current = false }
-  }, [draft, answering, quote, onQuoteUsed, panel])
+  }, [draft, answering, quote, onQuoteUsed, panel, composer])
 
   return (
     <aside className={`sidechat${variant === 'authoring' ? ' authoring-chat' : ''}`} style={{ width, flex: '0 1 auto' }}>
@@ -457,7 +462,10 @@ export default function ChatPanelView({
         <button
           className={`sidechat-history-toggle${historyOpen ? ' active' : ''}`}
           aria-expanded={historyOpen}
-          onClick={() => setHistoryOpen((open) => !open)}
+          onClick={() => {
+            if (!historyOpen) void panel.refreshHistory?.()
+            setHistoryOpen((open) => !open)
+          }}
         >
           History
         </button>
@@ -618,13 +626,13 @@ export default function ChatPanelView({
               className="sidechat-connection"
               panelClassName="connection-menu chat-menu"
               disabled={answering}
-              title={`${connectionLabel}. Choose another connection for this chat.`}
+              title={panel.settingsManagedBy ? `${connectionLabel}. Managed in server settings.` : `${connectionLabel}. Choose another connection for this chat.`}
               ariaLabel={`Connection for this chat: ${connectionLabel}`}
               align="left"
               side="above"
               heading="This chat uses"
               label={<ConnectionIcon provider={provider} />}
-              items={(['apiKey', 'chatgpt'] as const).map((choice) => ({
+              items={panel.settingsManagedBy ? [{ id: 'server', label: `${panel.settingsManagedBy} settings`, icon: <ConnectionIcon provider={provider} />, checked: true, onSelect: onAddKey }] : (['apiKey', 'chatgpt'] as const).map((choice) => ({
                 id: choice,
                 label: PROVIDER_LABELS[choice],
                 icon: <ConnectionIcon provider={choice} />,
@@ -633,7 +641,7 @@ export default function ChatPanelView({
                 onSelect: () => void panel.setProvider(choice)
               }))}
             />
-            {model !== null && (
+            {panel.ready && model !== null && (
               <Menu
                 className="sidechat-model"
                 panelClassName="chat-menu"
@@ -641,7 +649,7 @@ export default function ChatPanelView({
                 title="Which model answers"
                 align="left"
                 label={<span className="sidechat-picker-label">{model}</span>}
-                items={modelChoices.map((id) => ({
+                items={panel.settingsManagedBy ? [{ id: 'server', label: 'Change model in server settings', onSelect: onAddKey }] : modelChoices.map((id) => ({
                   id,
                   label: id,
                   checked: id === model,
@@ -649,7 +657,7 @@ export default function ChatPanelView({
                 }))}
               />
             )}
-            {model !== null && efforts.length > 0 && (
+            {panel.ready && model !== null && efforts.length > 0 && (
               <Menu
                 className="sidechat-reasoning"
                 panelClassName="chat-menu"
@@ -662,7 +670,7 @@ export default function ChatPanelView({
                     <span className="sidechat-picker-label">{reasoning ? REASONING_LABELS[reasoning] : 'Default'}</span>
                   </>
                 }
-                items={[
+                items={panel.settingsManagedBy ? [{ id: 'server', label: 'Change reasoning in server settings', onSelect: onAddKey }] : [
                   {
                     id: 'default',
                     label: 'Default',

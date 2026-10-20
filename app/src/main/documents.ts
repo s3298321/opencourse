@@ -1,3 +1,5 @@
+import { queueDocument, anyBinding } from './learning-store'
+import { serverAccess } from './servers'
 import { app, BrowserWindow, dialog } from 'electron'
 import { EventEmitter } from 'node:events'
 import { createReadStream } from 'node:fs'
@@ -14,7 +16,10 @@ import { fullTextQuery } from '../core/documents/text'
 export const documentEvents = new EventEmitter()
 const workers = new Map<string, { worker: Worker; owner: string }>()
 function summary(row: Record<string, unknown>): DocumentSummary {
-  return { id: String(row.id), title: String(row.title_override ?? row.title), bytes: Number(row.bytes), fingerprint: String(row.fingerprint), pages: Number(row.pages), indexedPages: Number(row.indexed_pages), searchablePages: Number(row.searchable_pages), status: row.status === 'ready' ? 'ready' : row.status === 'error' ? 'error' : 'indexing', error: typeof row.error === 'string' ? row.error : null, readPage: Number(row.read_page), createdAt: String(row.created_at) }
+  const binding=anyBinding(String(row.id));let name='Server document';if(binding)try{name=serverAccess(binding.connection_id).name}catch{}
+  let publishedTo: string[] = []
+  try { publishedTo = Object.keys((JSON.parse(String(row.publication ?? 'null')) as { publications?: Record<string, string> } | null)?.publications ?? {}) } catch { /* an unreadable record publishes nothing */ }
+  return { ...(binding?{origin:{connectionId:binding.connection_id,name,version:binding.version,remoteId:binding.remote_id}}:{}), ...(publishedTo.length ? { publishedTo } : {}), id: String(row.id), title: String(row.title_override ?? row.title), bytes: Number(row.bytes), fingerprint: String(row.fingerprint), pages: Number(row.pages), indexedPages: Number(row.indexed_pages), searchablePages: Number(row.searchable_pages), status: row.status === 'ready' ? 'ready' : row.status === 'error' ? 'error' : 'indexing', error: typeof row.error === 'string' ? row.error : null, readPage: Number(row.read_page), createdAt: String(row.created_at) }
 }
 function rowFor(id: string): Record<string, unknown> {
   if (typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Invalid document ID.')
@@ -27,7 +32,7 @@ export function documentFile(id: string): string {
   return join(userDocumentsDir(requireUser()), `${id}.pdf`)
 }
 export function listDocuments(): DocumentSummary[] {
-  const list = (db().prepare('SELECT * FROM documents ORDER BY created_at DESC,id DESC').all() as Record<string, unknown>[]).map(summary)
+  const list = (db().prepare('SELECT * FROM documents WHERE NOT EXISTS(SELECT 1 FROM learning_bindings b WHERE b.local_id=documents.id AND b.downloaded=-1) ORDER BY created_at DESC,id DESC').all() as Record<string, unknown>[]).map(summary)
   for (const document of list) if (document.status === 'indexing') startDocumentIndex(document.id)
   return list
 }
@@ -38,6 +43,7 @@ export function getDocument(id: string): DocumentView {
   if (document.status === 'indexing' || (document.status === 'ready' && row.index_version !== DOCUMENT_INDEX_VERSION)) startDocumentIndex(id)
   return { ...document, sections, lastPage: Number(row.last_page) }
 }
+export async function stopDocumentIndex(id:string):Promise<void> { const entry=workers.get(id);workers.delete(id);if(entry)await entry.worker.terminate() }
 export function stopDocumentWorkers(): void {
   for (const { worker } of workers.values()) void worker.terminate()
   workers.clear()
@@ -165,12 +171,12 @@ export function renameDocument(id: string, title: string): DocumentView {
 export function setDocumentPage(id: string, page: number): void {
   const document = summary(rowFor(id))
   if (!Number.isSafeInteger(page) || page < 1 || (document.pages > 0 && page > document.pages)) throw new Error('That page is not in this document.')
-  db().prepare('UPDATE documents SET last_page=? WHERE id=?').run(page, id)
+  queueDocument(id, 'position', page, () => { db().prepare('UPDATE documents SET last_page=? WHERE id=?').run(page, id) })
 }
 export function setDocumentProgress(id: string, page: number): DocumentView {
   const document = summary(rowFor(id))
   if (!Number.isSafeInteger(page) || page < 1 || page > 100_000 || (document.pages > 0 && page > document.pages)) throw new Error('That page is not in this document.')
-  db().prepare('UPDATE documents SET read_page=? WHERE id=?').run(page, id)
+  queueDocument(id, 'readPage', page, () => { db().prepare('UPDATE documents SET read_page=? WHERE id=?').run(page, id) })
   documentEvents.emit('changed', id)
   return getDocument(id)
 }

@@ -1,5 +1,6 @@
 # Only server/Dockerfile builds from the repository root; it needs server/,
-# design/, app/src/core and app/src/main/unzip.ts. Keep everything heavy out.
+# design/, app/src/core, app/src/learning-ui, app/src/main/unzip.ts and the two
+# editor modules from app/src/renderer/workbench. Keep everything heavy out.
 **/node_modules
 **/dist
 **/.astro

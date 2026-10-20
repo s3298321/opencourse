@@ -10,8 +10,11 @@
  * do: the author signs up in Settings and publishes the example course; the
  * learner finds it in the catalog, reads its overview and adds it; the author
  * edits it, raises its version with ⌘S and publishes again; the learner
- * updates; the author rolls back. Every screen is screenshotted, because a
- * check that passes on an empty box is the failure smoke exists to catch.
+ * updates; the author rolls back. Then the same for a PDF: the author
+ * publishes one from its page, the learner adds it from the document catalog,
+ * reads, and the progress is on the server; a new version keeps it. Every
+ * screen is screenshotted, because a check that passes on an empty box is the
+ * failure smoke exists to catch.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -21,6 +24,8 @@ import { join } from 'node:path'
 import { app, Menu, type BrowserWindow } from 'electron'
 import { createUser } from './users'
 import { specResourcesDir } from './paths'
+import { importDocument } from './documents'
+import { fixturePdf } from '../../tests/helpers/pdf'
 
 interface Result { name: string; ok: boolean; detail: string }
 
@@ -79,6 +84,19 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
         const typeField = async (label, value) => { const input = await wait(() => field(label), 'field ' + label); const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(40); };
         // The library lists one source at a time: Local, then each server.
         const serverTab = async () => { const tab = await wait(() => [...document.querySelectorAll('.course-source-tabs [role="tab"]')].find(t => t.textContent.startsWith('Smoke server')), 'server tab'); if (tab.getAttribute('aria-selected') !== 'true') tab.click(); };
+        // Screens of the other workspaces stay mounted, hidden: the document steps look at what shows.
+        const shown = e => e && e.checkVisibility({ visibilityProperty: true });
+        const vbutton = text => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === text && shown(b));
+        const vpress = async text => (await wait(() => { const b = vbutton(text); return b && !b.disabled && b; }, 'visible button ' + text)).click();
+        const vfield = label => [...document.querySelectorAll('.server-field')].find(l => shown(l) && l.textContent.trim().startsWith(label))?.querySelector('input, textarea, select');
+        const vtype = async (label, value) => { const input = await wait(() => vfield(label), 'field ' + label); const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(40); };
+        const documents = async source => {
+          document.querySelector('[data-section="documents"]').click();
+          const tab = await wait(() => [...document.querySelectorAll('[aria-label="Document source"] [role="tab"]')].find(t => shown(t) && t.textContent.startsWith(source)), 'document source ' + source);
+          if (tab.getAttribute('aria-selected') !== 'true') tab.click();
+          await sleep(300);
+        };
+        const openDocument = async title => (await wait(() => [...document.querySelectorAll('.document-card-open')].find(c => shown(c) && c.textContent.includes(title)), 'document ' + title)).click();
         const pickUser = async name => { await wait(() => document.querySelector('.user-pick'), 'user picker'); [...document.querySelectorAll('.user-pick')].find(b => b.textContent.includes(name)).click(); await wait(() => document.querySelector('.library'), 'library'); };
         ${source}
       })()`)
@@ -273,6 +291,118 @@ export async function serverSmoke(win: BrowserWindow): Promise<Result[]> {
       return statuses.join();
     `)
     await shot('publication-rolled-back')
+
+    // A document's life on the server: the course journey for a PDF.
+    const pdf = join(work, 'Field guide.pdf')
+    writeFileSync(pdf, fixturePdf({ pages: 3 }))
+    const imported = await importDocument(pdf)
+    if (imported.status !== 'ok') throw new Error('The PDF was not imported')
+    await run('author: describes a PDF and is shown what publishing does', `
+      await documents('Local');
+      await openDocument('Field guide');
+      const line = await wait(() => [...document.querySelectorAll('.course-origin-line')].find(shown), 'origin line');
+      if (!line.textContent.includes('Local')) throw new Error(line.textContent);
+      await vpress('Edit overview');
+      await vtype('Description', 'Birds of the *coast*.');
+      await vtype('Tags', 'Nature, Field');
+      await vpress('Save overview');
+      await wait(() => [...document.querySelectorAll('.import-note')].some(n => shown(n) && n.textContent === 'Overview saved.'), 'saved');
+      await vpress('Publish');
+      await wait(() => vbutton('Publish v1.0.0') && !vbutton('Publish v1.0.0').disabled, 'publish preview');
+      await vtype('What changed', 'First edition.');
+      return 'ready';
+    `)
+    await shot('document-publish')
+    await run('author: published, the document is theirs on the server', `
+      await vpress('Publish v1.0.0');
+      await wait(() => [...document.querySelectorAll('.course-server-panel [role="status"]')].some(n => shown(n) && n.textContent.includes('Published v1.0.0')), 'published note');
+      await vpress('Close');
+      await wait(() => vbutton('Manage publication'), 'manage button');
+      return [...document.querySelectorAll('.course-origin-line')].find(shown).textContent;
+    `)
+
+    nav('users')
+    await run('learner: finds the PDF in the server\'s document catalog', `
+      await pickUser('Learner');
+      await documents('Smoke server');
+      await vpress('Add documents');
+      const card = await wait(() => [...document.querySelectorAll('.document-catalog-card')].find(shown), 'document card');
+      if (!card.textContent.includes('v1.0.0') || !card.textContent.includes('by author') || !card.textContent.includes('3 pages')) throw new Error(card.textContent);
+      await wait(() => [...document.querySelectorAll('.catalog-tag')].some(t => shown(t) && t.textContent.includes('Nature')), 'tags');
+      return card.textContent;
+    `)
+    await shot('document-catalog')
+    await run('learner: reads its overview and adds it', `
+      [...document.querySelectorAll('.document-catalog-card')].find(shown).click();
+      const versions = await wait(() => [...document.querySelectorAll('.catalog-detail .catalog-versions')].find(shown), 'overview');
+      if (!versions.textContent.includes('First edition.')) throw new Error('Release note missing');
+      if (![...document.querySelectorAll('.catalog-detail')].find(shown).textContent.includes('Chapter 1')) throw new Error('Outline missing');
+      return 'overview';
+    `)
+    await shot('catalog-document')
+    const learnerDocument = await run('learner: the added PDF shows its server and version, and is read', `
+      await vpress('Add to my documents');
+      await vpress('Open in my documents');
+      const line = await wait(() => [...document.querySelectorAll('.course-origin-line')].find(l => shown(l) && l.textContent.includes('Smoke server')), 'origin line');
+      if (!line.textContent.includes('v1.0.0')) throw new Error(line.textContent);
+      if (vbutton('Publish')) throw new Error('A reader is offered Publish');
+      const copy = (await window.opencourse.listDocuments()).find(d => d.origin);
+      await window.opencourse.setDocumentProgress(copy.id, 2);
+      await window.opencourse.syncLearning();
+      return copy.id;
+    `) as string
+    await shot('document-overview')
+    try {
+      const login = await (await fetch(`${base}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ login: 'learner', password: 'another long password' }) })).json() as { token: string }
+      const items = (await (await fetch(`${base}/api/v1/me/learning`, { headers: { authorization: `Bearer ${login.token}` } })).json() as { items: { enrollment: { kind: string }; fields: Record<string, { value: unknown }> }[] }).items
+      const held = items.find((i) => i.enrollment.kind === 'document')
+      results.push({ name: 'learner: the page read in the app is the account\'s, on the server', ok: held?.fields['readPage']?.value === 2, detail: JSON.stringify(held?.fields ?? null) })
+    } catch (error) { results.push({ name: 'learner: the page read in the app is the account\'s, on the server', ok: false, detail: String(error) }) }
+
+    nav('users')
+    await run('author: raises the version and publishes again', `
+      await pickUser('Author');
+      await documents('Local');
+      await openDocument('Field guide');
+      await vpress('Edit overview');
+      await vtype('Version', '1.1.0');
+      await vpress('Save overview');
+      await wait(() => [...document.querySelectorAll('.version-badge')].some(b => shown(b) && b.textContent === 'v1.1.0'), 'new version');
+      await vpress('Publish a new version');
+      await vpress('Publish v1.1.0');
+      await wait(() => [...document.querySelectorAll('.course-server-panel [role="status"]')].some(n => shown(n) && n.textContent.includes('Published v1.1.0')), 'published');
+      return 'v1.1.0';
+    `)
+    nav('users')
+    await run('learner: is offered the document update and installs it, keeping the page', `
+      await pickUser('Learner');
+      await documents('Smoke server');
+      await wait(() => [...document.querySelectorAll('.update-badge.update')].some(b => shown(b) && b.textContent.includes('v1.1.0')), 'update badge');
+      await openDocument('Field guide');
+      await vpress('Update to v1.1.0');
+      await wait(() => vbutton('Install v1.1.0'), 'update panel');
+      return [...document.querySelectorAll('.course-server-panel')].find(shown).textContent;
+    `)
+    await shot('document-update')
+    await run('learner: updated, and still read to page 2', `
+      await vpress('Install v1.1.0');
+      await wait(() => [...document.querySelectorAll('.course-origin-line')].some(l => shown(l) && l.textContent.includes('v1.1.0')), 'new version');
+      const view = await window.opencourse.getDocument(${JSON.stringify(learnerDocument ?? '')});
+      if (view.readPage !== 2) throw new Error('Progress was lost in the update: ' + view.readPage);
+      return 'read to page ' + view.readPage;
+    `)
+    nav('users')
+    await run('author: manages the document publication', `
+      await pickUser('Author');
+      await documents('Local');
+      await openDocument('Field guide');
+      await vpress('Manage publication');
+      await wait(() => [...document.querySelectorAll('.publication-versions tbody tr')].filter(shown).length === 2, 'two versions');
+      const text = [...document.querySelectorAll('.publication')].find(shown).textContent;
+      if (!text.includes('1 reader') || !text.includes('Listed in the catalog at v1.1.0')) throw new Error(text);
+      return text;
+    `)
+    await shot('document-publication')
   } catch { /* the failing step is in results */ }
   finally {
     child.kill()

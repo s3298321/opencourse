@@ -1,6 +1,8 @@
+import { ConnectionSettings } from '../../../../app/src/learning-ui/ConnectionSettings'
+import { learningClient } from '../lib/learning'
 import { useState, type FormEvent } from 'react'
 import { useLoaderData, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router'
-import { KeyRound, Laptop, LogOut, Mail, Monitor, ShieldCheck, Trash2, UserRound } from 'lucide-react'
+import { KeyRound, Laptop, LogOut, Mail, Monitor, ShieldCheck, Trash2 } from 'lucide-react'
 import { emailProblem, isCode, passwordProblem, type SessionInfo } from '@core/catalog/api'
 import { api, ApiError } from '../lib/api'
 import { server } from '../lib/boot'
@@ -35,6 +37,7 @@ export function SettingsPage() {
       <PageHeader eyebrow="Your account" title="Settings" description={<>Signed in to {server.name} as <strong>{account.username}</strong>.</>} />
       <div className="settings oc-stagger">
         <Profile />
+        <ConnectionSettings client={learningClient} username={account.username} onUsername={() => { void api.me().then(r => session.set(r.account)) }} />
         <Password />
         <Sessions />
         <DangerZone />
@@ -43,11 +46,11 @@ export function SettingsPage() {
   )
 }
 
-function Section({ icon, title, description, children, tone }: { icon: React.ReactNode; title: string; description?: React.ReactNode; children: React.ReactNode; tone?: 'danger' }) {
+function Section({ icon, title, description, children, tone }: { icon?: React.ReactNode; title: string; description?: React.ReactNode; children: React.ReactNode; tone?: 'danger' }) {
   return (
     <section className={`settings-section oc-panel${tone ? ` ${tone}` : ''}`}>
       <header className="settings-head">
-        <span className="settings-icon" aria-hidden="true">{icon}</span>
+        {icon && <span className="settings-icon" aria-hidden="true">{icon}</span>}
         <div><h2>{title}</h2>{description && <p className="muted">{description}</p>}</div>
       </header>
       <div className="settings-body">{children}</div>
@@ -70,14 +73,22 @@ function Profile() {
     try { await work() } catch (err) { setError(message(err)) } finally { setBusy(false) }
   }
   return (
-    <Section icon={<UserRound />} title="Profile" description="Your username is how you appear as a publisher, and cannot change.">
-      <div className="profile-row">
+    <section className="settings-section profile-section oc-panel" aria-labelledby="profile-title">
+      <h2 id="profile-title">Profile</h2>
+      <div className="profile-identity">
         <Avatar name={account.username} size="lg" />
-        <dl className="profile-facts">
-          <div><dt>Username</dt><dd>{account.username}</dd></div>
-          <div><dt>Email</dt><dd>{account.email}</dd></div>
-          <div><dt>Member since</dt><dd>{date(account.createdAt)}</dd></div>
-          {account.role === 'admin' && <div><dt>Role</dt><dd><span className="oc-pill silver"><ShieldCheck aria-hidden />Administrator</span></dd></div>}
+        <div className="profile-details">
+          <div className="profile-name">
+            <strong>{account.username}</strong>
+            {account.role === 'admin' && <span className="oc-pill silver"><ShieldCheck aria-hidden />Administrator</span>}
+          </div>
+          <p className="muted">Member since {date(account.createdAt)}</p>
+        </div>
+      </div>
+      <div className="profile-email">
+        <dl>
+          <dt>Email address</dt>
+          <dd>{account.email}</dd>
         </dl>
         {step === 'idle' && <button type="button" className="oc-btn secondary" onClick={() => setStep('start')}><Mail aria-hidden />Change email</button>}
       </div>
@@ -105,7 +116,7 @@ function Profile() {
           <div className="form-actions"><button type="button" className="oc-btn secondary" onClick={reset}>Cancel</button><button type="submit" className="oc-btn" disabled={busy || !isCode(code)}>Confirm</button></div>
         </form>
       )}
-    </Section>
+    </section>
   )
 }
 
@@ -184,7 +195,7 @@ function DangerZone() {
   const [busy, setBusy] = useState(false)
   const close = (): void => { setOpen(false); setConfirm(''); setPassword(''); setError(null) }
   return (
-    <Section icon={<Trash2 />} title="Delete account" tone="danger" description="Deletes your account and every course you published, with all their versions. Learners keep the copies they added. This cannot be undone.">
+    <Section title="Delete account" tone="danger" description="Deletes your account and every course you published, with all their versions. Learners keep the copies they added. This cannot be undone.">
       <div className="form-actions start"><button type="button" className="oc-btn danger" onClick={() => setOpen(true)}><Trash2 aria-hidden />Delete my account</button></div>
       <Dialog
         open={open}

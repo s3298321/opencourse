@@ -69,3 +69,23 @@ it('toggles authoring research independently and restores the checkbox on failur
   expect(checkbox.checked).toBe(false)
   expect(container.textContent).toContain('Could not save')
 })
+
+it.each(['chat', 'project', 'authoring'] as const)('hides %s model controls after disconnecting, even with a saved catalog', async scope => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const settings: AIModelSettings = {
+    scope, provider: 'apiKey', selectedProvider: 'apiKey', source: 'cache', webSearch: false,
+    connection: { provider: 'apiKey', ready: true, message: 'Add an OpenAI API key in Settings.' },
+    models: [{ id: 'gpt-5.1', label: 'GPT-5.1' }],
+    profile: { enabledModels: null, defaultModel: 'gpt-5.1', defaultReasoning: 'low' }
+  }
+  vi.stubGlobal('opencourse', { getAIModelSettings: async () => structuredClone(settings) })
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+  await act(async () => root!.render(createElement(AIModelsSection, { scope, version: 0 })))
+  expect(container.querySelector('select')).not.toBeNull()
+  settings.connection.ready = false
+  await act(async () => root!.render(createElement(AIModelsSection, { scope, version: 1 })))
+  expect(container.querySelector('select')).toBeNull()
+  expect(container.querySelector('input[type=checkbox]')).toBeNull()
+  expect(container.textContent).toContain(settings.connection.message)
+  expect(container.textContent).not.toContain('GPT-5.1')
+})

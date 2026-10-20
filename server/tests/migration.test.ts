@@ -36,6 +36,12 @@ describe('the database migration', () => {
     expect(d.prepare('SELECT unlisted_at IS NOT NULL AS unlisted, moderated_at FROM courses').get()).toEqual({ unlisted: 1, moderated_at: null })
     // The rebuilt table accepts the new purpose.
     d.prepare('INSERT INTO email_codes(id, email, purpose, code_hmac, created_at, expires_at, account_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run('c2', 'new@example.org', 'email', 'ee', at, later, 'a1')
+
+    // Study chat's per-activity AI settings and generated titles (v4).
+    const columns = (table: string) => (d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+    expect(columns('learning_ai')).toEqual(expect.arrayContaining(['reasoning', 'title_model', 'title_reasoning', 'enabled_models']))
+    expect(columns('learning_messages')).toEqual(expect.arrayContaining(['quote', 'model', 'reasoning', 'activity']))
+    expect(columns('learning_chats')).toContain('generated_title')
     d.close()
 
     // Opening again is a no-op.

@@ -152,6 +152,27 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
       if (!attached) cdp.detach()
     }
   }
+  /** A real wheel over the centre of what `selector` finds, in notches of 100px. */
+  const wheel = async (selector: string, deltaY: number): Promise<void> => {
+    const box = await win.webContents.executeJavaScript(`(() => {
+      const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.checkVisibility({ visibilityProperty: true }));
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`) as { x: number; y: number } | null
+    if (!box) { results.push({ name: 'wheel over ' + selector, ok: false, detail: 'nothing there' }); return }
+    const cdp = win.webContents.debugger
+    const attached = cdp.isAttached()
+    if (!attached) cdp.attach('1.3')
+    try {
+      for (let done = 0; done < deltaY; done += 100) {
+        await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(box.x), y: Math.round(box.y), deltaX: 0, deltaY: 100 })
+        await new Promise((resolve) => setTimeout(resolve, 30))
+      }
+    } finally {
+      if (!attached) cdp.detach()
+    }
+  }
   const pressing = async (name: string, selector: string, times = 1): Promise<void> => {
     try { for (let n = 0; n < times; n++) await press(selector) } catch (err) { results.push({ name, ok: false, detail: String(err) }) }
   }
@@ -373,6 +394,33 @@ export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
   `)
   await pressing('restore 125% for the remaining reader checks', '.content .reading-size-smaller')
   await run('the shared size is restored', `await until(() => label() === '125%', '125%'); return label();`)
+
+  // Back from the editor lands where you were in the lesson, not at its top.
+  // Scrolled with a wheel and pressed with a mouse, the way a reader does it.
+  await run('(setup) the lesson is at the top', `find('.content').scrollTop = 0; await sleep(100); return 'top';`)
+  await wheel('.content', 1400)
+  await run('(setup) the exercise card is on screen', `
+    await sleep(400);
+    const column = find('.content');
+    if (column.scrollTop < 200) throw new Error('the wheel scrolled the lesson to ' + column.scrollTop);
+    const open = [...document.querySelectorAll('.exercise button')].find((b) => visible(b) && /Open editor/.test(b.textContent));
+    if (!open) throw new Error('no Open editor button on screen');
+    open.setAttribute('data-reading-open', '');
+    window.__readingAt = column.scrollTop;
+    return column.scrollTop + 'px';
+  `)
+  await pressing('Open editor pressed', '[data-reading-open]')
+  await run('(setup) the editor is open', `await wait('.workbench .cm-editor'); await sleep(400); return 'open';`)
+  await pressing('Mark completed pressed in the brief', '.workbench-brief .actions button:last-child')
+  await run('(setup) the exercise is completed', `await until(() => /Completed/.test(find('.workbench-brief .actions button:last-child').textContent), 'Completed'); await sleep(300); return 'done';`)
+  await pressing('Back to lesson pressed', '.workbench-back')
+  await run('back from the editor is where the lesson was left', `
+    await wait('.content .reading-size');
+    await sleep(400);
+    const after = find('.content').scrollTop;
+    if (Math.abs(after - window.__readingAt) > 2) throw new Error('left at ' + window.__readingAt + ', came back at ' + after);
+    return after + 'px';
+  `)
 
   await shot('125-next')
   // The size can be typed: any whole percent from 50 to 200. Anything else, or

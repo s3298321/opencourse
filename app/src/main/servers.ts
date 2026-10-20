@@ -23,10 +23,13 @@ import { userServersDir, serverTokenFile } from './paths'
 import { readPreferences, writePreferences } from './preferences'
 import { readSealed, removeSealed, writeSealed } from './secrets'
 import { callServer, ServerError } from './serverclient'
+import { serverStatus } from './server-health'
 import { currentUserId, requireUser } from './users'
 import { log } from './log'
 
 interface StoredConnection {
+  serverId?: string
+  capabilities?: string[]
   id: string
   url: string
   name: string
@@ -48,7 +51,7 @@ function readAll(userId = requireUser()): StoredConnection[] {
       const c = entry as Partial<StoredConnection>
       const url = typeof c.url === 'string' ? normalizeServerUrl(c.url) : null
       if (typeof c.id !== 'string' || !UUID.test(c.id) || !url?.ok || typeof c.name !== 'string') return []
-      return [{ id: c.id, url: url.url, name: c.name.slice(0, 120), description: typeof c.description === 'string' ? c.description.slice(0, 500) : '', account: parseAccount(c.account), connectedAt: String(c.connectedAt ?? '') }]
+      return [{ serverId: c.serverId, capabilities: c.capabilities, id: c.id, url: url.url, name: c.name.slice(0, 120), description: typeof c.description === 'string' ? c.description.slice(0, 500) : '', account: parseAccount(c.account), connectedAt: String(c.connectedAt ?? '') }]
     })
   } catch {
     return []
@@ -91,7 +94,7 @@ export function forgetServerSessions(): void {
 
 function view(c: StoredConnection, userId: string, active: string | undefined): ServerConnection {
   const signedIn = c.account !== null && readToken(userId, c.id) !== ''
-  return { id: c.id, url: c.url, name: c.name, description: c.description, account: signedIn ? { username: c.account!.username, email: c.account!.email } : null, active: c.id === active }
+  return { ...(c.capabilities?{capabilities:c.capabilities}:{}), id: c.id, url: c.url, name: c.name, description: c.description, account: signedIn ? { id:c.account!.id, username: c.account!.username, email: c.account!.email } : null, active: c.id === active, status: serverStatus(c.url) }
 }
 
 export function listConnections(): ServerConnection[] {
@@ -119,17 +122,30 @@ export function setActiveServer(id: string | null): ServerConnection[] {
 }
 
 /** What main needs to talk to a server as this user. Never returned over IPC. */
-export interface ServerAccess { id: string; url: string; name: string; token: string; account: Account | null }
+export interface ServerAccess { serverId?: string; capabilities?: string[]; id: string; url: string; name: string; token: string; account: Account | null }
 
 export function serverAccess(id: string): ServerAccess {
   const userId = requireUser()
   const c = readAll(userId).find((entry) => entry.id === id)
   if (!c) throw new ServerError(404, 'unknown_server', 'That server is no longer connected. Add it again in Settings.')
   const token = c.account ? readToken(userId, c.id) : ''
-  return { id: c.id, url: c.url, name: c.name, token, account: token ? c.account : null }
+  return { serverId: c.serverId, capabilities: c.capabilities, id: c.id, url: c.url, name: c.name, token, account: token ? c.account : null }
 }
 
 /** The connection for a course's origin address, if the user still has one. */
+export function rememberServerAccount(id:string,raw:unknown):void {
+  const account=parseAccount(raw),all=readAll(),entry=all.find(c=>c.id===id)
+  if(!account||entry?.account?.id!==account.id)return
+  entry.account=account;writeAll(all)
+}
+
+export function rememberServerInfo(id: string, info: ServerInfo): void {
+  const all=readAll(), entry=all.find(c=>c.id===id)
+  if(!entry)return
+  if(entry.serverId && info.id && entry.serverId!==info.id) throw new Error('The server identity changed. Reconnect explicitly before synchronizing.')
+  entry.serverId=info.id;entry.capabilities=info.capabilities;writeAll(all)
+}
+
 export function serverAccessForUrl(url: string): ServerAccess | null {
   const c = readAll().find((entry) => entry.url === url)
   return c ? serverAccess(c.id) : null
@@ -149,11 +165,31 @@ function saveConnection(url: string, info: ServerInfo, auth: AuthResult): Server
     entry = { id: randomUUID(), url, name: info.name, description: info.description, account: null, connectedAt: new Date().toISOString() }
     all.push(entry)
   }
-  Object.assign(entry, { name: info.name, description: info.description, account: auth.account })
+  Object.assign(entry, { serverId: info.id, capabilities: info.capabilities, name: info.name, description: info.description, account: auth.account })
   writeAll(all, userId)
   storeToken(userId, entry.id, auth.token)
   if (!readPreferences().activeServer || !all.some((c) => c.id === readPreferences().activeServer)) setActiveServer(entry.id)
   log.child('servers').info('Signed in to a server', { data: { host: new URL(url).host } })
+  return listConnections().find((c) => c.id === entry!.id)!
+}
+
+/**
+ * A connection with no account yet, for a server that may not be running:
+ * what a `npm run dev` profile starts with (dev-seed.ts). Browsing works
+ * signed out, and a server that is down reads as one, as a real one would.
+ */
+export function addUnsignedConnection(url: string, name: string, description = ''): ServerConnection {
+  const normalized = normalizeServerUrl(url)
+  if (!normalized.ok) throw new Error(normalized.message)
+  const userId = requireUser()
+  const all = readAll(userId)
+  let entry = all.find((c) => c.url === normalized.url)
+  if (!entry) {
+    entry = { id: randomUUID(), url: normalized.url, name, description, account: null, connectedAt: new Date().toISOString() }
+    all.push(entry)
+    writeAll(all, userId)
+  }
+  if (!readPreferences().activeServer) setActiveServer(entry.id)
   return listConnections().find((c) => c.id === entry!.id)!
 }
 
@@ -224,15 +260,17 @@ export async function resendRegistrationCode(flowId: string): Promise<void> {
 }
 
 /** Step two: the code from the email confirms the address. */
-export async function verifyRegistration(flowId: string, code: string): Promise<void> {
+export async function verifyRegistration(flowId: string, code: string): Promise<{ existingAccount: boolean }> {
   const f = flow(flowId)
   const trimmed = String(code ?? '').trim()
   if (!isCode(trimmed)) throw new UserFacingError('invalid_code', 'Enter the 6-digit code from the email.')
   const result = await callServer(f.url, '/auth/register/verify', (raw) => {
+    if ((raw as { existingAccount?: unknown } | null)?.existingAccount === true) return { existingAccount: true, ticket: undefined }
     const ticket = (raw as { ticket?: unknown } | null)?.ticket
-    return typeof ticket === 'string' && ticket.length <= 100 ? { ticket } : null
+    return typeof ticket === 'string' && ticket.length <= 100 ? { ticket, existingAccount: false } : null
   }, { method: 'POST', json: { email: f.email, code: trimmed }, route: '/auth/register/verify' })
   f.ticket = result.ticket
+  return { existingAccount: result.existingAccount }
 }
 
 export async function checkUsername(flowId: string, name: string): Promise<{ available: boolean; reason?: string }> {

@@ -69,8 +69,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
     return () => { cancelled = true }
   }, [])
 
-  // Falls back to a curated list when the key is missing or OpenAI is not
-  // reachable, so the picker is never empty.
+  // With a key, an unreachable model catalog falls back to curated choices.
   useEffect(() => {
     let cancelled = false
     void window.opencourse.listCoachModels().then(({ models: found }) => {
@@ -150,7 +149,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
               <div>
                 <h1>{project.name}</h1>
                 <div className="coach-settings">
-                  <label>
+                  {!!models?.length && <label>
                     <span className="meta">Voice model</span>
                     <select
                       value={project.model}
@@ -166,7 +165,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </label>}
                   <label>
                     <span className="meta">Voice</span>
                     <select value={project.voice} onChange={(e) => void patch({ voice: e.target.value })}>
@@ -177,7 +176,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                       ))}
                     </select>
                   </label>
-                  <label>
+                  {!!models?.length && backendModels.length > 0 && <label>
                     <span className="meta">Background model</span>
                     <select value={project.backendModel}
                       onChange={(e) => void patch({ backendModel: e.target.value })}>
@@ -186,7 +185,7 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                       )}
                       {backendModels.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
                     </select>
-                  </label>
+                  </label>}
                 </div>
               </div>
               <div className="actions">

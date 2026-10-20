@@ -7,9 +7,14 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_APP_URL } from '../shared/pages'
+import { DEFAULT_APP_URL, DEFAULT_SITE_URL } from '../shared/pages'
+import { devEncryptionKeys } from './dev-encryption'
 
 export interface ServerConfig {
+  aiEncryptionKeys?: string
+  aiActiveKey?: string
+  documentMaxBytes?: number
+  documentStorageBytes?: number
   port: number
   host: string
   dataDir: string
@@ -26,6 +31,8 @@ export interface ServerConfig {
   trustProxy: boolean
   /** Where "Get the app" points. */
   appUrl: string
+  /** Where the wordmark points: the OpenCourse website. */
+  siteUrl: string
   /** The operator's privacy policy and legal notice, linked from every page; null for no link. */
   privacyUrl: string | null
   legalUrl: string | null
@@ -47,25 +54,34 @@ function linkUrl(env: NodeJS.ProcessEnv, name: string): string | null {
   return value
 }
 
+function positiveBytes(env:NodeJS.ProcessEnv,name:string,fallback:number):number { const n=Number(env[name]??fallback);if(!Number.isSafeInteger(n)||n<1)throw new Error(`${name} must be a positive byte count`);return n }
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const port = Number(env['OPENCOURSE_SERVER_PORT'] ?? 8787)
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('OPENCOURSE_SERVER_PORT must be a port number')
   const host = env['OPENCOURSE_SERVER_HOST'] ?? '127.0.0.1'
   const registration = env['OPENCOURSE_REGISTRATION'] ?? 'open'
   if (registration !== 'open' && registration !== 'closed') throw new Error('OPENCOURSE_REGISTRATION must be open or closed')
+  const dev = env['OPENCOURSE_SERVER_DEV'] === '1'
+  const dataDir = resolve(env['OPENCOURSE_SERVER_DATA'] ?? 'data')
   return {
+    aiEncryptionKeys: env['OPENCOURSE_AI_ENCRYPTION_KEYS'] ?? (dev ? devEncryptionKeys(dataDir) : undefined),
+    aiActiveKey: env['OPENCOURSE_AI_ACTIVE_KEY'],
+    documentMaxBytes: positiveBytes(env,'OPENCOURSE_DOCUMENT_MAX_BYTES',104857600),
+    documentStorageBytes: positiveBytes(env,'OPENCOURSE_DOCUMENT_STORAGE_BYTES',10737418240),
     port,
     host,
-    dataDir: resolve(env['OPENCOURSE_SERVER_DATA'] ?? 'data'),
+    dataDir,
     name: env['OPENCOURSE_SERVER_NAME'] ?? 'OpenCourse server',
     description: env['OPENCOURSE_SERVER_DESCRIPTION'] ?? 'Courses shared by the people who use this server.',
     publicUrl: (env['OPENCOURSE_SERVER_PUBLIC_URL'] ?? `http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`).replace(/\/+$/, ''),
     smtpUrl: env['OPENCOURSE_SMTP_URL'] || null,
     mailFrom: env['OPENCOURSE_MAIL_FROM'] ?? 'OpenCourse <no-reply@localhost>',
     registration,
-    dev: env['OPENCOURSE_SERVER_DEV'] === '1',
+    dev,
     trustProxy: env['OPENCOURSE_TRUST_PROXY'] === '1',
     appUrl: env['OPENCOURSE_SERVER_APP_URL'] || DEFAULT_APP_URL,
+    siteUrl: linkUrl(env, 'OPENCOURSE_SERVER_SITE_URL') ?? DEFAULT_SITE_URL,
     privacyUrl: linkUrl(env, 'OPENCOURSE_SERVER_PRIVACY_URL'),
     legalUrl: linkUrl(env, 'OPENCOURSE_SERVER_LEGAL_URL'),
     webDir: env['OPENCOURSE_SERVER_WEB_DIR'] ? resolve(env['OPENCOURSE_SERVER_WEB_DIR']) : defaultWebDir()

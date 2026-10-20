@@ -1,0 +1,19 @@
+/* GitHub Dark token palette from the shared Shiki theme. Classes keep code
+   highlighting compatible with the web app's style-src 'self' policy. */
+.syntax-highlight { color: #e1e4e8; }
+.syntax-highlight .syntax-24292e { color: #24292e; }
+.syntax-highlight .syntax-2f363d { color: #2f363d; }
+.syntax-highlight .syntax-6a737d { color: #6a737d; }
+.syntax-highlight .syntax-79b8ff { color: #79b8ff; }
+.syntax-highlight .syntax-85e89d { color: #85e89d; }
+.syntax-highlight .syntax-9ecbff { color: #9ecbff; }
+.syntax-highlight .syntax-b392f0 { color: #b392f0; }
+.syntax-highlight .syntax-d1d5da { color: #d1d5da; }
+.syntax-highlight .syntax-dbedff { color: #dbedff; }
+.syntax-highlight .syntax-e1e4e8 { color: #e1e4e8; }
+.syntax-highlight .syntax-f97583 { color: #f97583; }
+.syntax-highlight .syntax-fdaeb7 { color: #fdaeb7; }
+.syntax-highlight .syntax-ffab70 { color: #ffab70; }
+.syntax-highlight .syntax-italic { font-style: italic; }
+.syntax-highlight .syntax-bold { font-weight: bold; }
+.syntax-highlight .syntax-underline { text-decoration: underline; }

@@ -109,14 +109,18 @@ describe('course overview review controls', () => {
     expect(button('Review').disabled).toBe(true)
     expect(container.textContent).toContain('Complete a lesson with flashcards')
   })
-  it('disables review when only future cards remain and shows when review is due', async () => {
+  it('starts review when only future cards remain and still shows when review is due', async () => {
     const course = buildCourse({ schema_version: '1.4', slug: 'course', title: 'Course', modules: [] }, '/tmp')
+    const startReviewSession = vi.fn(async () => initial()), navigate = vi.fn()
     vi.stubGlobal('opencourse', { getCourse: async () => course, getProgress: async () => emptyProgress('course'),
       getReviewSummary: async () => ({ ...initial().summary, new: 0, practiced: 2, nextDue: '2030-01-01T10:00:00Z' }),
-      onCoursesChanged: () => () => {}, onReviewChanged: () => () => {}, ...noServers })
-    await act(async () => root.render(createElement(CourseDetail, { courseId: 'course', user: null, route: { name: 'course', courseId: 'course' }, navigate: vi.fn() })))
-    expect(button('Review').disabled).toBe(true)
+      startReviewSession, onCoursesChanged: () => () => {}, onReviewChanged: () => () => {}, ...noServers })
+    await act(async () => root.render(createElement(CourseDetail, { courseId: 'course', user: null, route: { name: 'course', courseId: 'course' }, navigate })))
+    expect(button('Review').disabled).toBe(false)
     expect(container.querySelector('.course-review-summary')?.textContent).toContain('Next review')
+    await act(async () => button('Review').click())
+    expect(startReviewSession).toHaveBeenCalledWith('course', 10)
+    expect(navigate).toHaveBeenCalledWith({ name: 'review', session: initial() })
   })
 })
 

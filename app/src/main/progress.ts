@@ -1,5 +1,8 @@
 /** Progress persistence: one JSON file per course, under the current user. */
-import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs'
+import { db } from './db'
+import { journalProgress } from './learning-store'
+import { readFileSync } from 'node:fs'
+import { atomicJSON } from './course-store'
 import { join } from 'node:path'
 import { emptyProgress, normalizeProgress } from '../core/progress'
 import type { CourseProgress } from '../core/types'
@@ -17,6 +20,13 @@ function fileFor(courseId: string): string {
 
 export function readProgress(courseId: string): CourseProgress {
   try {
+    const pending = db().prepare('SELECT value FROM learning_progress_journal WHERE local_id=?').get(courseId) as { value: string } | undefined
+    if (pending) {
+      const recovered = normalizeProgress(courseId, JSON.parse(pending.value))
+      persistProgress(recovered)
+      db().prepare('DELETE FROM learning_progress_journal WHERE local_id=?').run(courseId)
+      return recovered
+    }
     return normalizeProgress(courseId, JSON.parse(readFileSync(fileFor(courseId), 'utf8')))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptyProgress(courseId)
@@ -26,11 +36,13 @@ export function readProgress(courseId: string): CourseProgress {
 
 /** Atomic write: a crash mid-save must not truncate someone's progress. */
 export function writeProgress(progress: CourseProgress): CourseProgress {
-  mkdirSync(dir(), { recursive: true })
-  const target = fileFor(progress.courseId)
-  const tmp = `${target}.${process.pid}.tmp`
-  writeFileSync(tmp, JSON.stringify(progress, null, 2))
-  renameSync(tmp, target)
+  const journaled = journalProgress(readProgress(progress.courseId), progress)
+  const result = persistProgress(progress)
+  if (journaled) db().prepare('DELETE FROM learning_progress_journal WHERE local_id=?').run(progress.courseId)
+  return result
+}
+export function persistProgress(progress: CourseProgress): CourseProgress {
+  atomicJSON(fileFor(progress.courseId), progress)
   return progress
 }
 

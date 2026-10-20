@@ -1,4 +1,6 @@
+import { ServerLearningSettings } from '../learning/ServerLearningSettings'
 import ActionButton from './ActionButton'
+import { downTitle, serverDown } from './ServerUnreachable'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { emailProblem, passwordProblem, usernameProblem, type ServerInfo } from '@core/catalog/api'
@@ -44,15 +46,18 @@ export default function ServerSettings(): JSX.Element {
                 <span className="server-card-text">
                   <strong>{server.name}</strong>
                   <span className="meta server-card-url">{server.url}</span>
+                  {server.status !== 'unknown' && <span className={`server-card-status ${server.status}`}>{server.status === 'online' ? 'Answering' : 'Not answering - it may be down, or this Mac offline'}</span>}
                   <span className={`server-card-account${server.account ? ' signed-in' : ''}`}>
                     {server.account ? `Signed in as ${server.account.username} (${server.account.email})` : 'Signed out'}
                   </span>
                 </span>
               </label>
+              {server.account && server.capabilities?.includes('learning-sync-v1') && <ServerLearningSettings server={server.id} username={server.account.username} />}
               <div className="actions">
+                {serverDown(server) && <ActionButton icon="refresh" className="secondary" onClick={() => void window.opencourse.retryServer(server.id).then(setServers)}>Retry</ActionButton>}
                 {server.account
                   ? <ActionButton icon="signOut" className="secondary" onClick={() => void act(() => window.opencourse.signOutOfServer(server.id), `Signed out of ${server.name}.`)}>Sign out</ActionButton>
-                  : <ActionButton icon="signIn" className="secondary" onClick={() => { setNote(null); setConnecting({ url: server.url, signIn: true }) }}>Sign in</ActionButton>}
+                  : <ActionButton icon="signIn" className="secondary" disabled={serverDown(server)} title={serverDown(server) ? downTitle(server) : undefined} onClick={() => { setNote(null); setConnecting({ url: server.url, signIn: true }) }}>Sign in</ActionButton>}
                 <ActionButton icon="trash" className="secondary danger" onClick={() => {
                   if (!window.confirm(`Remove ${server.name}?\n\nYou will be signed out. Courses you added from it stay in your library, but cannot be updated until you connect to it again.`)) return
                   void act(() => window.opencourse.removeServer(server.id), `Removed ${server.name}.`)
@@ -80,7 +85,7 @@ type Step =
   | { kind: 'code'; url: string; info: ServerInfo; flowId: string; email: string }
   | { kind: 'username'; url: string; info: ServerInfo; flowId: string }
   | { kind: 'password'; url: string; info: ServerInfo; flowId: string; username: string }
-  | { kind: 'signin'; url: string; info: ServerInfo }
+  | { kind: 'signin'; url: string; info: ServerInfo; existing?: boolean }
   | { kind: 'reset-email'; url: string; info: ServerInfo }
   | { kind: 'reset'; url: string; info: ServerInfo; flowId: string; email: string }
 
@@ -172,7 +177,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
       </form>
       break
     case 'code':
-      body = <form onSubmit={(e) => { e.preventDefault(); void run(() => window.opencourse.verifyServerCode(step.flowId, code), () => { setUsername(''); setStep({ kind: 'username', url: step.url, info: step.info, flowId: step.flowId }) }) }}>
+      body = <form onSubmit={(e) => { e.preventDefault(); void run(() => window.opencourse.verifyServerCode(step.flowId, code), (result) => { if (result.existingAccount) { setLogin(step.email); setStep({ kind: 'signin', url: step.url, info: step.info, existing: true }); return }; setUsername(''); setStep({ kind: 'username', url: step.url, info: step.info, flowId: step.flowId }) }) }}>
         <p className="meta">Enter the code {step.info.name} sent to <strong>{step.email}</strong>. It expires in 10 minutes.</p>
         <label className="server-field">Code
           <input autoFocus className="server-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
@@ -222,6 +227,7 @@ export function ServerConnect({ initialUrl, startWithSignIn, onDone }: { initial
         setPassword('')
         void run(() => window.opencourse.signInToServer(step.url, login, secret), (connection) => onDone(connection))
       }}>
+        {step.existing && <p>Connect to your existing account on {step.info.name}. Enter its password to link this local user.</p>}
         <label className="server-field">Email or username
           <input autoFocus type="text" value={login} autoComplete="username" spellCheck={false} onChange={(e) => setLogin(e.target.value)} />
         </label>

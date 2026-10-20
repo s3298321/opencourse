@@ -6,7 +6,7 @@ separate opencourse-infra repository.
 
 ```bash
 npm install
-npm run dev          # http://localhost:4321
+npm run dev          # http://localhost:4321, against the local server (see below)
 npm run build        # dist/ and the docs' search index (Pagefind)
 npm run check        # astro check, then scripts/verify-dist.mjs over dist/
 ```
@@ -23,7 +23,10 @@ npm run check        # astro check, then scripts/verify-dist.mjs over dist/
   - asks GitHub for the stars and the newest release, cached an hour in
     `.cache/` outside CI. Set `GITHUB_TOKEN` to avoid the rate limit;
   - copies the most-added courses from the catalog into `public/featured/`.
-    `PUBLIC_CATALOG_URL` points it at another server, such as a local one.
+    `PUBLIC_CATALOG_URL` points it at another server. `npm run dev`
+    (`scripts/dev.mjs`) points it, and every catalog link, at the server's
+    local web app on :5173, and looks again every ten seconds while that is
+    not running; `npm run build` keeps the public catalog.
 
   A network failure makes the page show less, never break.
 - **The download button** is GitHub's

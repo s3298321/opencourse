@@ -19,6 +19,8 @@ import type { Course, ExerciseBlock, ExerciseSession, ExerciseTarget, WriteResul
 import { getCourse } from './courses'
 import { userWorkspaceRoot } from './paths'
 import { requireUser } from './users'
+import { reconcileExerciseCode } from './exercise-code'
+import { log } from './log'
 
 /** Guards against a runaway renderer writing an unbounded file. */
 const MAX_EXERCISE_BYTES = 1024 * 1024
@@ -113,7 +115,10 @@ function readFileState(path: string): { content: string; mtimeMs: number } {
  */
 export function openExercise(req: ScaffoldRequest): ExerciseSession {
   const { plan, resolved } = planFor(req)
+  const fresh = !existsSync(plan.learnerPath)
   applyScaffold(plan, { exists: existsSync, write })
+  // Code written on the web lands in the file before the editor reads it.
+  syncCode(req, plan.learnerPath, fresh)
   const { content, mtimeMs } = readFileState(plan.learnerPath)
   return {
     exerciseDir: plan.exerciseDir,
@@ -178,5 +183,24 @@ export function writeExerciseFile(
   const tmp = `${path}.tmp`
   writeFileSync(tmp, content)
   renameSync(tmp, path)
+  syncCode(req, path)
   return { ok: true, mtimeMs: statSync(path).mtimeMs }
+}
+
+/** Sync never costs the learner a save: a failure here is the next sync's to retry. */
+function syncCode(req: ScaffoldRequest, path: string, fresh = false): void {
+  try {
+    reconcileExerciseCode(req.courseId, req.blockId, path, fresh)
+  } catch (error) {
+    log.child('workspace').warn('exercise code sync failed', { error: (error as Error).message })
+  }
+}
+
+/**
+ * Code that arrived from a server, for an exercise already scaffolded here. One
+ * never opened on this machine takes its code when it is first opened.
+ */
+export function receiveExerciseCode(req: ScaffoldRequest): void {
+  const { plan } = planFor(req)
+  if (existsSync(plan.learnerPath)) syncCode(req, plan.learnerPath)
 }

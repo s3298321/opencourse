@@ -3,6 +3,8 @@ import { Component, createRef, type ReactNode } from 'react'
 interface Props {
   source: string
   index: number
+  /** The tabs' id prefix; Documents has its own row of source tabs. */
+  prefix?: string
   children: ReactNode
 }
 interface Snapshot { departing: HTMLDivElement; height: number; direction: number }
@@ -68,7 +70,8 @@ export default class CourseSourcePanel extends Component<Props> {
   }
 
   render() {
-    return <div ref={this.panel} className="course-source-panel" id="course-source-panel" role="tabpanel" aria-labelledby={`course-source-${this.props.index}`}>
+    const prefix = this.props.prefix ?? 'course-source'
+    return <div ref={this.panel} className="course-source-panel" id={`${prefix}-panel`} role="tabpanel" aria-labelledby={`${prefix}-${this.props.index}`}>
       <div ref={this.content} className="course-source-content">{this.props.children}</div>
     </div>
   }

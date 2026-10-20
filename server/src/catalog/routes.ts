@@ -2,7 +2,7 @@ import { createReadStream, existsSync } from 'node:fs'
 import type { FastifyInstance } from 'fastify'
 import type { CatalogSort } from '@core/catalog/api'
 import type { Ctx } from '../context'
-import { badRequest, notFound } from '../errors'
+import { badRequest, notFound, forbidden } from '../errors'
 import { requireAccount } from '../auth/routes'
 import { catalogPage, courseOverview, courseStatuses, recordAcquisition, tagCounts, visibleCourse } from './catalog'
 import { SERVER_VERSION } from '../version'
@@ -23,7 +23,7 @@ export function catalogQuery(query: Record<string, unknown>): { q?: string; tags
 export function registerCatalogRoutes(app: FastifyInstance, ctx: Ctx): void {
   const d = ctx.db
 
-  app.get('/api/v1/server', async () => ({ opencourse: 1, api: 1, name: ctx.config.name, description: ctx.config.description, registration: ctx.config.registration, version: SERVER_VERSION }))
+  app.get('/api/v1/server', async () => ({ id: (d.prepare("SELECT value FROM server_metadata WHERE key='id'").get() as { value: string }).value, capabilities: ['learning-sync-v1', 'documents-v1', 'server-chat-v1'], opencourse: 1, api: 1, name: ctx.config.name, description: ctx.config.description, registration: ctx.config.registration, version: SERVER_VERSION }))
 
   // For a load balancer or a container's health check: the database answers.
   app.get('/healthz', async (_request, reply) => {
@@ -61,6 +61,7 @@ export function registerCatalogRoutes(app: FastifyInstance, ctx: Ctx): void {
     schema: { body: { type: 'object', required: ['intent'], additionalProperties: false, properties: { intent: { enum: ['add', 'update'] } } } }
   }, async (request, reply) => {
     const account = requireAccount(request)
+    if(request.via==='web')throw forbidden('desktop_only','Download course packages in the desktop app.')
     const row = visibleCourse(d, (request.params as { id: string }).id, account)
     if (!row?.current_version) throw notFound('That course is not on this server.')
     const version = d.prepare('SELECT archive_path, bytes, sha256 FROM course_versions WHERE course_id = ? AND version = ? AND deleted_at IS NULL').get(row.id, row.current_version) as { archive_path: string | null; bytes: number; sha256: string } | undefined

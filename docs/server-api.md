@@ -5,8 +5,10 @@ app and the server's own web app. The types are
 `app/src/core/catalog/api.ts`, shared by both sides, and the app checks every
 response with `app/src/core/catalog/parse.ts`. Change all three together.
 
-Everything is JSON under `/api/v1`, except two routes: an archive upload is
-`application/zip`, and a download returns `application/zip`.
+Everything is under `/api/v1`. Most responses are JSON; packages use
+`application/zip`, PDF readers use authenticated byte ranges, and chat events
+use `text/event-stream`. Learning types are shared in
+`app/src/core/learning/types.ts`.
 
 **Errors.** A refusal is an HTTP status plus a body like this:
 
@@ -50,8 +52,8 @@ does. It is meant for load balancers and container health checks.
 
 | | | |
 | --- | --- | --- |
-| `POST /auth/register/start` | `{ email }` | `202`. Mails a 6-digit code, or, for an address that already has an account, a note saying so. The answer is the same either way. |
-| `POST /auth/register/verify` | `{ email, code }` | `{ ticket }`, valid 15 minutes. A wrong code gives `400 invalid_code` with `attemptsLeft`. |
+| `POST /auth/register/start` | `{ email }` | `202`. Mails a 6-digit code, or, for an address that already has an account, the same verification code flow. The answer is the same either way. |
+| `POST /auth/register/verify` | `{ email, code }` | `{ ticket }` for a new address, valid 15 minutes; `{ existingAccount: true }` for an existing address (no session or ticket). A wrong code gives `400 invalid_code` with `attemptsLeft`. |
 | `GET /auth/username?name=` | | `{ available, reason? }` |
 | `POST /auth/register/complete` | `{ ticket, username, password, session? }` | `201 { token, account }` |
 | `POST /auth/login` | `{ login, password, session? }` | `{ token, account }`. `login` is an email or a username. Every failure is the same `401`. |
@@ -173,12 +175,170 @@ administrator cannot be disabled or demoted. A moderated course is hidden
 exactly like an unpublished one: `404` to everyone but its owner, and out of
 every listing and search.
 
-## Identity
+## Identity and capability negotiation
 
-A server course's `uid`s are what an app uses as its own IDs for that course
-(`app/src/core/catalog/identity.ts`). When an author publishes, the app sends
-their course's existing IDs as `uid`s. When a learner adds or updates, the
-app installs the `uid`s as the course's IDs. That is how an update keeps
-progress on edited lessons, and why a course can be in a library only once.
-A `.zip` imported locally always gets fresh IDs, and **Export ZIP…** never
-writes `uid`s.
+`GET /server` additionally returns immutable `id` and `capabilities`, including
+`learning-sync-v1`, `documents-v1` and `server-chat-v1`. Missing capabilities
+retain the previous catalog/download behavior; clients must not assume the
+new routes exist. `PUT /me/username { username }` changes the display/login name
+without changing the account ID, enrollment or progress.
+
+After verifying an existing email, clients show its prefilled email and require
+the password through ordinary login. Verification never authenticates an
+existing account. Closed registration still allows ordinary existing-account
+sign-in and password recovery.
+
+Modern clients identify content by `(serverId, kind, publishedId, version)` and
+scope private state to the immutable account ID. They keep mappings to local
+course and element IDs; migration preserves old local IDs where possible.
+Identical published UUIDs on two servers, and identical PDFs on two sources,
+are independent library entries. Email and username changes do not remap them.
+Replacing a server account cannot transfer pending operations or private chats.
+A locally imported ZIP gets fresh IDs; exporting never includes remote IDs.
+
+## Documents
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /documents?q=&tag=&sort=&page=` | `{ documents: PublishedDocument[], total, page, pageSize }`, 30 per page. `tag` may repeat (all must match, ignoring case); `sort` is `downloads`, `recent` or `title`, newest first without one |
+| `GET /documents/tags` | `{ tags: [{ tag, count }] }` over listed documents, most used first |
+| `GET /documents/:id` | Metadata, outline, indexing state, versions and release notes |
+| `GET /documents/:id/cover` | Validated PNG/JPEG/WebP cover |
+| `GET /me/documents` | Publisher's managed documents, separate from My learning |
+| `POST /documents/:id/versions` | Desktop-only ZIP upload; returns published document |
+| `PUT /documents/:id/current { version }` | Explicit publisher rollback/forward |
+| `DELETE /documents/:id` | Unpublish; retained enrolled access remains |
+| `POST /documents/:id/relist` | Relist unless moderated |
+| `DELETE /documents/:id/versions/:version` | Revoke access and delete retained files; keep version reserved |
+| `POST /documents/:id/versions/:version/reindex` | Retry bounded background indexing |
+| `POST /admin/documents/:id/moderate { reason }` | Revoke server reading/AI; retained history remains |
+| `POST /admin/documents/:id/restore` | Restore catalog access |
+
+A package contains `document.json`, `document.pdf` and optional `cover.png`,
+`cover.jpg`, `cover.jpeg` or `cover.webp`. Metadata contains `title`, `description`,
+`tags`, semantic `version`, optional `cover` filename and `releaseNote`.
+Versions are immutable, increasing, checksummed and owned by the publisher.
+Protected PDFs are rejected. A `PublishedDocument` also carries `downloads`
+(accounts that ever added it), `updatedAt` (when its current version was
+published), `maxVersion`, and - for its owner only - `moderated: true` once a
+moderator removed it. Index status is `indexing`, `ready` or `error`;
+PDF reading is available during indexing, while search may be incomplete.
+No progress, credentials or local conversations belong in a publication.
+
+## Enrollment and learner access
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /me/learning` | `{ items: LearningState[] }`, active enrollments; each item's `hasCover` says whether its version has a cover |
+| `PUT /me/learning/:kind/:id { version? }` | Enroll, or explicitly accept the specified version |
+| `DELETE /me/learning/:kind/:id` | Synchronize unenrollment; retain progress/chats |
+| `GET /learn/:kind/:id/:version` | Learner-safe course or document metadata and learning state |
+| `GET /learn/:kind/:id/:version/cover` | The held version's cover image, sandboxed; 404 when it has none |
+| `GET /learn/:kind/:id/:version/download` | Version-specific authenticated package/PDF with hash headers; course ZIPs require desktop authentication |
+| `GET /learn/document/:id/:version/pdf` | Authenticated PDF, supports `Range: bytes=start-end` |
+| `GET /learn/document/:id/:version/search?q=` | Bounded matching excerpts and indexing status |
+| `GET /learn/course/:id/:version/assets/*` | Restricted version-scoped assets; isolated HTML sandbox |
+| `POST /learn/course/:id/:version/quiz/:quiz { submitted, requestId }` | Grade, record a deduplicated attempt, reveal explanation |
+| `POST /learn/course/:id/:version/cards/:card/reveal` | Reveal after the lesson is marked read |
+| `POST /learn/course/:id/:version/cards/:card/rate { rating, requestId }` | Record review and replay shared FSRS scheduling |
+
+`kind` is `course` or `document`. Acquisition counts are analytics, not
+enrollment. Ordinary unpublishing removes discovery/new enrollment while
+existing learners retain versions. Moderation/deletion revokes server reading
+and AI; history stays readable. Existing desktop copies are not remotely erased.
+Removing a download is a device-only action. Web cannot complete exercises or
+projects, execute Python/notebooks, upload content or use Coach.
+
+Course progress follows stable surviving element IDs; removed IDs remain
+historical. PDF progress is scoped by PDF hash: metadata-only versions share
+it, changed bytes start a separate record. Versioned chats keep their original
+context. Accepting an update changes the shared enrollment selection; an older
+device cannot silently change it back.
+
+## Synchronization
+
+`GET /sync?cursor=N` returns `{ changes, cursor, more, serverTime }`. Pages are
+account-scoped and bounded; each change carries `cursor`, `type` (`state` or
+`chat`), `key` and `value`. A state change is the item's whole state, so the
+feed keeps only the latest one per item. Inactive enrollments are tombstones in state changes. Deleted conversations use a chat change with `value: { deleted: true }`; clients remove that account’s cached conversation.
+Cursors are opaque positions; persist only after applying the page transaction.
+
+`POST /sync { operations: LearningOperation[] }` accepts at most 100 operations
+and returns `{ accepted, rejected: [{ id, code }], serverTime }`. Operations
+carry `idempotencyKey`, `kind`, `id`, `version`, enrollment `generation`, reset
+`epoch`, `at` (milliseconds), `field` and `value`. Stable IDs deduplicate lost
+acknowledgments. Unknown/invalid fields are rejected. Fields include lesson
+read flags, quiz/review events, exercise/project completion summaries, last
+item, PDF position/read page and preferences (including per-item reading size and PDF zoom).
+`code:<exercise>` is the learner's own code for one exercise, a string of at
+most 64,000 characters, so the web editor and the desktop workspace open on the
+same text; only its latest value is kept (the event log records the operation
+without it). Project files, outputs, notebook
+state, authoring chats and Coach data are never accepted as sync payloads.
+
+Fields resolve by latest action timestamp, then stable operation ID. Server
+receipt clamps future timestamps; desktop estimates and persists server clock
+offset. Ordering under large offline clock changes is approximate. Quiz/review
+events remain deduplicated history; review scheduling replays deterministically.
+Explicit resets advance the epoch, unenrollment/re-enrollment changes the
+generation, and delayed operations cannot resurrect old state. Browser sync
+cannot directly submit exercise/project results, quiz grades or review states.
+
+Desktop sync pulls first, overlays pending local actions, pushes, pulls again,
+and installs selected downloads with checksums. Local edits persist immediately
+with journal/outbox recovery. Uploads debounce 2 seconds with a 10-second maximum;
+active pull is every 30 seconds. Failures back off with jitter to 5 minutes;
+connectivity/resume/manual retry restart synchronization. One unavailable server
+does not block local learning or other servers.
+
+## Reading AI
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /me/ai` | Configured status, masked hint, study-chat `model` and `reasoning`, web-search preference, `title` defaults, `enabledModels`, enabled status |
+| `PUT /me/ai { key?, model?, reasoning?, webSearch?, title?, enabledModels? }` | Update account-specific encrypted connection/settings |
+| `GET /me/ai/models` | `{ models, source, error? }`: the key's chat models, or a curated list (`source: "fallback"`) without a key or an answer |
+| `DELETE /me/ai` | Revoke the stored key and stop active generations |
+| `GET /learning/chats?kind=&id=` | Account/content reading conversations |
+| `POST /learning/chats { kind, id, version }` | Create a version-bound conversation |
+| `GET /learning/chats/:id` | Durable ordered messages and generation status |
+| `DELETE /learning/chats/:id` | Delete an owned conversation, cancel its generation, and synchronize a chat tombstone |
+| `POST /learning/chats/:id/messages { text, requestId, quote?, model?, reasoning? }` | Deduplicated server-owned generation |
+| `GET /learning/chats/:id/events?after=N` | Resumable SSE (`Last-Event-ID` also accepted) |
+| `POST /learning/chats/:id/cancel` | Cancel the active provider request |
+| `POST /learning/chats/import` | Desktop-only deterministic one-time legacy reading-history import |
+
+The authenticated account, enrollment and version determine permitted tools.
+Only bounded read-only course/document retrieval and optional provider web
+search are available. Model arguments cannot select another account, arbitrary
+content, filesystem path, shell or writing tool. Retrieval strips quiz keys,
+solutions and unrevealed flashcard answers. Credentials never return in these
+responses. One active generation per conversation; account limits also apply.
+A restart marks running answers interrupted and never automatically bills again.
+Offline desktop readers can view cached history and keep drafts; sending
+requires this server and its configured API key. Local credentials are never a
+fallback. Subscription connections are outside this release.
+
+A server runs two AI activities, each with its own model and reasoning level:
+study chat (courses and documents alike) and naming its conversations. Course
+authoring and Coach run in the desktop app on the app's own settings.
+`reasoning` is one of `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or
+`null` (send none: the model's default). A level the model does not take, as
+judged from its id, is stored as `null` in the same write that chose the model.
+`title` is `{ model, reasoning }`, or `null` to name a chat with its own model
+at `low` when the model takes it. Web search is sent only to a model that can
+search at its level.
+
+Reading-chat summaries include `messages`, `lastMessageAt`, and `running`. History is ordered by latest message. A chat is titled from its first question until, after its first complete answer, a separate best-effort request names it; a failed naming leaves the question as the title and is tried again after the next answer. Opening or closing a UI draft tab does not create a server conversation; clients create it only on first send. Closing a saved tab retains its history.
+
+`enabledModels` is `null` to offer all models (including future models), an array
+of model IDs to offer only those, or `[]` to disable chat. A nonempty list must
+include the default model. Composer `model` and `reasoning` overrides apply to
+that question without changing account defaults; disabled models are rejected.
+Messages retain the actual model and reasoning for restoring conversation choices.
+
+An optional `quote` (up to 8,000 characters) is stored separately from the
+question and included in the model's context. Assistant messages retain web
+citation positions (`start`, `end`) and local reading destinations. While running,
+`activity` carries a tool label and its running state; SSE `activity` events tell
+clients to refresh it, alongside `delta` and `done` events.

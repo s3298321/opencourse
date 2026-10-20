@@ -46,14 +46,14 @@ export async function catalogOverview(serverId: string, courseId: string): Promi
 const covers = new Map<string, string | null>()
 const MAX_COVER_BYTES = 2 * 1024 * 1024
 
-export async function catalogCover(serverId: string, courseId: string, version: string): Promise<string | null> {
+export async function catalogCover(serverId: string, courseId: string, version: string, kind:'courses'|'documents'='courses'): Promise<string | null> {
   const access = serverAccess(serverId)
   if (!UID.test(String(courseId)) || !isVersion(version)) return null
-  const key = `${requireUser()}|${access.url}|${courseId}|${version}`
+  const key = `${requireUser()}|${access.url}|${kind}|${courseId}|${version}`
   if (covers.has(key)) return covers.get(key)!
   let url: string | null = null
   try {
-    const { bytes } = await fetchBytes(access.url, `/courses/${courseId}/cover`, MAX_COVER_BYTES, { token: access.token || null, route: '/courses/:id/cover', headers: { accept: 'image/*' } })
+    const { bytes } = await fetchBytes(access.url, `/${kind}/${courseId}/cover`, MAX_COVER_BYTES, { token: access.token || null, route: '/courses/:id/cover', headers: { accept: 'image/*' } })
     const type = sniffImage(bytes)
     url = type ? `data:${type};base64,${bytes.toString('base64')}` : null
   } catch (error) {

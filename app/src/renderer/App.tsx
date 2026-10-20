@@ -1,3 +1,7 @@
+import DocumentOverview from './routes/DocumentOverview'
+import DocumentServerCatalog from './routes/DocumentServerCatalog'
+import CatalogDocument from './routes/CatalogDocument'
+import DocumentPublication from './routes/DocumentPublication'
 import Notebook, { type NotebookHandle } from './routes/Notebook'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
@@ -130,6 +134,7 @@ export default function App(): JSX.Element {
   const coachNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'coach'), [navigate])
   const documentsNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'documents'), [navigate])
 
+  useEffect(() => { const online=()=>{void window.opencourse.syncLearning().catch(()=>{})};window.addEventListener('online',online);return()=>window.removeEventListener('online',online) }, [])
   useEffect(() => {
     const source = (event: Event): void => {
       const ref = (event as CustomEvent<ReadingSource>).detail
@@ -285,6 +290,10 @@ export default function App(): JSX.Element {
       case 'library': return <Library user={user} navigate={screenNavigate} importSignal={importSignal} route={screen} />
       case 'catalog': return <ServerCatalog serverId={screen.serverId} user={user} navigate={screenNavigate} route={screen} />
       case 'documents': return <Documents user={user} navigate={screenNavigate} importSignal={documentImportSignal} onImportHandled={() => setDocumentImportSignal(0)} route={screen} />
+      case 'documentOverview': return <DocumentOverview documentId={screen.documentId} user={user} navigate={screenNavigate} route={screen} />
+      case 'documentCatalog': return <DocumentServerCatalog serverId={screen.serverId} user={user} navigate={screenNavigate} route={screen} />
+      case 'catalogDocument': return <CatalogDocument serverId={screen.serverId} documentId={screen.documentId} user={user} navigate={screenNavigate} route={screen} />
+      case 'documentPublication': return <DocumentPublication serverId={screen.serverId} documentId={screen.documentId} user={user} navigate={screenNavigate} route={screen} ask={ask} />
       case 'document': return <DocumentReader documentId={screen.documentId} user={user} navigate={screenNavigate} route={screen} navSignal={navSignal} findSignal={documentFindSignal} />
       case 'courseEditor': return <CourseEditor courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} registerEditor={registerEditor} onDirty={onEditorDirty} ask={ask} />
       case 'catalogCourse': return <CatalogCourse serverId={screen.serverId} courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} />

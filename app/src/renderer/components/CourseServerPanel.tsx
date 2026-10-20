@@ -1,4 +1,5 @@
 import ActionButton from './ActionButton'
+import ServerUnreachable, { downTitle, serverDown } from './ServerUnreachable'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import type { UpdateState } from '@core/catalog/origin'
@@ -27,6 +28,10 @@ export default function CourseServerPanel({ course, navigate, actions, trailingA
 
   const canPublish = !origin || origin.role === 'publisher'
   const updateOffered = update?.kind === 'update' || update?.kind === 'switch'
+  // A course's own server not answering: what it already is keeps working,
+  // what would ask the server is off until it answers.
+  const homeDown = serverDown(home)
+  const offTitle = home && homeDown ? downTitle(home) : undefined
 
   return (
     <>
@@ -36,19 +41,21 @@ export default function CourseServerPanel({ course, navigate, actions, trailingA
           <span className="version-badge">v{course.version ?? '0.1.0'}</span>
           {origin && <span className="meta">{origin.role === 'publisher' ? 'Published by you' : `Published by ${origin.publisher}`}</span>}
           {update?.kind === 'unlisted' && <span className="update-badge muted">No longer published</span>}
-          {update?.kind === 'disconnected' && <span className="update-badge muted">{update.reason === 'not-connected' ? 'Server not connected' : 'Could not check for updates'}</span>}
+          {homeDown ? <span className="update-badge muted">Server unreachable</span>
+            : update?.kind === 'disconnected' && <span className="update-badge muted">{update.reason === 'not-connected' ? 'Server not connected' : 'Could not check for updates'}</span>}
           {update?.kind === 'current' && <span className="meta">Up to date</span>}
         </div>
         <div className="actions course-server-actions">
           {actions}
-          {updateOffered && <ActionButton icon="refresh" onClick={() => setPanel(panel === 'update' ? null : 'update')}>{update.kind === 'update' ? `Update to v${update.version}` : `Switch to v${update.version}`}</ActionButton>}
-          {canPublish && <ActionButton icon="upload" className="secondary" onClick={() => setPanel(panel === 'publish' ? null : 'publish')}>{origin ? 'Publish a new version' : 'Publish'}</ActionButton>}
-          {origin?.role === 'publisher' && home && <ActionButton icon="settings" className="secondary" onClick={() => navigate({ name: 'publication', serverId: home.id, courseId: course.courseId })}>Manage publication</ActionButton>}
+          {updateOffered && <ActionButton icon="refresh" disabled={homeDown} title={offTitle} onClick={() => setPanel(panel === 'update' ? null : 'update')}>{update.kind === 'update' ? `Update to v${update.version}` : `Switch to v${update.version}`}</ActionButton>}
+          {canPublish && <ActionButton icon="upload" className="secondary" disabled={homeDown} title={offTitle} onClick={() => setPanel(panel === 'publish' ? null : 'publish')}>{origin ? 'Publish a new version' : 'Publish'}</ActionButton>}
+          {origin?.role === 'publisher' && home && <ActionButton icon="settings" className="secondary" disabled={homeDown} title={offTitle} onClick={() => navigate({ name: 'publication', serverId: home.id, courseId: course.courseId })}>Manage publication</ActionButton>}
           {trailingActions}
         </div>
       </div>
-      {panel === 'update' && updateOffered && <UpdatePanel course={course} target={update.version} rolledBack={update.kind === 'switch'} onDone={() => { setPanel(null); refresh() }} />}
-      {panel === 'publish' && <PublishPanel course={course} servers={servers} fixed={home} onDone={() => { setPanel(null); refresh() }} />}
+      {home && homeDown && <ServerUnreachable server={home} />}
+      {panel === 'update' && updateOffered && !homeDown && <UpdatePanel course={course} target={update.version} rolledBack={update.kind === 'switch'} onDone={() => { setPanel(null); refresh() }} />}
+      {panel === 'publish' && !homeDown && <PublishPanel course={course} servers={servers} fixed={home} onDone={() => { setPanel(null); refresh() }} />}
     </>
   )
 }
@@ -83,7 +90,7 @@ function UpdatePanel({ course, target, rolledBack, onDone }: { course: CourseVie
         <p>Everything you have done in lessons, quizzes, exercises and projects that are still in v{preview.to} is kept, even where they changed.</p>
         {(preview.newLessons > 0 || preview.newProjects > 0) && <p className="meta">New: {[preview.newLessons && `${preview.newLessons} lessons`, preview.newProjects && `${preview.newProjects} projects`].filter(Boolean).join(', ')} - they start incomplete.</p>}
         {preview.removed.length > 0 && <>
-          <p className="update-warning">v{preview.to} removes {preview.removed.length} item{preview.removed.length === 1 ? '' : 's'}. Their progress{preview.messages ? `, ${preview.messages} chat messages` : ''}{preview.workspaces ? ` and ${preview.workspaces} exercise or project folders` : ''} will be deleted:</p>
+          <p className="update-warning">v{preview.to} removes {preview.removed.length} item{preview.removed.length === 1 ? '' : 's'}. Their progress{preview.messages ? `, ${preview.messages} chat messages` : ''}{preview.workspaces ? ` and ${preview.workspaces} exercise or project folders` : ''}{course.origin?.serverId?' remain in your history and do not count toward this version.':' will be deleted:'}</p>
           <ul className="update-removed">{preview.removed.slice(0, 12).map((n) => <li key={n.id}>{n.label} <span className="meta">({n.kind})</span></li>)}{preview.removed.length > 12 && <li className="meta">…and {preview.removed.length - 12} more</li>}</ul>
         </>}
         {preview.overwritesLocalEdits && <p className="update-warning">You have saved edits that were never published. Installing v{preview.to} replaces them.</p>}
@@ -107,6 +114,8 @@ function PublishPanel({ course, servers, fixed, onDone }: { course: CourseView; 
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const target = choices.find((s) => s.id === serverId) ?? null
+  const targetDown = serverDown(target)
 
   useEffect(() => {
     if (!serverId) return undefined
@@ -115,7 +124,7 @@ function PublishPanel({ course, servers, fixed, onDone }: { course: CourseView; 
     void window.opencourse.previewPublish(course.courseId, serverId).then((r) => { if (!alive) return; if (r.ok) setPreview(r.value); else setError(r.message) })
       .catch((err: Error) => { if (alive) setError(err.message) })
     return () => { alive = false }
-  }, [course.courseId, serverId, course.version])
+  }, [course.courseId, serverId, course.version, targetDown])
 
   const publish = async (): Promise<void> => {
     setBusy(true); setError(null)
@@ -137,7 +146,8 @@ function PublishPanel({ course, servers, fixed, onDone }: { course: CourseView; 
         </label>
       )}
       {done ? <p className="import-note" role="status">{done}</p> : <>
-        {!preview && !error && <p className="meta">Checking…</p>}
+        {target && targetDown && <ServerUnreachable server={target} />}
+        {!preview && !error && !targetDown && <p className="meta">Checking…</p>}
         {preview && <>
           <p className="meta">Publishing v{preview.version}{preview.maxVersion ? ` (highest published: v${preview.maxVersion})` : ' - its first version'}. Everyone connected to {preview.serverName} can then add it. Versions can only go up; to change a published course, raise its version in the editor (Course details → Version) and publish again.</p>
           {preview.problems.map((p) => <p key={p} className="import-note error">{p}</p>)}
@@ -145,10 +155,10 @@ function PublishPanel({ course, servers, fixed, onDone }: { course: CourseView; 
             <textarea rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
         </>}
-        {error && <p className="import-note error" role="alert">{error}</p>}
+        {error && !targetDown && <p className="import-note error" role="alert">{error}</p>}
       </>}
       <div className="actions">
-        {!done && <ActionButton icon="upload" disabled={!preview || preview.problems.length > 0 || busy} onClick={() => void publish()}>{busy ? 'Publishing' : `Publish v${preview?.version ?? ''}`}</ActionButton>}
+        {!done && <ActionButton icon="upload" disabled={!preview || preview.problems.length > 0 || busy || targetDown} onClick={() => void publish()}>{busy ? 'Publishing' : `Publish v${preview?.version ?? ''}`}</ActionButton>}
         <ActionButton icon="close" className="secondary" disabled={busy} onClick={onDone}>{done ? 'Close' : 'Cancel'}</ActionButton>
       </div>
     </div>

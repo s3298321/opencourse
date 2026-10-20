@@ -1,7 +1,8 @@
 import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { AppInfo, AppUpdateInfo, CoachModel, Session, UserProfile } from '@core/types'
+import { PUBLIC_LINKS } from '@core/links'
+import type { AppInfo, AppLinks, AppUpdateInfo, CoachModel, Session, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
@@ -27,10 +28,10 @@ const CATEGORIES: Array<{ id: SettingsSection; label: string }> = [
   { id: 'coach', label: 'Coach' }, { id: 'servers', label: 'Course Servers' },
   { id: 'updates', label: 'Updates' }, { id: 'about', label: 'About' }
 ]
-const WEBSITE_LINKS = [
-  { label: 'Legal notice', href: 'https://opencourse.dev/legal' },
-  { label: 'Main website', href: 'https://opencourse.dev' },
-  { label: 'Course catalog', href: 'https://catalog.opencourse.dev' }
+const websiteLinks = (links: AppLinks): Array<{ label: string; href: string }> => [
+  { label: 'Legal notice', href: links.legal },
+  { label: 'Main website', href: links.website },
+  { label: 'Course catalog', href: links.catalog }
 ]
 
 export default function Settings({ user, navigate, route, onSession, onSessionChanged }: Props): JSX.Element {
@@ -45,6 +46,9 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
   const [keyVersion, setKeyVersion] = useState(0)
   const onKeyChanged = useCallback(() => setKeyVersion(n => n + 1), [])
   useEffect(() => window.opencourse.onAIChanged(onKeyChanged), [onKeyChanged])
+  // Main says which site and catalog: the public ones, or a dev run's local twins.
+  const [links, setLinks] = useState<AppLinks>(PUBLIC_LINKS)
+  useEffect(() => { void window.opencourse.getAppLinks?.().then(setLinks).catch(() => undefined) }, [])
 
   const content = (category: SettingsSection): JSX.Element => {
     switch (category) {
@@ -65,7 +69,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
       <nav className="settings-nav scroll" aria-label="Settings categories">
         {CATEGORIES.map(category => <button key={category.id} className="ghost settings-category" data-settings-category={category.id}
           aria-current={section === category.id ? 'page' : undefined} aria-controls={`settings-${category.id}`} onClick={() => select(category.id)}>{category.label}</button>)}
-        <div className="settings-links">{WEBSITE_LINKS.map(link => <a key={link.href} href={link.href}>{link.label}<span aria-hidden="true">↗</span><span className="sr-only"> (opens in your browser)</span></a>)}</div>
+        <div className="settings-links">{websiteLinks(links).map(link => <a key={link.href} href={link.href}>{link.label}<span aria-hidden="true">↗</span><span className="sr-only"> (opens in your browser)</span></a>)}</div>
       </nav>
       <div className="content settings-main">
         <h1>Settings</h1>
@@ -98,7 +102,7 @@ function AboutSection(): JSX.Element {
           <dt>Python distribution release</dt><dd>{info.python?.release ?? 'Unavailable'}</dd>
           <dt>Electron</dt><dd>{info.electron}</dd><dt>Chromium</dt><dd>{info.chromium}</dd><dt>Node.js</dt><dd>{info.node}</dd>
           <dt>Operating system</dt><dd>{info.platform === 'darwin' ? 'macOS' : info.platform}</dd><dt>Architecture</dt><dd>{info.architecture}</dd>
-          <dt>License</dt><dd>{info.license}</dd><dt>Website</dt><dd><a href={info.website}>opencourse.dev</a></dd>
+          <dt>License</dt><dd>{info.license}</dd><dt>Website</dt><dd><a href={info.links.website}>{new URL(info.links.website).host}</a></dd>
         </dl>
       </>}
   </section>
@@ -476,35 +480,37 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
         <span>Let coaches delete their files</span>
       </label>
       <p className="meta">Files go to the coach’s trash. Enabling applies to new sessions; disabling blocks deletion immediately.</p>
-      <h3>Defaults for new coaches</h3>
-      <div className="settings-defaults">
-        <label>
-          <span>Default voice model</span>
-          <select
-            className="settings-default-coach-model"
-            value={model ?? ''}
-            disabled={model === null || busy}
-            onChange={(e) => void save(e.target.value)}
-          >
-            {model === null && <option value="">Loading models…</option>}
-            {model && !models.some((option) => option.id === model) && <option value={model} disabled>{model} (unavailable)</option>}
-            {models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Default background model</span>
-          <select
-            className="settings-default-coach-backend-model"
-            value={backendModel ?? ''}
-            disabled={backendModel === null || busy}
-            onChange={(e) => void save(e.target.value, true)}
-          >
-            {backendModel === null && <option value="">Loading models…</option>}
-            {backendModel && !backendModels.some(option => option.id === backendModel) && <option value={backendModel} disabled>{backendModel} (unavailable)</option>}
-            {backendModels.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-          </select>
-        </label>
-      </div>
+      {model === null ? <p className="meta">Loading models…</p> : !models.length && !backendModels.length ? <p className="meta">Add an OpenAI API key in Connections to choose Coach models.</p> : <>
+        <h3>Defaults for new coaches</h3>
+        <div className="settings-defaults">
+          <label>
+            <span>Default voice model</span>
+            <select
+              className="settings-default-coach-model"
+              value={model ?? ''}
+              disabled={model === null || busy}
+              onChange={(e) => void save(e.target.value)}
+            >
+              {model === null && <option value="">Loading models…</option>}
+              {model && !models.some((option) => option.id === model) && <option value={model} disabled>{model} (unavailable)</option>}
+              {models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Default background model</span>
+            <select
+              className="settings-default-coach-backend-model"
+              value={backendModel ?? ''}
+              disabled={backendModel === null || busy}
+              onChange={(e) => void save(e.target.value, true)}
+            >
+              {backendModel === null && <option value="">Loading models…</option>}
+              {backendModel && !backendModels.some(option => option.id === backendModel) && <option value={backendModel} disabled>{backendModel} (unavailable)</option>}
+              {backendModels.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+            </select>
+          </label>
+        </div>
+      </>}
       {saved && <p className="import-note" role="status">Default saved.</p>}
       {error && <p className="import-note error">{error}</p>}
     </section>

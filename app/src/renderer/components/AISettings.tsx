@@ -125,37 +125,39 @@ export function AIModelsSection({ scope, version }: { scope: AIScope; version: n
       </Tooltip></div>
     {!settings ? <p className="meta">Loading models…</p> : <>
       {!settings.connection.ready && <p className="meta">{settings.connection.message}</p>}
-      {settings.error && <p className="import-note error">{settings.error}</p>}
-      {settings.source !== 'api' && settings.models.length > 0 && <p className="meta">{settings.source === 'cache' ? 'Showing this account’s last model catalog.' : 'Showing suggested API models until a key is connected.'}</p>}
-      <div className="settings-defaults">
-        <label><span>Default {scope === 'authoring' ? 'course creation' : scope} model</span><select className={`settings-default-${scope}-model`} value={profile?.defaultModel ?? ''}
-          disabled={busy || !offered.length} onChange={event => {
-            const model = event.target.value, reasoning = profile?.defaultReasoning
-            void save({ ...profile!, defaultModel: model, defaultReasoning: reasoning && modelReasoning(model, settings.models).includes(reasoning) ? reasoning : null })
-          }}>
-          {!offered.some(model => model.id === profile?.defaultModel) && <option value={profile?.defaultModel ?? ''} disabled>{profile?.defaultModel ? `${profile.defaultModel} (unavailable)` : !offered.length && settings.models.length ? 'Select an allowed model' : 'Connect to choose a model'}</option>}
-          {offered.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
-        </select></label>
-        <label><span>Default reasoning</span><select className={`settings-default-${scope}-reasoning`} value={profile?.defaultReasoning ?? ''} disabled={busy || !levels.length}
-          onChange={event => void save({ ...profile!, defaultReasoning: (event.target.value || null) as ReasoningEffort | null })}>
-          <option value="">Model default</option>{levels.map(level => <option key={level} value={level}>{REASONING_LABELS[level]}</option>)}
-        </select></label>
-      </div>
-      {settings.models.length > 8 && <input className="settings-key settings-filter" value={filter} placeholder="Filter models" onChange={event => setFilter(event.target.value)} />}
-      <div className="actions" role="group" aria-label={`${scope} model selection`}>
-        <ActionButton icon="selectAll" className="secondary settings-models-select-all" disabled={busy || !settings.models.length || profile?.enabledModels === null} onClick={selectAll}>Select all</ActionButton>
-        <ActionButton icon="unselectAll" className="secondary settings-models-unselect-all" disabled={busy || !offered.length} onClick={() => void save({ ...profile!, enabledModels: [], defaultModel: null, defaultReasoning: null })}>Unselect all</ActionButton>
-      </div>
-      <div className="settings-models" role="group" aria-label={`${scope} allowed models`}>
-        {settings.models.filter(model => `${model.id} ${model.label}`.toLowerCase().includes(filter.toLowerCase())).map(model => {
-          const checked = profile?.enabledModels === null || profile?.enabledModels.includes(model.id)
-          return <label key={model.id} className="settings-model"><input type="checkbox" checked={checked} disabled={busy} onChange={event => toggle(model.id, event.target.checked)} />
-            <span className="settings-model-id">{model.label}</span>{model.id === profile?.defaultModel && <span className="settings-model-note">new chats start here</span>}
-          </label>
-        })}
-      </div>
-      <p className="meta">{offered.length} of {settings.models.length} models allowed. {profile?.enabledModels === null ? 'New models are allowed automatically.' : 'New models stay off until you enable them.'}</p>
-      <div className="actions"><ActionButton icon="refresh" className="secondary" disabled={busy} onClick={() => void refresh()}>Refresh models</ActionButton></div>
+      {settings.connection.ready && <>
+        {settings.error && <p className="import-note error">{settings.error}</p>}
+        {settings.source !== 'api' && settings.models.length > 0 && <p className="meta">{settings.source === 'cache' ? 'Showing this account’s last model catalog.' : 'Showing a default list of API models.'}</p>}
+        <div className="settings-defaults">
+          <label><span>Default {scope === 'authoring' ? 'course creation' : scope} model</span><select className={`settings-default-${scope}-model`} value={profile?.defaultModel ?? ''}
+            disabled={busy || !offered.length} onChange={event => {
+              const model = event.target.value, reasoning = profile?.defaultReasoning
+              void save({ ...profile!, defaultModel: model, defaultReasoning: reasoning && modelReasoning(model, settings.models).includes(reasoning) ? reasoning : null })
+            }}>
+            {!offered.some(model => model.id === profile?.defaultModel) && <option value={profile?.defaultModel ?? ''} disabled>{profile?.defaultModel ? `${profile.defaultModel} (unavailable)` : !offered.length && settings.models.length ? 'Select an allowed model' : 'Connect to choose a model'}</option>}
+            {offered.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
+          </select></label>
+          <label><span>Default reasoning</span><select className={`settings-default-${scope}-reasoning`} value={profile?.defaultReasoning ?? ''} disabled={busy || !levels.length}
+            onChange={event => void save({ ...profile!, defaultReasoning: (event.target.value || null) as ReasoningEffort | null })}>
+            <option value="">Model default</option>{levels.map(level => <option key={level} value={level}>{REASONING_LABELS[level]}</option>)}
+          </select></label>
+        </div>
+        {settings.models.length > 8 && <input className="settings-key settings-filter" value={filter} placeholder="Filter models" onChange={event => setFilter(event.target.value)} />}
+        <div className="actions" role="group" aria-label={`${scope} model selection`}>
+          <ActionButton icon="selectAll" className="secondary settings-models-select-all" disabled={busy || !settings.models.length || profile?.enabledModels === null} onClick={selectAll}>Select all</ActionButton>
+          <ActionButton icon="unselectAll" className="secondary settings-models-unselect-all" disabled={busy || !offered.length} onClick={() => void save({ ...profile!, enabledModels: [], defaultModel: null, defaultReasoning: null })}>Unselect all</ActionButton>
+        </div>
+        <div className="settings-models" role="group" aria-label={`${scope} allowed models`}>
+          {settings.models.filter(model => `${model.id} ${model.label}`.toLowerCase().includes(filter.toLowerCase())).map(model => {
+            const checked = profile?.enabledModels === null || profile?.enabledModels.includes(model.id)
+            return <label key={model.id} className="settings-model"><input type="checkbox" checked={checked} disabled={busy} onChange={event => toggle(model.id, event.target.checked)} />
+              <span className="settings-model-id">{model.label}</span>{model.id === profile?.defaultModel && <span className="settings-model-note">new chats start here</span>}
+            </label>
+          })}
+        </div>
+        <p className="meta">{offered.length} of {settings.models.length} models allowed. {profile?.enabledModels === null ? 'New models are allowed automatically.' : 'New models stay off until you enable them.'}</p>
+        <div className="actions"><ActionButton icon="refresh" className="secondary" disabled={busy} onClick={() => void refresh()}>Refresh models</ActionButton></div>
+      </>}
     </>}
     </div>
     {error && <p className="import-note error">{error}</p>}{saved && <p className="import-note" role="status">Defaults saved.</p>}

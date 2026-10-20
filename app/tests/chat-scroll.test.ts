@@ -90,6 +90,18 @@ afterEach(async () => {
 })
 
 describe('chat connection status', () => {
+  it('hides saved model and reasoning choices when the connection is removed', async () => {
+    panel.tabs[0] = { ...panel.tabs[0], model: 'gpt-5.1', reasoning: 'low' }
+    panel.models = [{ id: 'gpt-5.1', label: 'GPT-5.1' }]
+    await render()
+    expect(container.querySelector('.sidechat-model')).not.toBeNull()
+    expect(container.querySelector('.sidechat-reasoning')).not.toBeNull()
+    panel = { ...panel, ready: false, connection: { provider: 'apiKey', ready: false } }
+    await render()
+    expect(container.querySelector('.sidechat-model')).toBeNull()
+    expect(container.querySelector('.sidechat-reasoning')).toBeNull()
+  })
+
   it.each(['lesson', 'project', 'authoring'] as const)('shows a loader while %s connection details are pending, then removes it when ready', async kind => {
     variant = kind
     panel = { ...panel, ready: false, connectionLoading: true }

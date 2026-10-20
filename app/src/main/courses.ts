@@ -78,6 +78,7 @@ function load(): NonNullable<typeof cache> {
 
   for (const dir of listCourseDirs(userCoursesDir(userId))) {
     const courseId = basename(dir)
+    if(db().prepare('SELECT 1 FROM learning_bindings WHERE local_id=? AND downloaded=-1').get(courseId))continue
     let displayTitle = 'Unavailable course'
     try {
       const document = readDocument(courseId)
@@ -119,7 +120,7 @@ export function listCourses(): CourseSummary[] {
     return {
       ...summarize(course),
       version: course.version ?? DEFAULT_COURSE_VERSION,
-      ...(origin ? { origin: { server: origin.server, serverName: origin.serverName, role: origin.role, publisher: origin.publisher } } : {}),
+      ...(origin ? { origin: { serverId:origin.serverId, accountId:origin.accountId, contentId:origin.contentId, server: origin.server, serverName: origin.serverName, role: origin.role, publisher: origin.publisher } } : {}),
       ...(document.recoveryNotes?.length ? { recoveryNotice: 'Some older progress or messages could not be linked to course elements. Their original data is retained; details are in the .course-migration recovery folder.' } : {}),
       ...summarizeLibraryProgress(course, readProgress(course.courseId))
     }

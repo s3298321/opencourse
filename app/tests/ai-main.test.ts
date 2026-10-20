@@ -617,3 +617,15 @@ describe('independent main-process AI routing', () => {
     expect(chat.getChat(c.id)!.messages).toEqual([])
   })
 })
+
+it.each(['apiKey', 'chatgpt'] as const)('offers no %s models before connecting or after disconnecting a cached account', async provider => {
+  mock.key = ''; mock.ready = false
+  expect(await ai.getAIModelSettings('chat', provider)).toMatchObject({ models: [], connection: { ready: false } })
+  expect(mock.fetch).not.toHaveBeenCalled()
+  mock.key = 'sk-test-api'; mock.ready = true
+  expect((await ai.getAIModelSettings('chat', provider)).models.length).toBeGreaterThan(0)
+  mock.key = ''; mock.ready = false
+  expect(await ai.getAIModelSettings('chat', provider)).toMatchObject({ models: [], connection: { ready: false } })
+  expect(await ai.getTitleGenerationSettings(provider)).toMatchObject({ models: [], connection: { ready: false } })
+  expect(await ai.aiPickerModels('chat', provider)).toMatchObject({ models: [], connection: { ready: false } })
+})

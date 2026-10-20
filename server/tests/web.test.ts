@@ -31,7 +31,9 @@ describe('the web app\'s shell', () => {
     expect(csp).toContain("script-src 'self'")
     expect(csp).toContain("frame-ancestors 'none'")
     expect(csp).not.toContain('unsafe-inline')
-    expect(csp).not.toContain('unsafe-eval')
+    // PDF image codecs need WASM; JavaScript eval remains forbidden.
+    expect(csp).not.toContain("'unsafe-eval'")
+    expect(csp).toContain("'wasm-unsafe-eval'")
     expect(home.headers['x-content-type-options']).toBe('nosniff')
     // Every <script> in the page is either an external file or a JSON data block.
     for (const tag of home.body.match(/<script\b[^>]*>/g) ?? []) expect(tag).toMatch(/\bsrc=|type="application\/json"/)
@@ -80,7 +82,7 @@ describe('the web app\'s shell', () => {
     for (const p of PAGES) {
       const url = p.path.replace(/:id/, randomUUID())
       const response = await page(url)
-      if (p.key === 'course' || p.key === 'myCourse') continue
+      if (p.key === 'course' || p.key === 'myCourse' || p.key === 'myDocument' || p.key === 'document') continue
       expect(response.statusCode, url).toBe(200)
       expect(response.body).toContain(`<meta name="robots" content="${p.index ? 'index, follow' : 'noindex, nofollow'}">`)
     }
@@ -100,7 +102,7 @@ describe('the web app\'s shell', () => {
     expect(signedIn.body).not.toContain(token)
     expect(signedIn.headers['cache-control']).toBe('no-store')
     expect(bootOf((await page('/settings')).body).account).toBeNull()
-    expect(boot.server).toMatchObject({ name: 'Test server', publicUrl: 'http://127.0.0.1:8787', appUrl: 'https://opencourse.dev/download' })
+    expect(boot.server).toMatchObject({ name: 'Test server', publicUrl: 'http://127.0.0.1:8787', appUrl: 'https://opencourse.dev/download', siteUrl: 'https://opencourse.dev' })
   })
 
   it('links the operator\'s policies only when it has them', async () => {
@@ -135,6 +137,25 @@ describe('the built files', () => {
     writeFileSync(join(dir, 'favicon-32.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('uses the new asset URLs after rebuilding while the development server is running', async () => {
+    const index = join(dir, 'index.html')
+    const source = readFileSync(index, 'utf8')
+    writeFileSync(index, source.replace('/src/main.tsx', '/assets/index-abc123.js'))
+    await server.close()
+    server = await testServer({ webDir: dir, dev: true })
+    expect((await page('/')).body).toContain('/assets/index-abc123.js')
+
+    writeFileSync(join(dir, 'assets', 'index-new456.js'), 'console.log(2)')
+    writeFileSync(index, source.replace('/src/main.tsx', '/assets/index-new456.js'))
+    rmSync(join(dir, 'assets', 'index-abc123.js'))
+
+    const rebuilt = await page('/')
+    expect(rebuilt.statusCode).toBe(200)
+    expect(rebuilt.body).toContain('/assets/index-new456.js')
+    expect(rebuilt.body).not.toContain('/assets/index-abc123.js')
+    expect((await page('/assets/index-new456.js')).statusCode).toBe(200)
+  })
 
   it('serves hashed assets forever, pictures for a day, and never the raw shell', async () => {
     await server.close()

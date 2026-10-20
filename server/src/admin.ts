@@ -14,6 +14,7 @@
  * they are until unlisted. Unlisting here is moderation: the owner cannot list
  * the course again, and publishing a new version does not either.
  */
+import { readAIKey } from './learning/credentials'
 import { join } from 'node:path'
 import { loadConfig } from './config'
 import { openDb } from './db'
@@ -31,6 +32,12 @@ const accountId = (username: string | undefined): string => {
 
 try {
   switch (command) {
+    case 'rotate-ai-keys': {
+      const accounts=d.prepare('SELECT account_id FROM learning_ai WHERE secret IS NOT NULL').all() as {account_id:string}[]
+      for(const row of accounts)readAIKey({db:d,config},row.account_id)
+      console.log(`Rotated ${accounts.length} encrypted AI credentials to the active deployment key`)
+      break
+    }
     case 'grant-admin':
     case 'revoke-admin':
       setRole(d, null, accountId(target), command === 'grant-admin' ? 'admin' : 'member')
@@ -47,7 +54,7 @@ try {
       console.log(`${command === 'unlist' ? 'Unlisted' : 'Listed'} ${target}`)
       break
     default:
-      fail('Usage: npm run admin -- grant-admin|revoke-admin|disable-account|enable-account <username> | unlist <courseId> [reason] | relist <courseId>')
+      fail('Usage: npm run admin -- grant-admin|revoke-admin|disable-account|enable-account <username> | unlist <courseId> [reason] | relist <courseId> | rotate-ai-keys')
   }
 } catch (error) {
   fail(error instanceof ApiError ? error.message : String(error))

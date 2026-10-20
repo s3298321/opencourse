@@ -65,6 +65,8 @@ export interface ChatPanel {
   activity: string | null
   /** True from a tool call until the model speaks again: the call is still running. */
   toolRunning: boolean
+  /** Remote chats follow their server account's AI settings. */
+  settingsManagedBy?: string
   sendBlocked?: boolean
   setActive: (id: string) => void
   open: (id: string) => void
@@ -72,6 +74,7 @@ export interface ChatPanel {
   startNew: () => Promise<void>
   /** Re-open the most recent chat about this course, or start the first one. */
   resume: () => Promise<void>
+  refreshHistory?: () => Promise<void>
   remove: (id: string) => Promise<void>
   send: (text: string, quote?: ChatQuote, review?: boolean) => Promise<boolean>
   /** Explicit continuation of an overloaded turn, using freshly loaded history. */

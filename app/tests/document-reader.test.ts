@@ -8,7 +8,7 @@ import { ScreenHost } from '../src/renderer/screen-activity'
 
 const pdfState = vi.hoisted(() => ({ pdf: null as { numPages: number } | null, sizes: {} as Record<number, { width: number; height: number }> }))
 vi.mock('../src/renderer/documents/usePdf', () => ({ usePdf: () => ({ pdf: pdfState.pdf, error: null, unlock: null }) }))
-vi.mock('../src/renderer/documents/PdfPage', () => ({ default: ({ number, top, scale, measured }: { number: number; top: number; scale: number; measured: (page: number, width: number, height: number) => void }) => {
+vi.mock('../src/learning-ui/PdfPage', () => ({ default: ({ number, top, scale, measured }: { number: number; top: number; scale: number; measured: (page: number, width: number, height: number) => void }) => {
   useEffect(() => {
     const size = pdfState.sizes[number]
     if (size) measured(number, size.width, size.height)
@@ -43,6 +43,7 @@ beforeEach(() => {
     return { ...documents.get(id)! }
   })
   vi.stubGlobal('opencourse', {
+    learningBinding: async () => null,
     getDocument, setDocumentPage: savePage, setDocumentProgress: saveProgress,
     onDocumentsChanged: (handler: (id: string) => void) => { changed = handler; return () => {} }
   })
@@ -454,6 +455,57 @@ describe('document reading position', () => {
     expect(currentPage()).toBe(6)
     const target = container.querySelector<HTMLDivElement>('[data-pdf-page="6"]')!
     expect(scroller().scrollTop).toBe(Number.parseFloat(target.style.top) - 24)
+  })
+  async function editPage(value: string, key?: string, selector = '#document-page') {
+    const input = container.querySelector<HTMLInputElement>(selector)!
+    await act(async () => input.focus())
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      if (key) input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+      else input.blur()
+    })
+  }
+  it('takes a typed page on Enter or blur, with no spin buttons', async () => {
+    await render()
+    const input = container.querySelector<HTMLInputElement>('#document-page')!
+    expect(input.type).toBe('text')
+    await editPage('8', 'Enter')
+    expect(currentPage()).toBe(8)
+    expect(savePage).toHaveBeenLastCalledWith('first', 8)
+    await editPage(' 4 ')
+    expect(input.value).toBe('4')
+    expect(savePage).toHaveBeenLastCalledWith('first', 4)
+    await editPage('9', 'Escape')
+    expect(input.value).toBe('4')
+    expect(currentPage()).toBe(4)
+  })
+  it.each(['', ' ', 'abc', '5x', '0', '-2', '11', '2.5', '1e1', '0x5'])('puts the current page back for invalid input %j', async value => {
+    await render()
+    await editPage(value, 'Enter')
+    expect(container.querySelector<HTMLInputElement>('#document-page')!.value).toBe('3')
+    expect(savePage).not.toHaveBeenCalled()
+  })
+  it('takes a typed page in the outline box and puts back its previous value otherwise', async () => {
+    await render()
+    const outline = '[aria-label="Outline page number"]'
+    const input = container.querySelector<HTMLInputElement>(outline)!
+    expect(input.type).toBe('text')
+    await editPage('6', 'Enter', outline)
+    expect(currentPage()).toBe(6)
+    expect(savePage).toHaveBeenLastCalledWith('first', 6)
+    for (const value of ['', 'abc', '0', '11', '2.5']) {
+      await editPage(value, 'Enter', outline)
+      expect(input.value).toBe('6')
+    }
+    await editPage('9', 'Escape', outline)
+    expect(input.value).toBe('6')
+    await editPage(' 2 ', undefined, outline)
+    expect(input.value).toBe('2')
+    expect(currentPage()).toBe(2)
+    expect(savePage).toHaveBeenCalledTimes(2)
   })
   it('waits for both metadata and the PDF without overwriting the saved page', async () => {
     let resolve!: (document: DocumentView) => void

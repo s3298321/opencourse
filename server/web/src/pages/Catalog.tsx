@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Form, Link, useLoaderData, useNavigation, useSearchParams, type LoaderFunctionArgs } from 'react-router'
-import { ArrowRight, Download, Search, X } from 'lucide-react'
+import { Download, Search, X } from 'lucide-react'
 import type { CatalogPage, CatalogTag } from '@core/catalog/api'
 import { api } from '../lib/api'
 import { server, takeBootData } from '../lib/boot'
@@ -54,7 +54,6 @@ export function CatalogPageView() {
         <Sparkles count={8} className="hero-sparkles" />
         <div className="oc-wrap catalog-hero-inner oc-stagger">
           <h1 className="hero-title oc-silver-text">{server.name}</h1>
-          {server.description && <p className="hero-lede">{server.description}</p>}
           <Form method="get" action="/" role="search" className="hero-search" preventScrollReset>
             <div className="hero-search-field">
               <Search aria-hidden />
@@ -128,8 +127,6 @@ export function CatalogPageView() {
         )}
 
         <Pager page={page.page} pageSize={page.pageSize} total={page.total} href={(n) => withParams(params, (next) => { if (n > 1) next.set('page', String(n)) })} />
-
-        <HowItWorks />
       </div>
     </div>
   )
@@ -141,22 +138,5 @@ export function CatalogFallback() {
       <section className="catalog-hero"><div className="oc-aurora" aria-hidden="true" /><div className="oc-wrap catalog-hero-inner"><div className="oc-skeleton hero-skeleton" /></div></section>
       <div className="oc-wrap catalog-body"><ul className="course-grid">{Array.from({ length: 6 }, (_, i) => <CourseCardSkeleton key={i} />)}</ul></div>
     </div>
-  )
-}
-
-function HowItWorks() {
-  const address = server.publicUrl.replace(/^https?:\/\//, '')
-  return (
-    <section className="how oc-reveal" aria-labelledby="how-title">
-      <div className="how-head">
-        <span className="oc-eyebrow">How it works</span>
-        <h2 id="how-title">Open a course in the app</h2>
-      </div>
-      <ol className="how-steps">
-        <li className="oc-panel oc-edge"><span className="how-n">1</span><h3>Install OpenCourse</h3><p>A free, open-source Mac app for studying courses with lessons, quizzes, flashcards and coding exercises.</p><a href={server.appUrl} className="how-link">Download<ArrowRight aria-hidden /></a></li>
-        <li className="oc-panel oc-edge"><span className="how-n">2</span><h3>Connect to this server</h3><p>In <strong>Settings ▸ Servers</strong>, add <code>{address}</code> and sign in.{server.registration === 'open' ? ' You can also create an account in the app.' : ' This server is not accepting new accounts.'}</p></li>
-        <li className="oc-panel oc-edge"><span className="how-n">3</span><h3>Add a course</h3><p>Choose a course in the <strong>Course catalog</strong> tab and select <strong>Add</strong>. The course and your progress are stored on your Mac.</p></li>
-      </ol>
-    </section>
   )
 }

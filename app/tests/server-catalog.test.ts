@@ -11,8 +11,8 @@ let library: CourseSummary[]
 const navigate = vi.fn()
 const course: CatalogCourse = { id: 'course', slug: 'course', title: 'Server course', tags: [], publisher: 'teacher', version: '1.0.0', downloads: 2, lessonCount: 3, projectCount: 0, hasCover: false, updatedAt: '2026-10-10' }
 const servers: ServerConnection[] = [
-  { id: 'one', name: 'Active school', url: 'https://one.test', description: '', active: true, account: null },
-  { id: 'two', name: 'Selected school', url: 'https://two.test', description: '', active: false, account: { username: 'learner', email: 'learner@example.org' } }
+  { id: 'one', name: 'Active school', url: 'https://one.test', description: '', active: true, status: 'unknown', account: null },
+  { id: 'two', name: 'Selected school', url: 'https://two.test', description: '', active: false, status: 'unknown', account: { username: 'learner', email: 'learner@example.org' } }
 ]
 beforeEach(() => {
   library = []

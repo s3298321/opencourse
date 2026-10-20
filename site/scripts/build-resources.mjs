@@ -1,5 +1,5 @@
 // Everything the site needs that is not its own source, gathered before Astro
-// runs (npm's prebuild/predev):
+// runs (npm's prebuild, and scripts/dev.mjs):
 //
 //  - the brand pictures, from design/assets/brand (one export of the app's mark);
 //  - the format downloads the docs offer: both JSON Schemas, and the example
@@ -114,7 +114,8 @@ async function featured() {
     return courses.map(({ id, title, description, subject, difficulty, lessonCount, publisher, downloads, tags, cover }) =>
       ({ id, title, description: description ?? '', subject: subject ?? '', difficulty: difficulty ?? '', lessonCount, publisher, downloads, tags, cover }))
   } catch (error) {
-    console.warn(`  Catalog at ${catalogUrl}: ${error.message}`)
+    const local = /^http:\/\/(localhost|127\.)/.test(catalogUrl)
+    console.warn(`  Catalog at ${catalogUrl}: ${error.message}${local ? ' - start the local one with npm run dev in server/.' : ''}`)
     return []
   }
 }

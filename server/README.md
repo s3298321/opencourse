@@ -1,16 +1,16 @@
 # OpenCourse server
 
-A course repository for the OpenCourse app. It hosts and versions courses,
-gives each person an account, and serves the catalog's web app: browsing,
-sign-up, "My courses" for publishers, account settings and an admin console.
-The app connects to it from **Settings → Servers**, and from then on:
+A learning server for the OpenCourse desktop and web apps. It publishes and
+versions courses and PDF documents, hosts accounts, and synchronizes enrolled
+learning progress and reading conversations. Its browser player supports
+reading, quizzes, flashcards and server-side AI. Exercises, projects, Python,
+notebooks, content authoring and Coach remain in the desktop app.
 
-- the Library's **Course catalog** tab shows the server's courses, searchable
-  by keyword and tag;
-- adding a course installs its current version, keeping the server's IDs;
-- updating keeps progress on everything that still exists;
-- publishing sends a course you made, and **Manage publication** rolls back,
-  deletes versions or unpublishes.
+The desktop keeps its local database and offline downloads. Only content from
+this server synchronizes with it. Publishing is an explicit content upload;
+local reading history, Coach files and authoring conversations are excluded.
+My learning is separate from publication management. Users explicitly accept
+versions, and ordinary unpublishing preserves enrolled access.
 
 The API it speaks is in [`../docs/server-api.md`](../docs/server-api.md). To run
 one for real, read [`../docs/self-hosting.md`](../docs/self-hosting.md): Docker,
@@ -24,14 +24,37 @@ Node 22 (`../app/.nvmrc`), like the app.
 npm install
 npm run dev          # the API on :8787 (OPENCOURSE_SERVER_DEV=1, data in ./data)
                      # and the web app on http://localhost:5173, which hands /api to it
-npm run seed         # in another terminal: accounts and courses to look at
 npm run admin -- grant-admin ada
+npm run dev:reset    # empty ./data; the next npm run dev seeds it again
 ```
 
+`npm run dev` is the local twin of the public catalog, not a copy of it: it
+calls itself *OpenCourse (local dev)*, its public address is the web app on
+:5173, and "Get the app" and the wordmark lead to the local website on :4321
+(`site/`'s `npm run dev`). Each is a default in `scripts/dev.mjs` that an
+environment variable already set overrides.
+
+Dev mode automatically creates `data/ai-encryption.key` with owner-only
+permissions and reuses it on every restart, so OpenAI keys configured in
+Settings remain usable. It lives beside the database (also when
+`OPENCOURSE_SERVER_DATA` is overridden). An explicit `OPENCOURSE_AI_ENCRYPTION_KEYS`
+takes precedence. Keep the key with database backups; `npm run dev:reset`
+removes both. Production still requires explicit encryption configuration.
+
 A development server has no email. Sign-up codes are printed to the terminal
-and served at <http://localhost:8787/dev/outbox>. In the app, connect to
-`http://localhost:8787`; plain HTTP is accepted only for this computer. The
-seeded accounts' password is `correct horse battery`.
+and served at <http://localhost:8787/dev/outbox>. A `npm run dev` app is
+already connected and signed in. Any other build connects to
+`http://localhost:8787`; plain HTTP is accepted only for this computer.
+
+Once the API answers, `npm run dev` seeds it from `../docs` through the real
+API (`scripts/seed.ts`): accounts, `docs/example-course` and
+`docs/example-document`, a PDF whose source is `document.html` beside it - and,
+with `OPENCOURSE_SEED_SAMPLES=1` (which `npm run dev` sets), the app's fixture
+courses, published by `grace`. The accounts are `app/src/core/dev-seed.ts`,
+which the dev app signs in with too. It
+publishes nothing twice, so restarting is cheap; `npm run seed` runs it again by
+hand, and `OPENCOURSE_DEV_SEED=0 npm run dev` starts empty. The seeded accounts'
+password is `correct horse battery`.
 
 ```bash
 npm test             # vitest, against an in-process server
@@ -47,7 +70,7 @@ table, read by both the router and the server, which answers every page with
 one HTML shell carrying the title, link previews and the first screen's data.
 
 The app's own test of the whole journey uses this server:
-`OPENCOURSE_TEST_SERVER=1 npx vitest run tests/server-live.test.ts` in `../app`.
+`OPENCOURSE_TEST_SERVER=1 npx vitest run tests/server-live.test.ts tests/learning-sync.test.ts` in `../app`.
 The smoke run that drives the real window against the built server is
 `OPENCOURSE_SMOKE_SERVER=1 npm run smoke`, also in `../app`.
 
@@ -131,8 +154,31 @@ npm run admin -- relist <courseId>
 - **The overview never carries answers.** It is built at publish
   (`src/catalog/overview.ts`) from titles and counts only. It never includes
   quiz answers, solutions, tests, hints or flashcard answers.
-- **The web app runs only its own script.** The CSP allows script and style
-  from this origin and nothing inline; the boot data is JSON escaped so a
+- **Author visualizations are isolated.** Course HTML runs in opaque-origin
+  sandboxed frames with no parent access; only version-scoped assets are
+  allowed. No shell or filesystem tools run on the web.
+- **The application shell runs only its own script.** The CSP allows script and style
+  from this origin and nothing inline; WASM compilation is allowed for PDF image codecs, while JavaScript eval remains forbidden; the boot data is JSON escaped so a
   course title cannot end its script element; descriptions go through
   markdown-it with raw HTML off and then DOMPurify. Covers are served with a
   sandboxing CSP, because an SVG is an author's file.
+
+## Learning implementation
+
+`src/learning/` contains document publishing/indexing, enrollments, the
+account-scoped change feed, encrypted credentials, retrieval and durable AI
+generations. Shared wire types live in `app/src/core/learning/types.ts`;
+review scheduling and course retrieval reuse the desktop core. Shared chat
+and connection UI use explicit HTTP/IPC adapters in `app/src/learning-ui/`.
+
+Desktop sync lives in `app/src/main/learning.ts` and `learning-store.ts`.
+SQLite transactions cover document changes and outbox entries. Course JSON
+writes use a recoverable journal. Remote identities include immutable server
+and account IDs, content kind, published ID and version; PDF bytes are not a
+library identity. See the [API](../docs/server-api.md) for conflict rules and
+[self-hosting](../docs/self-hosting.md) for keys, limits, backup and release checks.
+
+Automated AI tests inject a fake provider. A separate, opt-in real-provider
+smoke check is `npm run smoke:ai` with `OPENCOURSE_AI_SMOKE_KEY` in the
+environment. It creates a temporary account/course and makes a billable
+request; never use a production user database for this check.

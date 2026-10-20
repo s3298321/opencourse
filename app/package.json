@@ -1,6 +1,6 @@
 {
   "name": "opencourse",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "description": "OpenCourse — courses on any subject, on the desktop, with runnable exercises",
   "main": "./out/main/index.js",
   "author": "OpenCourse",
@@ -10,11 +10,12 @@
   },
   "scripts": {
     "postinstall": "node scripts/fix-node-pty.mjs",
-    "dev": "npm run prepare:python && ELECTRON_OVERRIDE_DIST_PATH=\"$(node scripts/electron-dist.mjs)\" electron-vite dev --watch",
+    "dev": "npm run prepare:python && OPENCOURSE_DEV=1 ELECTRON_OVERRIDE_DIST_PATH=\"$(node scripts/electron-dist.mjs)\" electron-vite dev --watch",
     "build:resources": "node scripts/build-spec-resources.mjs",
     "zip:course": "node scripts/zip-course.mjs",
     "zip:theme": "node scripts/zip-theme.mjs",
     "build": "npm run prepare:python && npm run build:resources && electron-vite build",
+    "dev:reset": "node scripts/dev-reset.mjs",
     "preview": "npm run prepare:python && ELECTRON_OVERRIDE_DIST_PATH=\"$(node scripts/electron-dist.mjs)\" electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

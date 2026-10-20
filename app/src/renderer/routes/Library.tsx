@@ -22,7 +22,8 @@ function updateLabel(state: UpdateState | undefined): { text: string; tone: 'upd
     case 'update': return { text: `Update to v${state.version}`, tone: 'update' }
     case 'switch': return { text: `Author rolled back to v${state.version}`, tone: 'update' }
     case 'unlisted': return { text: 'No longer published', tone: 'muted' }
-    case 'disconnected': return state.reason === 'not-connected' ? { text: 'Server not connected', tone: 'muted' } : null
+    // The course works as it is; only whether it has an update is unknown.
+    case 'disconnected': return { text: state.reason === 'not-connected' ? 'Server not connected' : 'Server unreachable', tone: 'muted' }
     default: return null
   }
 }

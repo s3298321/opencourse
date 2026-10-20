@@ -9,6 +9,10 @@ export interface DocumentSection {
   top?: number
 }
 export interface DocumentSummary {
+  /** A copy from a server: the connection it was added with, and the server's own id and version. */
+  origin?: { connectionId: string; name: string; version: string; remoteId: string }
+  /** Connections this local document has been published to. */
+  publishedTo?: string[]
   id: string
   title: string
   bytes: number

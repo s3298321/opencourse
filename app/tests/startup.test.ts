@@ -5,7 +5,7 @@ const fake = vi.hoisted(() => ({
   setName: vi.fn(), setPath: vi.fn(), getPath: vi.fn(), about: vi.fn(),
   quit: vi.fn(), error: vi.fn(), window: vi.fn(),
   makeProfile: vi.fn(), readFile: vi.fn(), listFiles: vi.fn(), stat: vi.fn(),
-  spawn: vi.fn()
+  spawn: vi.fn(), seed: vi.fn(), packaged: false
 }))
 
 vi.mock('node:fs', () => ({
@@ -21,6 +21,7 @@ vi.mock('../src/main/db', () => ({ closeDb: vi.fn() }))
 vi.mock('../src/main/ipc', () => ({ registerIpc: vi.fn() }))
 vi.mock('../src/main/menu', () => ({ buildMenu: vi.fn() }))
 vi.mock('../src/main/mic', () => ({ wantsMic: () => false }))
+vi.mock('../src/main/dev-seed', () => ({ seedDevProfile: fake.seed }))
 vi.mock('../src/main/protocol', () => ({ registerProtocolHandler: vi.fn(), registerSchemePrivileges: vi.fn() }))
 // Spawns the install helper and reaches the network; startup only wires it in.
 vi.mock('../src/main/updates', () => ({ quitVetoed: vi.fn(), runPendingInstall: vi.fn(), startUpdates: vi.fn() }))
@@ -30,7 +31,7 @@ vi.mock('electron', () => ({
     setName: fake.setName, setPath: fake.setPath, getPath: fake.getPath,
     setAboutPanelOptions: fake.about, quit: fake.quit, on: vi.fn(),
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(),
-    getAppPath: () => '/test/app', getVersion: () => '0.1.0', isPackaged: false
+    getAppPath: () => '/test/app', getVersion: () => '0.1.0', get isPackaged() { return fake.packaged }
   },
   BrowserWindow: class {
     constructor(options: unknown) { fake.window(options) }
@@ -51,7 +52,8 @@ vi.mock('electron', () => ({
 beforeEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
-  for (const name of ['OPENCOURSE_SMOKE', 'OPENCOURSE_SHOTS', 'OPENCOURSE_LIVE_CHECK', 'ELECTRON_RENDERER_URL']) {
+  fake.packaged = false
+  for (const name of ['OPENCOURSE_SMOKE', 'OPENCOURSE_SHOTS', 'OPENCOURSE_LIVE_CHECK', 'OPENCOURSE_DEV', 'ELECTRON_RENDERER_URL']) {
     vi.stubEnv(name, '')
   }
   fake.getPath.mockImplementation((name: string) => {
@@ -96,5 +98,36 @@ describe('OpenCourse startup', () => {
     for (const operation of [fake.readFile, fake.listFiles, fake.stat, fake.spawn]) {
       expect(operation).not.toHaveBeenCalled()
     }
+  })
+
+  it('npm run dev uses a profile, name and keychain item of its own', async () => {
+    vi.stubEnv('OPENCOURSE_DEV', '1')
+    await boot()
+    expect(fake.setName).toHaveBeenCalledWith('OpenCourse Dev')
+    expect(fake.setPath.mock.calls).toEqual([['userData', join('/test/Application Support', 'opencourse-dev')]])
+    expect(fake.window).toHaveBeenCalledWith(expect.objectContaining({ title: 'OpenCourse Dev' }))
+    expect(fake.seed).toHaveBeenCalledOnce()
+  })
+
+  it('a packaged build ignores OPENCOURSE_DEV', async () => {
+    vi.stubEnv('OPENCOURSE_DEV', '1')
+    fake.packaged = true
+    const resources = Object.getOwnPropertyDescriptor(process, 'resourcesPath')
+    Object.defineProperty(process, 'resourcesPath', { value: '/test/resources', configurable: true })
+    try { await boot() } finally {
+      if (resources) Object.defineProperty(process, 'resourcesPath', resources)
+      else delete (process as { resourcesPath?: string }).resourcesPath
+    }
+    expect(fake.setName).toHaveBeenCalledWith('OpenCourse')
+    expect(fake.setPath.mock.calls).toEqual([['userData', join('/test/Application Support', 'opencourse')]])
+    expect(fake.seed).not.toHaveBeenCalled()
+  })
+
+  it('a test run keeps its throwaway profile under OPENCOURSE_DEV', async () => {
+    vi.stubEnv('OPENCOURSE_DEV', '1')
+    vi.stubEnv('OPENCOURSE_SMOKE', '1')
+    await boot()
+    expect(fake.setName).toHaveBeenCalledWith('OpenCourse')
+    expect(fake.setPath).toHaveBeenLastCalledWith('userData', '/test/isolated-profile')
   })
 })

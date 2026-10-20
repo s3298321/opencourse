@@ -1,3 +1,5 @@
+import { visitNodes as mapNodes } from '../core/course-document'
+import { anyBinding, bindingFor, localId, scopedId } from './learning-store'
 /**
  * Courses that come from a server: adding one, checking for and applying
  * updates.
@@ -6,9 +8,8 @@
  * the same unzip policy, the same schema, the same asset checks - and then
  * more: every element must carry the server's uid, the course must be the one
  * that was asked for, and it must be a version. What it gets in return is
- * identity. The library course *is* the server course (same course ID, same
- * element IDs), which is what lets an update keep progress on everything that
- * survived, and what makes adding the same course twice impossible.
+ * identity. New servers use server/account-scoped local identities and shared enrollment.
+ * Legacy servers retain their original download path for compatibility.
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -82,6 +83,7 @@ export function originFor(access: ServerAccess, manifest: CourseManifest, publis
 export async function addFromServer(serverId: string, rawCourseId: string): Promise<{ courseId: string; title: string; version: string }> {
   const courseId = requireCourseUid(rawCourseId)
   const access = serverAccess(serverId)
+  if (access.capabilities?.includes('learning-sync-v1')) return (await import('./learning')).enrollFromDesktop(serverId,'course',courseId)
   signedIn(access)
   if (existsSync(join(courseDirectory(courseId), 'document.json'))) throw new ServerError(409, 'exists', 'This course is already in your library.')
   const overview = await callServer(access.url, `/courses/${courseId}`, parseOverview, { token: access.token, route: '/courses/:id' })
@@ -115,10 +117,10 @@ export async function courseUpdates(): Promise<Record<string, UpdateState>> {
     if (!access) { for (const c of courses) out[c.courseId] = { kind: 'disconnected', reason: 'not-connected' }; return }
     let statuses: CourseStatus[] | null = null
     try {
-      statuses = await callServer(access.url, '/courses/status', parseStatuses, { method: 'POST', json: { ids: courses.map((c) => c.courseId) }, token: access.token || null, route: '/courses/status' })
+      statuses = await callServer(access.url, '/courses/status', parseStatuses, { method: 'POST', json: { ids: courses.map((c) => anyBinding(c.courseId)?.remote_id ?? c.courseId) }, token: access.token || null, route: '/courses/status' })
     } catch { /* reported per course below */ }
     for (const c of courses) {
-      out[c.courseId] = statuses ? updateState(c.version, statuses.find((s) => s.id === c.courseId)) : { kind: 'disconnected', reason: 'unreachable' }
+      out[c.courseId] = statuses ? updateState(c.version, statuses.find((s) => s.id === (anyBinding(c.courseId)?.remote_id ?? c.courseId))) : { kind: 'disconnected', reason: 'unreachable' }
     }
   }))
   return out
@@ -163,8 +165,12 @@ export async function previewCourseUpdate(courseId: string): Promise<CourseUpdat
   const work = mkdtempSync(join(tmpdir(), 'opencourse-update-'))
   try {
     const zip = join(work, 'course.zip'), staging = join(work, 'course')
-    await downloadArchive(access.url, `/courses/${courseId}/download`, zip, LIMITS.archiveBytes, { method: 'POST', json: { intent: 'update' }, token: signedIn(access), route: '/courses/:id/download' })
-    const manifest = await unpackServerCourse(zip, staging, courseId)
+    const binding=anyBinding(courseId)
+    if(binding&&!bindingFor(courseId))throw new Error('Reconnect the original server account to update this course.')
+    const remote=binding?.remote_id??courseId
+    await downloadArchive(access.url, `/courses/${remote}/download`, zip, LIMITS.archiveBytes, { method: 'POST', json: { intent: 'update' }, token: signedIn(access), route: '/courses/:id/download' })
+    const manifest = await unpackServerCourse(zip, staging, remote)
+    if(binding)mapNodes(manifest,node=>{const remote=String(node.nodeId),mapped=localId(binding,remote);node.nodeId=mapped===remote?scopedId(`${binding.server_id}:${binding.account_id}`,remote):mapped})
     const typeChanges = validateIdentities(manifest, document.manifest)
     if (typeChanges.length) throw invalid(typeChanges[0]!)
     staged.set(courseId, { userId: owner, work, staging, manifest, expires: Date.now() + STAGE_TTL_MS })
@@ -196,6 +202,8 @@ export async function applyCourseUpdate(courseId: string): Promise<{ version: st
   const owner = requireUser()
   const pending = staged.get(courseId)
   if (!pending || pending.userId !== owner || pending.expires < Date.now()) { dropStaged(courseId); throw new ServerError(409, 'stale', 'Check for the update again before installing it.') }
+  const binding=anyBinding(courseId)
+  if(binding){if(!bindingFor(courseId))throw new Error('Reconnect the original account first.');try{await (await import('./learning')).enrollFromDesktop(binding.connection_id,'course',binding.remote_id,pending.manifest.version);return {version:pending.manifest.version!}}finally{dropStaged(courseId)}}
   if (isEditSessionDirty(courseId)) throw new ServerError(409, 'editing', 'This course has unsaved edits open in the editor. Save or discard them first.')
   if (courseBusy(courseId)) throw new ServerError(409, 'busy', 'This course is being saved. Try again in a moment.')
   const release = beginCourseMutation(courseId)

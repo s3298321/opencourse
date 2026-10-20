@@ -10,6 +10,9 @@ import type { CourseStatus } from './api'
 import { compareVersions } from './semver'
 
 export interface CourseOrigin {
+  serverId?: string
+  accountId?: string
+  contentId?: string
   kind: 'server'
   server: string
   /** The server's name when the course was added, for when it is no longer connected. */

@@ -157,7 +157,7 @@ export interface ModelList {
  * curated list is what it falls back to.
  */
 export async function listLiveModels(key: string): Promise<ModelList> {
-  if (!key) return { models: [...LIVE_MODELS], source: 'fallback' }
+  if (!key) return { models: [], source: 'fallback' }
   try {
     const found = filterLiveModels(await listModelIds(key))
     if (!found.length) return { models: [...LIVE_MODELS], source: 'fallback' }
@@ -169,7 +169,7 @@ export async function listLiveModels(key: string): Promise<ModelList> {
 
 /** Use the coach's API key, independently of the text-chat provider settings. */
 export async function listCoachBackendModels(key: string): Promise<ModelList> {
-  if (!key) return { models: [...BACKEND_MODELS], source: 'fallback' }
+  if (!key) return { models: [], source: 'fallback' }
   try {
     const models = filterBackendModels(await listModelIds(key))
     return models.length ? { models, source: 'api' } : { models: [...BACKEND_MODELS], source: 'fallback' }

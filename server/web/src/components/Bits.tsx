@@ -23,13 +23,13 @@ export function PageHeader({ eyebrow, title, description, actions, children }: {
   )
 }
 
-export function EmptyState({ title, children, actions }: { title: string; children?: ReactNode; actions?: ReactNode }) {
+export function EmptyState({ title, children, actions }: { title?: string; children?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="empty-state oc-enter">
       <div className="empty-art" aria-hidden="true">
-        <Sparkles count={9} />
+        <Sparkles count={3} />
       </div>
-      <h2>{title}</h2>
+      {title && <h2>{title}</h2>}
       {children && <div className="empty-text">{children}</div>}
       {actions && <div className="empty-actions">{actions}</div>}
     </div>

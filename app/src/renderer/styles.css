@@ -1,3 +1,4 @@
+@import "../learning-ui/chat-presentation.css";
 /* opencourse: neutral dark surfaces, silver controls, and translucent chrome.
 
    This :root is the default look, and it is what the app shows when no theme
@@ -420,33 +421,6 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
    positioned fixed from the trigger's rectangle rather than laid out inside
    its parent, because the side chat is a narrow column with its own scrolling
    regions and would clip it. */
-.menu-trigger {
-  display: flex; align-items: center; gap: 0.4rem;
-  background: none; color: var(--accent); border: 0;
-  padding: 0.15rem 0.5rem; border-radius: 6px;
-  font-size: 12px; font-weight: 600;
-}
-.menu-trigger:hover { filter: none; background: var(--chip-bg); }
-.menu-trigger.open { background: var(--chip-bg); }
-.menu-trigger:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
-.menu-caret {
-  width: 0; height: 0; flex: none; opacity: 0.6;
-  border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;
-  border-top: 4px solid currentColor;
-  transition: transform 0.15s ease;
-}
-.menu-trigger.open .menu-caret { transform: rotate(180deg); }
-
-.menu-panel {
-  position: fixed; z-index: 60;
-  min-width: 11rem; max-width: 20rem;
-  max-height: 60vh; overflow-y: auto;
-  padding: 0.25rem;
-  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-  box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 0.14);
-}
-.menu-panel:focus { outline: none; }
-
 /* An in-app question (components/ConfirmDialog.tsx). Opaque, like every surface
    that carries text the learner has to read before choosing. */
 .dialog-backdrop {
@@ -464,23 +438,6 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .dialog h2 { margin: 0 0 0.45rem; font-size: 1.05rem; }
 .dialog p { margin: 0 0 1rem; color: var(--muted); line-height: 1.45; }
 .dialog .actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-.menu-item {
-  display: flex; align-items: baseline; gap: 0.5rem; width: 100%;
-  background: none; color: var(--fg); border: 0; border-radius: 5px;
-  padding: 0.3rem 0.55rem; text-align: left;
-  font-size: 0.82rem; font-weight: 500;
-}
-.menu-item:hover { filter: none; }
-.menu-item.active, .menu-item.checked { background: var(--selected); color: var(--fg); box-shadow: inset 0 0 0 1px var(--selected-edge); }
-.menu-item.danger { color: var(--err); }
-.menu-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu-item-hint { color: var(--muted); font-size: 0.74rem; }
-.menu-item-icon { display: inline-flex; align-self: center; flex: none; }
-.menu-heading {
-  padding: 0.3rem 0.55rem 0.2rem;
-  color: var(--muted); font-size: 0.7rem; font-weight: 600;
-  letter-spacing: 0.04em; text-transform: uppercase;
-}
 .tooltip-trigger { display: inline-flex; align-items: center; flex: none; }
 .tooltip {
   position: fixed; z-index: 1000; pointer-events: none;
@@ -586,6 +543,9 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .server-card-url { font-family: var(--font-mono); font-size: 0.78rem; overflow-wrap: anywhere; }
 .server-card-account { font-size: 0.82rem; color: var(--muted); }
 .server-card-account.signed-in { color: var(--ok); }
+.server-card-status { font-size: 0.82rem; color: var(--muted); }
+.server-card-status.online { color: var(--ok); }
+.server-card-status.unreachable { color: var(--err); }
 .settings-section .server-card .actions { margin-top: 0; }
 .server-connect { margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .server-connect-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; }
@@ -737,8 +697,15 @@ button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme
 .document-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden; }
 .document-card-open { display: flex; width: 100%; padding: 24px; gap: 18px; text-align: left; color: var(--fg); background: none; border: 0; white-space: normal; }
 .document-card-open h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.document-card-open .course-card-origin { margin-bottom: 6px; }
+/* An outline row opens the reader at its page, so it is a button that looks like a lesson row. */
+button.document-outline-row { width: 100%; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; white-space: normal; }
+button.document-outline-row:hover { background: var(--chip-bg); }
+.document-outline-row > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.document-overview-form textarea, .document-overview-form select { width: 100%; padding: 0.5rem 0.6rem; font: inherit; color: var(--fg); background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; }
+.document-overview-cover { display: flex; align-items: center; gap: 1rem; margin-top: 0.9rem; }
+.document-overview-cover img { width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
 .document-glyph { font-size: 40px; line-height: 1; color: var(--muted); }
-.document-card-actions { display: flex; justify-content: flex-end; border-top: 1px solid var(--border); padding: 10px 16px; gap: 8px; }
 .document-empty { padding: 64px 24px; text-align: center; }
 .document-empty p { max-width: 440px; margin-inline: auto; }
 .document-sidebar { display: flex; flex-direction: column; min-height: 0; overflow: hidden; width: 228px; flex: 0 0 228px; background: var(--card); border-right: 1px solid var(--border); }
@@ -772,7 +739,7 @@ button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme
 .document-toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex: none; background: var(--card); white-space: nowrap; overflow-x: auto; overflow-y: hidden; }
 .document-toolbar > button { flex-shrink: 0; }
 .document-toolbar form { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
-.document-toolbar input { width: 58px; min-width: 0; flex: none; text-align: center; padding: 4px; }
+.document-toolbar input { width: 44px; min-width: 0; flex: none; text-align: center; padding: 3px 4px; }
 .document-reading-progress { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 220px; margin-inline: 8px; }
 .document-reading-progress progress { appearance: none; flex: 1; min-width: 40px; width: 100%; height: 6px; border: 0; border-radius: 999px; overflow: hidden; background: var(--chip-bg); }
 .document-reading-progress progress::-webkit-progress-bar { background: var(--chip-bg); border-radius: 999px; }
@@ -906,6 +873,14 @@ button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme
   border-radius: 8px; padding: 0.6rem 0.85rem; margin: 0 0 1rem; font-size: 0.9rem;
 }
 .import-note.error { border-color: var(--err-border); background: var(--err-bg); }
+/* A server that is not answering: not an error in what you did, so it is quiet. */
+.server-unreachable {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  border: 1px dashed var(--border); border-radius: 8px; background: var(--card);
+  padding: 0.6rem 0.85rem; margin: 0 0 1rem; font-size: 0.9rem;
+}
+.server-unreachable p { margin: 0; }
+.server-unreachable .action-button { flex: none; }
 .empty-library {
   border: 1px dashed var(--border); border-radius: 10px; padding: 2rem 1.75rem;
   text-align: center; background: var(--card);
@@ -1025,6 +1000,7 @@ button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme
 .course-server-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap-reverse; gap: 0.6rem 0.8rem; margin-bottom: 1rem; }
 .course-origin-line { justify-content: flex-start; margin: 0 auto 0 0; }
 .course-server-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; margin: 0; }
+.server-learning-details { margin-top: 1rem; }
 .course-server-actions:empty { display: none; }
 .course-server-panel { margin: 0.8rem 0 1rem; }
 .course-server-panel h2 { margin-top: 0; }
@@ -1593,7 +1569,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
   font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
   color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
 }
-.coach-toggle { cursor: pointer; }
+.coach-toggle { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
 
 /* The live panel. */
 .coach-live { margin-top: 1.25rem; }
@@ -1878,89 +1854,6 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .chat-turn.user .chat-message-meta { justify-content: flex-end; }
 .chat-generation { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 0.35rem; min-width: 0; overflow-wrap: anywhere; }
 
-/* Where an answer leans on a web page: a small numbered pill, the same number
-   as the page's row in the list underneath. A link, so it opens the page. */
-.chat-turn .prose sup.cite { line-height: 0; vertical-align: 0.35em; margin-left: 0.12em; }
-.chat-turn .prose sup.cite + sup.cite { margin-left: 0.18em; }
-.chat-turn .prose sup.cite a {
-  display: inline-block;
-  min-width: 1.35em;
-  padding: 0.08em 0.32em;
-  border-radius: 999px;
-  background: var(--chip-bg);
-  color: var(--chip-fg);
-  font-size: calc(0.66rem * var(--reading-scale, 1)); font-weight: 600; line-height: 1.35;
-  text-align: center; text-decoration: none;
-  font-variant-numeric: tabular-nums;
-}
-.chat-turn .prose sup.cite a:hover { background: var(--selected); color: var(--fg); }
-/* The pill is the sign that it leaves the app; prose's ↗ on top of it is noise. */
-.chat-turn .prose sup.cite a::after { content: none; }
-
-/* The pages under an answer that used the web. One row each - number, icon,
-   title, site - because the column is narrow and titles are long: the title
-   gives way first, the site after it, and the number and icon never. */
-.chat-sources { margin-top: 0.65rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
-.chat-sources-label {
-  margin: 0 0 0.25rem 0.1rem;
-  font-size: calc(0.68rem * var(--reading-scale, 1)); font-weight: 600;
-  letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--muted);
-}
-.chat-sources ol { margin: 0; padding: 0; list-style: none; }
-.chat-consulted-sources > summary { cursor: pointer; }
-.chat-consulted-sources > summary:hover { color: var(--fg); }
-.chat-consulted-sources > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
-.chat-consulted-sources:not([open]) > summary { margin-bottom: 0; }
-.chat-source {
-  display: flex; align-items: center; gap: 0.5rem;
-  min-width: 0;
-  padding: 0.28rem 0.4rem;
-  border-radius: 6px;
-  color: var(--fg); text-decoration: none;
-  font-size: calc(0.8rem * var(--reading-scale, 1)); line-height: 1.3;
-}
-.chat-source:hover { background: var(--chip-bg); text-decoration: none; }
-.chat-source-n {
-  flex: none;
-  min-width: 1.35em;
-  padding: 0.08em 0.32em;
-  border-radius: 999px;
-  background: var(--chip-bg);
-  color: var(--chip-fg);
-  font-size: calc(0.66rem * var(--reading-scale, 1)); font-weight: 600; text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.chat-source:hover .chat-source-n { background: var(--card); }
-.source-icon {
-  flex: none;
-  width: 16px; height: 16px;
-  border-radius: 4px;
-  object-fit: contain;
-}
-.source-icon.letter {
-  display: inline-flex; align-items: center; justify-content: center;
-  background: hsl(var(--hue) 55% 46%);
-  color: #fff;
-  font-size: 0.6rem; font-weight: 700;
-}
-.chat-source-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-source-host {
-  flex: 0 1 auto; max-width: 40%; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--muted); font-size: calc(0.72rem * var(--reading-scale, 1));
-}
-
-.chat-quote {
-  margin: 0.1rem 0 0.4rem;
-  padding: 0.05rem 0 0.05rem 0.55rem;
-  border-left: 2px solid var(--accent);
-  color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 /* Said while you were watching: it arrives rather than appears. Only a `from`
    frame, so it lands on whatever the element's own transform is. */
 .chat-context.enter { animation: chat-rise 240ms var(--ease) both; }
@@ -1974,23 +1867,10 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes reply-enter { from { opacity: 0; transform: translateY(4px); } }
-@keyframes chat-rise { from { opacity: 0; transform: translateY(4px) scale(1); } }
+
 @keyframes chat-pop { from { opacity: 0; transform: scale(0.96); } }
 @keyframes chat-fade { from { opacity: 0; } }
 
-/* Before the first word of an answer arrives. */
-.chat-typing { display: inline-flex; gap: 4px; padding: 0.45rem 0; }
-.chat-typing i {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--muted);
-  animation: chat-typing 1.2s ease-in-out infinite;
-}
-.chat-typing i:nth-child(2) { animation-delay: 0.15s; }
-.chat-typing i:nth-child(3) { animation-delay: 0.3s; }
-@keyframes chat-typing {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
-  30% { transform: translateY(-4px); opacity: 1; }
-}
 /* Where the chat changed lesson. A divider, never the lesson text itself. */
 .chat-context {
   display: flex;
@@ -2060,36 +1940,6 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 }
 /* An attachment on the message you are about to send, rather than a decoration
    above the box: it says what it is, and it can be taken off. */
-.sidechat-quote {
-  margin: 0.45rem 0.45rem 0;
-  border-left: 2px solid var(--accent);
-  border-radius: 4px 9px 9px 4px;
-  background: var(--chip-bg);
-  padding: 0.3rem 0.4rem 0.35rem 0.55rem;
-  cursor: auto;
-  animation: chat-rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-  transform-origin: bottom left;
-}
-.sidechat-quote-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.35rem;
-}
-.sidechat-quote-label {
-  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.03em;
-  text-transform: uppercase; color: var(--muted);
-}
-.sidechat-quote-head .ghost { padding: 0 0.2rem; line-height: 1; }
-.sidechat-quote blockquote {
-  margin: 0.15rem 0 0;
-  padding: 0;
-  border: 0;
-  color: var(--muted);
-  font-size: calc(0.78rem * var(--reading-scale, 1));
-  line-height: 1.45;
-  /* Whole lines, so a scrolled quote never looks like a clipped one. */
-  max-height: calc(0.78rem * var(--reading-scale, 1) * 1.45 * 4);
-  overflow-y: auto;
-  white-space: pre-wrap;
-}
 .sidechat-actions {
   display: flex;
   align-items: center;
@@ -2177,50 +2027,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .document-reader > .ask-about { background: #242424; color: #fff; }
 .document-reader > .ask-about:hover { background: #383838; }
 
-/* The reader's text size, floating at the foot of the lesson column. The strip
-   is the last thing in the scroller, zero high and sticky to its bottom, so the
-   pill stays put at the column's bottom-left while the lesson scrolls under it
-   - inside the column, so it never covers the sidebar or the side chat, and
-   hides with the column when the editor opens. The lesson's own column is at
-   least as tall as the scroller, so a short lesson still puts it at the foot.
-   Above a visualization's bar (2), below the "Ask about this" offer (8). */
 .lesson-inner { min-height: 100%; }
-.reading-size-strip { position: sticky; bottom: 0; height: 0; z-index: 4; }
-/* An opaque card rather than glass: it floats over text, and text showing
-   through text is unreadable twice. Quiet until it is wanted - the letters are
-   muted, not the whole pill faded. */
-/* Stacked, like a map's zoom: narrow enough to sit in the lesson's left
-   margin at an ordinary window width instead of over the start of its lines. */
-.reading-size {
-  position: absolute; left: 1rem; bottom: 1rem;
-  display: flex; flex-direction: column; align-items: stretch;
-  padding: 2px;
-  border: 1px solid var(--border); border-radius: 12px;
-  background-color: var(--card);
-  box-shadow: 0 6px 18px rgb(var(--shadow-rgb) / 0.28);
-}
-.reading-size button {
-  background: none; border: 0; border-radius: 9px;
-  padding: 0.2rem 0.3rem;
-  color: var(--muted);
-  font-size: 12px; font-weight: 600; line-height: 1.5;
-  font-variant-numeric: tabular-nums;
-}
-.reading-size button span { margin-left: 1px; }
-/* The two letters say which way they go by their own size. */
-.reading-size .reading-size-smaller { font-size: 11px; }
-.reading-size .reading-size-larger { font-size: 14px; }
-.reading-size .reading-size-value { min-width: 3.2em; font-size: 10.5px; padding: 0.15rem 0.2rem; cursor: text; }
-/* The size, being typed: the same box as the button it replaced, so nothing moves. */
-.reading-size .reading-size-field {
-  width: 3.6em; min-width: 0; margin: 1px 0; padding: 0.12rem 0.2rem;
-  border: 1px solid var(--accent); border-radius: 6px; outline: none;
-  background: var(--bg); color: var(--fg);
-  font: 600 10.5px/1.5 inherit; text-align: center; font-variant-numeric: tabular-nums;
-}
-.reading-size button:not(:disabled):hover { color: var(--fg); background: var(--chip-bg); }
-.reading-size button:disabled { opacity: 0.45; cursor: default; }
-.reading-size button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
 
 /* Course projects: the familiar chat next to an independently scrolling brief. */
 .project-screen { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
@@ -2247,15 +2054,6 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .project-editor-picker:focus-visible { border-color: var(--accent); }
 .project-editor-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-body .sidechat { min-width: 300px; max-width: calc(100% - 260px); }
-/* Flush with the answer's text and tucked under it; it pulses only while the
-   call runs, which ends when the model starts writing again. */
-.project-tool-activity { display: flex; align-items: center; gap: 8px; padding: 0 0 0.75rem; overflow-wrap: anywhere; }
-.chat-turn:not(.thinking) + .project-tool-activity { margin-top: -0.6rem; }
-.project-tool-activity.running { animation: tool-pulse 1.4s ease-in-out infinite; }
-@keyframes tool-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-@media (prefers-reduced-motion: reduce) { .project-tool-activity.running { animation: none; } }
-.project-tool-activity > svg { flex-shrink: 0; }
-.project-tool-activity > span { min-width: 0; }
 .project-review-note { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
 @media (max-width: 1000px) {
   .project-body .sidebar { display: none; }

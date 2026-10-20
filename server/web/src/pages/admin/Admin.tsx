@@ -3,7 +3,6 @@ import { Form, Link, NavLink, Outlet, useLoaderData, useRevalidator, useSearchPa
 import { ArrowUpRight, Ban, BookOpen, CheckCircle2, HardDrive, History, MoreHorizontal, RotateCcw, Search, ShieldAlert, ShieldCheck, ShieldOff, Users } from 'lucide-react'
 import type { AdminAccount, AdminCourse, AdminStats, AuditEntry, Paged } from '@core/catalog/api'
 import { api, ApiError } from '../../lib/api'
-import { server } from '../../lib/boot'
 import { requireAdmin, signedIn } from '../../lib/guards'
 import { useAccount } from '../../lib/session'
 import { ago, bytes, compact, date, dateTime, plural } from '../../lib/format'
@@ -19,7 +18,7 @@ const message = (error: unknown): string => (error instanceof ApiError ? error.m
 export function AdminLayout() {
   return (
     <div className="oc-wrap page">
-      <PageHeader eyebrow={<><ShieldCheck aria-hidden /> {server.name}</>} title="Administration" />
+      <PageHeader title="Administration" />
       <nav className="oc-segment admin-tabs" aria-label="Administration">
         <NavLink to="/admin" end viewTransition>Overview</NavLink>
         <NavLink to="/admin/accounts" viewTransition>Accounts</NavLink>

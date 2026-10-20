@@ -13,6 +13,8 @@ WORKDIR /src
 COPY server/package.json server/package-lock.json server/.npmrc server/
 RUN cd server && npm ci --no-audit --no-fund
 COPY app/src/core app/src/core
+COPY app/src/learning-ui app/src/learning-ui
+COPY app/src/renderer/workbench/indentation.ts app/src/renderer/workbench/llvm-mode.ts app/src/renderer/workbench/
 COPY app/src/main/unzip.ts app/src/main/unzip.ts
 COPY design design
 COPY server server

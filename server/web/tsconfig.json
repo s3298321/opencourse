@@ -18,7 +18,13 @@
     "paths": {
       "@core/*": ["../../app/src/core/*"],
       "@design/*": ["../../design/*"],
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["../shared/*"],
+      "@codemirror/*": ["../node_modules/@codemirror/*"],
+      "@lezer/highlight": ["../node_modules/@lezer/highlight"],
+      "shiki/core": ["../node_modules/shiki/dist/core.d.mts"],
+      "shiki/engine/javascript": ["../node_modules/shiki/dist/engine-javascript.d.mts"],
+      "shiki/*": ["../node_modules/shiki/dist/*"],
+      "pdfjs-dist": ["../node_modules/pdfjs-dist"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "../shared/**/*.ts", "vite.config.ts"]

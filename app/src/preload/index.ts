@@ -1,5 +1,5 @@
 import type { CellTarget, CellRunRequest, NotebookDocument, NotebookEvent, NotebookSaveResult, NotebookStatus, CellExecution } from '../core/notebook/types'
-import type { AppInfo, AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
+import type { AppInfo, AppLinks, AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
 import type { DocumentChatSummary, DocumentChatThread, DocumentImportResult, DocumentSearch, DocumentSummary, DocumentView } from '../core/documents/types'
 import type { AuthoringCourse, CourseDraft, SaveCourseResult, SavePreview } from '../core/course-document'
 import type { AttachmentKind, AttachmentUpload } from '../main/course-authoring'
@@ -205,6 +205,7 @@ const api = {
 
   // --- updates of the app itself: app-wide, off unless turned on ---
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke('app:info'),
+  getAppLinks: (): Promise<AppLinks> => ipcRenderer.invoke('app:links'),
   getAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:state'),
   /** A press of "Check for updates": unlike an automatic check, it reports a failure. */
   checkForAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('appUpdate:check'),
@@ -435,7 +436,20 @@ const api = {
   probeServer: (url: string): Promise<ServerResult<{ url: string; info: ServerInfo }>> => ipcRenderer.invoke('servers:probe', url),
   startServerSignUp: (url: string, email: string): Promise<ServerResult<{ flowId: string; name: string }>> => ipcRenderer.invoke('servers:signUpStart', url, email),
   resendServerCode: (flowId: string): Promise<ServerResult<void>> => ipcRenderer.invoke('servers:signUpResend', flowId),
-  verifyServerCode: (flowId: string, code: string): Promise<ServerResult<void>> => ipcRenderer.invoke('servers:signUpVerify', flowId, code),
+  getDocumentCatalogCover: (server:string,id:string,version:string):Promise<string|null> => ipcRenderer.invoke('documents:catalogCover',server,id,version),
+  removeLearningDownload: (id:string):Promise<void> => ipcRenderer.invoke('learning:removeDownload',id),
+  learningPreference: (id:string,name:'readingScale'|'pdfZoom',value?:number):Promise<{value?:number}|null> => ipcRenderer.invoke('learning:preference',id,name,value),
+  learningStatus: (): Promise<Record<string,{state:string;message?:string;lastSynced?:string}>> => ipcRenderer.invoke('learning:status'),
+  syncLearning: (id?: string): Promise<Record<string,{state:string;message?:string;lastSynced?:string}>> => ipcRenderer.invoke('learning:sync',id),
+  learningRequest: <T = unknown>(id:string,path:string,method:'GET'|'POST'|'PUT'|'DELETE'='GET',body?:unknown):Promise<T> => ipcRenderer.invoke('learning:request',id,path,method,body),
+  learningBinding: (id:string):Promise<{draftKey:string;connectionId:string;source:import('../core/learning/types').ContentRef;connected:boolean}|null> => ipcRenderer.invoke('learning:binding',id),
+  enrollLearning: (id:string,kind:'course'|'document',contentId:string,version?:string):Promise<{courseId:string;title:string;version:string}> => ipcRenderer.invoke('learning:enroll',id,kind,contentId,version),
+  documentPublication: (id:string):Promise<import('../main/document-publish').DocumentPublication> => ipcRenderer.invoke('documents:publication',id),
+  saveDocumentPublication: (id:string,metadata:{description:string;tags:string[];version:string;releaseNote?:string}):Promise<import('../main/document-publish').DocumentPublication> => ipcRenderer.invoke('documents:savePublication',id,metadata),
+  chooseDocumentCover: (id:string):Promise<import('../main/document-publish').DocumentPublication> => ipcRenderer.invoke('documents:chooseCover',id),
+  documentCoverPreview: (id:string):Promise<string|null> => ipcRenderer.invoke('documents:coverPreview',id),
+  publishDocument: (id:string,server:string):Promise<import('../core/learning/types').PublishedDocument> => ipcRenderer.invoke('documents:publish',id,server),
+  verifyServerCode: (flowId: string, code: string): Promise<ServerResult<{ existingAccount: boolean }>> => ipcRenderer.invoke('servers:signUpVerify', flowId, code),
   checkServerUsername: (flowId: string, name: string): Promise<ServerResult<{ available: boolean; reason?: string }>> => ipcRenderer.invoke('servers:checkUsername', flowId, name),
   completeServerSignUp: (flowId: string, username: string, password: string): Promise<ServerResult<ServerConnection>> => ipcRenderer.invoke('servers:signUpComplete', flowId, username, password),
   signInToServer: (url: string, login: string, password: string): Promise<ServerResult<ServerConnection>> => ipcRenderer.invoke('servers:signIn', url, login, password),
@@ -444,12 +458,33 @@ const api = {
   signOutOfServer: (id: string): Promise<ServerResult<ServerConnection[]>> => ipcRenderer.invoke('servers:signOut', id),
   removeServer: (id: string): Promise<ServerResult<ServerConnection[]>> => ipcRenderer.invoke('servers:remove', id),
   setActiveServer: (id: string | null): Promise<ServerConnection[]> => ipcRenderer.invoke('servers:setActive', id),
+  /** Look at a server that was not answering, now. */
+  retryServer: (id: string): Promise<ServerConnection[]> => ipcRenderer.invoke('servers:retry', id),
   onServersChanged: (handler: () => void): (() => void) => subscribe('servers:changed', handler),
   searchCatalog: (serverId: string, query: { q?: string; tags?: string[]; sort?: CatalogSort; page?: number }): Promise<ServerResult<CatalogPage>> => ipcRenderer.invoke('catalog:search', serverId, query),
   listCatalogTags: (serverId: string): Promise<ServerResult<CatalogTag[]>> => ipcRenderer.invoke('catalog:tags', serverId),
   getCatalogCourse: (serverId: string, courseId: string): Promise<ServerResult<CourseOverview>> => ipcRenderer.invoke('catalog:overview', serverId, courseId),
   // A data: URL, or null - the cover crosses as bytes main has checked.
   getCatalogCover: (serverId: string, courseId: string, version: string): Promise<string | null> => ipcRenderer.invoke('catalog:cover', serverId, courseId, version),
+  searchDocumentCatalog: (serverId: string, query: { q?: string; tags?: string[]; sort?: CatalogSort; page?: number }): Promise<ServerResult<import('../main/document-catalog').DocumentPage>> => ipcRenderer.invoke('documentCatalog:search', serverId, query),
+  listDocumentCatalogTags: (serverId: string): Promise<ServerResult<CatalogTag[]>> => ipcRenderer.invoke('documentCatalog:tags', serverId),
+  getCatalogDocument: (serverId: string, id: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument>> => ipcRenderer.invoke('documentCatalog:overview', serverId, id),
+  /** Server document id → the library document it is, for those in the library. */
+  catalogDocumentsInLibrary: (serverId: string, ids: string[]): Promise<Record<string, string>> => ipcRenderer.invoke('documentCatalog:inLibrary', serverId, ids),
+  addCatalogDocument: (serverId: string, id: string): Promise<ServerResult<{ documentId: string; title: string; version: string }>> => ipcRenderer.invoke('documentCatalog:add', serverId, id),
+  checkDocumentUpdates: (): Promise<Record<string, UpdateState>> => ipcRenderer.invoke('documents:updates'),
+  applyDocumentUpdate: (id: string): Promise<ServerResult<{ version: string }>> => ipcRenderer.invoke('documents:applyUpdate', id),
+  leaveServerDocument: (id: string): Promise<ServerResult<void>> => ipcRenderer.invoke('documents:leave', id),
+  documentHomes: (id: string): Promise<string[]> => ipcRenderer.invoke('documents:homes', id),
+  previewDocumentPublish: (id: string, serverId: string): Promise<ServerResult<import('../main/document-catalog').DocumentPublishPreview>> => ipcRenderer.invoke('documentPublish:preview', id, serverId),
+  publishLocalDocument: (id: string, serverId: string, note?: string): Promise<ServerResult<{ document: import('../core/learning/types').PublishedDocument; created: boolean }>> => ipcRenderer.invoke('documentPublish:run', id, serverId, note),
+  listMyDocuments: (serverId: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument[]>> => ipcRenderer.invoke('documentPublish:mine', serverId),
+  getPublishedDocument: (serverId: string, id: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument>> => ipcRenderer.invoke('documentPublish:get', serverId, id),
+  setCurrentDocumentVersion: (serverId: string, id: string, version: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument>> => ipcRenderer.invoke('documentPublish:setCurrent', serverId, id, version),
+  deleteDocumentVersion: (serverId: string, id: string, version: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument>> => ipcRenderer.invoke('documentPublish:deleteVersion', serverId, id, version),
+  reindexDocumentVersion: (serverId: string, id: string, version: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument>> => ipcRenderer.invoke('documentPublish:reindex', serverId, id, version),
+  unpublishDocument: (serverId: string, id: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument>> => ipcRenderer.invoke('documentPublish:unpublish', serverId, id),
+  relistDocument: (serverId: string, id: string): Promise<ServerResult<import('../core/learning/types').PublishedDocument>> => ipcRenderer.invoke('documentPublish:relist', serverId, id),
   addCatalogCourse: (serverId: string, courseId: string): Promise<ServerResult<{ courseId: string; title: string; version: string }>> => ipcRenderer.invoke('catalog:add', serverId, courseId),
   checkCourseUpdates: (): Promise<Record<string, UpdateState>> => ipcRenderer.invoke('courses:updates'),
   // An update is previewed first - main downloads it and says what it removes -

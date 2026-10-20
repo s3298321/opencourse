@@ -1,7 +1,9 @@
-/** The mark beside the wordmark, exactly as the app's titlebar shows it. */
+import { server } from '../lib/boot'
+
+/** The mark beside the wordmark, exactly as the app's titlebar shows it. It leads to the OpenCourse website. */
 export function Brand() {
   return (
-    <a href="https://opencourse.dev/" className="oc-brand" aria-label="OpenCourse home">
+    <a href={server.siteUrl} className="oc-brand" aria-label="OpenCourse home">
       <img src="/mark-64.png" alt="" width={25} height={25} />
       <span>OpenCourse</span>
     </a>

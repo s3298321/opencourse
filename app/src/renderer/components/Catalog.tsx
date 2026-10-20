@@ -1,4 +1,5 @@
 import ActionButton from './ActionButton'
+import ServerUnreachable, { serverDown } from './ServerUnreachable'
 import CourseCardMedia from './CourseCardMedia'
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
@@ -29,6 +30,8 @@ export default function Catalog({ server: active, loadingServer, navigate, route
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
+  // Down, the search is asked again when it comes back (and once on the way down).
+  const down = serverDown(active)
 
   // Typing settles before it searches; a new search starts at page one.
   useEffect(() => {
@@ -47,7 +50,7 @@ export default function Catalog({ server: active, loadingServer, navigate, route
       else { setResult(null); setError(r.message) }
     }).catch((err) => { if (alive) { setResult(null); setError(err.message) } })
     return () => { alive = false }
-  }, [active?.id, query, tags, sort, page])
+  }, [active?.id, query, tags, sort, page, down])
 
   useEffect(() => {
     if (!active) return
@@ -67,7 +70,7 @@ export default function Catalog({ server: active, loadingServer, navigate, route
     )
   }
 
-  const inLibrary = new Set(library.map((c) => c.courseId))
+  const inLibrary = new Set(library.filter(c=>!c.origin?.serverId||c.origin.server===active.url&&c.origin.accountId===active.account?.id).map(c=>c.origin?.contentId??c.courseId))
   const add = async (course: CatalogCourse): Promise<void> => {
     setAdding(course.id); setNote(null)
     try {
@@ -92,7 +95,7 @@ export default function Catalog({ server: active, loadingServer, navigate, route
           <option value="title">Title</option>
         </select>
       </div>
-      {!active.account && (
+      {!active.account && !down && (
         <p className="import-note">You are signed out of {active.name}. <button className="ghost catalog-inline" onClick={() => navigate({ name: 'settings', from: route, section: 'servers' })}>Sign in</button> to add courses.</p>
       )}
       {allTags.length > 0 && (
@@ -105,13 +108,13 @@ export default function Catalog({ server: active, loadingServer, navigate, route
         </div>
       )}
       {note && <p className={`import-note${note.error ? ' error' : ''}`} role="status">{note.text}</p>}
-      {error && <p className="import-note error" role="alert">{error}</p>}
-      {!result && !error && <p className="meta">Loading courses…</p>}
+      {down ? <ServerUnreachable server={active} /> : error && <p className="import-note error" role="alert">{error}</p>}
+      {!result && !error && !down && <p className="meta">Loading courses…</p>}
       {result && <p className="meta catalog-count">{result.total === 1 ? '1 course' : `${result.total} courses`}{query || tags.length ? ' match' : ` on ${active.name}`}</p>}
       {result?.courses.length === 0 && <p className="meta">Nothing matches. Try fewer words or tags.</p>}
       <div className="catalog-grid">
         {result?.courses.map((course) => (
-          <CatalogCard key={course.id} serverId={active.id} course={course} inLibrary={inLibrary.has(course.id)} adding={adding === course.id} canAdd={Boolean(active.account)}
+          <CatalogCard key={course.id} serverId={active.id} course={course} inLibrary={inLibrary.has(course.id)} adding={adding === course.id} canAdd={Boolean(active.account) && !down}
             onOpen={() => navigate({ name: 'catalogCourse', serverId: active.id, courseId: course.id })}
             onAdd={() => void add(course)} />
         ))}

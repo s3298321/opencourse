@@ -7,11 +7,12 @@
  * a row only says where. `node:sqlite`, as in the app: Node 22 has it, it has
  * FTS5 for catalog search, and it needs no native build.
  */
+import { LEARNING_AI_DEFAULTS, LEARNING_CHAT_PRESENTATION, LEARNING_SCHEMA } from './learning/schema'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 5
 
 export const SCHEMA_V1 = `
 CREATE TABLE accounts (
@@ -201,6 +202,9 @@ function migrate(d: Db): void {
   tx(d, () => {
     if (from < 1) d.exec(SCHEMA_V1)
     if (from < 2) d.exec(SCHEMA_V2)
+    if (from < 3) d.exec(LEARNING_SCHEMA)
+    if (from < 4) d.exec(LEARNING_AI_DEFAULTS)
+    if (from < 5) d.exec(LEARNING_CHAT_PRESENTATION)
     d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
   })
 }

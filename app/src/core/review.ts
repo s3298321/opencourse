@@ -41,7 +41,11 @@ export function reviewQueue(cards: ReviewCandidate[], count: number, now: Date):
   const due = eligible.filter(card => card.state && card.state.due <= now)
     .sort((a, b) => a.state!.due.getTime() - b.state!.due.getTime() || stable(a, b))
   const unseen = eligible.filter(card => !card.state).sort((a, b) => a.order - b.order || stable(a, b))
-  return [...due, ...unseen].slice(0, count).map(card => card.id)
+  // Once caught up, allow an early review of the cards coming due next.
+  // Keep scheduled sessions limited to due and new cards.
+  const queue = due.length || unseen.length ? [...due, ...unseen] : eligible
+    .sort((a, b) => a.state!.due.getTime() - b.state!.due.getTime() || stable(a, b))
+  return queue.slice(0, count).map(card => card.id)
 }
 export function summarizeReview(cards: ReviewCandidate[], now: Date): ReviewSummary {
   const eligible = cards.filter(card => card.eligible), practiced = eligible.filter(card => card.state)

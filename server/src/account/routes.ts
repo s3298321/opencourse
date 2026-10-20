@@ -14,8 +14,10 @@
  * old address hears about a new one - the two things that make a stolen
  * session worth less than a stolen password.
  */
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
-import { isCode, passwordProblem, type AccountRole, type SessionInfo, type SessionKind } from '@core/catalog/api'
+import { usernameProblem, isCode, passwordProblem, type AccountRole, type SessionInfo, type SessionKind } from '@core/catalog/api'
 import { tx } from '../db'
 import { badRequest, conflict, notFound, tooMany, unauthorized } from '../errors'
 import { RateLimiter } from '../ratelimit'
@@ -42,6 +44,16 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: Ctx): void {
     if (!row || !(await verifyPassword(given, row.password_hash))) throw unauthorized('That password is not right.')
     attempts.reset(`me:${accountId}`)
   }
+
+  app.put('/api/v1/me/username', { schema: { body: { type: 'object', required: ['username'], additionalProperties: false, properties: { username: { type: 'string', maxLength: 32 } } } } }, async request => {
+    const account = requireAccount(request), username = (request.body as { username: string }).username
+    const problem = usernameProblem(username)
+    if (problem) throw badRequest('invalid_username', problem)
+    if (d.prepare('SELECT 1 FROM accounts WHERE username=? AND id<>?').get(username,account.id)) throw conflict('username_taken','That username is taken.')
+    d.prepare('UPDATE accounts SET username=? WHERE id=?').run(username,account.id)
+    audit(d,{actor:account,action:'username.change',targetKind:'account',targetId:account.id,targetName:username})
+    return { account: accountDetails(d,account.id)! }
+  })
 
   app.get('/api/v1/me', async (request) => {
     const details = accountDetails(d, requireAccount(request).id)
@@ -153,6 +165,7 @@ export function deleteAccount(ctx: Ctx, accountId: string, role: AccountRole | n
     const admins = Number((d.prepare("SELECT COUNT(*) AS n FROM accounts WHERE role = 'admin' AND disabled_at IS NULL").get() as { n: number }).n)
     if (admins <= 1) throw conflict('last_admin', 'You are the only administrator. Make someone else an administrator first.')
   }
+  const documents = ctx.db.prepare('SELECT id FROM published_documents WHERE owner_id=?').all(accountId) as {id:string}[]
   const ids = (d.prepare('SELECT id FROM courses WHERE owner_id = ?').all(accountId) as { id: string }[]).map((r) => r.id)
   tx(d, () => {
     for (const id of ids) {
@@ -161,6 +174,7 @@ export function deleteAccount(ctx: Ctx, accountId: string, role: AccountRole | n
     }
     d.prepare('DELETE FROM accounts WHERE id = ?').run(accountId)
   })
+  for(const doc of documents)rmSync(join(ctx.config.dataDir,'documents',doc.id),{recursive:true,force:true})
   for (const id of ids) removeCourseFiles(ctx.config.dataDir, id)
   return ids.length
 }

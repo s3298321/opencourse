@@ -10,6 +10,7 @@ import type { Account, AuthResult, CatalogCourse, CatalogPage, CatalogTag, Cours
 import { TOKEN_PREFIX } from './api'
 import { isVersion } from './semver'
 import { UID } from './identity'
+import type { PublishedDocument } from '../learning/types'
 
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj | null => (v && typeof v === 'object' && !Array.isArray(v) ? v as Obj : null)
@@ -28,7 +29,7 @@ export function parseServerInfo(raw: unknown): ServerInfo | null {
   if (!o || o['opencourse'] !== 1 || typeof o['api'] !== 'number') return null
   const name = str(o['name'], 120)
   if (!name) return null
-  return { opencourse: 1, api: o['api'] as number, name, description: str(o['description'], 500) ?? '', registration: o['registration'] === 'closed' ? 'closed' : 'open' }
+  return { id: opt(o['id'], 64), capabilities: list(o['capabilities'], x => str(x, 80), 50) ?? [], opencourse: 1, api: o['api'] as number, name, description: str(o['description'], 500) ?? '', registration: o['registration'] === 'closed' ? 'closed' : 'open' }
 }
 
 export function parseAccount(raw: unknown): Account | null {
@@ -128,6 +129,51 @@ export function parsePublishResult(raw: unknown): PublishResult | null {
   const o = obj(raw)
   const courseId = str(o?.['courseId'], 64), version = str(o?.['version'], 40)
   return courseId && version && isVersion(version) ? { courseId, version, created: o?.['created'] === true } : null
+}
+
+const DOCUMENT_STATUSES = new Set(['indexing', 'ready', 'error'])
+
+/** A server document: its catalog card, overview and, for its owner, publication in one shape. */
+export function parsePublishedDocument(raw: unknown): PublishedDocument | null {
+  const o = obj(raw)
+  if (!o) return null
+  const id = str(o['id'], 64), title = str(o['title'], 300), description = str(o['description'], 20000), publisher = str(o['publisher'], 64)
+  const version = str(o['version'], 40), fingerprint = str(o['fingerprint'], 128), status = o['status']
+  const tags = list(o['tags'], (t) => str(t, 60), 30)
+  const bytes = num(o['bytes']), pages = num(o['pages'])
+  const sections = list(o['sections'], (x) => {
+    const so = obj(x), sid = str(so?.['id'], 200), stitle = str(so?.['title'], 500), page = num(so?.['page']), depth = num(so?.['depth'])
+    return sid !== null && stitle !== null && page !== null && depth !== null ? { id: sid, title: stitle, page, depth } : null
+  }, 5000)
+  const versions = list(o['versions'], (x) => {
+    const vo = obj(x), v = str(vo?.['version'], 40), publishedAt = str(vo?.['publishedAt'], 40), releaseNote = str(vo?.['releaseNote'], 4000)
+    return v && isVersion(v) && publishedAt && releaseNote !== null ? { version: v, publishedAt, releaseNote, deleted: vo?.['deleted'] === true } : null
+  }, 1000)
+  if (!id || !UID.test(id) || !title || description === null || !publisher || !version || !isVersion(version) || fingerprint === null || typeof status !== 'string' || !DOCUMENT_STATUSES.has(status) || !tags || bytes === null || pages === null || !sections || !versions) return null
+  // Fields an older server does not send yet fall back to what can be derived.
+  const live = versions.filter((v) => !v.deleted)
+  const maxVersion = opt(o['maxVersion'], 40)
+  return {
+    id, title, description, tags, version, publisher, hasCover: o['hasCover'] === true, bytes, pages, fingerprint,
+    status: status as PublishedDocument['status'], error: str(o['error'], 1000), sections,
+    listed: o['listed'] === true, ownedByYou: o['ownedByYou'] === true,
+    downloads: num(o['downloads']) ?? 0,
+    updatedAt: opt(o['updatedAt'], 40) ?? live.find((v) => v.version === version)?.publishedAt ?? '',
+    maxVersion: maxVersion && isVersion(maxVersion) ? maxVersion : version,
+    ...(o['moderated'] === true ? { moderated: true } : {}),
+    versions
+  }
+}
+
+export function parseDocumentPage(raw: unknown): { documents: PublishedDocument[]; total: number; page: number; pageSize: number } | null {
+  const o = obj(raw)
+  const documents = list(o?.['documents'], parsePublishedDocument, 200)
+  const total = num(o?.['total']), page = num(o?.['page']), pageSize = num(o?.['pageSize'])
+  return documents && total !== null && page !== null && pageSize ? { documents, total, page, pageSize } : null
+}
+
+export function parseDocumentList(raw: unknown): PublishedDocument[] | null {
+  return list(obj(raw)?.['documents'], parsePublishedDocument, 1000)
 }
 
 /** A refusal's code and message, or null for a body that is not one. */

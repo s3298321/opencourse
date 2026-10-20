@@ -11,6 +11,8 @@ export interface BootServer extends ServerInfo {
   publicUrl: string
   /** Where "Get the app" points. */
   appUrl: string
+  /** Where the wordmark points. */
+  siteUrl: string
   sourceUrl: string
   /** The operator's privacy policy and legal notice; null when not configured. */
   privacyUrl: string | null

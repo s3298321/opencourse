@@ -13,8 +13,12 @@ export type Screen =
   | { name: 'users' }
   | { name: 'library'; source?: string }
   | { name: 'catalog'; serverId: string }
-  | { name: 'documents' }
+  | { name: 'documents'; source?: string }
+  | { name: 'documentOverview'; documentId: string }
   | { name: 'document'; documentId: string }
+  | { name: 'documentCatalog'; serverId: string }
+  | { name: 'catalogDocument'; serverId: string; documentId: string }
+  | { name: 'documentPublication'; serverId: string; documentId: string }
   | { name: 'catalogCourse'; serverId: string; courseId: string }
   | { name: 'publication'; serverId: string; courseId: string }
   | { name: 'courseEditor'; courseId: string }
@@ -61,6 +65,10 @@ export function sectionOf(route: Route): 'courses' | 'documents' | 'coach' | nul
       return 'coach'
     case 'documents':
     case 'document':
+    case 'documentOverview':
+    case 'documentCatalog':
+    case 'catalogDocument':
+    case 'documentPublication':
       return 'documents'
     case 'users':
       return null

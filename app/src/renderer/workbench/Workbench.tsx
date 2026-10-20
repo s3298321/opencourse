@@ -169,6 +169,30 @@ export default function Workbench({
 
   useEffect(() => () => window.clearTimeout(autosave.current), [])
 
+  // Code written on the web arrives with a sync and lands in the file. With
+  // nothing unsaved here, show it; with unsaved edits, the next save's conflict
+  // banner asks which to keep, as for any other outside change.
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  useEffect(() => {
+    if (!session) return undefined
+    const refresh = (): void => {
+      if (dirtyRef.current) return
+      void window.opencourse.readExerciseFile(target).then((file) => {
+        if (dirtyRef.current || file.mtimeMs === mtime.current) return
+        buffer.current = file.content
+        mtime.current = file.mtimeMs
+        setEditorRevision((n) => n + 1)
+      }).catch(() => undefined)
+    }
+    const off = window.opencourse.onCoursesChanged(refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      off()
+      window.removeEventListener('focus', refresh)
+    }
+  }, [session, target])
+
   /* --- running ---------------------------------------------------------- */
   useEffect(() => {
     const offRun = window.opencourse.onRunData((id, chunk) => {

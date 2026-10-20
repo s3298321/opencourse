@@ -55,6 +55,8 @@ export function isCode(code: string): boolean {
 /* --- shapes --------------------------------------------------------------- */
 
 export interface ServerInfo {
+  id?: string
+  capabilities?: string[]
   opencourse: 1
   api: number
   name: string

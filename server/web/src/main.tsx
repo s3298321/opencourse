@@ -2,6 +2,8 @@
  * The web app of an OpenCourse server. Its pages are shared/pages.ts - the
  * table the server also reads - each mapped to its component and loader here.
  */
+import { DocumentsCatalog, DocumentOverview, MyLearning, WebLearning } from './pages/Learning'
+import { LearningCoursePage, ReviewPage } from './pages/LearningCourse'
 import '@fontsource-variable/inter/wght.css'
 import '@design/tokens.css'
 import '@design/base.css'
@@ -16,14 +18,18 @@ import { ToastProvider } from './components/Toasts'
 import { CatalogFallback, CatalogPageView, catalogLoader } from './pages/Catalog'
 import { CoursePage, courseLoader } from './pages/Course'
 import { ForgotPage, SignInPage, SignUpPage } from './pages/Auth'
-import { MyCoursePage, MyCoursesPage, myCourseLoader, myCoursesLoader } from './pages/MyCourses'
+import { MyCoursePage, MyCoursesPage, MyDocumentPage, myCourseLoader, myCoursesLoader, myDocumentLoader } from './pages/MyCourses'
 import { SettingsPage, settingsLoader } from './pages/Settings'
 import { AdminAccounts, AdminAudit, AdminCourses, AdminLayout, AdminOverview, adminAccountsLoader, adminAuditLoader, adminCoursesLoader, adminStatsLoader } from './pages/admin/Admin'
 import { NotFoundPage, RouteError } from './pages/Errors'
 import { loadDevBoot } from './lib/boot'
+import { requireAccount } from './lib/guards'
 import { resetSessionFromBoot } from './lib/session'
 
 const VIEWS: Record<PageKey, { Component: ComponentType; loader?: LoaderFunction }> = {
+  documents: { Component: DocumentsCatalog }, document: { Component: DocumentOverview }, learning: { Component: MyLearning, loader:({request})=>{requireAccount(request);return null} }, learn: { Component: WebLearning, loader:({request})=>{requireAccount(request);return null} },
+  learningCourse: { Component: LearningCoursePage, loader: ({ request }) => { requireAccount(request); return null } },
+  learningReview: { Component: ReviewPage, loader: ({ request }) => { requireAccount(request); return null } },
   catalog: { Component: CatalogPageView, loader: catalogLoader },
   course: { Component: CoursePage, loader: courseLoader },
   signin: { Component: SignInPage },
@@ -31,6 +37,7 @@ const VIEWS: Record<PageKey, { Component: ComponentType; loader?: LoaderFunction
   forgot: { Component: ForgotPage },
   myCourses: { Component: MyCoursesPage, loader: myCoursesLoader },
   myCourse: { Component: MyCoursePage, loader: myCourseLoader },
+  myDocument: { Component: MyDocumentPage, loader: myDocumentLoader },
   settings: { Component: SettingsPage, loader: settingsLoader },
   admin: { Component: AdminOverview, loader: adminStatsLoader },
   adminAccounts: { Component: AdminAccounts, loader: adminAccountsLoader },

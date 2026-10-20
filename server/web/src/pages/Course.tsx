@@ -1,16 +1,15 @@
-import { useState, type ReactNode } from 'react'
-import { Link, useLoaderData, type LoaderFunctionArgs } from 'react-router'
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, Clock, Download, FolderKanban, Layers, Plus, Settings2, Sparkles as SparklesIcon } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useLoaderData, type LoaderFunctionArgs } from 'react-router'
+import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ChevronDown, Clock, FolderKanban, Layers, Plus, Settings2 } from 'lucide-react'
+import type { LearningState } from '@core/learning/types'
 import type { CourseOverview } from '@core/catalog/api'
-import { api, coverUrl } from '../lib/api'
-import { server, takeBootData } from '../lib/boot'
+import { api, call, coverUrl } from '../lib/api'
+import { takeBootData } from '../lib/boot'
 import { useAccount } from '../lib/session'
 import { capitalize, compact, date, hours, plural } from '../lib/format'
 import { renderInline, renderMarkdown } from '../lib/markdown'
 import { Cover } from '../components/Cover'
 import { Html } from '../components/Html'
-import { Dialog } from '../components/Dialog'
-import { CopyButton } from '../components/Forms'
 import { Stat, useTitle } from '../components/Bits'
 
 export async function courseLoader({ params, request }: LoaderFunctionArgs): Promise<CourseOverview> {
@@ -26,12 +25,40 @@ export async function courseLoader({ params, request }: LoaderFunctionArgs): Pro
 }
 
 export function CoursePage() {
+  const navigate = useNavigate()
   const course = useLoaderData() as CourseOverview
   const account = useAccount()
   const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
+  const [enrolled, setEnrolled] = useState(false)
+  const overview = `/learning/courses/${encodeURIComponent(course.id)}`
+  // A course already in My learning opens there rather than being added twice.
+  useEffect(() => {
+    if (!account) { setEnrolled(false); return }
+    const controller = new AbortController()
+    call<{ items: LearningState[] }>('GET', '/me/learning', undefined, controller.signal)
+      .then((r) => setEnrolled(r.items.some((s) => s.enrollment.kind === 'course' && s.enrollment.id === course.id)))
+      .catch(() => {})
+    return () => controller.abort()
+  }, [account?.id, course.id])
   useTitle(course.title)
   const minutes = course.outline.reduce((sum, m) => sum + m.lessons.reduce((s, l) => s + (l.minutes ?? 0), 0), 0)
   const versions = course.versions.filter((v) => v.status === 'current' || v.status === 'available')
+  // Adding enrolls the account and opens the course's overview; the Mac app
+  // downloads it on its next sync with this server.
+  const addToLibrary = () => {
+    const here = `/courses/${encodeURIComponent(course.id)}`
+    if (!account) { navigate(`/signin?next=${encodeURIComponent(here)}`); return }
+    setAdding(true)
+    setAddError('')
+    call('PUT', `/me/learning/course/${encodeURIComponent(course.id)}`, {})
+      .then(() => navigate(overview, { viewTransition: true }))
+      .catch((e: { status?: number; message: string }) => {
+        if (e.status === 401) navigate(`/signin?next=${encodeURIComponent(here)}`)
+        else setAddError(e.message)
+      })
+      .finally(() => setAdding(false))
+  }
   const counts: { icon: ReactNode; text: string }[] = [{ icon: <BookOpen aria-hidden />, text: plural(course.lessonCount, 'lesson') }]
   if (course.projectCount) counts.push({ icon: <FolderKanban aria-hidden />, text: plural(course.projectCount, 'project') })
   if (course.quizCount) counts.push({ icon: <CheckCircle2 aria-hidden />, text: plural(course.quizCount, 'quiz', 'quizzes') })
@@ -59,9 +86,12 @@ export function CoursePage() {
                 {course.author ? <>By <strong>{course.author}</strong> · published by <strong>{course.publisher}</strong></> : <>Published by <strong>{course.publisher}</strong></>}
               </p>
               <div className="course-actions">
-                <button type="button" className="oc-btn lg shine" onClick={() => setAdding(true)}><Plus aria-hidden />Add in OpenCourse</button>
+                {enrolled
+                  ? <Link className="oc-btn lg shine" to={overview} viewTransition>Open course<ArrowRight aria-hidden /></Link>
+                  : <button type="button" className="oc-btn lg shine" disabled={adding} onClick={addToLibrary}><Plus aria-hidden />{adding ? 'Adding…' : 'Add to library'}</button>}
                 {course.ownedByYou && account && <Link className="oc-btn secondary lg" to={`/me/courses/${encodeURIComponent(course.id)}`} viewTransition>Manage</Link>}
               </div>
+              {addError && <p className="form-error" role="alert">{addError}</p>}
             </div>
           </div>
           <div className="course-stats oc-enter">
@@ -138,32 +168,8 @@ export function CoursePage() {
           )}
         </div>
 
-        <aside className="course-aside">
-          <div className="oc-panel oc-edge aside-card">
-            <span className="oc-eyebrow"><SparklesIcon aria-hidden />Add this course</span>
-            <ol className="mini-steps">
-              <li>Open <strong>OpenCourse</strong> on your Mac.</li>
-              <li>In <strong>Settings ▸ Course Servers</strong>, connect to this server.
-                <div className="server-address">
-                  <code>{server.publicUrl.replace(/^https?:\/\//, '')}</code>
-                  <CopyButton text={server.publicUrl} />
-                </div>
-              </li>
-              <li>In <strong>Courses</strong>, select <strong>{server.name}</strong>, choose <strong>Add courses</strong>, then find <strong>{course.title}</strong> and add it.</li>
-            </ol>
-
-            <a className="oc-btn secondary aside-get" href={server.appUrl}><Download aria-hidden />Get the app</a>
-          </div>
-        </aside>
       </div>
 
-      <Dialog open={adding} onClose={() => setAdding(false)} title="Add this course in OpenCourse" description="Add the course to the Mac app to read its lessons and save your progress locally." footer={<><a className="oc-btn secondary" href={server.appUrl}><Download aria-hidden />Get the app</a><button type="button" className="oc-btn" onClick={() => setAdding(false)}>Done</button></>}>
-        <ol className="dialog-steps">
-          <li><span className="how-n">1</span><div><strong>Open OpenCourse</strong><p>Download and install the Mac app if needed.</p></div></li>
-          <li><span className="how-n">2</span><div><strong>Connect to this server</strong><p>Go to <strong>Settings ▸ Course Servers ▸ Connect to a server</strong> and enter:</p><div className="server-address"><code>{server.publicUrl.replace(/^https?:\/\//, '')}</code><CopyButton text={server.publicUrl} /></div></div></li>
-          <li><span className="how-n">3</span><div><strong>Add the course</strong><p>Open <strong>Courses</strong>, select <strong>{server.name}</strong> and choose <strong>Add courses</strong>. Find “{course.title}” and choose <strong>Add</strong>.</p></div></li>
-        </ol>
-      </Dialog>
     </article>
   )
 }

@@ -9,7 +9,7 @@ import Settings from '../src/renderer/routes/Settings'
 let root: Root
 let container: HTMLDivElement
 const user = { id: 'user', name: 'Learner', color: '#abc', createdAt: '2026-10-10T00:00:00Z' }
-const about = { name: 'OpenCourse', description: 'Learn', version: '0.3.0', python: { version: '3.14.8', release: '20261003' }, electron: '44', chromium: '150', node: '22', platform: 'darwin', architecture: 'arm64', license: 'MIT', website: 'https://opencourse.dev' }
+const about = { name: 'OpenCourse', description: 'Learn', version: '0.3.0', python: { version: '3.14.8', release: '20261003' }, electron: '44', chromium: '150', node: '22', platform: 'darwin', architecture: 'arm64', license: 'MIT', website: 'https://opencourse.dev', links: { website: 'https://opencourse.dev', legal: 'https://opencourse.dev/legal', catalog: 'https://catalog.opencourse.dev', download: 'https://opencourse.dev/download' } }
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('opencourse', { onAIChanged: () => () => {}, getAppInfo: vi.fn(async () => about) })

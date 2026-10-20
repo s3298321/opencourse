@@ -63,26 +63,28 @@ export default function TitleGenerationSection({ version }: { version: number })
       {!config && <p className="meta">Titles use each chat’s model and connection, with low reasoning when supported. Choose a connection above to use a dedicated model.</p>}
       {config && !settings.connection.ready && <p className="meta">{settings.connection.message}</p>}
       {config && settings.error && <p className="import-note error">{settings.error}</p>}
-      <div className="settings-defaults">
-        <label><span>Title model</span><select className="settings-title-model" value={config?.model ?? ''} disabled={busy || !config || !settings.models.length}
-          onChange={event => {
-            if (!config) return
-            const model = event.target.value, supported = modelReasoning(model, settings.models)
-            save({ ...config, model, reasoning: config.reasoning && supported.includes(config.reasoning) ? config.reasoning : supported.includes('low') ? 'low' : null })
-          }}>
-          {!config && <option value="">Chat model</option>}
-          {config && !settings.models.some(model => model.id === config.model) && <option value={config.model} disabled>{config.model} (unavailable)</option>}
-          {config && settings.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
-        </select></label>
-        <label><span>Title reasoning</span><select className="settings-title-reasoning" value={config?.reasoning ?? ''} disabled={busy || !config || !levels.length}
-          onChange={event => { if (config) save({ ...config, reasoning: (event.target.value || null) as ReasoningEffort | null }) }}>
-          <option value="">{config ? 'Model default' : 'Low when supported'}</option>
-          {config && levels.map(level => <option key={level} value={level}>{REASONING_LABELS[level]}</option>)}
-        </select></label>
-      </div>
-      {config && <div className="actions"><ActionButton icon="refresh" className="secondary" disabled={busy} onClick={() => {
-        void update(() => window.opencourse.getTitleGenerationSettings(config.provider, true))
-      }}>Refresh models</ActionButton></div>}
+      {settings.connection.ready && <>
+        <div className="settings-defaults">
+          <label><span>Title model</span><select className="settings-title-model" value={config?.model ?? ''} disabled={busy || !config || !settings.models.length}
+            onChange={event => {
+              if (!config) return
+              const model = event.target.value, supported = modelReasoning(model, settings.models)
+              save({ ...config, model, reasoning: config.reasoning && supported.includes(config.reasoning) ? config.reasoning : supported.includes('low') ? 'low' : null })
+            }}>
+            {!config && <option value="">Chat model</option>}
+            {config && !settings.models.some(model => model.id === config.model) && <option value={config.model} disabled>{config.model} (unavailable)</option>}
+            {config && settings.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
+          </select></label>
+          <label><span>Title reasoning</span><select className="settings-title-reasoning" value={config?.reasoning ?? ''} disabled={busy || !config || !levels.length}
+            onChange={event => { if (config) save({ ...config, reasoning: (event.target.value || null) as ReasoningEffort | null }) }}>
+            <option value="">{config ? 'Model default' : 'Low when supported'}</option>
+            {config && levels.map(level => <option key={level} value={level}>{REASONING_LABELS[level]}</option>)}
+          </select></label>
+        </div>
+        {config && <div className="actions"><ActionButton icon="refresh" className="secondary" disabled={busy} onClick={() => {
+          void update(() => window.opencourse.getTitleGenerationSettings(config.provider, true))
+        }}>Refresh models</ActionButton></div>}
+      </>}
     </>}
     {error && <p className="import-note error" role="alert">{error}</p>}
     {saved && <p className="import-note" role="status">Title settings saved.</p>}

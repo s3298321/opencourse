@@ -20,6 +20,9 @@ export default defineConfig({
     resolve: {
       alias: { '@core': resolve(__dirname, 'src/core') }
     },
+    // Not Vite's default 5173: that is the server's web app in `npm run dev`,
+    // and whichever started second would take the other's port.
+    server: { port: 5180 },
     build: {
       rollupOptions: { input: { index: resolve(__dirname, 'src/renderer/index.html') } }
     },

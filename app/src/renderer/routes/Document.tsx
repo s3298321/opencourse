@@ -1,37 +1,28 @@
+import { useLearningPreference } from '../learning/useLearningPreference'
+import { RemoteReading } from '../learning/RemoteReading'
 import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ChatQuote, UserProfile } from '@core/types'
 import type { DocumentSearch, DocumentView } from '@core/documents/types'
 import { documentProgressPercent } from '@core/documents/progress'
+import { anchoredScrollTop, pageAt, parsePageNumber, parseZoomPercent, stepZoom } from '@core/documents/view'
 import { MAX_QUOTE_CHARS } from '@core/sidechat/thread'
 import TitleBar from '../components/TitleBar'
 import ChatToggle from '../components/ChatToggle'
 import ChatPanel from '../components/ChatPanel'
-import PdfPage from '../documents/PdfPage'
+import PdfPage from '../../learning-ui/PdfPage'
 import { usePdf } from '../documents/usePdf'
 import { useDocumentChat } from '../documents/useDocumentChat'
 import DocumentTitle from '../documents/DocumentTitle'
-import DocumentOutline from '../documents/DocumentOutline'
+import DocumentOutline from '../../learning-ui/DocumentOutline'
 import type { Route, Screen } from '../routes'
 import { useScreenActive } from '../screen-activity'
 
 const GAP = 24, HIGHLIGHT = 'document-ask-quote'
-function stepZoom(value: number, direction: 'in' | 'out'): number {
-  const percent = Number((value * 100).toPrecision(12))
-  const next = direction === 'out'
-    ? percent > 50 ? Math.max(50, percent - 25) : percent > 30 ? Math.max(30, percent - 10) : percent > 5 ? Math.max(5, percent - 5) : percent / 2
-    : percent < 5 ? Math.min(5, percent * 2) : percent < 30 ? Math.min(30, percent + 5) : percent < 50 ? Math.min(50, percent + 10) : Math.min(300, percent + 25)
-  return Math.max(Number.MIN_VALUE, next / 100)
-}
 interface SelectionOffer { text: string; page?: number; from: 'document' | 'answer'; range: Range; x: number; y: number }
 function mark(range: Range | null): void {
   if (typeof CSS === 'undefined' || !('highlights' in CSS) || typeof Highlight === 'undefined') return
   if (range) CSS.highlights.set(HIGHLIGHT, new Highlight(range)); else CSS.highlights.delete(HIGHLIGHT)
-}
-function pageAt(offsets: number[], top: number): number {
-  let low = 0, high = offsets.length - 2
-  while (low < high) { const middle = Math.ceil((low + high) / 2); if (offsets[middle]! <= top) low = middle; else high = middle - 1 }
-  return low + 1
 }
 export default function DocumentReader({ documentId, user, route, navigate, navSignal, findSignal }: {
   documentId: string; user: UserProfile | null; route: Screen; navigate: (route: Route) => void
@@ -46,12 +37,15 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
   const [outlineRevealSignal, setOutlineRevealSignal] = useState(0)
   const savedPage = useRef(1)
   const [readingTop, setReadingTop] = useState(0)
-  const [zoom, setZoom] = useState(1), [paneWidth, setPaneWidth] = useState(640)
+  const [localZoom, setLocalZoom] = useState(1), [paneWidth, setPaneWidth] = useState(640)
+  const preference = useLearningPreference(documentId, 'pdfZoom')
+  const zoom = preference.value ?? localZoom
+  const setZoom = (value: number | ((previous:number)=>number)) => {const next = typeof value === 'number' ? value : value(zoom); if(preference.bound)preference.set(next); else setLocalZoom(next)}
   const [editingZoom, setEditingZoom] = useState(false)
   const zoomPercent = Number((zoom * 100).toPrecision(12))
   const applyZoom = (input: string): void => {
-    const text = input.trim().replace(/%$/, '').trim(), percent = Number(text)
-    if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(text) && Number.isFinite(percent) && percent > 0 && percent <= 300 && percent / 100 > 0) setZoom(percent / 100)
+    const value = parseZoomPercent(input)
+    if (value !== null) setZoom(value)
     setEditingZoom(false)
   }
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -65,7 +59,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
     void window.opencourse.getDocument(documentId).then(setDocument).catch(error => setError(error.message))
   }, [documentId])
   useEffect(refresh, [refresh])
-  useEffect(() => window.opencourse.onDocumentsChanged(id => { if (id === documentId) refresh() }), [documentId, refresh])
+  useEffect(() => window.opencourse.onDocumentsChanged(id => { if (!id || id === documentId) refresh() }), [documentId, refresh])
   const { pdf, error: pdfError, unlock } = usePdf(documentId, document?.bytes ?? 0)
   const storageKey = `document-chat:${user?.id}:${documentId}`
   const outlineStorageKey = `document-outline:${user?.id}:${documentId}`
@@ -103,13 +97,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
       const target = pendingJump.current
       element.scrollTop = Math.max(0, offsets[target.page - 1]! + target.top * pageScale(target.page) - GAP)
       pendingJump.current = null
-    } else if (element && previous !== offsets) {
-      const anchor = pageAt(previous, element.scrollTop + GAP + 1) - 1
-      if (offsets[anchor] !== undefined && previous[anchor] !== undefined) {
-        const ratio = (offsets[anchor + 1]! - offsets[anchor]!) / (previous[anchor + 1]! - previous[anchor]!)
-        element.scrollTop = Math.max(0, offsets[anchor]! + (element.scrollTop - previous[anchor]!) * ratio)
-      }
-    }
+    } else if (element && previous !== offsets) element.scrollTop = anchoredScrollTop(previous, offsets, element.scrollTop, GAP)
     previousOffsets.current = offsets
   }, [offsets, pdf, page, pageScale])
   const rememberPage = useCallback((number: number) => {
@@ -127,6 +115,18 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
       pendingJump.current = null
     }
   }, [count, pageScale, pdf, rememberPage])
+  // Anything but a whole page number in range puts the previous value back.
+  const commitPage = (text: string) => {
+    const number = parsePageNumber(text, count)
+    if (number !== null) jump(number)
+    setPageInput(String(number ?? page))
+  }
+  const outlinePage = useRef('1')
+  const commitOutlinePage = (input: HTMLInputElement) => {
+    const number = parsePageNumber(input.value, count)
+    if (number !== null) { outlinePage.current = String(number); jump(number) }
+    input.value = outlinePage.current
+  }
   useLayoutEffect(() => {
     if (positionReady || !active || !document || !pdf) return
     const number = Math.max(1, Math.min(pdf.numPages, document.lastPage))
@@ -210,12 +210,18 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
     <div className="body document-reader" ref={host}>
       <aside className="document-sidebar">
         <div className="document-sidebar-head">{document ? <DocumentTitle title={document.title} onRename={async title => { setDocument(await window.opencourse.renameDocument(documentId, title)) }} /> : <h2>Loading document…</h2>}</div>
-        <nav className="document-outline" aria-label="Document headings">{document?.sections.length ? <DocumentOutline key={outlineStorageKey} storageKey={outlineStorageKey} positionReady={positionReady} sections={document.sections} currentId={sections[currentSection]?.id} jump={jump} revealSignal={outlineRevealSignal} /> : <div className="document-outline-empty"><p className="meta">{document?.status === 'indexing' ? 'Finding headings…' : 'No reliable headings found. Navigate by page.'}</p><label>Go to page<input aria-label="Outline page number" type="number" min="1" max={count} defaultValue="1" onKeyDown={event => { if (event.key === 'Enter') jump(Number(event.currentTarget.value)) }} /></label></div>}</nav>
+        <nav className="document-outline" aria-label="Document headings">{document?.sections.length ? <DocumentOutline key={outlineStorageKey} storageKey={outlineStorageKey} positionReady={positionReady} sections={document.sections} currentId={sections[currentSection]?.id} jump={jump} revealSignal={outlineRevealSignal} /> : <div className="document-outline-empty"><p className="meta">{document?.status === 'indexing' ? 'Finding headings…' : 'No reliable headings found. Navigate by page.'}</p><label>Go to page<input aria-label="Outline page number" type="text" inputMode="numeric" autoComplete="off" defaultValue={outlinePage.current} onFocus={event => event.currentTarget.select()} onBlur={event => commitOutlinePage(event.currentTarget)} onKeyDown={event => {
+          if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
+          if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.value = outlinePage.current }
+        }} /></label></div>}</nav>
       </aside>
       <main className="document-center">
         <div className="document-toolbar">
           <button className="ghost" onClick={() => jump(page - 1)} disabled={page === 1} aria-label="Previous page">←</button>
-          <form onSubmit={event => { event.preventDefault(); jump(Number(pageInput)) }}><label className="sr-only" htmlFor="document-page">Page</label><input id="document-page" type="number" min="1" max={count} value={pageInput} onChange={event => setPageInput(event.target.value)} onBlur={() => { jump(Number(pageInput)); setPageInput(String(page)) }} /><span className="meta">/ {count}</span></form>
+          <form onSubmit={event => event.preventDefault()}><label className="sr-only" htmlFor="document-page">Page</label><input id="document-page" type="text" inputMode="numeric" autoComplete="off" value={pageInput} onChange={event => setPageInput(event.target.value)} onFocus={event => event.currentTarget.select()} onBlur={event => commitPage(event.currentTarget.value)} onKeyDown={event => {
+            if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
+            if (event.key === 'Escape') { event.preventDefault(); setPageInput(String(page)) }
+          }} /><span className="meta">/ {count}</span></form>
           <button className="ghost" onClick={() => jump(page + 1)} disabled={page === count} aria-label="Next page">→</button>
           <div className="document-reading-progress">
             <button className="document-progress-jump" aria-label="Go to last read page" title={readPage ? `Go to page ${readPage} · ${progressDescription}` : progressDescription} disabled={!readPage || !pdf || !positionReady} onClick={() => { jump(readPage); setOutlineRevealSignal(signal => signal + 1) }}>
@@ -244,8 +250,8 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
           {pdf && <div className="pdf-pages" style={{ height: offsets.at(-1), width: zoom <= 1 ? paneWidth : Math.max(paneWidth, pageWidth + GAP * 2) }}>{visiblePages.map(number => <PdfPage key={number} pdf={pdf} number={number} scale={pageScale(number)} top={offsets[number - 1]!} measured={measured} />)}</div>}
         </div>
       </main>
-      <div className="lesson-chat-host document-chat-host" data-open={chatOpen} inert={!chatOpen} aria-hidden={!chatOpen}><ChatPanel visible={chatOpen} variant="document" panel={panel} quote={quote} onQuoteUsed={clearQuote} onClose={() => setChatOpen(false)} storageKey={storageKey} sourceIcons={window.opencourse.getDocumentSourceIcons}
-        onSource={source => { if (source.kind === 'document' && source.documentId === documentId) jump(source.page) }} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} /></div>
+      <div className="lesson-chat-host document-chat-host" data-open={chatOpen} inert={!chatOpen} aria-hidden={!chatOpen}><RemoteReading id={documentId} quote={quote} onQuoteUsed={clearQuote} visible={chatOpen} onClose={() => setChatOpen(false)} onAddKey={() => navigate({ name: 'settings', from: route, section: 'servers' })} onSource={source => { if (source.kind === 'document' && source.documentId === documentId) jump(source.page) }}><ChatPanel visible={chatOpen} variant="document" panel={panel} quote={quote} onQuoteUsed={clearQuote} onClose={() => setChatOpen(false)} storageKey={storageKey} sourceIcons={window.opencourse.getDocumentSourceIcons}
+        onSource={source => { if (source.kind === 'document' && source.documentId === documentId) jump(source.page) }} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} /></RemoteReading></div>
       {active && offer && <button className="ask-about" style={{ left: Math.min(Math.max(offer.x, 64), window.innerWidth - 64), top: offer.y }} onMouseDown={event => event.preventDefault()} onClick={attach}>Ask about this</button>}
     </div>
   </>

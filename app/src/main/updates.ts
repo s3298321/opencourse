@@ -24,12 +24,13 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, re
 import { dirname, join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { isLoopbackHost } from '../core/catalog/url'
-import { DOWNLOAD_PAGE, parseRelease, releaseFeedUrl, type Release } from '../core/updates/release'
+import { parseRelease, releaseFeedUrl, type Release } from '../core/updates/release'
 import { allowedUpdateUrl, checkDue, CHECK_INTERVAL_MS, installTarget, installTargetMessage, isNewer, notWritable, type InstallTarget } from '../core/updates/policy'
 import type { AppUpdateInfo, AppUpdateStatus } from '../core/types'
 import { log } from './log'
 import { appUpdatesDir, appUpdatesFile } from './paths'
-import { isolatedRun } from './run-mode'
+import { devRun, isolatedRun } from './run-mode'
+import { appLinks } from './app-info'
 import {
   backupPathFor,
   bundleIdentity,
@@ -93,11 +94,13 @@ function testFeed(): URL | null {
  * whole path is checked end to end without a learner's profile.
  */
 function updatesAllowed(): boolean {
-  return !isolatedRun || testFeed() !== null
+  // A dev build cannot install anyway, and asking GitHub is the deployed
+  // world: it stays out of the local one unless a loopback feed is named.
+  return (!isolatedRun && !devRun()) || testFeed() !== null
 }
 
 export function appUpdateInfo(): AppUpdateInfo {
-  return { status, automatic, currentVersion: app.getVersion(), checkedAt, downloadUrl: DOWNLOAD_PAGE }
+  return { status, automatic, currentVersion: app.getVersion(), checkedAt, downloadUrl: appLinks().download }
 }
 
 function set(next: AppUpdateStatus): void {

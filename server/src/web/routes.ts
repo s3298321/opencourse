@@ -17,12 +17,13 @@ import type { Ctx } from '../context'
 import { accountDetails } from '../auth/routes'
 import { catalogPage, courseOverview, listedCourses, tagCounts } from '../catalog/catalog'
 import { catalogQuery } from '../catalog/routes'
+import { documentOverview } from '../learning/documents'
 import { SERVER_VERSION } from '../version'
 import { NO_WEB_APP, esc, renderShell, type ShellMeta } from './shell'
 
 /** Script and style from this origin only, never inline; nothing framed, nothing posted elsewhere. */
 export const PAGE_CSP = [
-  "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data: blob:", "font-src 'self'",
+  "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self'", "img-src 'self' data: blob:", "font-src 'self'",
   "connect-src 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'", "manifest-src 'self'"
 ].join('; ')
 
@@ -46,10 +47,11 @@ export interface Shell {
 
 export function createShell(ctx: Ctx): Shell {
   const { config, db: d } = ctx
-  const template = config.webDir ? readFileSync(join(config.webDir, 'index.html'), 'utf8') : NO_WEB_APP
+  const readTemplate = () => config.webDir ? readFileSync(join(config.webDir, 'index.html'), 'utf8') : NO_WEB_APP
+  const template = readTemplate()
   const server: BootServer = {
     opencourse: 1, api: 1, name: config.name, description: config.description, registration: config.registration,
-    version: SERVER_VERSION, publicUrl: config.publicUrl, appUrl: config.appUrl, sourceUrl: SOURCE_URL,
+    version: SERVER_VERSION, publicUrl: config.publicUrl, appUrl: config.appUrl, siteUrl: config.siteUrl, sourceUrl: SOURCE_URL,
     privacyUrl: config.privacyUrl, legalUrl: config.legalUrl
   }
   const mark = `${config.publicUrl}/mark-512.png`
@@ -65,6 +67,12 @@ export function createShell(ctx: Ctx): Shell {
       // Only the plain catalog is indexed; a search is a view of it.
       const plain = !query.q && !query.tags.length && !query.sort && query.page === 1
       return { status: 200, meta: { ...base, index: plain, canonical: plain ? `${config.publicUrl}/` : canonical }, data }
+    }
+    if (page.key === 'documents') return { status: 200, meta: { ...base, title: `Documents · ${config.name}`, index: !url.search }, data: null }
+    if (page.key === 'document') {
+      try { const item = documentOverview(ctx, params.id ?? '')
+        return { status: 200, meta: { ...base, title: `${item.title} · ${config.name}`, description: plainSummary(item.description), index: true, type: 'article' }, data: null }
+      } catch { return { status: 404, meta: { ...base, title: `Not found · ${config.name}` }, data: null } }
     }
     if (page.key === 'course') {
       const course = courseOverview(d, params['id'] ?? '', null)
@@ -95,7 +103,9 @@ export function createShell(ctx: Ctx): Shell {
       const meta = status && status >= 500 ? { ...described.meta, title: `Something went wrong · ${config.name}`, index: false } : described.meta
       return securityHeaders(reply.code(status ?? described.status).type('text/html; charset=utf-8'))
         .header('Cache-Control', 'no-store').header('Vary', 'Cookie')
-        .send(renderShell(template, meta, boot))
+        // A local rebuild replaces the hashed assets. Re-read its HTML in dev
+        // so a running API never keeps pointing browsers at the deleted build.
+        .send(renderShell(config.dev ? readTemplate() : template, meta, boot))
     }
   }
 }

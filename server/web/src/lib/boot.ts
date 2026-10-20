@@ -5,7 +5,7 @@
  */
 import type { AccountDetails, ServerInfo } from '@core/catalog/api'
 import { BOOT_ELEMENT_ID, type Boot, type BootData } from '@shared/boot'
-import { DEFAULT_APP_URL, SOURCE_URL } from '@shared/pages'
+import { DEFAULT_APP_URL, DEFAULT_SITE_URL, SOURCE_URL } from '@shared/pages'
 
 const element = document.getElementById(BOOT_ELEMENT_ID)
 
@@ -13,10 +13,14 @@ function read(): Boot {
   if (element?.textContent) {
     try { return JSON.parse(element.textContent) as Boot } catch { /* fall through */ }
   }
+  // Under `vite dev` there is no server-written page; scripts/dev.mjs hands the
+  // local site's addresses over as Vite variables instead.
   return {
     server: {
       opencourse: 1, api: 1, name: 'OpenCourse server', description: '', registration: 'open',
-      publicUrl: window.location.origin, appUrl: DEFAULT_APP_URL, sourceUrl: SOURCE_URL,
+      publicUrl: window.location.origin, sourceUrl: SOURCE_URL,
+      appUrl: import.meta.env['VITE_OPENCOURSE_APP_URL'] || DEFAULT_APP_URL,
+      siteUrl: import.meta.env['VITE_OPENCOURSE_SITE_URL'] || DEFAULT_SITE_URL,
       privacyUrl: null, legalUrl: null
     },
     account: null,

@@ -12,6 +12,7 @@ import type {
   AccountDetails, AccountRole, AdminAccount, AdminCourse, AdminStats, AuditEntry, CatalogPage, CatalogTag,
   CourseOverview, ManagedCourse, Paged, SessionInfo, WebAuthResult
 } from '@core/catalog/api'
+import type { PublishedDocument } from '@core/learning/types'
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly extra: Record<string, unknown> = {}) {
@@ -21,7 +22,7 @@ export class ApiError extends Error {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
-async function call<T>(method: Method, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export async function call<T>(method: Method, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response
   try {
     response = await fetch(`/api/v1${path}`, {
@@ -64,7 +65,7 @@ export const api = {
   /* signing in */
   usernameAvailable: (name: string, signal?: AbortSignal) => call<{ available: boolean; reason?: string }>('GET', `/auth/username${query({ name })}`, undefined, signal),
   registerStart: (email: string) => call<{ ok: true }>('POST', '/auth/register/start', { email }),
-  registerVerify: (email: string, code: string) => call<{ ticket: string }>('POST', '/auth/register/verify', { email, code }),
+  registerVerify: (email: string, code: string) => call<{ ticket?: string; existingAccount?: boolean }>('POST', '/auth/register/verify', { email, code }),
   registerComplete: (ticket: string, username: string, password: string) => call<WebAuthResult>('POST', '/auth/register/complete', { ticket, username, password, session: 'cookie' }),
   login: (login: string, password: string) => call<WebAuthResult>('POST', '/auth/login', { login, password, session: 'cookie' }),
   logout: () => call<void>('POST', '/auth/logout'),
@@ -89,6 +90,15 @@ export const api = {
   unpublish: (id: string) => call<ManagedCourse>('DELETE', `/courses/${enc(id)}`),
   relist: (id: string) => call<ManagedCourse>('POST', `/courses/${enc(id)}/relist`),
 
+  /* your documents: published from the app, managed here too */
+  myDocuments: () => call<{ documents: PublishedDocument[] }>('GET', '/me/documents'),
+  managedDocument: (id: string) => call<PublishedDocument>('GET', `/documents/${enc(id)}`),
+  makeDocumentCurrent: (id: string, version: string) => call<PublishedDocument>('PUT', `/documents/${enc(id)}/current`, { version }),
+  deleteDocumentVersion: (id: string, version: string) => call<{ ok: true }>('DELETE', `/documents/${enc(id)}/versions/${enc(version)}`),
+  reindexDocument: (id: string, version: string) => call<{ ok: true }>('POST', `/documents/${enc(id)}/versions/${enc(version)}/reindex`, {}),
+  unpublishDocument: (id: string) => call<PublishedDocument>('DELETE', `/documents/${enc(id)}`),
+  relistDocument: (id: string) => call<PublishedDocument>('POST', `/documents/${enc(id)}/relist`, {}),
+
   /* administration */
   admin: {
     stats: () => call<AdminStats>('GET', '/admin/stats'),
@@ -104,3 +114,4 @@ export const api = {
 }
 
 export const coverUrl = (id: string): string => `/api/v1/courses/${enc(id)}/cover`
+export const documentCoverUrl = (id: string): string => `/api/v1/documents/${enc(id)}/cover`

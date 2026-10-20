@@ -2,6 +2,8 @@
 import type { OutputMatch, RuntimeSpec, VersionFloor } from './toolchains/types'
 import type { ThemeNote } from './theme/types'
 import type { CourseOrigin } from './catalog/origin'
+import type { AppLinks } from './links'
+import type { ServerStatus } from './catalog/health'
 
 export type { OutputMatch, RuntimeSpec, VersionFloor }
 
@@ -339,7 +341,7 @@ export interface CourseSummary {
   /** The course's own version, MAJOR.MINOR.PATCH. */
   version?: string
   /** Absent for a local course. */
-  origin?: { server: string; serverName: string; role: 'publisher' | 'learner'; publisher: string }
+  origin?: { serverId?: string; accountId?: string; contentId?: string; server: string; serverName: string; role: 'publisher' | 'learner'; publisher: string }
   draft?: boolean
   slug: string
   title: string
@@ -437,14 +439,17 @@ export type ImportResult =
 
 /** A server this user connected to, as the renderer sees it: no token, ever. */
 export interface ServerConnection {
+  capabilities?: string[]
   id: string
   url: string
   name: string
   description: string
   /** Who this user is there; null once they sign out. */
-  account: { username: string; email: string } | null
+  account: { id?: string; username: string; email: string } | null
   /** The connection whose catalog the Library shows. */
   active: boolean
+  /** Whether the server is there, as the app's requests last found it (core/catalog/health.ts). */
+  status: ServerStatus
 }
 
 /** What updating a server course to its current version would do, shown before it does it. */
@@ -1025,6 +1030,8 @@ export type AppUpdateStatus =
   | { state: 'blocked'; version: string; size: number; notesUrl: string; reason: string }
   | { state: 'error'; message: string; version?: string; notesUrl?: string }
 
+export type { AppLinks }
+
 export interface AppInfo {
   name: string
   description: string
@@ -1037,6 +1044,8 @@ export interface AppInfo {
   architecture: string
   license: string
   website: string
+  /** Where Settings links to: the public site and catalog, or their local twins in a dev run. */
+  links: AppLinks
 }
 
 export interface AppUpdateInfo {

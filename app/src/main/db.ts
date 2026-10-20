@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 22
+export const SCHEMA_VERSION = 24
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -328,6 +328,19 @@ function migrate(d: DatabaseSync): void {
     const columns = d.prepare('PRAGMA table_info(documents)').all() as { name: string }[]
     if (columns.some(column => column.name === 'completed')) d.exec('ALTER TABLE documents DROP COLUMN completed')
   }
+  if (from < 23) { d.exec(`
+    CREATE TABLE IF NOT EXISTS learning_document_installs (local_id TEXT PRIMARY KEY,version TEXT NOT NULL,metadata TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS learning_bindings (server_id TEXT NOT NULL,account_id TEXT NOT NULL,connection_id TEXT NOT NULL,kind TEXT NOT NULL,remote_id TEXT NOT NULL,local_id TEXT NOT NULL UNIQUE,version TEXT NOT NULL,state TEXT NOT NULL,downloaded INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(server_id,account_id,kind,remote_id));
+    CREATE TABLE IF NOT EXISTS learning_elements (server_id TEXT NOT NULL,account_id TEXT NOT NULL,remote_id TEXT NOT NULL,local_id TEXT NOT NULL,PRIMARY KEY(server_id,account_id,remote_id));
+    CREATE TABLE IF NOT EXISTS learning_outbox (id TEXT PRIMARY KEY,server_id TEXT NOT NULL,account_id TEXT NOT NULL,payload TEXT NOT NULL,error TEXT);
+    CREATE TABLE IF NOT EXISTS learning_cursors (server_id TEXT NOT NULL,account_id TEXT NOT NULL,cursor INTEGER NOT NULL DEFAULT 0,clock_offset REAL NOT NULL DEFAULT 0,PRIMARY KEY(server_id,account_id));
+    CREATE TABLE IF NOT EXISTS learning_progress_journal (local_id TEXT PRIMARY KEY,value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS learning_chat_cache (server_id TEXT NOT NULL,account_id TEXT NOT NULL,id TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(server_id,account_id,id));
+    CREATE TABLE IF NOT EXISTS learning_chat_imports (server_id TEXT NOT NULL,account_id TEXT NOT NULL,chat_id TEXT NOT NULL,PRIMARY KEY(server_id,account_id,chat_id));
+    CREATE TABLE IF NOT EXISTS learning_bootstrap (server_id TEXT NOT NULL,account_id TEXT NOT NULL,local_id TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(server_id,account_id,local_id));
+  `); addColumn(d, 'documents', 'publication', 'TEXT') }
+  // The last exercise code this machine and its server agreed on (exercise-code.ts).
+  if (from < 24) d.exec('CREATE TABLE IF NOT EXISTS learning_exercise_code (local_id TEXT NOT NULL,block_id TEXT NOT NULL,operation TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(local_id,block_id))')
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 

@@ -1,0 +1,388 @@
+@import "./chat-presentation.css";
+/* Server account settings are shared by desktop and web. */
+.learning-settings {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  min-width: 0;
+  margin: 16px 0;
+}
+.learning-settings h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+.learning-settings form {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.learning-settings label {
+  display: grid;
+  gap: 6px;
+}
+.learning-settings input {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 9px;
+}
+.learning-settings input[type='checkbox'] {
+  width: auto;
+}
+.learning-settings select {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 8px;
+  min-width: 0;
+}
+.learning-settings fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.learning-settings legend {
+  padding: 0;
+  font-weight: 600;
+}
+.learning-settings fieldset p {
+  margin: 0;
+}
+/* A model and its reasoning side by side, stacked when the column is narrow. */
+.learning-settings-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.learning-settings button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--chip-bg);
+  color: inherit;
+  border: 1px solid var(--border);
+}
+.learning-settings-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.learning-settings button.learning-settings-save:not(:disabled) {
+  background: #fff;
+  color: #171717;
+  border-color: #fff;
+}
+.learning-settings button.learning-settings-save:disabled {
+  background: var(--chip-bg);
+  color: var(--muted);
+  border-color: var(--border);
+}
+.learning-settings [role='alert'] {
+  color: var(--err);
+}
+
+/* The app's quiet transcript and single-box composer, in a portable card. */
+.learning-chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  max-height: 85vh;
+  overflow: hidden;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.learning-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.learning-chat-header > svg {
+  color: var(--muted);
+  flex: none;
+}
+.learning-chat h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0;
+  flex: 1;
+}
+.learning-chat button {
+  font: inherit;
+  cursor: pointer;
+}
+.learning-chat .learning-chat-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 6px;
+}
+.learning-chat-icon svg,
+.learning-chat-send svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.learning-chat .learning-chat-icon:hover:not(:disabled) {
+  background: var(--chip-bg);
+  color: var(--fg);
+}
+.learning-chat button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.learning-chat-tabs { display: flex; align-items: center; gap: .25rem; padding: .35rem .5rem; border-bottom: 1px solid var(--border); flex: none; min-width: 0; }
+.learning-chat-tab-list { display: flex; align-items: center; gap: .25rem; overflow-x: auto; min-width: 0; }
+.learning-chat-tab { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .45rem; border-radius: 6px; font-size: .76rem; white-space: nowrap; background: var(--chip-bg); color: var(--chip-fg); }
+.learning-chat-tab.active { background: var(--selected); color: var(--fg); box-shadow: inset 0 0 0 1px var(--selected-edge); }
+.learning-chat-tab button, .learning-chat-new, .learning-chat-history-toggle, .learning-chat-history-open, .learning-chat-tab-close { background: none; border: 0; color: inherit; padding: 0; }
+.learning-chat-tab button[role=tab] { display: inline-flex; align-items: center; gap: .3rem; font-size: .76rem; }
+.learning-chat-tabs .sidechat-tab-title { display: inline-flex; overflow: hidden; flex: none; }
+.learning-chat-tabs .sidechat-tab-title > span { display: inline-block; white-space: nowrap; }
+.learning-chat .learning-chat-tab-close, .learning-chat .learning-chat-new, .learning-chat .learning-chat-history-toggle { padding: 0 .2rem; font-size: .76rem; opacity: .65; flex: none; }
+.learning-chat .learning-chat-tab-close:hover, .learning-chat .learning-chat-new:hover, .learning-chat .learning-chat-history-toggle:hover { opacity: 1; }
+.learning-chat .learning-chat-history-toggle { margin-left: auto; color: var(--muted); }
+.learning-chat .learning-chat-history-toggle.active { color: var(--accent); opacity: 1; }
+.learning-chat-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.learning-chat-transcript { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.learning-chat-history {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  max-height: 40%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  background: var(--popover);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 0.2);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .learning-chat-history { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+.learning-chat-history-empty { padding: .6rem .75rem; color: var(--muted); font-size: .8rem; }
+.learning-chat-history-row { display: flex; align-items: center; gap: .5rem; padding: .45rem .75rem; font-size: .8rem; border-bottom: 1px solid var(--border); }
+.learning-chat-history-row:last-child { border-bottom: 0; }
+.learning-chat-history-row:hover { background: var(--chip-bg); }
+.learning-chat-history-open { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.learning-chat-history-open small { display: block; font-size: .72rem; color: var(--muted); margin-top: .2rem; }
+.learning-chat-notice {
+  padding: 0.65rem 0.85rem;
+  background: var(--chip-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--muted);
+  flex: none;
+}
+.learning-chat-notice p {
+  margin: 0;
+}
+.learning-chat-notice a {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.learning-chat-error {
+  margin: 0.75rem;
+  padding: 0.65rem;
+  font-size: 0.8rem;
+  color: var(--err);
+  background: var(--err-bg);
+  border-radius: 6px;
+}
+.learning-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  padding: 0.75rem 0.85rem 1.25rem;
+}
+.learning-chat-empty {
+  color: var(--muted);
+  font-size: 0.88rem;
+  padding: 1.5rem 0.25rem;
+  line-height: 1.6;
+}
+.learning-chat-empty p {
+  margin: 0 0 0.4rem;
+}
+.learning-message {
+  margin-bottom: 1.1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.learning-message.user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.learning-message.user .learning-message-body {
+  max-width: 88%;
+  padding: 0.5rem 0.8rem;
+  background: var(--bubble, var(--card));
+  border: 1px solid var(--bubble-border, var(--border));
+  border-radius: 16px 16px 5px 16px;
+  white-space: pre-wrap;
+}
+.learning-message.assistant > .learning-message-body {
+  white-space: pre-wrap;
+}
+.learning-message .oc-prose {
+  font-size: inherit;
+  white-space: normal;
+}
+.learning-message .oc-prose > :first-child {
+  margin-top: 0;
+}
+.learning-message .oc-prose > :last-child {
+  margin-bottom: 0;
+}
+.learning-message small,
+.learning-message > a {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.learning-chat-composer {
+  margin: 0;
+  padding: 0.2rem 0.75rem 0.75rem;
+  flex: none;
+}
+.learning-chat-box {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--composer-bg, var(--card));
+  transition: border-color 150ms ease;
+  overflow: hidden;
+}
+.learning-chat-box:focus-within {
+  border-color: var(--accent);
+}
+.learning-chat textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 0;
+  max-height: 168px;
+  padding: 0.65rem 0.85rem 0.25rem;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  resize: none;
+}
+.learning-chat textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.learning-chat textarea::placeholder {
+  color: var(--muted);
+}
+.learning-chat-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem 0.55rem 0.85rem;
+}
+.learning-chat .learning-chat-send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--accent);
+  color: var(--accent-fg);
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease;
+}
+.learning-chat .learning-chat-send:disabled {
+  opacity: 1;
+  background: var(--chip-bg);
+  color: var(--muted);
+  transform: scale(0.9);
+}
+.learning-chat-send:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.learning-chat-send:active:not(:disabled) {
+  transform: scale(0.92);
+}
+@media (prefers-reduced-motion: reduce) {
+  .learning-chat-box,
+  .learning-chat-send {
+    transition: none;
+  }
+}
+
+/* The same compact picker chrome as the desktop composer. */
+.learning-chat-actions { gap: .15rem; padding: .2rem .45rem .45rem .4rem; }
+.learning-chat-actions .learning-chat-send { margin-left: auto; }
+.learning-chat .learning-chat-picker { min-width: 0; padding: .2rem .4rem; color: var(--muted); font-size: .72rem; font-weight: 500; }
+.learning-chat-model { flex: 0 1 auto; max-width: 11rem; }
+.learning-chat-reasoning { flex: none; }
+.learning-chat-picker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.learning-chat-connection { display: inline-flex; flex: none; color: var(--muted); padding: .2rem .35rem; }
+.learning-message .project-tool-activity { font-size: .75rem; color: var(--muted); padding-top: .5rem; }
+.learning-message .chat-local-sources { display: flex; flex-wrap: wrap; gap: .35rem; }
+.learning-message .chat-local-sources a { font-size: .75rem; padding: .2rem .4rem; color: var(--muted); border-radius: 5px; text-decoration: none; }
+.learning-message .chat-local-sources a:hover { color: var(--fg); background: var(--chip-bg); }
+.learning-settings .learning-model-option { display: flex; align-items: center; gap: .5rem; }
+.learning-settings .learning-model-option input { margin: 0; }
+.learning-model-list { max-height: 260px; overflow: auto; display: grid; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.learning-model-actions { display: flex; gap: .5rem; }
+.learning-chat-menu { font-family: inherit; }
+.learning-chat-menu button { font-family: inherit; cursor: pointer; }
+
+.learning-message .chat-local-sources button { background: none; border: 0; color: var(--muted); font-size: .75rem; padding: .2rem .4rem; border-radius: 5px; }
+.learning-message .chat-local-sources button:hover { color: var(--fg); background: var(--chip-bg); }
+
+.menu-panel.learning-chat-menu {
+  background-color: rgb(from var(--popover) r g b / 1);
+  backdrop-filter: none;
+  animation: none;
+  min-width: 11rem;
+  padding: .25rem;
+}
+.learning-chat-menu .menu-item { padding: .3rem .55rem; font-size: .82rem; }

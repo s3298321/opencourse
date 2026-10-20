@@ -46,7 +46,10 @@ export function screenKey(screen: Screen): string {
     case 'notebook': case 'course': case 'courseEditor': return `${screen.name}/${screen.courseId}`
     case 'catalogCourse': case 'publication': return `${screen.name}/${screen.serverId}/${screen.courseId}`
     case 'coachProject': return `coachProject/${screen.projectId}`
-    case 'document': return `document/${screen.documentId}`
+    case 'document': case 'documentOverview': return `${screen.name}/${screen.documentId}`
+    case 'documents': return 'documents'
+    case 'documentCatalog': return `documentCatalog/${screen.serverId}`
+    case 'catalogDocument': case 'documentPublication': return `${screen.name}/${screen.serverId}/${screen.documentId}`
     case 'coachSession': return `coachSession/${screen.projectId}/${screen.sessionId}`
     case 'review': return `review/${screen.session.id}`
     default: return screen.name

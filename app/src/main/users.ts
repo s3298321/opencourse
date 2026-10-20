@@ -81,6 +81,15 @@ export function switchUser(id: string): UserProfile {
 }
 
 /**
+ * Back to nobody selected, as at launch. Only dev-seed.ts, which fills each
+ * user of a fresh `npm run dev` profile before the window opens and must
+ * leave the picker as it found it.
+ */
+export function clearSession(): void {
+  session = null
+}
+
+/**
  * Renames whoever is selected. Deliberately takes no id: a rename rewrites
  * profile.json, which is a path this module builds, so the user it applies to
  * comes from the session rather than from the renderer. makeUserDirs already

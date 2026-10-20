@@ -1,4 +1,5 @@
 import ActionButton from '../components/ActionButton'
+import ServerUnreachable, { downTitle, serverDown, useServerConnection } from '../components/ServerUnreachable'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { CourseOverview } from '@core/catalog/api'
@@ -20,13 +21,13 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
 }): JSX.Element {
   const [course, setCourse] = useState<CourseOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [inLibrary, setInLibrary] = useState(false)
+  const [inLibrary, setInLibrary] = useState<string|null>(null)
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
     void window.opencourse.getCatalogCourse(serverId, courseId).then((r) => { if (r.ok) setCourse(r.value); else setError(r.message) })
-    void window.opencourse.listCourses().then((list) => setInLibrary(list.some((c) => c.courseId === courseId)))
+    void Promise.all([window.opencourse.listCourses(),window.opencourse.listServers()]).then(([list,servers])=>{const server=servers.find(s=>s.id===serverId);setInLibrary(list.find(c=>(c.origin?.contentId??c.courseId)===courseId&&(!c.origin?.serverId||c.origin.server===server?.url&&c.origin.accountId===server?.account?.id))?.courseId??null)})
   }, [serverId, courseId])
   useEffect(load, [load])
   useEffect(() => window.opencourse.onCoursesChanged(load), [load])
@@ -36,23 +37,18 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
     setBusy(true); setNote(null)
     try {
       const r = await window.opencourse.addCatalogCourse(serverId, courseId)
-      if (r.ok) { setInLibrary(true); setNote({ text: `Added to your courses (v${r.value.version}).`, error: false }) }
+      if (r.ok) { setInLibrary(r.value.courseId); setNote({ text: `Added to your courses (v${r.value.version}).`, error: false }) }
       else setNote({ text: r.message, error: true })
     } finally { setBusy(false) }
   }
 
-  const [serverName, setServerName] = useState('Catalog')
-  useEffect(() => {
-    let alive = true
-    const load = () => { void window.opencourse.listServers().then(list => { if (alive) setServerName(list.find(server => server.id === serverId)?.name ?? 'Catalog') }).catch(() => {}) }
-    load(); const off = window.opencourse.onServersChanged(load)
-    return () => { alive = false; off() }
-  }, [serverId])
-  const back = { label: serverName, onClick: () => navigate({ name: 'catalog', serverId }) }
+  const server = useServerConnection(serverId, () => { setError(null); load() })
+  const down = serverDown(server)
+  const back = { label: server?.name ?? 'Catalog', onClick: () => navigate({ name: 'catalog', serverId }) }
   if (!course) {
     return <>
       <TitleBar user={user} navigate={navigate} route={route} back={back} />
-      <div className="body"><div className="content scroll"><div className="detail">{error ? <p className="import-note error">{error}</p> : <p className="meta">Loading…</p>}</div></div></div>
+      <div className="body"><div className="content scroll"><div className="detail">{server && down ? <ServerUnreachable server={server} /> : error ? <p className="import-note error">{error}</p> : <p className="meta">Loading…</p>}</div></div></div>
     </>
   }
 
@@ -79,10 +75,11 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
 
           <div className="actions catalog-detail-actions">
             {inLibrary
-              ? <ActionButton icon="book" onClick={() => navigate({ name: 'course', courseId })}>Open in my courses</ActionButton>
-              : <ActionButton icon="plus" disabled={busy} onClick={() => void add()}>{busy ? 'Adding' : 'Add to my courses'}</ActionButton>}
-            {course.ownedByYou && <ActionButton icon="settings" className="secondary" onClick={() => navigate({ name: 'publication', serverId, courseId })}>Manage publication</ActionButton>}
+              ? <ActionButton icon="book" onClick={() => navigate({ name: 'course', courseId:inLibrary! })}>Open in my courses</ActionButton>
+              : <ActionButton icon="plus" disabled={busy || down} title={server && down ? downTitle(server) : undefined} onClick={() => void add()}>{busy ? 'Adding' : 'Add to my courses'}</ActionButton>}
+            {course.ownedByYou && <ActionButton icon="settings" className="secondary" disabled={down} onClick={() => navigate({ name: 'publication', serverId, courseId })}>Manage publication</ActionButton>}
           </div>
+          {server && down && <ServerUnreachable server={server} />}
           {note && <p className={`import-note${note.error ? ' error' : ''}`} role="status">{note.text}</p>}
 
           {course.description && <CourseDescription key={`${serverId}:${courseId}`} source={course.description} />}

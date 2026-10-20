@@ -1,3 +1,5 @@
+import { useLearningPreference } from '../learning/useLearningPreference'
+import { RemoteReading } from '../learning/RemoteReading'
 import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, Dispatch, JSX, RefObject, SetStateAction } from 'react'
@@ -118,9 +120,12 @@ export default function LessonView({
   chatOpen,
   setChatOpen,
   scrollRef,
-  readingScale,
-  setReadingScale
+  readingScale: localReadingScale,
+  setReadingScale: setLocalReadingScale
 }: Props): JSX.Element {
+  const preference = useLearningPreference(courseId, 'readingScale')
+  const readingScale = preference.value ?? localReadingScale
+  const setReadingScale = preference.bound ? preference.set : setLocalReadingScale
   const [course, setCourse] = useState<CourseView | null>(null)
   const [progress, setProgress] = useState<CourseProgress | null>(null)
   const [openExerciseId, setOpenExerciseId] = useState<string | null>(null)
@@ -491,7 +496,7 @@ export default function LessonView({
           />
         )}
         {chatInitialized && (
-          <div className="lesson-chat-host" data-open={chatOpen} inert={!chatOpen} aria-hidden={!chatOpen}><SideChat
+          <div className="lesson-chat-host" data-open={chatOpen} inert={!chatOpen} aria-hidden={!chatOpen}><RemoteReading id={courseId} quote={quote} onQuoteUsed={() => setQuote(null)} visible={chatOpen} onClose={() => setChatOpen(false)} textScale={readingScale} onAddKey={() => navigate({ name: 'settings', from: route, section: 'servers' })}><SideChat
             visible={chatOpen}
             courseId={courseId}
             lesson={{ moduleId, lessonId }}
@@ -500,7 +505,7 @@ export default function LessonView({
             onClose={() => setChatOpen(false)}
             onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })}
             textScale={readingScale}
-          /></div>
+          /></RemoteReading></div>
         )}
       </div>
       {active && selection && (

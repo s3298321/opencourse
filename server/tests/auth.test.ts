@@ -43,8 +43,9 @@ describe('sign-up by email code', () => {
     const again = await post('/api/v1/auth/register/start', { email: existing.email })
     expect(again.statusCode).toBe(202)
     const mail = server.outbox.messages.at(-1)!
-    expect(mail.subject).toContain('already have an account')
-    expect(mail.text).not.toMatch(/\b\d{6}\b/)
+    expect(mail.text).toMatch(/\b\d{6}\b/)
+    const linked = await post('/api/v1/auth/register/verify', { email: existing.email, code: mail.text.match(/\b(\d{6})\b/)![1] })
+    expect(linked.json()).toEqual({ existingAccount: true })
     expect((await post('/api/v1/auth/password/forgot', { email: 'nobody@example.org' })).statusCode).toBe(202)
   })
 

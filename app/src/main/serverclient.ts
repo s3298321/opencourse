@@ -13,6 +13,7 @@
  *  - a download is streamed to a file under a byte cap.
  */
 import { app, net } from 'electron'
+import { EventEmitter } from 'node:events'
 import { createWriteStream, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { API_PREFIX } from '../core/catalog/api'
@@ -31,6 +32,15 @@ export class ServerError extends Error {
     super(message)
   }
 }
+
+/**
+ * Whether each request reached the server, by base URL: 'answered' or
+ * 'failed'. server-health.ts turns these into a status the app shows. A
+ * gateway's 502/503/504 counts as failed - that is what a hosted server whose
+ * process has stopped looks like from here.
+ */
+export const serverOutcomes = new EventEmitter()
+const GATEWAY_DOWN = new Set([502, 503, 504])
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 let fetchImpl: Fetch = (url, init) => net.fetch(url, init)
@@ -66,8 +76,10 @@ async function send(base: string, path: string, options: CallOptions): Promise<R
   } catch (err) {
     const timedOut = (err as Error).name === 'TimeoutError'
     logger.warn('Server unreachable', { data: { host, route: options.route, ms: Date.now() - started, timedOut } })
+    serverOutcomes.emit('failed', base)
     throw new ServerError(0, timedOut ? 'timeout' : 'unreachable', timedOut ? 'The server did not answer in time.' : `Could not reach ${host}. Check the address and your connection.`)
   }
+  serverOutcomes.emit(GATEWAY_DOWN.has(response.status) ? 'failed' : 'answered', base)
   if (response.redirected || (response.status >= 300 && response.status < 400)) {
     throw new ServerError(response.status, 'redirect', 'The server tried to send the app somewhere else. Use the address it redirects to, if you trust it.')
   }
@@ -149,6 +161,7 @@ export async function downloadArchive(base: string, path: string, file: string, 
     await new Promise<void>((resolve) => out.end(resolve))
   }
   const expected = response.headers.get('x-opencourse-sha256')
+  if (path.startsWith('/learn/') && (!expected || !/^[a-f0-9]{64}$/i.test(expected))) throw new ServerError(502, 'missing_checksum', 'The server did not supply a valid content checksum.')
   if (expected && hash.digest('hex') !== expected.toLowerCase()) throw new ServerError(response.status, 'corrupt_download', 'The download was damaged on the way. Try again.')
   return { version: response.headers.get('x-opencourse-version') }
 }

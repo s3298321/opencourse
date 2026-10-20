@@ -3,6 +3,9 @@
  * started listening, so tests drive it with inject() or an ephemeral port and
  * src/index.ts is all that a real start adds.
  */
+import { registerAIRoutes } from './learning/ai'
+import { registerLearningRoutes } from './learning/routes'
+import { registerDocumentRoutes } from './learning/documents'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyRequest } from 'fastify'
@@ -27,6 +30,7 @@ export interface BuildOptions {
   /** Tests pass an Outbox to read codes from. */
   mailer?: Mailer
   logger?: boolean
+  aiFetch?: typeof fetch
 }
 
 export async function buildApp(options: BuildOptions): Promise<{ app: FastifyInstance; ctx: Ctx }> {
@@ -39,9 +43,16 @@ export async function buildApp(options: BuildOptions): Promise<{ app: FastifyIns
     else if (config.dev) mailer = new Outbox()
     else throw new Error('No way to send sign-up codes: set OPENCOURSE_SMTP_URL, or OPENCOURSE_SERVER_DEV=1 on a development machine.')
   }
-  const ctx: Ctx = { config, db, secret: serverSecret(config.dataDir), mailer, outbox: mailer instanceof Outbox ? mailer : null }
+  const ctx: Ctx = { aiFetch: options.aiFetch, config, db, secret: serverSecret(config.dataDir), mailer, outbox: mailer instanceof Outbox ? mailer : null }
 
-  const app = Fastify({ logger: options.logger ?? true, trustProxy: config.trustProxy, bodyLimit: 1024 * 1024 })
+  const app = Fastify({
+    logger: options.logger === false ? false : {
+      // Search phrases, cookies, credentials and request bodies are not operational metadata.
+      serializers: { req: (request: {method?: string; url?: string}) => ({method:request.method,path:request.url?.split('?')[0]}) }
+    },
+    trustProxy: config.trustProxy,
+    bodyLimit: 1024 * 1024
+  })
   await app.register(fastifyCookie)
   app.decorateRequest('account', null)
   app.decorateRequest('role', null)
@@ -82,11 +93,16 @@ export async function buildApp(options: BuildOptions): Promise<{ app: FastifyIns
     return shell.send(request, reply, 404)
   })
 
+  // Close hooks unwind in reverse registration order; workers and AI finish before SQLite closes.
+  app.addHook('onClose', async () => { db.close() })
   registerAuthRoutes(app, ctx)
   registerAccountRoutes(app, ctx)
   registerAdminRoutes(app, ctx)
   registerCatalogRoutes(app, ctx)
   registerPublishRoutes(app, ctx)
+  registerLearningRoutes(app, ctx)
+  registerDocumentRoutes(app, ctx)
+  registerAIRoutes(app, ctx)
   registerWebRoutes(app, ctx, shell)
 
   // A development server has no SMTP; this is where its codes go. Never
@@ -95,6 +111,6 @@ export async function buildApp(options: BuildOptions): Promise<{ app: FastifyIns
     const outbox = ctx.outbox
     app.get('/dev/outbox', async () => ({ messages: outbox.messages }))
   }
-  app.addHook('onClose', async () => { db.close() })
+
   return { app, ctx }
 }

@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Account } from '@core/catalog/api'
 import { LIMITS } from '@core/import'
 import type { Ctx } from '../context'
-import { ApiError, notFound } from '../errors'
+import { ApiError, notFound, forbidden } from '../errors'
 import { requireAccount } from '../auth/routes'
 import { managedCourse, ownedCourses } from '../catalog/catalog'
 import { deleteVersion, MAX_RELEASE_NOTE, publishVersion, relistCourse, setCurrentVersion, unpublishCourse } from './publish'
@@ -22,6 +22,7 @@ export function registerPublishRoutes(app: FastifyInstance, ctx: Ctx): void {
 
   app.post('/api/v1/courses/:id/versions', async (request, reply) => {
     const account = requireAccount(request)
+    if(request.via==='web')throw forbidden('desktop_only','Publish courses from the desktop app.')
     const declared = Number(request.headers['content-length'] ?? 0)
     if (declared > LIMITS.archiveBytes) throw tooLarge()
     if (request.headers['content-type'] !== 'application/zip') throw new ApiError(415, 'unsupported_type', 'Send the course as application/zip.')

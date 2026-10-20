@@ -1,0 +1,7 @@
+{
+  "title": "The OpenCourse example document",
+  "description": "A small PDF for development servers: a few pages, an outline, a table, a figure and words to search for, so the document catalog and the reader have something real to show.",
+  "tags": ["example", "pdf"],
+  "version": "1.0.0",
+  "releaseNote": "First release."
+}

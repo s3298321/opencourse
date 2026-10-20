@@ -5,7 +5,7 @@
 <h1 align="center">OpenCourse</h1>
 
 <p align="center">
-  Courses on any subject, as a Mac app. Read, practise, ask, and share.<br>
+  Courses and PDFs, on Mac and the web. Read, practise, ask, and share.<br>
   <a href="https://opencourse.dev"><b>opencourse.dev</b></a> ·
   <a href="https://catalog.opencourse.dev">Public catalog</a> ·
   <a href="docs/getting-started.md">Getting started</a> ·
@@ -19,8 +19,10 @@
 A course is a folder: a JSON manifest plus Markdown, images, video, sandboxed
 interactive visualizations, quizzes and flashcards. Any course may also include
 Python exercises that the app runs and grades on your Mac with the Python it
-bundles. There is no account and no server to run. You import courses into a
-local library, and progress stays on your Mac.
+bundles. Local learning needs no server. Connect to an OpenCourse server to publish or
+enroll in courses and PDFs, then continue learning in its web app. Server
+content shares progress and reading chats across devices; local imports,
+Coach, notebooks and project files stay on your Mac.
 
 ## What it does
 
@@ -39,13 +41,16 @@ local library, and progress stays on your Mac.
   AI mode that drafts or revises the course for you. Nothing is written until
   you save.
 - **Share them.** Connect to an [OpenCourse server](server/) to browse its
-  catalog, add courses and get updates that keep your progress, or publish
-  your own.
+  course and document catalogs, enroll, accept updates, or publish your own.
+  Its web player supports reading, quizzes, flashcards and chat; exercises,
+  projects, Python and notebooks point back to the desktop app.
 - **Themes.** Colours, fonts and pictures. A theme is values, never CSS
   ([format](docs/theme-format.md)).
 
-The AI features use your own OpenAI API key or ChatGPT plan. The key stays in
-the macOS keychain and only main sends it, to OpenAI.
+Local AI features use your app-wide OpenAI API key or ChatGPT connection in
+the macOS keychain. Server content uses a separate API key configured on that
+server, encrypted with an operator-managed deployment key. Server chat never
+falls back to local credentials. Subscription connections remain local.
 
 <table>
   <tr>
@@ -83,7 +88,7 @@ flowchart TB
   R -- "window.opencourse bridge" --> M
   R -. "Coach audio, WebRTC" .-> O
   M --> O["OpenAI<br/>chat, assistants"]
-  M --> S["OpenCourse server<br/>catalog, publishing"]
+  M --> S["OpenCourse server<br/>catalogs · sync · reading AI"]
   M --> D[("Application Support/opencourse<br/>JSON + SQLite, per user")]
   M --> P["Bundled Python<br/>a venv per course"]
   M -. "updates, when allowed" .-> G["GitHub releases"]
@@ -119,7 +124,7 @@ because a server course keeps the same IDs from one version to the next.
 | | |
 | --- | --- |
 | [`app/`](app/) | The Electron app: `src/core` (pure), `src/main` (Node/Electron), `src/renderer` (React) |
-| [`server/`](server/) | The catalog server: Fastify, `node:sqlite`, archives on disk, and its React web app in `server/web/` |
+| [`server/`](server/) | The learning server: Fastify, `node:sqlite`, archives on disk, and its React web app in `server/web/` |
 | [`site/`](site/) | [opencourse.dev](https://opencourse.dev): Astro, static, with these `docs/` as its documentation |
 | [`design/`](design/) | Tokens and primitives shared by the site and the server's web app |
 | [`docs/`](docs/) | [Course format](docs/course-format.md), [theme format](docs/theme-format.md), [server API](docs/server-api.md), [self-hosting](docs/self-hosting.md) |
@@ -136,9 +141,12 @@ npm install
 npm run dev
 ```
 
-The app ships no courses, so a dev build starts with an empty library.
-**Help ▸ Get the course format** saves an example course you can import with
-**Course ▸ Import Course** (⌘I). Tests,
+A dev build runs as **OpenCourse Dev**, on a profile of its own that it seeds
+with two users and sample courses, connected to a local server. `npm run dev`
+at the repository root starts that server and the website too (see
+[CONTRIBUTING.md](CONTRIBUTING.md#a-local-world-app-server-and-website-together)).
+A release ships no courses: **Help ▸ Get the course format** saves an example
+course you can import with **Course ▸ Import Course** (⌘I). Tests,
 the content gates, screenshots, the server, the website and releasing are
 covered in [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -14,16 +14,21 @@ import { buildMenu } from './menu'
 import { wantsMic } from './mic'
 import { registerProtocolHandler, registerSchemePrivileges } from './protocol'
 import { applyWindowLook, windowLookOptions } from './theme-window'
-import { isolatedRun } from './run-mode'
+import { devRun, isolatedRun } from './run-mode'
 import { quitVetoed, runPendingInstall, startUpdates } from './updates'
 
 // Must happen before the app is ready.
 // Long Responses streams can fail with ERR_QUIC_PROTOCOL_ERROR. Keep HTTPS on
 // TCP (HTTP/2 or HTTP/1.1), retaining Chromium's system proxy support.
 app.commandLine.appendSwitch('disable-quic')
-app.setName(BRAND.displayName)
+// `npm run dev` is a world of its own: another name (so another keychain item,
+// instance lock and dock label) and another profile, seeded by dev-seed.ts and
+// pointed at the local server. It never reads or writes the real profile.
+const dev = devRun()
+const displayName = dev ? `${BRAND.displayName} Dev` : BRAND.displayName
+app.setName(displayName)
 nativeTheme.themeSource = 'dark'
-app.setPath('userData', join(app.getPath('appData'), BRAND.name))
+app.setPath('userData', join(app.getPath('appData'), dev ? `${BRAND.name}-dev` : BRAND.name))
 registerSchemePrivileges()
 configureBundledPython(pythonResourcesDir(app.isPackaged, app.getAppPath(), process.resourcesPath))
 
@@ -103,7 +108,7 @@ function createWindow(): BrowserWindow {
     minHeight: 520,
     show: false,
     titleBarStyle: 'hiddenInset',
-    title: BRAND.displayName,
+    title: displayName,
     // Vibrancy and the colour behind it follow the applied theme (and macOS's
     // reduced-transparency and contrast settings) - main/theme-window.ts.
     ...windowLookOptions(),
@@ -192,11 +197,14 @@ function createWindow(): BrowserWindow {
 app.whenReady().then(async () => {
   if (!primary) return
   const icon = app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'resources/icon.png')
-  app.setAboutPanelOptions({ applicationName: BRAND.displayName, applicationVersion: app.getVersion(), iconPath: icon })
+  app.setAboutPanelOptions({ applicationName: displayName, applicationVersion: app.getVersion(), iconPath: icon })
   if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon)
   registerProtocolHandler()
   registerIpc()
   buildMenu()
+  // Before the window, so the picker shows the seeded users; bounded by a
+  // two-second look at the local server, and skipped when it is not there.
+  if (dev) await (await import('./dev-seed')).seedDevProfile()
 
   const csp = cspFor(process.env['ELECTRON_RENDERER_URL'])
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

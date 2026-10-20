@@ -10,8 +10,7 @@
   },
   "scripts": {
     "prebuild": "node scripts/build-resources.mjs",
-    "predev": "node scripts/build-resources.mjs",
-    "dev": "astro dev",
+    "dev": "node scripts/dev.mjs",
     "build": "astro build && pagefind --site dist --output-subdir pagefind",
     "preview": "astro preview",
     "check": "astro check && node scripts/verify-dist.mjs"

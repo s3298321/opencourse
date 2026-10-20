@@ -10,6 +10,7 @@
  * each checked, and anything off is "no release" rather than half a release.
  */
 import { parseVersion } from '../catalog/semver'
+import { PUBLIC_LINKS } from '../links'
 
 export const RELEASE_REPO = { owner: 's3298321', repo: 'opencourse' } as const
 
@@ -17,7 +18,7 @@ export const RELEASE_REPO = { owner: 's3298321', repo: 'opencourse' } as const
 export const RELEASE_ASSET = 'OpenCourse-mac-arm64.dmg'
 
 /** Where to send someone whose copy cannot replace itself. */
-export const DOWNLOAD_PAGE = 'https://opencourse.dev/download'
+export const DOWNLOAD_PAGE = PUBLIC_LINKS.download
 
 /** A DMG of the app is ~150 MB; anything near this is not one. */
 export const MAX_ASSET_BYTES = 1024 * 1024 * 1024

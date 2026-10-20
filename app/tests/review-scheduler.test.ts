@@ -58,7 +58,7 @@ describe('FSRS scheduling and selection', () => {
     }
     expect(REVIEW_CONFIGURATION.version).toBe(2)
   })
-  it('prioritizes due then unseen cards, excludes future and locked cards, and never repeats', () => {
+  it('prioritizes due then unseen cards, uses future cards when caught up, and excludes locked cards', () => {
     const early = scheduleCard(undefined, 'easy', now).card
     const due = { ...early, due: new Date(now.getTime() - 60000) }
     const cards: ReviewCandidate[] = [
@@ -68,9 +68,23 @@ describe('FSRS scheduling and selection', () => {
     ]
     expect(reviewQueue(cards, 20, now)).toEqual(['due-a', 'due-b', 'new'])
     expect(reviewQueue(cards, 2, now)).toEqual(['due-a', 'due-b'])
-    expect(reviewQueue([cards[0]], 10, now)).toEqual([])
+    expect(reviewQueue([cards[0]], 10, now)).toEqual(['early'])
     expect(reviewQueue([cards[0]], 10, early.due)).toEqual(['early'])
     expect(summarizeReview(cards, now)).toMatchObject({ total: 5, eligible: 4, due: 2, new: 1, practiced: 3, nextDue: early.due.toISOString() })
+  })
+  it('limits early sessions to unlocked cards in due-date order with stable ties', () => {
+    const early = scheduleCard(undefined, 'easy', now).card
+    const sooner = { ...early, due: new Date(now.getTime() + 86400000) }
+    const cards: ReviewCandidate[] = [
+      { id: 'later', order: 0, eligible: true, state: early },
+      { id: 'sooner-b', order: 1, eligible: true, state: sooner },
+      { id: 'locked', order: 2, eligible: false, state: sooner },
+      { id: 'sooner-a', order: 3, eligible: true, state: sooner }
+    ]
+    expect(reviewQueue(cards, 2, now)).toEqual(['sooner-a', 'sooner-b'])
+    expect(reviewQueue(cards, 10, now)).toEqual(['sooner-a', 'sooner-b', 'later'])
+    expect(reviewQueue([cards[2]], 10, now)).toEqual([])
+    expect(reviewQueue([], 10, now)).toEqual([])
   })
   it('fills all session sizes and reports no mastery before any review', () => {
     const cards = Array.from({ length: 30 }, (_, order) => ({ id: String(order), order, eligible: true }))

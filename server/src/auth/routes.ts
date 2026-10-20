@@ -96,13 +96,8 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: Ctx): void {
     requireOpen()
     const email = cleanEmail((request.body as { email: string }).email)
     limit(perIp, `register:${request.ip}`); limit(perEmail, `register:${email.toLowerCase()}`)
-    const existing = d.prepare('SELECT username FROM accounts WHERE email = ?').get(email) as { username: string } | undefined
-    if (existing) {
-      await mailer.send({ to: email, subject: `You already have an account on ${config.name}`, text: `Someone - probably you - tried to create an account on ${config.name} (${config.publicUrl}) with this address.\n\nThis address already has an account: ${existing.username}. Sign in instead, or use "Forgot password?" if you no longer know the password.\n\nIf this was not you, you can ignore this message.` })
-    } else {
-      const code = issueCode(d, secret, 'register', email)
-      await mailer.send({ to: email, subject: `Your ${config.name} code: ${code}`, text: `Your code to confirm this address on ${config.name} is:\n\n    ${code}\n\n${enterItIn(config.publicUrl)}. It expires in 10 minutes. If you did not ask for it, ignore this message.` })
-    }
+    const code = issueCode(d, secret, 'register', email)
+    await mailer.send({ to: email, subject: `Your ${config.name} code: ${code}`, text: `Your code to confirm this address on ${config.name} is:\n\n    ${code}\n\n${enterItIn(config.publicUrl)}. It expires in 10 minutes. Verification does not sign in to an existing account.` })
     return reply.code(202).send({ ok: true })
   })
 
@@ -114,6 +109,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: Ctx): void {
     if (!isCode(code.trim())) throw badRequest('invalid_code', 'Enter the 6-digit code from the email.')
     const checked = checkCode(d, secret, 'register', email, code.trim())
     if (!checked.ok) throw badRequest('invalid_code', checked.attemptsLeft ? 'That code is not right.' : 'That code has expired or was tried too often. Ask for a new one.', { attemptsLeft: checked.attemptsLeft })
+    if (d.prepare('SELECT id FROM accounts WHERE email = ?').get(email)) return { existingAccount: true }
     const ticket = randomBytes(32).toString('base64url')
     d.prepare('DELETE FROM registration_tickets WHERE email = ? OR expires_at <= ?').run(email, nowIso())
     d.prepare('INSERT INTO registration_tickets(ticket_hash, email, expires_at) VALUES (?, ?, ?)').run(sha256(ticket), email, new Date(Date.now() + TICKET_TTL_MS).toISOString())

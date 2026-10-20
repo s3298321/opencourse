@@ -5,6 +5,7 @@ import type { Mailer, Outbox } from './auth/mailer'
 
 /** What every route can reach. Built once by buildApp, injected by tests. */
 export interface Ctx {
+  aiFetch?: typeof fetch
   config: ServerConfig
   db: Db
   secret: Buffer

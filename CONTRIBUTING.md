@@ -113,6 +113,43 @@ content/                    courses you are authoring (gitignored)
 `CLAUDE.md` has the longer working notes: why each of these rules exists, and
 what broke before it did.
 
+## A local world: app, server and website together
+
+`npm run dev` at the repository root starts all three, each through its own
+`npm run dev`, with their output prefixed. The deployed site, catalog and
+GitHub releases are not used:
+
+| Part | Address | Its data |
+| --- | --- | --- |
+| Server API | `http://127.0.0.1:8787` | `server/data` |
+| Server web app | `http://localhost:5173` | (proxies the API) |
+| Website | `http://localhost:4321` | generated files only |
+| App | a window named **OpenCourse Dev** | `~/Library/Application Support/opencourse-dev` |
+
+- **The app** started this way has a profile, a keychain item and an instance
+  lock of its own, so the installed OpenCourse can run beside it and never sees
+  its data. The first launch seeds it: **Ada (author)** and **Sam (learner)**,
+  each with the committed fixture courses, both connected to the local server.
+  Ada is signed in as `ada` and can publish; Sam is signed in as `sam` with the
+  server's example course and document already added. It never checks GitHub
+  for updates. Its Settings link to the local site and catalog.
+- **The server** names itself *OpenCourse (local dev)*, seeds accounts and
+  courses (password `correct horse battery`), and its web app links to the
+  local website.
+- **The website** takes its catalog links and "From the catalog" from the local
+  server.
+
+Any of them can be left out (`npm run dev -- --only app,server`), or started
+alone from its own folder. A part that is not running is handled the way a
+release handles the public one going down: the app says it **can't reach** the
+server and turns off what needs it, then picks up by itself when the server
+answers, signing the dev users in if it had never been able to. The website
+shows no catalog courses until the server answers.
+
+`npm run dev:reset` in `app/` deletes the dev profile, and in `server/` empties
+`server/data`; the next `npm run dev` seeds either again. Reset both together
+if you want the app's server courses to match a fresh server.
+
 ## The server
 
 ```bash
@@ -123,7 +160,8 @@ npm run seed    # accounts and courses through the real API
 npm test
 ```
 
-In the app, connect to `http://localhost:8787` in **Settings ▸ Servers**.
+A `npm run dev` app is already connected to it; any other build connects to
+`http://localhost:8787` in **Settings ▸ Servers**.
 `OPENCOURSE_SMOKE_SERVER=1 npm run smoke` (in `app/`) drives the real window
 against the built server. [`docs/self-hosting.md`](docs/self-hosting.md) covers
 running one for real.
@@ -133,8 +171,8 @@ running one for real.
 ```bash
 cd site
 npm install
-npm run dev     # http://localhost:4321
-npm run build   # dist/, plus the Pagefind search index
+npm run dev     # http://localhost:4321, its catalog the local server's
+npm run build   # dist/, plus the Pagefind search index, against the public catalog
 npm run check   # astro check, then every link, anchor and download in dist/
 ```
 

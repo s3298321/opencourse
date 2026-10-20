@@ -4,7 +4,7 @@ import type { JSX } from 'react'
 import type { ReviewAnswer, ReviewRating, ReviewSession } from '@core/types'
 import type { Route } from '../routes'
 import Html from '../components/Html'
-import { ratingLabels } from '../review-display'
+import { ratingLabels } from '../../learning-ui/review-display'
 
 const ratings: ReviewRating[] = ['again', 'hard', 'good', 'easy']
 export default function Review({ initialSession, navigate, active = true }: {

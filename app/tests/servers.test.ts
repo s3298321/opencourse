@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeServerUrl } from '../src/core/catalog/url'
-import { parseAuthResult, parseCatalogCourse, parseOverview } from '../src/core/catalog/parse'
+import { parseAuthResult, parseCatalogCourse, parseDocumentPage, parseOverview, parsePublishedDocument } from '../src/core/catalog/parse'
 
 const root = mkdtempSync(join(tmpdir(), 'opencourse-servers-'))
 let dataDir = join(root, 'data')
@@ -96,6 +96,22 @@ describe('reading what a server sends', () => {
     expect(parseCatalogCourse({ ...course, title: 'x'.repeat(10_000) })).toBeNull()
     expect(parseOverview(course)).toBeNull()
     expect(parseAuthResult({ token: 'sk-not-ours', account: ACCOUNT })).toBeNull()
+  })
+  it('reads a server document the same way, and fills what an older server leaves out', () => {
+    const document = {
+      id: '6f0d3d0e-6c2a-4f4b-9a1e-0c6d1c1f2a3b', title: 'Guide', description: '', tags: ['a'], version: '1.2.0', publisher: 'p', hasCover: false,
+      bytes: 10, pages: 3, fingerprint: 'f', status: 'ready', error: null, listed: true, ownedByYou: false, pdf_path: '/srv/secret.pdf',
+      sections: [{ id: 's', title: 'One', page: 1, depth: 0, extra: true }],
+      versions: [{ version: '1.2.0', publishedAt: '2026-10-01', releaseNote: '' }, { version: '1.0.0', publishedAt: '2026-09-01', releaseNote: '', deleted: true }]
+    }
+    const parsed = parsePublishedDocument(document)!
+    expect(parsed).not.toHaveProperty('pdf_path')
+    expect(parsed.sections[0]).not.toHaveProperty('extra')
+    expect(parsed).toMatchObject({ downloads: 0, maxVersion: '1.2.0', updatedAt: '2026-10-01' })
+    expect(parsePublishedDocument({ ...document, id: '../etc' })).toBeNull()
+    expect(parsePublishedDocument({ ...document, status: 'done' })).toBeNull()
+    expect(parseDocumentPage({ documents: [document], total: 1, page: 1, pageSize: 30 })?.documents).toHaveLength(1)
+    expect(parseDocumentPage({ documents: [{ ...document, version: 'latest' }], total: 1, page: 1, pageSize: 30 })).toBeNull()
   })
 })
 

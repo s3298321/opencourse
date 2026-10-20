@@ -1,30 +1,36 @@
 /**
- * Fills a development server with something to look at:
- *
- *   npm run dev                    # in one terminal
- *   npm run seed                   # in another
+ * Fills a development server with something to look at. `npm run dev` runs it
+ * once the API answers; `npm run seed` runs it again by hand.
  *
  * Signs up a few accounts through the API (reading their codes from the
- * development outbox), publishes docs/example-course and every course in
- * content/ the way the app does - fresh ids, as uids, zipped with their
- * assets - and adds some of them as other accounts, so the catalog has
- * learners to count. Only for a development server: it needs /dev/outbox.
+ * development outbox), publishes docs/example-course - the course the format
+ * doc ships - the way the app does: fresh ids, as uids, zipped with its
+ * assets. Then the learners add it, so the catalog has learners to count.
+ * It also publishes docs/example-document, a PDF for the document catalog and
+ * reader. Running it again publishes nothing new. Only for a development
+ * server: it needs /dev/outbox.
  *
  * OPENCOURSE_SERVER_URL picks the server (default http://127.0.0.1:8787).
+ * OPENCOURSE_SEED_DOCUMENT=0 leaves the document out, as e2e does: its
+ * document catalog starts empty. OPENCOURSE_SEED_SAMPLES=1 (scripts/dev.mjs
+ * sets it) also publishes the app's committed fixture courses as grace, so the
+ * catalog - and the website's "From the catalog", which wants three - has
+ * more than one course to show.
  * Then make an administrator: npm run admin -- grant-admin ada
  */
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import type { CourseManifest } from '@core/types'
 import { identifyManifest } from '@core/course-document'
 import { publishedManifest } from '@core/catalog/identity'
+import { DEV_AUTHOR, DEV_LEARNERS, DEV_PASSWORD, DEV_SAMPLE_COURSES, DEV_SECOND_AUTHOR } from '@core/dev-seed'
 import { makeZip, type ZipMember } from '../../app/tests/helpers/zip'
 
 const base = (process.env['OPENCOURSE_SERVER_URL'] ?? 'http://127.0.0.1:8787').replace(/\/+$/, '')
 const repo = resolve(import.meta.dirname, '..', '..')
-const PASSWORD = 'correct horse battery'
+const PASSWORD = DEV_PASSWORD
 
 async function api<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
   const response = await fetch(`${base}${path}`, {
@@ -40,6 +46,7 @@ async function api<T>(method: string, path: string, body?: unknown, token?: stri
 async function account(username: string): Promise<string> {
   const email = `${username}@example.org`
   try {
+    if(process.env['OPENCOURSE_SEED_FRESH']==='1')throw new Error('Fresh database')
     return (await api<{ token: string }>('POST', '/api/v1/auth/login', { login: username, password: PASSWORD })).token
   } catch { /* not there yet */ }
   await api('POST', '/api/v1/auth/register/start', { email })
@@ -79,19 +86,45 @@ async function publishDir(dir: string, token: string, versions: string[], notes:
   } finally { rmSync(work, { recursive: true, force: true }) }
 }
 
-const ada = await account('ada'), grace = await account('grace')
-const learners = await Promise.all(['lin', 'kit', 'sam', 'noor'].map(account))
-console.log(`Signed up ada, grace and four learners on ${base} (password: ${PASSWORD})`)
+const ada = await account(DEV_AUTHOR)
+const grace = await account(DEV_SECOND_AUTHOR)
+const learners = await Promise.all(DEV_LEARNERS.map(account))
+console.log(`Signed up ${DEV_AUTHOR}, ${DEV_SECOND_AUTHOR} and ${DEV_LEARNERS.length} learners on ${base} (password: ${PASSWORD})`)
 
-const dirs = [join(repo, 'docs', 'example-course'), ...(existsSync(join(repo, 'content')) ? readdirSync(join(repo, 'content')).map((d) => join(repo, 'content', d)) : [])]
-  .filter((dir) => existsSync(join(dir, 'course.json')))
-const published: string[] = []
-for (const [i, dir] of dirs.entries()) {
-  try {
-    published.push(await publishDir(dir, i % 2 ? grace : ada, i === 0 ? ['0.1.0', '0.2.0', '1.0.0'] : ['1.0.0', '1.1.0'], ['First release.', 'Clearer examples, and a new quiz on the second lesson.', 'Reworked the project.']))
-  } catch (error) { console.warn(`  skipped ${dir}: ${(error as Error).message}`) }
+const example = join(repo, 'docs', 'example-course')
+const slug = (JSON.parse(readFileSync(join(example, 'course.json'), 'utf8')) as CourseManifest).slug
+const owned = (await api<{ courses: { id: string; slug: string }[] }>('GET', '/api/v1/me/courses', undefined, ada)).courses
+const id = owned.find((course) => course.slug === slug)?.id
+  ?? await publishDir(example, ada, ['0.1.0', '0.2.0', '1.0.0'], ['First release.', 'Clearer examples, and a new quiz on the second lesson.', 'Reworked the project.'])
+for (const token of learners) await api('POST', `/api/v1/courses/${id}/download`, { intent: 'add' }, token).catch(() => {})
+
+if (process.env['OPENCOURSE_SEED_SAMPLES'] === '1') {
+  const mine = (await api<{ courses: { slug: string }[] }>('GET', '/api/v1/me/courses', undefined, grace)).courses
+  for (const name of DEV_SAMPLE_COURSES) {
+    const dir = join(repo, 'app', 'tests', 'fixtures', 'courses', name)
+    const sample = (JSON.parse(readFileSync(join(dir, 'course.json'), 'utf8')) as CourseManifest).slug
+    if (!mine.some((course) => course.slug === sample)) await publishDir(dir, grace, ['1.0.0'], ['First release.'])
+  }
 }
-for (const [i, token] of learners.entries()) {
-  for (const id of published.slice(0, published.length - (i % 2))) await api('POST', `/api/v1/courses/${id}/download`, { intent: 'add' }, token).catch(() => {})
+
+// The package is exactly what the publish route accepts: document.json and
+// document.pdf. document.html beside them is the PDF's source and stays home.
+if (process.env['OPENCOURSE_SEED_DOCUMENT'] !== '0') {
+  const dir = join(repo, 'docs', 'example-document')
+  const metadata = JSON.parse(readFileSync(join(dir, 'document.json'), 'utf8')) as { title: string; version: string }
+  const documents = (await api<{ documents: { title: string }[] }>('GET', '/api/v1/me/documents', undefined, ada)).documents
+  if (!documents.some((document) => document.title === metadata.title)) {
+    const work = mkdtempSync(join(tmpdir(), 'opencourse-seed-'))
+    try {
+      const zip = makeZip(join(work, 'document.zip'), ['document.json', 'document.pdf'].map((name) => ({ name, bytes: readFileSync(join(dir, name)) })))
+      const response = await fetch(`${base}/api/v1/documents/${randomUUID()}/versions`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ada}`, 'content-type': 'application/zip' },
+        body: readFileSync(zip)
+      })
+      if (!response.ok) throw new Error(`publish ${metadata.title}: ${response.status} ${await response.text()}`)
+      console.log(`  published ${metadata.title} (${metadata.version})`)
+    } finally { rmSync(work, { recursive: true, force: true }) }
+  }
 }
 console.log(`Done. Open ${base.replace('8787', '5173')} - and make ada an administrator with: npm run admin -- grant-admin ada`)

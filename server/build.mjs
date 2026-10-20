@@ -7,10 +7,11 @@
 // dist/ is a complete deployment. `node build.mjs server` skips the web app.
 import { build } from 'esbuild'
 import { build as viteBuild } from 'vite'
+import { copyFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const here = (path) => resolve(import.meta.dirname, path)
-const external = ['fastify', '@fastify/cookie', '@fastify/static', 'nodemailer']
+const external = ['fastify', '@fastify/cookie', '@fastify/static', 'nodemailer', 'pdfjs-dist']
 
 for (const entry of ['index', 'admin']) {
   await build({
@@ -34,3 +35,5 @@ for (const entry of ['index', 'admin']) {
 if (process.argv[2] !== 'server') {
   await viteBuild({ configFile: here('web/vite.config.ts'), logLevel: 'info' })
 }
+
+copyFileSync(here('src/learning/pdf-worker.mjs'), here('dist/pdf-worker.mjs'))

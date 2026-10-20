@@ -1,3 +1,4 @@
+import { anyBinding } from './learning-store'
 import { createHash } from 'node:crypto'
 import { normalizeModelContext } from '../core/ai-context'
 import { EventEmitter } from 'node:events'
@@ -61,10 +62,9 @@ function storeCatalog(id: string, catalog: Catalog): void {
 export async function modelCatalog(provider: AIProvider, refresh = false): Promise<Catalog> {
   if (process.env['OPENCOURSE_SHOTS']) return listChatModels('')
   const owner = requireUser(), id = identity(provider)
+  if (!connectionStatus(provider).ready) return { models: [], source: 'fallback' }
   const cached = cachedCatalog(id)
   if (!refresh && cached?.source === 'api' && !staleCatalogs.has(id)) return cached
-  if (!connectionStatus(provider).ready) return provider === 'apiKey'
-    ? listChatModels('') : { models: [], source: 'fallback' }
   try {
     const models = provider === 'apiKey' ? (await listChatModels(readKey())) : {
       models: await listSubscriptionModels(await subscriptionAccessToken(subscriptionIdentity()?.id)), source: 'api' as const }
@@ -231,6 +231,8 @@ async function resolveAIRequest<T extends Conversation>(scope: AIScope, original
   return { chat, key }
 }
 export async function prepareAIRequest<T extends Conversation>(scope: AIScope, original: T, signal?: AbortSignal): Promise<{ chat: T & { provider: AIProvider }; key: string }> {
+  const source = original as T & { courseId?: string; documentId?: string; startedInNotebook?: boolean }
+  if (scope === 'chat' && !source.startedInNotebook && anyBinding(source.documentId ?? source.courseId ?? '')) throw new Error('Use the server reading chat for this content. Configure its AI connection in Server settings.')
   signal?.throwIfAborted()
   const request = resolveAIRequest(scope, original)
   if (!signal) return request

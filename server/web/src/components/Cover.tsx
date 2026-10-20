@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { coverUrl } from '../lib/api'
+import { coverUrl, documentCoverUrl } from '../lib/api'
 import { hash } from '../lib/format'
 
 /**
@@ -7,8 +7,10 @@ import { hash } from '../lib/format'
  * one of six quiet gradients chosen by the course's id, with the mark's star
  * and the subject. A course always looks like itself, and never like a hole.
  */
-export function Cover({ id, title, subject, hasCover, className = '', transitionName }: {
+export function Cover({ id, title, subject, hasCover, className = '', transitionName, kind = 'course' }: {
   id: string
+  /** A document's cover is served from its own route. */
+  kind?: 'course' | 'document'
   title: string
   subject?: string
   hasCover: boolean
@@ -21,7 +23,7 @@ export function Cover({ id, title, subject, hasCover, className = '', transition
   if (hasCover && !failed) {
     return (
       <div className={`cover ${className}`} style={style}>
-        <img src={coverUrl(id)} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+        <img src={kind === 'document' ? documentCoverUrl(id) : coverUrl(id)} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
       </div>
     )
   }

@@ -24,7 +24,7 @@ export default defineConfig({
     // import CodeMirror too: one copy, or its instanceof checks fail. The PDF
     // reader's pages are the app's too, and must render with the copy of
     // pdfjs that opened the document.
-    dedupe: ['shiki', 'react', 'react-dom', '@codemirror/state', '@codemirror/view', '@codemirror/language', '@lezer/highlight', 'pdfjs-dist']
+    dedupe: ['ts-fsrs', 'shiki', 'react', 'react-dom', '@codemirror/state', '@codemirror/view', '@codemirror/language', '@lezer/highlight', 'pdfjs-dist']
   },
   server: {
     port: 5173,

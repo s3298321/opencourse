@@ -104,6 +104,8 @@ export default function App(): JSX.Element {
       detail: [dirty ? 'Your edits to this course have not been saved. Discarding them leaves the course as it was last saved.' : '', running ? 'The assistant is still working. Leaving stops it.' : ''].filter(Boolean).join(' '),
       confirmLabel: dirty ? 'Discard changes' : 'Stop and leave',
       cancelLabel: 'Keep editing',
+      confirmIcon: dirty ? 'trash' : 'stop',
+      cancelIcon: 'edit',
       danger: true
     }))) return false
     editorDirty.current = false

@@ -155,7 +155,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       if (result.theme.active) throw new Error('importing applied the theme');
       await until(() => card('Paper & Ink'), 'the imported theme card');
       const names = [...document.querySelectorAll('.settings-appearance .theme-name')].map((n) => n.textContent);
-      if (names.join('|') !== 'OpenCourse Dark|OpenCourse White|Paper & Ink') throw new Error(names.join(', '));
+      if (names.join('|') !== 'OpenCourse Dark|OpenCourse White|Neon Afterhours|Paper & Ink') throw new Error(names.join(', '));
       const preview = card('Paper & Ink').querySelector('img.theme-preview');
       await preview.decode();
       if (preview.naturalWidth !== 480) throw new Error('the preview did not load: ' + preview.naturalWidth);
@@ -234,7 +234,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       const theme = view?.submenu?.items.find((item: MenuItem) => item.label === 'Theme')
       const items = (theme?.submenu?.items ?? []).filter((item: MenuItem) => item.type === 'radio')
       const labels = items.map((item: MenuItem) => `${item.checked ? '✓' : ' '}${item.label}`)
-      if (labels.join('|') !== ' OpenCourse Dark (default)| OpenCourse White|✓Paper & Ink') throw new Error(labels.join('|'))
+      if (labels.join('|') !== ' OpenCourse Dark (default)| OpenCourse White| Neon Afterhours|✓Paper & Ink') throw new Error(labels.join('|'))
       return labels.join(', ')
     })
 

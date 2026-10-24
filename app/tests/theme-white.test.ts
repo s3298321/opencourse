@@ -3,7 +3,7 @@ import { compiledWhiteTheme, whiteTheme } from '@core/theme/builtin'
 import { auditTheme } from '@core/theme/audit'
 import { composite, contrast, parseColor } from '@core/theme/color'
 import { normalizeTheme } from '@core/theme/normalize'
-import white from '@core/theme/white.json'
+import white from '../resources/themes/white/theme.json'
 import { darkChrome, darkChromeBackground } from '@core/theme/dark-chrome'
 
 describe('built-in White palette', () => {

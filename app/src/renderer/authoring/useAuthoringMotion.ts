@@ -7,6 +7,10 @@ function changedOutline(before: CourseManifest, after: CourseManifest): Set<stri
   const fields = (manifest: CourseManifest): Map<string, string> => {
     const result = new Map<string, string>()
     visitNodes(manifest, node => result.set(String(node.nodeId), JSON.stringify({ ...node, lessons: undefined, blocks: undefined, flashcards: undefined })))
+    // Blocks and cards have no outline rows; changes belong to their lesson row.
+    for (const module of manifest.modules) {
+      if (module.type !== 'project') for (const lesson of module.lessons) result.set(lesson.nodeId!, JSON.stringify(lesson))
+    }
     return result
   }
   const old = fields(before)

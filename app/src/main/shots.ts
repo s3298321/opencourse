@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
+import { NEON_THEME_ID, WHITE_THEME_ID } from '../core/theme/builtin-ids'
 import { app, nativeTheme, type BrowserWindow } from 'electron'
 import type { ChatCitation, ChatQuote } from '../core/types'
 import { simulateAppUpdate } from './updates'
@@ -159,10 +159,10 @@ const NAV = `(async (target) => {
     await waitFor('.settings-models-unselect-all')
     click(find('.settings-models-unselect-all'))
     await sleep(250)
-  } else if (target === 'white-apply') {
+  } else if (target === 'white-apply' || target === 'neon-apply') {
     click(await waitFor('[data-settings-category="appearance"]'))
     await waitFor('.settings-appearance')
-    await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)})
+    await window.opencourse.applyTheme(target === 'neon-apply' ? ${JSON.stringify(NEON_THEME_ID)} : ${JSON.stringify(WHITE_THEME_ID)})
     await waitFor('#opencourse-theme')
     find('.settings-appearance').scrollIntoView({ block: 'start' })
     await sleep(500)
@@ -177,7 +177,7 @@ const NAV = `(async (target) => {
     await document.fonts.ready
     find('.settings-appearance').scrollIntoView({ block: 'start' })
     await sleep(500)
-  } else if (target === 'theme-library' || target === 'white-library') {
+  } else if (target === 'theme-library' || target === 'white-library' || target === 'neon-library') {
     click(find('.titlebar .crumbs a'))
     await sleep(200)
     click(find('.titlebar [data-section="courses"]'))
@@ -188,17 +188,17 @@ const NAV = `(async (target) => {
     }
     await waitFor('.course-card')
     await sleep(500)
-  } else if (target === 'theme-lesson' || target === 'white-lesson') {
+  } else if (target === 'theme-lesson' || target === 'white-lesson' || target === 'neon-lesson') {
     click([...all('.course-card')].find((c) => /Python asyncio/.test(c.textContent)))
     await waitFor('.detail')
     click([...all('.lesson-row')].find((r) => /await, create_task/.test(r.textContent)))
     await waitFor('.lesson-head h1')
     await sleep(600)
-  } else if (target === 'theme-workbench' || target === 'white-workbench') {
+  } else if (target === 'theme-workbench' || target === 'white-workbench' || target === 'neon-workbench') {
     click([...all('.exercise .actions button')].find((b) => /open editor|editor open/i.test(b.textContent)))
     await waitFor('.workbench .cm-content')
     await sleep(1200)
-  } else if (target === 'theme-off' || target === 'white-off') {
+  } else if (target === 'theme-off' || target === 'white-off' || target === 'neon-off') {
     // Back to the app's own look, and to a screen with the user chip, for the picker shot.
     await window.opencourse.applyTheme(null)
     const back = find('.workbench-back')
@@ -729,8 +729,10 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     ...['white-apply', 'white-library', 'white-lesson', 'white-workbench'].map((target) => ({ target, photo: true })),
     { target: 'white-off', photo: false }
   ]
+  const neonSteps = whiteSteps.map(step => ({ ...step, target: step.target.replace(/^white-/, 'neon-') }))
   const coachSteps = steps.filter(step => ['users', 'create-user'].includes(step.target) || step.target.startsWith('coach-') || step.target === 'back-to-coach')
   const selectedSteps = process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' ? whiteSteps
+    : process.env['OPENCOURSE_SHOTS_ONLY'] === 'neon' ? neonSteps
     : process.env['OPENCOURSE_SHOTS_ONLY'] === 'coach' ? coachSteps : steps
 
   const { zips, drop } = buildArchives()
@@ -779,6 +781,60 @@ export async function runShots(win: BrowserWindow): Promise<void> {
       const file = join(dir, `${published[target] ?? `${String(n).padStart(2, '0')}-${target}`}.png`)
       writeFileSync(file, (await win.webContents.capturePage()).toPNG())
       console.log('wrote', file)
+      if (target === 'neon-workbench') {
+        await win.webContents.executeJavaScript(`(async () => {
+          const editor = document.querySelector('.cm-editor');
+          const terminal = document.querySelector('.xterm');
+          const text = editor.querySelector('.cm-content').textContent;
+          const wait = async (color) => {
+            for (let n = 0; n < 200; n++) {
+              if (getComputedStyle(editor).backgroundColor === color) return;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Editor did not switch to ' + color);
+          };
+          for (const family of ['Oxanium', 'Space Grotesk']) {
+            if (![...document.fonts].some(face => face.family === family && face.status === 'loaded'))
+              throw new Error(family + ' did not load');
+          }
+          for (const path of ['images/city.jpg', 'images/circuit.svg', 'images/paper-spark.png']) {
+            const image = new Image();
+            image.src = 'opencourse://themes/${NEON_THEME_ID}/' + path;
+            await image.decode();
+          }
+          await window.opencourse.applyTheme(null);
+          await wait('rgb(29, 29, 33)');
+          await window.opencourse.applyTheme(${JSON.stringify(NEON_THEME_ID)});
+          await wait('rgb(14, 12, 24)');
+          if (!editor.isConnected || !terminal.isConnected || editor.querySelector('.cm-content').textContent !== text)
+            throw new Error('Switching Neon changed editor or terminal state');
+        })()`)
+        if (nativeTheme.themeSource !== 'dark') throw new Error('Neon did not set native dark appearance')
+        const cdp = win.webContents.debugger
+        cdp.attach('1.3')
+        try {
+          await cdp.sendCommand('Emulation.setEmulatedMedia', { features: [
+            { name: 'prefers-reduced-transparency', value: 'reduce' }, { name: 'prefers-contrast', value: 'more' }
+          ] })
+          await win.webContents.executeJavaScript(`
+            for (const property of ['--window-image', '--sidebar-image', '--glass-grain']) {
+              if (getComputedStyle(document.documentElement).getPropertyValue(property).trim() !== 'none')
+                throw new Error(property + ' stayed visible under accessibility preferences');
+            }
+          `)
+        } finally {
+          await cdp.sendCommand('Emulation.setEmulatedMedia', { features: [] })
+          cdp.detach()
+        }
+        await new Promise<void>((resolve) => { win.webContents.once('did-finish-load', () => resolve()); win.reload() })
+        await win.webContents.executeJavaScript(`(async () => {
+          for (let n = 0; n < 200 && !document.querySelector('.library'); n++)
+            await new Promise(resolve => setTimeout(resolve, 25));
+          if (getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() !== '#14101f')
+            throw new Error('Neon did not survive reload');
+        })()`)
+        console.log('Neon verified: decoded artwork, loaded fonts, native appearance, accessibility, persistence, live editor and terminal')
+      }
       if (process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' && target === 'white-workbench') {
         await win.webContents.executeJavaScript(`(async () => {
           const editor = document.querySelector('.cm-editor');

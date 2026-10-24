@@ -1,6 +1,6 @@
 import ActionButton from './ActionButton'
 /**
- * Settings → Appearance: the default dark look, built-in White, then imports.
+ * Settings → Appearance: the default dark look, built-in options, then imports.
  * Built-in looks cannot be removed. Dark is the stylesheet without overrides.
  */
 import { useCallback, useEffect, useState } from 'react'
@@ -144,7 +144,7 @@ export default function ThemeSection(): JSX.Element {
     <section className="settings-section settings-appearance">
       <h2>Appearance</h2>
       <p className="meta">
-        Choose Dark or White, included with {BRAND.displayName}, or import your own theme.
+        Choose a theme included with {BRAND.displayName}, or import your own.
         Dark is the default. Imported themes belong to your user on this Mac.
       </p>
       <div className="theme-grid">
@@ -161,7 +161,7 @@ export default function ThemeSection(): JSX.Element {
           <ThemeCard
             key={theme.id}
             name={theme.name}
-            detail={theme.builtin ? 'Built-in · Light' : [theme.author, theme.appearance === 'light' ? 'Light' : 'Dark'].filter(Boolean).join(' · ')}
+            detail={[theme.builtin ? 'Built-in' : theme.author, theme.appearance === 'light' ? 'Light' : 'Dark'].filter(Boolean).join(' · ')}
             active={theme.active}
             swatch={theme.swatch}
             preview={theme.preview}

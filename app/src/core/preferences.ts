@@ -8,7 +8,7 @@ import { isBackendModelId, isLiveModelId, migrateCoachModel } from './coach/mode
 import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
-import { WHITE_THEME_ID } from './theme/builtin-ids'
+import { isBuiltinThemeId } from './theme/builtin-ids'
 import { normalizePomodoroSettings } from './pomodoro'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -62,7 +62,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     ...(webSearch ? { webSearch } : {}),
     ...(typeof values.authoringWebSearch === 'boolean' ? { authoringWebSearch: values.authoringWebSearch } : {}),
     ...(values['coachAllowDelete'] === true ? { coachAllowDelete: true } : {}),
-    ...(typeof theme === 'string' && (UUID.test(theme) || theme === WHITE_THEME_ID) ? { theme } : {}),
+    ...(typeof theme === 'string' && (UUID.test(theme) || isBuiltinThemeId(theme)) ? { theme } : {}),
     ...(typeof values['activeServer'] === 'string' && UUID.test(values['activeServer']) ? { activeServer: values['activeServer'] } : {}),
     ...(readingScale !== DEFAULT_READING_SCALE ? { readingScale } : {})
   }

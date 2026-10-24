@@ -11,7 +11,7 @@
  * preference (`preferences.json { theme }`); its absence is the app's own look,
  * which is not a theme and cannot be removed.
  *
- * Built-in White is bundled data and has a reserved preference id. Every id
+ * Built-in themes are bundled data and have reserved preference ids. Every id
  * used to build a filesystem path must still be an installed UUID.
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -23,8 +23,8 @@ import { extensionOf } from '../core/import'
 import { THEME_IMAGE_EXTENSIONS, THEME_POLICY } from '../core/theme/assets'
 import { auditTheme } from '../core/theme/audit'
 import { compileTheme, THEME_URL_PREFIX, type CompiledTheme } from '../core/theme/compile'
-import { compiledWhiteTheme, whiteTheme } from '../core/theme/builtin'
-import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
+import { isBuiltinThemeId } from '../core/theme/builtin-ids'
+import { builtinTheme, builtinThemes } from './builtin-themes'
 import type { ActiveTheme, ThemeImportResult, ThemeSummary } from '../core/types'
 import { readThemeDirectory, type ThemeDirectory } from './theme-files'
 import { extractArchive } from './unzip'
@@ -102,13 +102,13 @@ function summarize(entry: Installed, activeId: string | undefined): ThemeSummary
 export function listThemes(): ThemeSummary[] {
   const userId = requireUser()
   const active = readPreferences().theme
-  return [{
-    id: WHITE_THEME_ID, portableId: whiteTheme.id, name: whiteTheme.name,
-    author: whiteTheme.author, description: whiteTheme.description,
-    appearance: 'light', preview: null, builtin: true,
-    swatch: ['--bg', '--card', '--accent', '--fg'].map((property) => compiledWhiteTheme.values[property]!),
-    notes: [], active: active === WHITE_THEME_ID
-  }, ...installed(userId).map((entry) => summarize(entry, active))]
+  return [...builtinThemes().map(({ id, theme, compiled, notes }): ThemeSummary => ({
+    id, portableId: theme.id, name: theme.name,
+    author: theme.author, description: theme.description, version: theme.version,
+    appearance: theme.appearance, preview: theme.preview ? themeUrl(id, theme.preview) : null, builtin: true,
+    swatch: ['--bg', '--card', '--accent', '--fg'].map((property) => compiled.values[property]!),
+    notes: [...notes, ...compiled.notes, ...auditTheme(theme, compiled)], active: active === id
+  })), ...installed(userId).map((entry) => summarize(entry, active))]
 }
 
 /** The applied theme, compiled - or null for the app's own look. */
@@ -125,10 +125,13 @@ function activeEntry(): (Installed & { read: ThemeDirectory }) | null {
 }
 
 export function getActiveTheme(): ActiveTheme {
-  if (currentUserId() && readPreferences().theme === WHITE_THEME_ID) {
+  const builtin = currentUserId() ? builtinTheme(readPreferences().theme) : null
+  if (builtin) {
+    const { id, theme, compiled } = builtin
     return {
-      id: WHITE_THEME_ID, name: whiteTheme.name, css: compiledWhiteTheme.css,
-      appearance: 'light', faces: [], logo: null
+      id, name: theme.name, css: compiled.css, appearance: compiled.appearance,
+      faces: compiled.faces.map(({ family, weight, style }) => ({ family, weight, style })),
+      logo: compiled.logo
     }
   }
   const entry = activeEntry()
@@ -146,7 +149,8 @@ export function getActiveTheme(): ActiveTheme {
 
 /** What the window itself should do; null when no theme is applied (or nobody is signed in). */
 export function activeThemeNative(): CompiledTheme['native'] | null {
-  if (currentUserId() && readPreferences().theme === WHITE_THEME_ID) return compiledWhiteTheme.native
+  const builtin = currentUserId() ? builtinTheme(readPreferences().theme) : null
+  if (builtin) return builtin.compiled.native
   const entry = activeEntry()
   return entry ? compile(entry).native : null
 }
@@ -159,7 +163,7 @@ export function applyTheme(id: string | null): ActiveTheme {
     return { id: null }
   }
   if (typeof id !== 'string') throw new Error('invalid theme id')
-  if (id === WHITE_THEME_ID) {
+  if (isBuiltinThemeId(id)) {
     writePreferences({ ...rest, theme: id })
     return getActiveTheme()
   }
@@ -172,7 +176,7 @@ export function applyTheme(id: string | null): ActiveTheme {
 
 export function removeTheme(id: string): { wasActive: boolean } {
   const userId = requireUser()
-  if (id === WHITE_THEME_ID) throw new Error('Built-in themes cannot be removed.')
+  if (isBuiltinThemeId(id)) throw new Error('Built-in themes cannot be removed.')
   if (typeof id !== 'string' || !UUID.test(id)) throw new Error('invalid theme id')
   const entry = readInstalled(userId, id)
   if (!entry) throw new Error('That theme is not installed.')
@@ -185,6 +189,12 @@ export function removeTheme(id: string): { wasActive: boolean } {
 
 /** The bytes of one of the active theme's fonts, for a FontFace in the renderer. */
 export function themeFontData(id: string, index: number): Uint8Array {
+  const builtin = currentUserId() && readPreferences().theme === id ? builtinTheme(id) : null
+  if (builtin?.directory && Number.isInteger(index)) {
+    const face = builtin.theme.fonts.faces[index]
+    const file = face ? resolveInside(builtin.directory, face.src) : null
+    if (file) return new Uint8Array(readFileSync(file))
+  }
   const entry = activeEntry()
   // Only the applied theme's fonts are ever needed, so only they are served.
   if (!entry || entry.id !== id || !Number.isInteger(index)) throw new Error('That font is not part of the applied theme.')
@@ -201,7 +211,13 @@ export function themeFontData(id: string, index: number): Uint8Array {
  */
 export function themeImageFile(id: string, path: string): string | null {
   const userId = currentUserId()
-  if (!userId || !UUID.test(id) || !THEME_IMAGE_EXTENSIONS.has(extensionOf(path))) return null
+  if (!userId || !THEME_IMAGE_EXTENSIONS.has(extensionOf(path))) return null
+  const builtin = builtinTheme(id)
+  if (builtin) {
+    if (!builtin.directory || builtin.assets.get(path)?.kind !== 'image') return null
+    return resolveInside(builtin.directory, path)
+  }
+  if (!UUID.test(id)) return null
   const dir = userThemeDir(userId, id)
   if (!existsSync(join(dir, 'meta.json'))) return null
   return resolveInside(filesDir(dir), path)

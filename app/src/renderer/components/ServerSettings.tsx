@@ -52,8 +52,7 @@ export default function ServerSettings(): JSX.Element {
                   </span>
                 </span>
               </label>
-              {server.account && server.capabilities?.includes('learning-sync-v1') && <ServerLearningSettings server={server.id} username={server.account.username} />}
-              <div className="actions">
+              <div className="actions server-card-actions">
                 {serverDown(server) && <ActionButton icon="refresh" className="secondary" onClick={() => void window.opencourse.retryServer(server.id).then(setServers)}>Retry</ActionButton>}
                 {server.account
                   ? <ActionButton icon="signOut" className="secondary" onClick={() => void act(() => window.opencourse.signOutOfServer(server.id), `Signed out of ${server.name}.`)}>Sign out</ActionButton>
@@ -63,6 +62,7 @@ export default function ServerSettings(): JSX.Element {
                   void act(() => window.opencourse.removeServer(server.id), `Removed ${server.name}.`)
                 }}>Remove</ActionButton>
               </div>
+              {server.account && server.capabilities?.includes('learning-sync-v1') && <ServerLearningSettings server={server.id} username={server.account.username} />}
             </li>
           ))}
         </ul>

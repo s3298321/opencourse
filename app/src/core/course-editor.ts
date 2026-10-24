@@ -82,3 +82,25 @@ export function newBlock(type: Block['type'], uuid: () => string, siblings: read
     case 'exercise': return { nodeId, slug, type, id: `exercise-${suffix}`, title: 'New exercise', prompt: '', starter_code: '', verification_instructions: '' }
   }
 }
+
+/** Insert at a boundary in the lesson's current block order. */
+export function insertLessonBlock(manifest: CourseManifest, lessonId: string, type: Block['type'], index: number, uuid: () => string): { manifest: CourseManifest; id?: string } {
+  const location = locateElement(manifest, lessonId)
+  if (!location || !('blocks' in location.element) || !Number.isInteger(index) || index < 0 || index > location.element.blocks.length) return { manifest }
+  const block = newBlock(type, uuid, location.element.blocks)
+  const copy = editElement(manifest, lessonId, { blocks: [...location.element.blocks.slice(0, index), block, ...location.element.blocks.slice(index)] })
+  return { manifest: copy, id: block.nodeId }
+}
+
+/** The boundary is measured before removal, so dropping beside oneself is a no-op. */
+export function moveLessonBlock(manifest: CourseManifest, lessonId: string, blockId: string, boundary: number): CourseManifest {
+  const location = locateElement(manifest, lessonId)
+  if (!location || !('blocks' in location.element)) return manifest
+  const blocks = location.element.blocks
+  const from = blocks.findIndex(block => block.nodeId === blockId)
+  if (from < 0 || !Number.isInteger(boundary) || boundary < 0 || boundary > blocks.length || boundary === from || boundary === from + 1) return manifest
+  const reordered = [...blocks]
+  const [block] = reordered.splice(from, 1)
+  reordered.splice(boundary > from ? boundary - 1 : boundary, 0, block)
+  return editElement(manifest, lessonId, { blocks: reordered })
+}

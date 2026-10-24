@@ -11,6 +11,9 @@ files:
 # ship is the format bundle, so an author can get the spec, the schema and a
 # working example out of the app itself.
 extraResources:
+  - from: resources/themes
+    to: themes
+    filter: ['**/*']
   - from: resources/notebook
     to: notebook
     filter: ['worker.py']

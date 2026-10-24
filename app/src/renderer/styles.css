@@ -534,19 +534,39 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .settings-filter { margin: 0.6rem 0 0; font-family: inherit; }
 
 /* Settings → Servers (components/ServerSettings.tsx). */
-.server-list { list-style: none; padding: 0; margin: 0.8rem 0 0; display: grid; gap: 0.5rem; }
-.server-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 0.75rem; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+#settings-servers { scrollbar-gutter: stable; }
+.server-list { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: 0.85rem; }
+.server-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
 .server-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
-.server-card-pick { display: flex; flex: 1 1 16rem; align-items: flex-start; gap: 0.6rem; min-width: 0; cursor: pointer; }
-.server-card-pick input { margin-top: 0.25rem; }
-.server-card-text { display: grid; gap: 0.1rem; min-width: 0; }
+.server-card-pick { display: grid; grid-template-columns: 1rem minmax(0, 1fr); align-items: start; gap: 0.65rem; min-width: 0; cursor: pointer; }
+.server-card-pick input { margin: 0.25rem 0 0; width: 1rem; height: 1rem; accent-color: var(--accent); }
+.server-card-text { display: grid; gap: 0.3rem; min-width: 0; overflow-wrap: anywhere; }
+.settings-section .server-card-url { margin: 0 0 0.15rem; }
 .server-card-url { font-family: var(--font-mono); font-size: 0.78rem; overflow-wrap: anywhere; }
 .server-card-account { font-size: 0.82rem; color: var(--muted); }
 .server-card-account.signed-in { color: var(--ok); }
 .server-card-status { font-size: 0.82rem; color: var(--muted); }
 .server-card-status.online { color: var(--ok); }
 .server-card-status.unreachable { color: var(--err); }
-.settings-section .server-card .actions { margin-top: 0; }
+.settings-section .server-card-actions { margin: 0; padding-left: 1.65rem; align-items: center; }
+.server-learning-settings { min-width: 0; border-top: 1px solid var(--border); }
+.server-sync-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; padding: 0.85rem 0; }
+.server-sync-status { flex: 1 1 14rem; min-width: 0; min-height: 1.5em; margin: 0; color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
+.server-sync-row .action-button { flex: none; }
+.server-sync-error { margin: 0 0 0.85rem; color: var(--err); font-size: 0.82rem; overflow-wrap: anywhere; }
+.server-learning-details { min-width: 0; border-top: 1px solid var(--border); }
+.server-learning-details > summary { padding: 0.85rem 0 0; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+.server-learning-details > summary::marker { color: var(--muted); }
+.server-learning-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+.server-learning-details > .learning-settings { max-width: none; margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.server-learning-details .learning-settings form { min-width: 0; }
+.server-learning-details .learning-settings form > button { justify-self: start; }
+.server-learning-details .learning-settings label:has(> input[type='checkbox']) { display: flex; align-items: center; gap: 0.5rem; }
+.server-learning-details .learning-settings input:not([type='checkbox']),
+.server-learning-details .learning-settings select { width: 100%; min-width: 0; }
+.server-learning-details .learning-settings-pair { grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+.server-learning-details .learning-settings fieldset { min-width: 0; }
+.server-learning-details .learning-settings-actions { flex-wrap: wrap; }
 .server-connect { margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .server-connect-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; }
 .server-connect-head h3 { margin: 0; font-size: 0.95rem; }
@@ -598,7 +618,7 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .settings-section.danger ul { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; }
 button.danger { background: var(--err); color: var(--err-fg); }
 button.secondary.danger { background: var(--chip-bg); color: var(--err); border-color: var(--err-border); }
-button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme] { --danger-button-bg: #6b2430; background: var(--danger-button-bg); color: #fff0f1; border-color: #8c3341; }
+button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme], button.dialog-confirm.danger[data-builtin-theme] { --danger-button-bg: #6b2430; background: var(--danger-button-bg); color: #fff0f1; border-color: #8c3341; }
 
 /* ---------- logs ---------- */
 /* Wider than settings: a log is a table, and the message column is the one
@@ -1000,7 +1020,6 @@ button.document-outline-row:hover { background: var(--chip-bg); }
 .course-server-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap-reverse; gap: 0.6rem 0.8rem; margin-bottom: 1rem; }
 .course-origin-line { justify-content: flex-start; margin: 0 auto 0 0; }
 .course-server-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; margin: 0; }
-.server-learning-details { margin-top: 1rem; }
 .course-server-actions:empty { display: none; }
 .course-server-panel { margin: 0.8rem 0 1rem; }
 .course-server-panel h2 { margin-top: 0; }
@@ -2167,7 +2186,6 @@ button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user
 .outline-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .outline-row.selected { background: var(--code-bg); color: var(--accent); }
 .outline-add { display: block; margin: 3px 0 9px 34px; font-size: 11px; color: var(--muted); background: transparent; border: 0; padding: 6px; }
-.outline-add-block { display: flex; align-items: center; gap: 6px; width: 100%; margin-left: 0; padding-left: 56px; }
 .outline-bottom { display: flex; flex-direction: column; gap: 10px; margin: 18px 8px; }
 .author-form { padding: 22px 24px; overflow: auto; }
 .author-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -2180,12 +2198,6 @@ button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user
 .author-field input, .author-field textarea, .author-field select, .author-element-actions select { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 6px; color: var(--fg); background: var(--code-bg); padding: 9px 10px; font: inherit; font-size: 13px; }
 .author-field textarea { resize: vertical; line-height: 1.55; }
 .author-field textarea.author-markdown { width: 100%; resize: none; }
-.author-form-markdown { display: flex; flex-direction: column; min-height: 0; }
-.author-form-markdown fieldset { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.author-form-markdown .author-element-actions, .author-form-markdown h2 { flex-shrink: 0; }
-.author-form-markdown .author-field { flex-shrink: 0; }
-.author-form-markdown .author-markdown-field { flex: 1; min-height: 0; margin-bottom: 0; }
-.author-form-markdown textarea.author-markdown { flex: 1; height: 0; min-height: 160px; }
 .author-field.invalid > input, .author-field.invalid > textarea { border-color: var(--err); }
 .author-field .error { font-size: 12px; margin: 0; }
 .author-field .actions { flex-wrap: wrap; }
@@ -2214,17 +2226,12 @@ button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user
 .author-errors { padding: 12px 28px; color: var(--err); background: var(--code-bg); max-height: 130px; overflow: auto; font-size: 12px; }
 .author-errors p { margin: 5px 0; }
 @media (max-width: 1100px) { .author-layout { grid-template-columns: 195px minmax(300px, 1fr) minmax(220px, .7fr); } .author-header { padding: 16px; } .author-header .actions { flex-wrap: wrap; justify-content: flex-end; } }
-@media (max-width: 850px) { .author-layout { grid-template-columns: 170px 1fr; } .author-preview { display: none; } }
 
 .course-editor .actions { display: flex; align-items: center; gap: 8px; }
 .author-header .actions { flex-shrink: 0; }
-.author-preview-toggle { display: none; }
 @media (max-width: 850px) {
   .author-header { align-items: flex-start; flex-direction: column; gap: 10px; }
   .author-header .actions { width: 100%; justify-content: flex-start; }
-  .author-preview-toggle { display: inline-flex; }
-  .course-editor.show-preview .author-form { display: none; }
-  .course-editor.show-preview .author-preview { display: block; min-width: 0; }
 }
 
 /* Keep the chevron inset consistently across single-value dropdowns. */
@@ -2246,7 +2253,6 @@ select:not([multiple]):not([size]) {
 .ai-mode .author-preview { display: block; flex: 1; min-width: 240px; border-left: 0; }
 .author-chat-column { display: flex; min-width: 0; min-height: 0; }
 .authoring-chat { height: 100%; max-width: calc(100vw - 500px); min-height: 0; }
-.ai-mode .author-preview-toggle { display: none; }
 @media (max-width: 1100px) { .ai-mode .author-outline { flex-basis: 195px; } }
 @media (max-width: 850px) {
   .ai-mode .author-layout { display: grid; grid-template-columns: 170px minmax(0, 1fr); grid-template-rows: minmax(160px, 1fr) minmax(260px, 1fr); }
@@ -2291,3 +2297,31 @@ select:not([multiple]):not([size]) {
 .course-reader-host > .screen-host[hidden] { display: flex; position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
 
 .image-credit { display: block; margin-top: 0.25rem; overflow-wrap: anywhere; }
+
+/* Manual authoring keeps the lesson workspace and live preview side by side. */
+.course-editor:not(.ai-mode) .author-layout { grid-template-columns: 210px minmax(340px, 1fr) minmax(280px, .85fr); overflow-x: auto; }
+.course-editor:not(.ai-mode) .author-preview { display: block; }
+.author-sidebar-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.author-sidebar-tabs button { flex: 1; padding: 5px 8px; font-size: 12px; line-height: 18px; min-height: 30px; border: 1px solid transparent; background: transparent; color: var(--muted); }
+.author-sidebar-tabs button[aria-selected="true"] { color: var(--fg); background: var(--code-bg); border-color: var(--border); }
+.elements-palette .meta { padding: 0 8px; line-height: 1.5; }
+.element-palette-item { display: flex; border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; padding: 5px; }
+.element-palette-drag { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; padding: 8px 3px; background: transparent; color: var(--fg); border: 0; text-align: left; cursor: grab; font-size: 12px; }
+.element-palette-drag span:last-child { margin-left: auto; }
+.lesson-element { border: 1px solid var(--border); border-radius: 10px; padding: 14px; min-width: 0; }
+.lesson-element-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; }
+.lesson-element-heading > button:last-child { margin-left: auto; }
+.element-drag-handle { cursor: grab; }
+.element-drag-handle:active, .element-palette-drag:active { cursor: grabbing; }
+.lesson-element .author-element-actions { gap: 4px; }
+.lesson-element textarea.author-markdown { min-height: 170px; resize: vertical; }
+.lesson-element h2 { font-size: 16px; }
+.lesson-drop-zone { min-height: 22px; display: grid; place-items: center; border: 2px solid transparent; border-radius: 6px; box-sizing: border-box; color: var(--muted); font-size: 11px; }
+.lesson-drop-zone span { visibility: hidden; }
+.lesson-drop-zone.append { min-height: 112px; margin-top: 16px; padding: 20px; text-align: center; border: 2px dashed var(--border); font-size: 13px; line-height: 1.6; }
+.lesson-drop-zone.empty { min-height: 140px; }
+.lesson-workspace.dragging .lesson-drop-zone { border-color: var(--border); border-style: dashed; }
+.lesson-workspace.dragging .lesson-drop-zone.active { border-color: var(--accent); background: var(--code-bg); color: var(--accent); }
+.lesson-drop-zone.active span { visibility: visible; }
+.lesson-flashcards { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; }
+.lesson-flashcards .lesson-element { margin-bottom: 16px; }

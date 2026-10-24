@@ -1,0 +1,79 @@
+{
+  "$schema": "urn:opencourse:theme:1.0",
+  "format": 1,
+  "id": "neon-afterhours",
+  "name": "Neon Afterhours",
+  "version": "1.0.1",
+  "author": "OpenCourse",
+  "description": "Midnight city. Acid-lime signals. A little after-hours magic.",
+  "appearance": "dark",
+  "preview": "images/city.jpg",
+  "palette": {
+    "background": "#14101f",
+    "text": "#f2edf9",
+    "accent": "#d5ff70",
+    "muted": "#b8accb",
+    "success": "#7ff5d2",
+    "danger": "#ff8ebc"
+  },
+  "tokens": {
+    "accent-fg": "#19220c",
+    "border": "#514061",
+    "selected": { "from": "#3c2451", "to": "#213d43" },
+    "selected-edge": "#fc83db",
+    "check-accent": "#d5ff70",
+    "chip-fg": "#ded0f2",
+    "accent-ring": "#d5ff704d",
+    "bubble-border": "#685080",
+    "ok": "#7ff5d2",
+    "ok-bg": "#153d36",
+    "ok-border": "#357c69",
+    "err": "#ff8ebc",
+    "err-fg": "#260d1a",
+    "err-bg": "#421b32",
+    "err-border": "#92516e",
+    "scrollbar": "#79618b",
+    "scrollbar-hover": "#bd91d2",
+    "hover-ring": "#fc83db",
+    "editor-active-line": "#241d33",
+    "terminal-selection": "#56375f",
+    "overlay": "#090611cc",
+    "shadow": "#07040f"
+  },
+  "reducedTransparency": { "chrome": "#1a1227", "glass": "#181222", "popover": "#21192e" },
+  "increasedContrast": { "border": "#9984ac", "muted": "#d4c8e4", "selected-edge": "#ffabe6" },
+  "window": {
+    "material": "image",
+    "color": "#100b1b",
+    "image": { "src": "images/city.jpg", "fit": "cover", "position": "center", "blur": 0, "dim": 0.28 }
+  },
+  "grain": { "amount": 0.07, "scale": 0.75 },
+  "surfaces": {
+    "titlebar": { "color": "#160e24", "opacity": 0.9, "grain": 0.04 },
+    "sidebar": {
+      "color": "#171023", "opacity": 0.88, "grain": 0.04,
+      "image": { "src": "images/circuit.svg", "fit": "tile", "scale": 0.75, "tint": "#17102366" }
+    },
+    "list": { "color": "#100b1b", "opacity": 0.62, "grain": 0.04 },
+    "sidechat": { "color": "#1b1229", "opacity": 0.94, "grain": 0.05 },
+    "popover": { "color": "#21192e", "opacity": 0.97, "blur": 24, "grain": 0.04 },
+    "reading": { "color": "#14101f", "grain": 0 },
+    "code": { "color": "#0e0c18" },
+    "card": { "color": "#21182f", "opacity": 0.96 },
+    "chip": { "color": "#352542", "opacity": 1 },
+    "bubble": { "color": "#30203f", "opacity": 1 },
+    "composer": { "color": "#191323", "opacity": 1 }
+  },
+  "fonts": {
+    "faces": [
+      { "family": "Oxanium", "src": "fonts/oxanium.ttf", "weight": "200 800", "style": "normal" },
+      { "family": "Space Grotesk", "src": "fonts/space-grotesk.ttf", "weight": "300 700", "style": "normal" }
+    ],
+    "ui": { "family": ["Space Grotesk"], "lineHeight": 1.55 },
+    "reading": { "family": ["Helvetica Neue", "Arial", "sans-serif"], "lineHeight": 1.7 },
+    "heading": { "family": ["Oxanium"], "weight": 600, "letterSpacing": -0.025 },
+    "code": { "family": ["SFMono-Regular", "Menlo", "monospace"] },
+    "brand": { "family": ["Oxanium"], "weight": 600, "letterSpacing": -0.035 }
+  },
+  "logo": { "mark": "images/paper-spark.png" }
+}

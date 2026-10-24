@@ -11,25 +11,24 @@ import { AskProvider } from '../ask-context'
 import { PreviewAskOffer, usePreviewAsk } from '../sidechat/usePreviewAsk'
 import { availableBlockSlug } from '@core/block-slugs'
 import type { AuthoringTarget, ChatQuote, ChatSendResult, Block, CourseManifest, Flashcard, Lesson, Module, UserProfile } from '@core/types'
-import { copyElement, deleteElement, editElement, locateElement, newBlock, reorderElement } from '@core/course-editor'
-import type { OutlineElement } from '@core/course-editor'
+import { copyElement, deleteElement, editElement, locateElement, reorderElement } from '@core/course-editor'
+import CourseEditorOutline from './CourseEditorOutline'
 import { CourseFields, ElementFields, EditorValidation, EditorAttachments } from './CourseEditorFields'
 import { BlockPreview, FlashcardPreview, LessonPreview, CourseCoverPreview, ProjectPreview } from './CourseEditorPreview'
 import type { PreviewEditing } from './CourseEditorPreview'
 import Html from '../components/Html'
 import TitleBar from '../components/TitleBar'
-import BlockTypeIcon, { blockTypeLabels } from '../components/BlockTypeIcon'
+import CourseLessonWorkspace, { ElementsPalette } from './CourseLessonWorkspace'
+import type { ElementDrag } from './CourseLessonWorkspace'
 import type { ConfirmRequest } from '../components/ConfirmDialog'
 import type { Route, Screen } from '../routes'
 import { useAuthoringMotion } from '../authoring/useAuthoringMotion'
 
 const uuid = newDraftRef
-const blockKinds: Block['type'][] = ['markdown', 'python-cell', 'image', 'video', 'visualization', 'quiz', 'exercise']
-const label = (element: OutlineElement): string => 'answer' in element ? element.id || 'Untitled card' : 'blocks' in element || 'lessons' in element || element.type === 'project' ? element.title || 'Untitled' : element.slug || 'Untitled block'
 function retainCollapsed(refs: string[], manifest: CourseManifest, map?: Record<string, string>): string[] {
   return [...new Set(refs.map(ref => map?.[ref] ?? ref))].filter(ref => {
     const element = locateElement(manifest, ref)?.element
-    return element && ('lessons' in element || 'blocks' in element)
+    return element && 'lessons' in element
   })
 }
 function fieldPath(manifest: CourseManifest, id: string | null): string {
@@ -97,8 +96,16 @@ export default function CourseEditor({ courseId, user, route, navigate, register
   const [remoteDirty, setRemoteDirty] = useState(false)
   const [conflict, setConflict] = useState(false)
   const saving = useRef(false)
-  const [showPreview, setShowPreview] = useState(false)
-  const editingLocked = busy || runChatId !== null
+  const [sidebarTab, setSidebarTab] = useState<'outline' | 'elements'>('outline')
+  const [activeElement, setActiveElement] = useState<string | null>(null)
+  const [drag, setDrag] = useState<ElementDrag | null>(null)
+  const editingLocked = busy || runChatId !== null || conflict
+  useEffect(() => { setDrag(null) }, [manifest, selected, mode, editingLocked])
+  useEffect(() => {
+    if (!manifest || !selected) return
+    const found = locateElement(manifest, selected)
+    if (found?.kind === 'block' || found?.kind === 'flashcard') { setActiveElement(selected); setSelected(found.parentId) }
+  }, [manifest, selected])
   const sending = useRef(false)
   const writing = useRef(false)
   const deferredRemote = useRef<{ data: AuthoringCourse; map?: Record<string, string> } | null>(null)
@@ -193,6 +200,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
       version.current = { revision: next.document.revision, draft: next.draft.draftVersion }
       setData(next); setManifest(next.draft.manifest); setErrors([]); setRemoteDirty(next.draft.dirty === true)
       setCollapsed(value => retainCollapsed(value, next.draft.manifest, nodeRefMap))
+      setActiveElement(value => { const ref = value ? nodeRefMap?.[value] ?? value : null; return ref && locateElement(next.draft.manifest, ref) ? ref : null })
       setSelected(value => {
         if (!value) return null
         const mapped = nodeRefMap?.[value] ?? value
@@ -225,7 +233,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
   }, [manifest, flush])
 
   const mutate = (fn: (manifest: CourseManifest) => CourseManifest): void => {
-    if (!current.current || editingLocked || sending.current) return
+    if (!current.current || editingLocked || conflicted.current || sending.current) return
     const next = fn(current.current)
     current.current = next; setManifest(next); setErrors([])
   }
@@ -253,6 +261,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
       const savedRefs = result.nodeRefMap
       setCollapsed(value => [...new Set(value.map(ref => savedRefs?.[ref] ?? ref))])
       setSelected(value => value ? savedRefs?.[value] ?? value : null)
+      setActiveElement(value => value ? savedRefs?.[value] ?? value : null)
       await load(); setStatus('Saved. Progress on everything you kept is preserved.'); setErrors([])
     } catch (err) { setStatus((err as Error).message) } finally { saving.current = false; setBusy(false) }
   }
@@ -284,12 +293,6 @@ export default function CourseEditor({ courseId, user, route, navigate, register
     const lesson: Lesson = { nodeId, slug: availableBlockSlug('lesson', (current.current?.modules.find(m => m.nodeId === moduleId)?.lessons ?? []).map(l => l.slug)), title: 'New lesson', blocks: [] }
     mutate((m) => { const copy = structuredClone(m); const module = copy.modules.find((mod) => mod.nodeId === moduleId); if (module && module.type !== 'project') module.lessons.push(lesson); return copy }); setSelected(nodeId)
   }
-  const addBlock = (lessonId: string): void => {
-    const lesson = current.current && locateElement(current.current, lessonId)
-    const block = newBlock('markdown', uuid, lesson && 'blocks' in lesson.element ? lesson.element.blocks : [])
-    mutate((m) => { const copy = structuredClone(m); const found = locateElement(copy, lessonId); if (found && 'blocks' in found.element) found.element.blocks.push(block); return copy }); setSelected(block.nodeId!)
-  }
-
   const addCard = (lessonId: string): void => {
     const nodeId = uuid()
     mutate(m => {
@@ -300,7 +303,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
       }
       return currentFormat(copy)
     })
-    setSelected(nodeId)
+    setActiveElement(nodeId)
   }
   const resetCard = async (cardId: string): Promise<void> => {
     if (!window.confirm('Reset this card’s review progress? Its schedule and rating history will be cleared immediately for you. This is independent of saving or discarding draft changes.')) return
@@ -316,73 +319,53 @@ export default function CourseEditor({ courseId, user, route, navigate, register
   const location = manifest && selected ? locateElement(manifest, selected) : undefined
   const previewEditing: PreviewEditing = {
     language: manifest?.runtime?.language, editable: mode === 'manual', locked: editingLocked,
-    onEdit: () => { setMode('manual'); setShowPreview(true) },
+    onEdit: () => { setMode('manual') },
     onChange: (ref, fields) => mutate(m => editElement(m, ref, fields))
   }
   const toggleCollapsed = (id: string): void => setCollapsed(value => value.includes(id) ? value.filter(ref => ref !== id) : [...value, id])
-  const outlineRow = (element: OutlineElement, depth: number): JSX.Element => {
-    const card = 'answer' in element
-    const block = !card && !('blocks' in element) && !('lessons' in element) && element.type !== 'project' ? element as Block : null
-    const description = card ? `Flashcard: ${label(element)}` : block ? `${blockTypeLabels[block.type]}: ${label(element)}` : label(element)
-    const branch = 'lessons' in element || 'blocks' in element
-    const expanded = !collapsed.includes(element.nodeId!)
-    return <div className="outline-entry" data-authoring-outline-id={element.nodeId} style={{ paddingLeft: depth * 16 }} key={element.nodeId}>
-      {branch ? <button className="outline-toggle" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label(element)}`} title={`${expanded ? 'Collapse' : 'Expand'} ${label(element)}`} onClick={() => toggleCollapsed(element.nodeId!)}>
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={expanded ? 'M4 6l4 4 4-4' : 'M6 4l4 4-4 4'} /></svg>
-      </button> : <span className="outline-toggle-space" aria-hidden="true" />}
-      <button className={`outline-row${selected === element.nodeId ? ' selected' : ''}`} aria-label={description} title={description} aria-pressed={selected === element.nodeId} onClick={() => setSelected(element.nodeId!)}>
-        {block ? <BlockTypeIcon type={block.type} /> : 'lessons' in element ? <svg className="outline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /></svg> : <span className="outline-icon" aria-hidden="true">{card ? '▱' : 'blocks' in element ? '▤' : '◇'}</span>}
-        <span className="outline-label">{label(element)}</span>
-      </button>
-    </div>
-  }
 
   return <>
     <TitleBar user={user} route={route} navigate={navigate} back={{ label: 'All courses', onClick: () => navigate({ name: 'library' }) }} />
-    <div className={`course-editor${showPreview ? ' show-preview' : ''}${mode === 'ai' ? ' ai-mode' : ''}`}>
+    <div className={`course-editor${mode === 'ai' ? ' ai-mode' : ''}`}>
       <header className="author-header"><div>
         <div className="author-title"><h1>{manifest?.title || 'Course editor'}</h1>{data && <span className={`author-save-state${unsaved ? ' unsaved' : ''}`} role="status" aria-live="polite">{unsaved ? 'Unsaved changes' : neverSaved ? 'Not saved yet' : 'All changes saved'}</span>}</div>
-        <p role="status" className="meta">{runChatId ? 'The course assistant is editing…' : status}{conflict && <> <button className="ghost author-reload" disabled={editingLocked} onClick={() => void reloadLatest()}>Reload latest</button></>}</p>
+        <p role="status" className="meta">{runChatId ? 'The course assistant is editing…' : status}{conflict && <> <button className="ghost author-reload" disabled={busy || runChatId !== null} onClick={() => void reloadLatest()}>Reload latest</button></>}</p>
         <div className="author-mode" role="group" aria-label="Course editing mode"><button className={mode === 'manual' ? 'active' : ''} aria-pressed={mode === 'manual'} onClick={() => setMode('manual')}>Manual</button><button className={mode === 'ai' ? 'active' : ''} aria-pressed={mode === 'ai'} onClick={() => { setChatInitialized(true); setMode('ai') }}>AI</button></div>
       </div><div className="actions">
-        <ActionButton icon={showPreview ? 'edit' : 'eye'} className="secondary author-preview-toggle" onClick={() => setShowPreview((show) => !show)}>{showPreview ? 'Edit' : 'Preview'}</ActionButton>
         <ActionButton icon="save" className="author-save" title="Save (⌘S)" disabled={editingLocked || !manifest || (!unsaved && !neverSaved)} onClick={() => void save()}>{busy ? 'Saving' : learnerCopy ? 'Save as local copy' : 'Save'}</ActionButton>
       </div></header>
       {errors.length > 0 && <div className="author-errors" role="alert"><strong>Course validation</strong>{errors.map((error) => <p key={error}>{error}</p>)}</div>}
       {manifest && <EditorAttachments value={data?.document.attachments ?? []}><div className="author-layout">
-        <aside ref={motion.outlineRef} className="author-outline scroll"><button className={`outline-row${selected === null ? ' selected' : ''}`} onClick={() => setSelected(null)}>Course details</button>
-          {manifest.modules.map((module) => <div key={module.nodeId}>
-            {outlineRow(module, 0)}
-            {module.type !== 'project' && !collapsed.includes(module.nodeId!) && <>
-              {module.lessons.map((lesson) => <div key={lesson.nodeId}>
-                {outlineRow(lesson, 1)}
-                {!collapsed.includes(lesson.nodeId!) && <>
-                  {lesson.blocks.map((block) => outlineRow(block, 2))}
-                  {mode === 'manual' && <button className="outline-add outline-add-block" disabled={editingLocked} onClick={() => addBlock(lesson.nodeId!)}><span className="outline-icon" aria-hidden="true">+</span><span>Add block</span></button>}
-                  <div className="outline-card-group"><span className="meta">Flashcards ({lesson.flashcards?.length ?? 0})</span>
-                    {lesson.flashcards?.map(card => outlineRow(card, 2))}
-                    {mode === 'manual' && <button className="outline-add" disabled={editingLocked} onClick={() => addCard(lesson.nodeId!)}>+ Add card</button>}
-                  </div>
-                </>}
-              </div>)}
-              {mode === 'manual' && <button className="outline-add" disabled={editingLocked} onClick={() => addLesson(module.nodeId!)}>+ Add lesson</button>}
-            </>}
-          </div>)}
-          {mode === 'manual' && <div className="outline-bottom"><ActionButton icon="plus" className="secondary" disabled={editingLocked} onClick={() => addModule()}>Add module</ActionButton><ActionButton icon="plus" className="secondary" disabled={editingLocked} onClick={() => addModule(true)}>Add project</ActionButton></div>}
+        <aside ref={motion.outlineRef} className="author-outline scroll">
+          {mode === 'manual' && <div className="author-sidebar-tabs" role="tablist" aria-label="Course sidebar">
+            {(['outline', 'elements'] as const).map(tab => <button key={tab} id={`author-tab-${tab}`} role="tab" aria-selected={sidebarTab === tab} aria-controls={`author-panel-${tab}`} tabIndex={sidebarTab === tab ? 0 : -1} onKeyDown={event => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              const next = event.key === 'Home' ? 'outline' : event.key === 'End' ? 'elements' : tab === 'outline' ? 'elements' : 'outline'
+              setSidebarTab(next); document.getElementById(`author-tab-${next}`)?.focus()
+            }} onClick={() => setSidebarTab(tab)}>{tab === 'outline' ? 'Outline' : 'Elements'}</button>)}
+          </div>}
+          <div id="author-panel-outline" role={mode === 'manual' ? 'tabpanel' : undefined} aria-labelledby={mode === 'manual' ? 'author-tab-outline' : undefined} hidden={mode === 'manual' && sidebarTab !== 'outline'}>
+            <CourseEditorOutline manifest={manifest} selected={selected} collapsed={collapsed} manual={mode === 'manual'} locked={editingLocked}
+              onSelect={setSelected} onToggle={toggleCollapsed} onAddLesson={addLesson} onAddModule={addModule} />
+          </div>
+          {mode === 'manual' && <div id="author-panel-elements" role="tabpanel" aria-labelledby="author-tab-elements" hidden={sidebarTab !== 'elements'}>
+            <ElementsPalette enabled={!editingLocked && location?.kind === 'lesson'} onDrag={setDrag} />
+          </div>}
         </aside>
-        <section hidden={mode === 'ai'} className={`author-form scroll${location?.kind === 'block' && (location.element as Block).type === 'markdown' ? ' author-form-markdown' : ''}`}><fieldset disabled={editingLocked} inert={editingLocked}>
+        <section hidden={mode === 'ai'} className="author-form scroll"><fieldset disabled={editingLocked} inert={editingLocked}>
           {location && selected && <div className="author-element-actions actions">
             <button className="ghost" disabled={location.index === 0} onClick={() => mutate((m) => reorderElement(m, selected, -1))}>↑ Move up</button><button className="ghost" disabled={location.index === location.siblings.length - 1} onClick={() => mutate((m) => reorderElement(m, selected, 1))}>↓ Move down</button>
             <button className="ghost" onClick={() => { const result = copyElement(current.current!, selected, uuid); mutate(() => result.manifest); setSelected(result.id) }}>Duplicate</button>
             <button className="ghost" onClick={() => { mutate((m) => deleteElement(m, selected)); setSelected(null) }}>Delete</button>
-            {location.kind === 'flashcard' && <>
-              {data?.document.manifest?.modules.some(module => module.type !== 'project' && module.lessons.some(lesson => lesson.flashcards?.some(card => card.nodeId === selected))) && <button className="ghost" onClick={() => void resetCard(selected)}>Reset review progress</button>}
-            </>}
-            {location.kind === 'block' && <label className="author-action-field">Block type<select aria-label="Change block type" value={(location.element as Block).type} onChange={(e) => { const block = newBlock(e.target.value as Block['type'], uuid, location.siblings as Block[]); mutate((m) => { const copy = structuredClone(m); const found = locateElement(copy, selected); if (found) found.siblings.splice(found.index, 1, block); return copy }); setSelected(block.nodeId!) }}>{blockKinds.map((kind) => <option key={kind}>{kind}</option>)}</select></label>}
           </div>}
+          {location?.kind === 'lesson' && selected ? <CourseLessonWorkspace key={selected} lesson={location.element as Lesson} manifest={manifest} courseId={courseId}
+            path={fieldPath(manifest, selected)} errors={errors} locked={editingLocked || mode !== 'manual'} drag={drag} onDrag={setDrag} mutate={mutate}
+            activeElement={activeElement} onActiveElement={setActiveElement} onAddCard={() => addCard(selected)} onResetCard={id => void resetCard(id)}
+            savedCardIds={new Set(data?.document.manifest?.modules.flatMap(module => module.type === 'project' ? [] : module.lessons.flatMap(lesson => (lesson.flashcards ?? []).map(card => card.nodeId!))))} /> :
           <EditorValidation value={{ path: fieldPath(manifest, selected), errors }}>
-            {location && selected ? <ElementFields key={`${selected}/${data?.document.revision}/${data?.draft.draftVersion}`} element={location.element} manifest={manifest} courseId={courseId} set={(fields) => mutate((m) => editElement(m, selected, fields))} /> : <CourseFields manifest={manifest} courseId={courseId} versionHint={origin?.role === 'publisher' ? `Last published as v${origin.version} on ${origin.serverName}. Publishing again needs a higher version.` : undefined} set={(fields) => mutate((m) => ({ ...m, ...fields }))} />}
-          </EditorValidation>
+            {location && selected ? <ElementFields key={selected} element={location.element} manifest={manifest} courseId={courseId} set={(fields) => mutate((m) => editElement(m, selected, fields))} /> : <CourseFields manifest={manifest} courseId={courseId} versionHint={origin?.role === 'publisher' ? `Last published as v${origin.version} on ${origin.serverName}. Publishing again needs a higher version.` : undefined} set={(fields) => mutate((m) => ({ ...m, ...fields }))} />}
+          </EditorValidation>}
         </fieldset></section>
         <AskProvider value={previewAsk.ask}><section ref={motion.previewRef} className="author-preview scroll" data-ask={mode === 'ai' ? 'preview' : undefined}><div className="author-preview-label" data-ask="none">Preview</div><div className="author-preview-part" data-authoring-preview-key={selected ?? 'overview'}>
           {!location ? <><CourseCoverPreview courseId={courseId} path={manifest.cover_image} /><h1>{manifest.title}</h1>{manifest.description && <Html className="prose" source={manifest.description} />}</> : 'blocks' in location.element ? <LessonPreview key={selected} lesson={location.element} manifest={manifest} courseId={courseId} {...previewEditing} /> : 'project' in location.element ? <><h1>{location.element.title}</h1><ProjectPreview project={location.element.project} /></> : 'lessons' in location.element ? <><h1>{location.element.title}</h1>{location.element.lessons.map((lesson) => <p key={lesson.nodeId}>{lesson.title}</p>)}</> : 'answer' in location.element ? <FlashcardPreview key={selected} card={location.element as Flashcard} courseId={courseId} /> : <BlockPreview key={selected} block={location.element as Block} courseId={courseId} {...previewEditing} />}

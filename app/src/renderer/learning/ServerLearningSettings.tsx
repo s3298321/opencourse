@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ConnectionSettings } from '../../learning-ui/ConnectionSettings'
 import { desktopLearningClient } from './client'
+import ActionButton from '../components/ActionButton'
 export function ServerLearningSettings({ server, username }: { server: string; username: string }) {
   const [status, setStatus] = useState(''),
     [error, setError] = useState('')
@@ -24,29 +25,31 @@ export function ServerLearningSettings({ server, username }: { server: string; u
     return () => clearInterval(timer)
   }, [server])
   return (
-    <div>
-      <p role="status">{status}</p>
-      <button
-        onClick={() =>
-          void window.opencourse
-            .syncLearning(server)
-            .then((r) =>
-              setStatus(
-                [
-                  r[server]?.state,
-                  r[server]?.message,
-                  r[server]?.lastSynced ? `Last synced ${new Date(r[server].lastSynced!).toLocaleTimeString()}` : ''
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
+    <div className="server-learning-settings">
+      <div className="server-sync-row">
+        <p className="server-sync-status" role="status">{status}</p>
+        <ActionButton icon="refresh" className="secondary"
+          onClick={() =>
+            void window.opencourse
+              .syncLearning(server)
+              .then((r) =>
+                setStatus(
+                  [
+                    r[server]?.state,
+                    r[server]?.message,
+                    r[server]?.lastSynced ? `Last synced ${new Date(r[server].lastSynced!).toLocaleTimeString()}` : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                )
               )
-            )
-            .catch((e) => setError(e.message))
-        }
-      >
-        Sync now
-      </button>
-      {error && <p role="alert">{error}</p>}
+              .catch((e) => setError(e.message))
+          }
+        >
+          Sync now
+        </ActionButton>
+      </div>
+      {error && <p className="server-sync-error" role="alert">{error}</p>}
       <details className="server-learning-details">
         <summary>Server account and AI settings</summary>
         <ConnectionSettings client={desktopLearningClient(server)} username={username} />

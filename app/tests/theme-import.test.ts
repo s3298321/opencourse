@@ -5,7 +5,7 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeZip, type ZipMember } from './helpers/zip'
 
@@ -15,7 +15,7 @@ let dataDir = join(root, 'data')
 vi.mock('electron', () => ({
   app: {
     getPath: (name: string) => (name === 'userData' ? dataDir : join(root, name)),
-    getAppPath: () => root,
+    getAppPath: () => resolve(import.meta.dirname, '..'),
     isPackaged: false
   }
 }))
@@ -23,7 +23,7 @@ vi.mock('electron', () => ({
 const { createUser, deleteUser, listUsers, switchUser } = await import('../src/main/users')
 const { activeThemeNative, applyTheme, getActiveTheme, importThemeZip, listThemes, removeTheme, themeFontData, themeImageFile } = await import('../src/main/themes')
 const { readPreferences } = await import('../src/main/preferences')
-const { WHITE_THEME_ID } = await import('../src/core/theme/builtin-ids')
+const { WHITE_THEME_ID, NEON_THEME_ID } = await import('../src/core/theme/builtin-ids')
 const importedThemes = () => listThemes().filter((theme) => !theme.builtin)
 
 /** A real 1×1 PNG: sniffed as one, two pixels short of nothing. */
@@ -219,9 +219,9 @@ describe('built-in White theme', () => {
   it('ships for every user while dark stays the initial default', () => {
     expect(getActiveTheme()).toEqual({ id: null })
     expect(activeThemeNative()).toBeNull()
-    expect(listThemes()).toMatchObject([{ id: WHITE_THEME_ID, builtin: true, active: false, appearance: 'light' }])
+    expect(listThemes()).toMatchObject([{ id: WHITE_THEME_ID, builtin: true, active: false, appearance: 'light' }, { id: NEON_THEME_ID, builtin: true, active: false, appearance: 'dark' }])
     createUser('Grace')
-    expect(listThemes()).toMatchObject([{ id: WHITE_THEME_ID, builtin: true, active: false }])
+    expect(listThemes().find(t => t.id === WHITE_THEME_ID)).toMatchObject({ builtin: true, active: false })
     expect(getActiveTheme()).toEqual({ id: null })
   })
 
@@ -247,5 +247,35 @@ describe('built-in White theme', () => {
     expect(getActiveTheme().id).toBe(WHITE_THEME_ID)
     expect(() => themeFontData(WHITE_THEME_ID, 0)).toThrow(/applied theme/)
     expect(themeImageFile(WHITE_THEME_ID, 'images/mark.png')).toBeNull()
+  })
+})
+
+describe('built-in Neon Afterhours theme', () => {
+  it('persists per user and supplies local artwork, fonts and native window colors', () => {
+    const ada = listUsers()[0]!.id
+    const active = applyTheme(NEON_THEME_ID)
+    expect(active).toMatchObject({ id: NEON_THEME_ID, appearance: 'dark', logo: `opencourse://themes/${NEON_THEME_ID}/images/paper-spark.png` })
+    expect(activeThemeNative()).toEqual({ appearance: 'dark', vibrancy: false, background: '#100b1b' })
+    expect(readPreferences().theme).toBe(NEON_THEME_ID)
+    expect(listThemes().find(t => t.id === NEON_THEME_ID)).toMatchObject({ builtin: true, active: true, notes: [] })
+    for (const index of [0, 1]) expect(themeFontData(NEON_THEME_ID, index).byteLength).toBeGreaterThan(1000)
+    expect(themeImageFile(NEON_THEME_ID, 'images/city.jpg')).toMatch(/neon-afterhours\/images\/city.jpg$/)
+    createUser('Grace')
+    expect(getActiveTheme()).toEqual({ id: null })
+    expect(listThemes().find(t => t.id === NEON_THEME_ID)?.active).toBe(false)
+    switchUser(ada)
+    expect(getActiveTheme()).toEqual(active)
+    expect(() => removeTheme(NEON_THEME_ID)).toThrow(/Built-in themes cannot be removed/)
+    applyTheme(null)
+    expect(() => themeFontData(NEON_THEME_ID, 0)).toThrow(/applied theme/)
+  })
+
+  it('serves only indexed pictures and active font faces from the bundle', () => {
+    applyTheme(NEON_THEME_ID)
+    for (const path of ['theme.json', 'fonts/oxanium.ttf', '../paper-and-ink/images/mark.svg', 'images/../theme.json', 'images/missing.png']) {
+      expect(themeImageFile(NEON_THEME_ID, path), path).toBeNull()
+    }
+    for (const index of [-1, 2, 0.5, NaN]) expect(() => themeFontData(NEON_THEME_ID, index)).toThrow(/applied theme/)
+    expect(themeImageFile('builtin:unknown', 'images/city.jpg')).toBeNull()
   })
 })

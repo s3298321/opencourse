@@ -1,6 +1,6 @@
 import { compileTheme } from './compile'
 import { normalizeTheme } from './normalize'
-import white from './white.json'
+import white from '../../../resources/themes/white/theme.json'
 import type { ThemeAsset } from './assets'
 
 // Imported as data so the theme ships in the main bundle, including packaged

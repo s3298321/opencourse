@@ -6,9 +6,19 @@ titlebar - and never what it does. It is a zip archive with a `theme.json` and
 the pictures and fonts that file names. Import one from **Settings →
 Appearance**; choose it there, or from **View → Theme** in the menu bar.
 
-The app ships **OpenCourse Dark** (the default) and **OpenCourse White**.
-Choose either in Settings or View → Theme; neither can be removed. White
-keeps the same typography, layout and logo, with white surfaces and pale glass.
+The app ships **OpenCourse Dark** (the default), **OpenCourse White**, and
+**Neon Afterhours**. Choose one in Settings or View → Theme; built-in themes
+cannot be removed. White keeps the same typography, layout and logo, with
+white surfaces and pale glass. Neon Afterhours demonstrates image backgrounds,
+tinted glass, circuit textures, bundled fonts, a custom mark, and a neon palette.
+Its artwork and fonts ship locally and work offline; its reading and code
+surfaces remain opaque. The editable, importable source is in
+`app/resources/themes/neon-afterhours/`.
+
+Built-in theme data lives in `app/resources/themes/`, including
+`white/theme.json`. The repository's top-level `themes/` is for local theme
+experiments. Dark is the base palette in `app/src/renderer/styles.css`; its
+portable copy in `docs/default-theme/` is checked against that stylesheet.
 Each user keeps their own choice.
 
 The default dark look is what you see when no theme is

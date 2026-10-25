@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { JSX } from 'react'
 import type { CoachFileNode } from '@core/types'
-import { TRASH_DIR, folderPaths, humanBytes } from '@core/coach/files'
+import { TRASH_DIR, humanBytes } from '@core/coach/files'
+import { Icon } from './ActionButton'
 
 interface Props {
   projectId: string
@@ -10,25 +11,9 @@ interface Props {
   onOpen: (node: CoachFileNode) => void
 }
 
-/** Where a file can be moved to, named the way a person would say it. */
-function folderLabel(path: string): string {
-  return path === '' ? 'the top level' : path
-}
-
-function parentOf(path: string): string {
-  const cut = path.lastIndexOf('/')
-  return cut === -1 ? '' : path.slice(0, cut)
-}
-
 export default function CoachFileTree({ projectId, tree, onChanged, onOpen }: Props): JSX.Element {
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const [moving, setMoving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  // A tree that changed underneath us must not keep a stale row selected.
-  useEffect(() => setMoving(null), [tree])
-
-  const folders = tree ? folderPaths(tree) : ['']
 
   const act = useCallback(
     async (run: () => Promise<{ status: string; message?: string }>) => {
@@ -56,18 +41,6 @@ export default function CoachFileTree({ projectId, tree, onChanged, onOpen }: Pr
     void act(() => window.opencourse.trashCoachFile(projectId, node.path))
   }
 
-  const move = (node: CoachFileNode, to: string): void => {
-    setMoving(null)
-    if (to === parentOf(node.path)) return
-    void act(() => window.opencourse.moveCoachFile(projectId, node.path, to ? `${to}/${node.name}` : node.name))
-  }
-
-  const addFolder = (): void => {
-    const name = window.prompt('Name the folder.\n\nLetters, digits, dot, dash and underscore only.')
-    if (!name) return
-    void act(() => window.opencourse.createCoachFolder(projectId, '', name))
-  }
-
   const row = (node: CoachFileNode, depth: number): JSX.Element => {
     const isTrash = node.path === TRASH_DIR
     const expanded = open[node.path] ?? (node.kind === 'dir' && !isTrash)
@@ -92,37 +65,11 @@ export default function CoachFileTree({ projectId, tree, onChanged, onOpen }: Pr
           </button>
           <span className="meta file-size">{node.kind === 'dir' ? '' : humanBytes(node.bytes)}</span>
           {!isTrash && (
-            <>
-              <button className="ghost file-act" title="Move" onClick={() => setMoving(moving === node.path ? null : node.path)}>
-                ↔
-              </button>
-              <button className="ghost file-act" title="Delete" onClick={() => remove(node)}>
-                ✕
-              </button>
-            </>
+            <button className="ghost file-act" title="Delete" aria-label={`Delete ${node.name}`} onClick={() => remove(node)}>
+              <Icon name="trash" />
+            </button>
           )}
         </div>
-
-        {moving === node.path && (
-          <div className="file-move" style={{ paddingLeft: `${1.7 + depth * 1.1}rem` }}>
-            <span className="meta">Move to</span>
-            <select
-              defaultValue={parentOf(node.path)}
-              onChange={(e) => move(node, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setMoving(null)
-              }}
-            >
-              {folders
-                .filter((folder) => folder !== node.path && !folder.startsWith(`${node.path}/`))
-                .map((folder) => (
-                  <option key={folder || '/'} value={folder}>
-                    {folderLabel(folder)}
-                  </option>
-                ))}
-            </select>
-          </div>
-        )}
 
         {node.kind === 'dir' && expanded && node.children?.map((child) => row(child, depth + 1))}
       </div>
@@ -133,9 +80,6 @@ export default function CoachFileTree({ projectId, tree, onChanged, onOpen }: Pr
     <div className="coach-files panel">
       <div className="coach-brief-head">
         <h2>Workspace</h2>
-        <button className="ghost" onClick={addFolder}>
-          New folder
-        </button>
       </div>
 
       {error && <p className="import-note error">{error}</p>}

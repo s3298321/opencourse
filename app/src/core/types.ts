@@ -501,6 +501,8 @@ export interface CoachProject {
   name: string
   model: string
   backendModel: string
+  /** Absent/null preserves the background model's own reasoning default. */
+  backendReasoning?: ReasoningEffort | null
   voice: string
   /** The project's own system prompt: what the coach is for. User-editable. */
   instructions: string
@@ -536,7 +538,7 @@ export interface CoachSessionMetadata {
   generatedTitle?: string
   backendModel?: string
   backendInstructions?: string
-  backendSettings?: { reasoning: 'default'; toolChoice: 'auto'; parallelToolCalls: false; tools: string[] }
+  backendSettings?: { reasoning: 'default' | ReasoningEffort; toolChoice: 'auto'; parallelToolCalls: false; tools: string[] }
   voice?: string
   remoteSessionId?: string
   voiceSeconds?: number
@@ -882,6 +884,9 @@ export interface Preferences {
   defaultChatReasoning?: ReasoningEffort
   defaultCoachModel?: string
   defaultCoachBackendModel?: string
+  defaultCoachBackendReasoning?: ReasoningEffort | null
+  /** Background models shown in Coach pickers. Absent: all; empty: none. */
+  coachBackendModels?: string[]
   /** All coaches may trash files only while this user opts in. */
   coachAllowDelete?: boolean
   projectEditor?: string

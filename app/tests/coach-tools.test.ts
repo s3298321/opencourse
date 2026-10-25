@@ -40,7 +40,7 @@ describe('the tools a coach is given', () => {
 
   it('always offers the tools the memory protocol depends on', () => {
     const names = toolsFor({ allowDelete: false }).map((tool) => tool.name)
-    expect(names).toEqual(expect.arrayContaining(['write_file', 'append_file', 'read_file', 'list_files', 'web_search']))
+    expect(names).toEqual(expect.arrayContaining(['write_file', 'append_file', 'read_file', 'list_files', 'create_folder', 'move_file', 'web_search']))
   })
 
   it('tells the model the filename rule where it will actually read it', () => {
@@ -82,6 +82,9 @@ describe('parsing what the model sent', () => {
     ['missing content', 'write_file', '{"path":"a.md"}', /content/],
     ['non-string content', 'append_file', '{"path":"a.md","content":{"a":1}}', /content/],
     ['a missing query', 'web_search', '{}', /query/],
+    ['a missing folder path', 'create_folder', '{}', /path/],
+    ['a missing move destination', 'move_file', '{"from":"a.md"}', /from.*to/],
+    ['a non-string move source', 'move_file', '{"from":1,"to":"a.md"}', /from.*to/],
     ['a blank query', 'web_search', '{"query":"   "}', /query/],
     ['a tool that does not exist', 'rm_rf', '{}', /no tool called/]
   ]
@@ -132,6 +135,8 @@ describe('parsing what the model sent', () => {
       read_file: '{"path":"a.md"}',
       delete_file: '{"path":"a.md"}',
       list_files: '{}',
+      create_folder: '{"path":"weeks"}',
+      move_file: '{"from":"a.md","to":"weeks/a.md"}',
       web_search: '{"query":"x"}'
     }
     for (const name of TOOL_NAMES) {

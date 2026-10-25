@@ -18,14 +18,15 @@ import { db, tx } from './db'
 export function insertProject(project: CoachProject): void {
   db()
     .prepare(
-      `INSERT INTO projects (id, name, model, backend_model, voice, instructions, allow_delete, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO projects (id, name, model, backend_model, backend_reasoning, voice, instructions, allow_delete, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       project.id,
       project.name,
       project.model,
       project.backendModel,
+      project.backendReasoning ?? null,
       project.voice,
       project.instructions,
       project.allowDelete ? 1 : 0,
@@ -37,13 +38,14 @@ export function insertProject(project: CoachProject): void {
 export function updateProjectRow(project: CoachProject): void {
   db()
     .prepare(
-      `UPDATE projects SET name = ?, model = ?, backend_model = ?, voice = ?, instructions = ?, allow_delete = ?, updated_at = ?
+      `UPDATE projects SET name = ?, model = ?, backend_model = ?, backend_reasoning = ?, voice = ?, instructions = ?, allow_delete = ?, updated_at = ?
        WHERE id = ?`
     )
     .run(
       project.name,
       project.model,
       project.backendModel,
+      project.backendReasoning ?? null,
       project.voice,
       project.instructions,
       project.allowDelete ? 1 : 0,

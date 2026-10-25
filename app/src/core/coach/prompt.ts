@@ -37,6 +37,7 @@ function houseRules(allowDelete: boolean): string {
     `- You can create ${WRITABLE_EXTENSIONS.join(', ')} files. Use append_file to add to a list, write_file to`,
     '  replace one.',
     '- Folders are made for you when you write into them.',
+    '- Use create_folder for an empty folder and move_file to organize or rename files and folders. Never overwrite a destination or reorganize the trash or project.json.',
     allowDelete
       ? '- delete_file moves a file to the trash; the learner can still get it back.'
       : '- You cannot delete files. If something is wrong, rewrite it or say so.',
@@ -128,7 +129,7 @@ export function buildLiveInstructions(project: Pick<CoachProject, 'name' | 'inst
     'Backchannel policy: Acknowledge naturally without competing with the learner.',
     'Interruption policy: Stop your answer when the learner interrupts. Listen and follow their latest request. Do not resume an obsolete answer when a delayed backend result arrives.',
     'Delegation policy:',
-    'Backend tools: Read, list, write, append and (when permitted) trash project files; search the web.',
+    'Backend tools: Read, list, write, append and move project files, create folders, and (when permitted) trash files; search the web.',
     'Delegate to the backend when: starting a session to read existing notes; learning something worth remembering; researching uncertain or current facts; evaluating an answer requiring careful reasoning; or receiving a correction to earlier work.',
     'Do not delegate to the backend when: greeting, clarifying, repeating a current result, or conducting ordinary spoken practice.',
     'Before substantive coaching, ask the backend to read relevant notes so you can pick up where the learner left off. For a new workspace ask about their goals and have the backend create context.md.',

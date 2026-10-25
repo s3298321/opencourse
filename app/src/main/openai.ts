@@ -297,6 +297,7 @@ export interface LiveSessionConfig {
   voice: string
   instructions: string
   backendModel: string
+  backendReasoning?: ReasoningEffort | null
   backendInstructions: string
   tools: unknown[]
 }
@@ -312,6 +313,7 @@ export async function createLiveSession(key: string, config: LiveSessionConfig, 
         audio: { output: { voice: config.voice } },
         delegation: { type: 'responses', responses: {
           model: config.backendModel, instructions: config.backendInstructions,
+          ...(config.backendReasoning ? { reasoning: { effort: config.backendReasoning } } : {}),
           tools: config.tools, tool_choice: 'auto', parallel_tool_calls: false
         } }
       },

@@ -143,7 +143,7 @@ export async function startSession(sender: WebContents, projectId: string): Prom
     const backendInstructions = buildBackendInstructions(effectiveProject, listFiles(projectId))
     const tools = toolsFor(effectiveProject)
 
-    const config: LiveSessionConfig = { model: project.model, voice: project.voice, instructions, backendModel: project.backendModel, backendInstructions, tools }
+    const config: LiveSessionConfig = { model: project.model, voice: project.voice, instructions, backendModel: project.backendModel, backendReasoning: project.backendReasoning, backendInstructions, tools }
 
     if (currentUserId() !== owner) { releaseMic(); throw new Error('The user changed while connecting.') }
     const sessionId = newSessionId()
@@ -151,7 +151,7 @@ export async function startSession(sender: WebContents, projectId: string): Prom
     // The model and the brief are snapshotted: an old transcript should show the
     // coach that actually produced it, not today's settings.
     insertSession({ id: sessionId, projectId, startedAt, model: project.model, instructions })
-    updateSessionMetadata(sessionId, { backendModel: project.backendModel, backendInstructions, backendSettings: { reasoning: 'default', toolChoice: 'auto', parallelToolCalls: false, tools: tools.map(tool => tool.name) }, voice: project.voice, finalization: 'pending' })
+    updateSessionMetadata(sessionId, { backendModel: project.backendModel, backendInstructions, backendSettings: { reasoning: project.backendReasoning ?? 'default', toolChoice: 'auto', parallelToolCalls: false, tools: tools.map(tool => tool.name) }, voice: project.voice, finalization: 'pending' })
     owners.set(sessionId, { owner, senderId: sender.id })
 
     live.set(sessionId, {

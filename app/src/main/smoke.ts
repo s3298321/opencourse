@@ -22,6 +22,32 @@ import type { WebContents, WebFrameMain } from 'electron'
 import { specResourcesDir } from './paths'
 
 const OUT = process.env['OPENCOURSE_SMOKE_OUT'] ?? '/tmp/opencourse-smoke.json'
+const SMOKE_API_KEY = 'sk-opencourse-smoke-only-not-a-real-key'
+
+/** Exercise real credential/readiness checks using only a disposable, offline key. */
+function mockSmokeModels(): () => void {
+  if (!process.env['OPENCOURSE_SMOKE'] || app.getPath('userData') !== process.env['OPENCOURSE_RUN_PROFILE']) throw new Error('Smoke model transport requires a disposable profile.')
+  const originalFetch = net.fetch
+  net.fetch = (async (url, init) => {
+    const authorization = new Headers(init?.headers).get('Authorization')
+    const subscription = authorization === 'Bearer opencourse-smoke-subscription'
+    if (authorization !== `Bearer ${SMOKE_API_KEY}` && !subscription) return originalFetch(url, init)
+    if (String(url) !== 'https://api.openai.com/v1/models') throw new Error('Unexpected request with smoke credentials: ' + url)
+    if (subscription) return Response.json({ models: [
+      { slug: 'gpt-6.1-sol', display_name: 'GPT-6.1 Sol', visibility: 'list', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'medium' }, { effort: 'high' }] },
+      { slug: 'gpt-5.3-codex', display_name: 'Codex', visibility: 'list', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'medium' }, { effort: 'high' }] }
+    ] })
+    return Response.json({ data: ['gpt-5.6-terra', 'gpt-5.2', 'gpt-5.1', 'gpt-5-mini', 'gpt-4.1', 'o4-mini', 'gpt-live-1', 'gpt-6-luna', 'gpt-6-sol'].map(id => ({ id })) })
+  }) as typeof net.fetch
+  return () => { net.fetch = originalFetch }
+}
+
+async function connectSmokeAPI(win: BrowserWindow): Promise<void> {
+  await win.webContents.executeJavaScript(`(async () => {
+    const result = await window.opencourse.setOpenAIKey(${JSON.stringify(SMOKE_API_KEY)});
+    if (!['ok', 'unavailable'].includes(result.status) || !(await window.opencourse.hasOpenAIKey()).has) throw new Error('Could not connect the smoke API fixture: ' + JSON.stringify(result));
+  })()`)
+}
 
 interface Result {
   name: string
@@ -657,6 +683,15 @@ const SCRIPT = `(async () => {
     return 'refused with no-key, nothing stored'
   })
 
+  await step('connecting the offline API fixture makes its models available', async () => {
+    const result = await window.opencourse.setOpenAIKey(window.__OPENCOURSE_SMOKE_API_KEY)
+    assert(['ok', 'unavailable'].includes(result.status), JSON.stringify(result))
+    await waitFor('.sidechat-model')
+    const settings = await window.opencourse.getAIModelSettings('chat', 'apiKey')
+    assert(settings.connection.ready && settings.models.length > 0, 'connected fixture has no models')
+    return 'Synthetic key accepted through the real connection flow; no live API request'
+  })
+
   await step('the connection icon opens a menu above it, and a choice is this chat\\'s alone', async () => {
     const trigger = () => document.querySelector('.sidechat-connection')
     const before = (await window.opencourse.getAIModelSettings('chat')).selectedProvider
@@ -676,9 +711,10 @@ const SCRIPT = `(async () => {
     other.click()
     await until(() => !document.querySelector('.connection-menu') && trigger().getAttribute('aria-label').includes(otherLabel), 'the icon to show ' + otherLabel)
     // Models belong to a connection: the picker now offers the other one's.
-    const model = document.querySelector('.sidechat-model .sidechat-picker-label')?.textContent ?? ''
-    const offered = (await window.opencourse.listChatModels('chat', before === 'apiKey' ? 'chatgpt' : 'apiKey')).models.map((m) => m.id)
-    assert(offered.includes(model), 'the model ' + model + ' is not one of the other connection\\'s')
+    const otherModels = await window.opencourse.listChatModels('chat', before === 'apiKey' ? 'chatgpt' : 'apiKey')
+    await until(() => otherModels.connection.ready
+      ? otherModels.models.some(m => m.label === document.querySelector('.sidechat-model .sidechat-picker-label')?.textContent)
+      : !document.querySelector('.sidechat-model') && /connect/i.test(document.querySelector('.sidechat-note')?.textContent ?? ''), 'the other connection’s model or setup state')
     assert((await window.opencourse.getAIModelSettings('chat')).selectedProvider === before, 'choosing for one chat changed the default')
     // A new tab follows the default, not the last tab's choice.
     document.querySelector('.sidechat-new').click()
@@ -1050,7 +1086,7 @@ const SCRIPT = `(async () => {
     const fileMethods = Object.keys(window.opencourse).filter((k) => /CoachFile|CoachFolder/.test(k)).sort()
     assert(
       fileMethods.join(',') ===
-        'createCoachFolder,listCoachFiles,moveCoachFile,onCoachFilesChanged,purgeCoachFile,readCoachFile,trashCoachFile',
+        'listCoachFiles,onCoachFilesChanged,purgeCoachFile,readCoachFile,trashCoachFile',
       'the workspace surface changed: ' + fileMethods.join(', ')
     )
     // The one writer that does exist is for transcripts, and it needs a live
@@ -1259,9 +1295,8 @@ const SCRIPT = `(async () => {
   })
 
   // --- which models the side chat offers ----------------------------------
-  // A smoke run has no key, so main hands these runs a fixed list in the API's
-  // shape (chat.ts, reachableModels) - otherwise this section only ever shows
-  // its no-key note.
+  // The offline API fixture is connected for these Settings checks. A seeded
+  // catalog alone must not bypass the production credential/readiness checks.
   const openSettings = async () => {
     document.querySelector('.titlebar .user-chip').click()
     const menu = await waitFor('.menu-panel')
@@ -1332,6 +1367,7 @@ const SCRIPT = `(async () => {
     await openSettings()
     const before = (await window.fixtureAPI.getChatModelSettings()).defaults
     const coachBefore = await window.fixtureAPI.getDefaultCoachModel()
+    const coachReasoningBefore = await window.opencourse.getDefaultCoachBackendReasoning()
     const select = async (selector, value) => {
       const field = await waitFor(selector)
       await until(() => !field.disabled, selector + ' to be ready')
@@ -1352,15 +1388,54 @@ const SCRIPT = `(async () => {
     assert(reasoning.disabled && reasoning.value === '', 'unsupported reasoning was retained')
     document.querySelector('[data-settings-category="coach"]').click()
     await select('.settings-default-coach-model', 'gpt-live-1')
+    await select('.settings-default-coach-backend-reasoning', 'high')
+    assert(await window.opencourse.getDefaultCoachBackendReasoning() === 'high', 'coach reasoning default was not stored')
     assert(await window.fixtureAPI.getDefaultCoachModel() === 'gpt-live-1', 'coach default was not stored')
     const coach = await window.fixtureAPI.createCoachProject({ name: 'Defaults check' })
     assert(coach.model === 'gpt-live-1', 'new coach ignored the default')
+    assert(coach.backendReasoning === 'high', 'new coach ignored default reasoning')
+    await window.opencourse.updateCoachProject(coach.id, { backendReasoning: 'low' })
+    assert((await window.opencourse.getCoachProject(coach.id)).backendReasoning === 'low', 'per-coach reasoning did not persist')
+    assert(await window.opencourse.getDefaultCoachBackendReasoning() === 'high', 'per-coach reasoning changed the default')
     await window.fixtureAPI.deleteCoachProject(coach.id)
     await window.fixtureAPI.setChatDefaults(before)
     await window.fixtureAPI.setDefaultCoachModel(coachBefore)
+    await window.opencourse.setDefaultCoachBackendReasoning(coachReasoningBefore)
     document.querySelector('.titlebar .crumbs a').click()
     await waitFor('.lesson-head h1')
     return 'model, supported reasoning and speech model saved and applied'
+  })
+
+  await step('Coach background checklist filters pickers and preserves saved coaches', async () => {
+    await openSettings()
+    document.querySelector('[data-settings-category="coach"]').click()
+    const section = await waitFor('.settings-coach-backend-models')
+    const all = (await window.opencourse.listCoachBackendModels(true)).models
+    assert(all.length > 1, 'not enough background models to check filtering')
+    const existing = await window.fixtureAPI.createCoachProject({ name: 'Model checklist check' })
+    try {
+      section.querySelector('.settings-models-unselect-all').click()
+      await until(() => [...document.querySelectorAll('.settings-coach-backend-models input[type=checkbox]')].length > 0 && [...document.querySelectorAll('.settings-coach-backend-models input[type=checkbox]')].every(box => !box.checked), 'background models to be cleared')
+      assert((await window.opencourse.listCoachBackendModels()).models.length === 0, 'cleared models still appear in the Coach picker')
+      assert(document.querySelector('.settings-default-coach-backend-model').disabled, 'empty default picker is enabled')
+      const row = [...document.querySelectorAll('.settings-coach-backend-models .settings-model')].find(row => row.querySelector('.settings-model-id').textContent === all[1].label)
+      await until(() => !row.querySelector('input').disabled, 'checklist to be ready')
+      row.querySelector('input').click()
+      await until(() => document.querySelector('.settings-default-coach-backend-model')?.value === all[1].id && !document.querySelector('.settings-default-coach-backend-model').disabled, 'selected model to become the default')
+      assert((await window.opencourse.listCoachBackendModels()).models.map(model => model.id).join(',') === all[1].id, 'picker did not follow the checklist')
+      assert((await window.fixtureAPI.getCoachProject(existing.id)).backendModel === existing.backendModel, 'existing coach changed its model')
+      document.querySelector('.settings-coach-backend-models .settings-models-select-all').click()
+      await until(() => document.querySelector('.settings-coach-backend-models .settings-models-select-all')?.disabled, 'all models to be restored')
+      assert(await window.opencourse.getCoachBackendModels() === null, 'Select all did not include future models')
+      assert((await window.opencourse.listCoachBackendModels()).models.length === all.length, 'models did not return to the picker')
+      return 'Checklist persists through IPC, filters pickers and keeps existing coach choices'
+    } finally {
+      await window.opencourse.setCoachBackendModels(null)
+      await window.opencourse.setDefaultCoachBackendModel(existing.backendModel)
+      await window.fixtureAPI.deleteCoachProject(existing.id)
+      document.querySelector('.titlebar .crumbs a').click()
+      await waitFor('.lesson-head h1')
+    }
   })
 
   await step('web search is off until Settings turns it on, and then the composer says so', async () => {
@@ -2135,12 +2210,12 @@ const COACH_FILES_SCRIPT = `(async () => {
     return 'three refused, nothing stored'
   })
 
-  await step('the model picker offers Live models even with no key', async () => {
+  await step('Coach hides model choices until an API key is connected', async () => {
     const list = await window.fixtureAPI.listCoachModels()
     assert(list.source === 'fallback', 'source was ' + list.source)
-    assert(list.models.length > 0, 'the list is empty')
-    assert(list.models.every((m) => m.id === 'gpt-live-1'), list.models.map((m) => m.id).join(', '))
-    return list.models.length + ' models, all Live'
+    assert(list.models.length === 0, 'voice models were offered without a key')
+    assert((await window.opencourse.listCoachBackendModels()).models.length === 0, 'background models were offered without a key')
+    return 'Voice and background model choices require an API key'
   })
 
   await step('the key lives in settings, and settings never shows it back', async () => {
@@ -2216,48 +2291,37 @@ const COACH_FILES_SCRIPT = `(async () => {
     return 'stayed shut'
   })
 
+  await step('the workspace lets the learner view and delete, without folder or move controls', async () => {
+    assert(!document.querySelector('.coach-files [title=Move]'), 'a Move button is still shown')
+    assert(!document.querySelector('.coach-files .file-move'), 'a move picker is still shown')
+    assert(!document.querySelector('.coach-files .coach-brief-head button'), 'folder creation is still shown')
+    assert(rowFor('learned.md').querySelector('[title=Delete]'), 'Delete is missing')
+    return 'View and delete remain; folder creation and moves are model-only'
+  })
+
   await step('the tree follows a change it did not make itself', async () => {
-    // createCoachFolder broadcasts; nothing here calls refresh by hand.
-    const before = [...document.querySelectorAll('.file-row')].length
-    const result = await window.fixtureAPI.createCoachFolder(projectId, '', 'archive')
+    const result = await window.fixtureAPI.trashCoachFile(projectId, 'note.mp3')
     assert(result.status === 'ok', JSON.stringify(result))
     const t0 = Date.now()
-    while (Date.now() - t0 < 4000 && !rowFor('archive')) await sleep(50)
-    assert(rowFor('archive'), 'the new folder never appeared')
-    return before + ' rows before, ' + [...document.querySelectorAll('.file-row')].length + ' after'
+    while (Date.now() - t0 < 4000 && rowFor('note.mp3')) await sleep(50)
+    assert(!rowFor('note.mp3'), 'the deleted file stayed in the tree')
+    assert(rowFor('trash'), 'the trash never appeared')
+    return 'An external deletion refreshed the tree'
   })
 
   await step('deleting a note moves it to the trash rather than destroying it', async () => {
     rowFor('learned.md').querySelector('[title=Delete]').click()
     const t0 = Date.now()
-    while (Date.now() - t0 < 4000 && !rowFor('trash')) await sleep(50)
+    while (Date.now() - t0 < 4000 && rowFor('learned.md')) await sleep(50)
     assert(rowFor('trash'), 'no trash folder appeared')
 
     const files = await window.fixtureAPI.listCoachFiles(projectId)
     const trash = files.find((f) => f.path === 'trash')
     assert(trash, 'the trash is not in the tree')
-    assert(trash.children.length === 1, trash.children.length + ' things in the trash')
-    assert(/learned\.md$/.test(trash.children[0].name), 'the trash holds ' + trash.children[0].name)
+    assert(trash.children.length === 2, trash.children.length + ' things in the trash')
+    assert(trash.children.some(file => /learned\.md$/.test(file.name)), 'the trash does not hold learned.md')
     assert(!files.some((f) => f.path === 'learned.md'), 'learned.md is still at the top level')
     return 'trash/' + trash.children[0].name
-  })
-
-  await step('moving a note between folders relocates it on disk', async () => {
-    const result = await window.fixtureAPI.moveCoachFile(projectId, 'weeks/mots-a-reviser.md', 'archive/mots-a-reviser.md')
-    assert(result.status === 'ok', JSON.stringify(result))
-    const files = await window.fixtureAPI.listCoachFiles(projectId)
-    const archive = files.find((f) => f.path === 'archive')
-    assert(archive && archive.children.length === 1, 'the archive holds nothing')
-    const weeks = files.find((f) => f.path === 'weeks')
-    assert(!weeks || (weeks.children || []).length === 0, 'the note is still under weeks')
-    return 'archive/' + archive.children[0].name
-  })
-
-  await step('a move that would overwrite is refused rather than losing a file', async () => {
-    await window.fixtureAPI.createCoachFolder(projectId, '', 'spare')
-    const result = await window.fixtureAPI.moveCoachFile(projectId, 'archive', 'spare')
-    assert(result.status !== 'ok', 'the move was allowed: ' + JSON.stringify(result))
-    return result.status
   })
 
   await step('a past session is listed with what was said and how long it took', async () => {
@@ -2680,22 +2744,28 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
       await window.fixtureAPI.setAIProvider('chat','chatgpt');
       const projectAfter=await window.fixtureAPI.getAIModelSettings('project','apiKey');
       if(JSON.stringify(projectAfter.profile)!==JSON.stringify(projectBefore.profile)||projectAfter.selectedProvider!=='apiKey')throw new Error('Chat settings changed project settings');
-      if((await window.fixtureAPI.hasOpenAIKey()).has)throw new Error('Subscription created an API key');
+      await window.opencourse.clearOpenAIKey();
+      if(!(await window.fixtureAPI.getAIModelSettings('chat','chatgpt')).connection.ready)throw new Error('Clearing the API key disconnected the subscription');
+      if((await window.fixtureAPI.hasOpenAIKey()).has)throw new Error('Subscription requires an API key');
       document.querySelector('.titlebar .crumbs a').click(); await wait('.lesson-head h1'); await wait('.titlebar .chat-chip');
       if(document.querySelector('.titlebar .chat-chip').getAttribute('aria-pressed') !== 'true')document.querySelector('.titlebar .chat-chip').click();
       for(let n=0;n<100 && !/ChatGPT subscription/.test(document.querySelector('.sidechat-connection')?.getAttribute('aria-label'));n++)await sleep(25);
-      const indicator=document.querySelector('.sidechat-connection');
+      const indicator=await wait('.sidechat-connection');
       if(!/ChatGPT subscription/.test(indicator?.getAttribute('aria-label')) || !indicator.querySelector('svg'))throw new Error('Composer connection icon stale');
       // The icon is a menu of this chat's connection now; it ticks the default the chat follows.
       if(!/ChatGPT subscription/.test(indicator.getAttribute('title')||''))throw new Error('Composer connection title stale');
       indicator.click(); const connections=await wait('.menu-panel.connection-menu');
-      const ticked=connections.querySelector('.menu-item[aria-checked="true"]');
-      if(!/ChatGPT subscription/.test(ticked?.textContent||'')||!/Default/.test(ticked?.textContent||''))throw new Error('Composer connection menu stale: '+(ticked?.textContent||'nothing ticked'));
+      const selectedConnection=()=>connections.querySelector('.menu-item[aria-checked="true"]')?.textContent||'';
+      for(let n=0;n<100 && !(/ChatGPT subscription/.test(selectedConnection()) && /Default/.test(selectedConnection()));n++)await sleep(25);
+      if(!/ChatGPT subscription/.test(selectedConnection())||!/Default/.test(selectedConnection()))throw new Error('Composer connection menu stale: '+connections.textContent+'; selected default: '+(await window.fixtureAPI.getAIModelSettings('chat')).selectedProvider);
       connections.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); await sleep(100);
       return 'Four profiles; editing preserves routing; mixed providers reflected in composer';
     })()`)
     await check('simulated subscription streams lesson text through the real main transport', `(async () => {
       ${wait}
+      // This transport check must not depend on the Settings check completing.
+      await window.opencourse.clearOpenAIKey();
+      await window.fixtureAPI.setAIProvider('chat','chatgpt');
       const course=await window.fixtureAPI.getCourse('opencourse-example'); const module=course.modules.find(m=>m.type!=='project'&&m.lessons?.length); const lesson={moduleId:module.slug,lessonId:module.lessons[0].slug};
       const chat=await window.fixtureAPI.createChat('opencourse-example',lesson);
       const result=await window.fixtureAPI.sendChatMessage(chat.id,'Explain',undefined,lesson); if(result.status!=='ok')throw new Error(JSON.stringify(result));
@@ -2821,6 +2891,7 @@ async function appearanceChecks(win: BrowserWindow): Promise<Result[]> {
 
 /** Check navigation motion and hover treatment using real controls and OS media preferences. */
 async function motionChecks(win: BrowserWindow): Promise<Result[]> {
+  await connectSmokeAPI(win)
   const results: Result[] = []
   const cdp = win.webContents.debugger
   const attached = cdp.isAttached()
@@ -2854,6 +2925,12 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
       await new Promise(r => setTimeout(r, 160));
       if (getComputedStyle(document.querySelector('.titlebar .user-chip')).boxShadow === 'none') throw new Error('Keyboard focus indicator removed');
       return 'Keyboard focus remains visible';
+    })()`)
+    await cdp.sendCommand('CSS.forcePseudoState', { nodeId: itemId, forcedPseudoClasses: ['hover', 'focus-visible'] })
+    await check('user menu items keep their keyboard focus indicator under the pointer', `(() => {
+      const style = getComputedStyle(document.querySelector('.user-menu .menu-item'));
+      if (style.outlineStyle === 'none' || parseFloat(style.outlineWidth) === 0) throw new Error('Menu item keyboard focus indicator removed');
+      return 'Keyboard focus remains visible on menu items';
     })()`)
     await cdp.sendCommand('CSS.forcePseudoState', { nodeId: chipId, forcedPseudoClasses: [] })
     await cdp.sendCommand('CSS.forcePseudoState', { nodeId: itemId, forcedPseudoClasses: [] })
@@ -3031,12 +3108,14 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
     app.exit(1)
   }, budgetMs)
 
+  const restoreModelTransport = mockSmokeModels()
   try {
     const appearance = await appearanceChecks(win)
     const zips = buildFixtures()
     process.env['OPENCOURSE_SMOKE_ZIPS_DIR'] = join(zips.example, '..')
     await win.webContents.executeJavaScript(
       `window.__OPENCOURSE_SMOKE_PYTHON = ${process.env['OPENCOURSE_SMOKE_PYTHON'] ? 'true' : 'false'};` +
+        `window.__OPENCOURSE_SMOKE_API_KEY = ${JSON.stringify(SMOKE_API_KEY)};` +
         `window.__OPENCOURSE_SMOKE_CSP = ${JSON.stringify(RENDERER_CSP)};` +
         `window.__OPENCOURSE_SMOKE_ZIPS = ${JSON.stringify(zips)}`
     )
@@ -3052,6 +3131,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
     ]
     await seedAnsweredChat()
     const answerResults = (await win.webContents.executeJavaScript(ANSWER_QUOTE_SCRIPT)) as Result[]
+    await win.webContents.executeJavaScript('window.opencourse.clearOpenAIKey()')
     await seedCoachFiles(win)
     const coachFileResults = (await win.webContents.executeJavaScript(COACH_FILES_SCRIPT)) as Result[]
     const results = [
@@ -3089,5 +3169,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
     report({ error: String(err), progress })
     cleanup()
     app.exit(1)
+  } finally {
+    restoreModelTransport()
   }
 }

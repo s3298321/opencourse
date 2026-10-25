@@ -108,6 +108,43 @@ function call(id: string, name: string, args: Record<string, unknown>): unknown[
 }
 
 describe('a session, end to end', () => {
+  it('lets the model create folders and move files without changing their contents', async () => {
+    const { ran } = await play([
+      ...call('c1', 'write_file', { path: 'learned.md', content: '- le chien' }),
+      ...call('c2', 'create_folder', { path: 'weeks/one' }),
+      ...call('c3', 'move_file', { from: 'learned.md', to: 'weeks/one/learned.md' }),
+      ...call('c4', 'move_file', { from: 'weeks/one', to: 'archive/week-one' })
+    ])
+    expect(ran.map(result => result.ok)).toEqual([true, true, true, true])
+    expect(readFileSync(join(workspaceDir(projectId), 'archive/week-one/learned.md'), 'utf8')).toBe('- le chien')
+    expect(readdirSync(workspaceDir(projectId))).not.toContain('learned.md')
+  })
+
+  it('refuses model moves that overwrite or nest a folder inside itself', async () => {
+    const { ran } = await play([
+      ...call('c1', 'write_file', { path: 'a.md', content: 'Keep A' }),
+      ...call('c2', 'write_file', { path: 'b.md', content: 'Keep B' }),
+      ...call('c3', 'move_file', { from: 'a.md', to: 'b.md' }),
+      ...call('c4', 'create_folder', { path: 'weeks' }),
+      ...call('c5', 'move_file', { from: 'weeks', to: 'weeks/inner' }),
+      ...call('c6', 'move_file', { from: 'missing.md', to: 'new.md' })
+    ])
+    expect(ran.map(result => result.ok)).toEqual([true, true, false, true, false, false])
+    expect(readFileSync(join(workspaceDir(projectId), 'a.md'), 'utf8')).toBe('Keep A')
+    expect(readFileSync(join(workspaceDir(projectId), 'b.md'), 'utf8')).toBe('Keep B')
+  })
+
+  it('keeps model organization away from app metadata, trash and paths outside the workspace', async () => {
+    await runCoachTool(sessionId, 'write_file', JSON.stringify({ path: 'keep.md', content: 'Keep' }), CAPS)
+    for (const path of ['project.json', 'PROJECT.JSON', 'trash', 'trash/keep.md', '../escape', '/absolute', 'nested//folder']) {
+      expect((await runCoachTool(sessionId, 'create_folder', JSON.stringify({ path }), CAPS)).ok).toBe(false)
+      expect((await runCoachTool(sessionId, 'move_file', JSON.stringify({ from: 'keep.md', to: path }), CAPS)).ok).toBe(false)
+      expect((await runCoachTool(sessionId, 'move_file', JSON.stringify({ from: path, to: 'new.md' }), CAPS)).ok).toBe(false)
+    }
+    expect(readFileSync(join(workspaceDir(projectId), 'keep.md'), 'utf8')).toBe('Keep')
+    expect(JSON.parse(readFileSync(join(workspaceDir(projectId), 'project.json'), 'utf8')).id).toBe(projectId)
+  })
+
   it('lands a transcript in the database and notes on disk', async () => {
     const { ran } = await play([
       ...exchange('u1', 'bonjour, je veux apprendre des mots', 'a1', 'très bien, commençons'),

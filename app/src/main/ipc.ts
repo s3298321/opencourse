@@ -93,7 +93,7 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getCoachBackendModels, setCoachBackendModels, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
 import { getPomodoroSettings, setPomodoroSettings } from './preferences'
 import type { PomodoroSettings } from '../core/pomodoro'
 import { coachActivity, isCoachProjectBusy } from './coach-activity'
@@ -108,7 +108,7 @@ import {
   selectToolCalls,
   selectTurns
 } from './coachdb'
-import { createFolder, listFiles, moveFile, purgeFile, readTextFile, trashFile } from './coachfiles'
+import { listFiles, purgeFile, readTextFile, trashFile } from './coachfiles'
 import { clearKey, forgetVolatileKeys, hasKey, readKey, setKey, storedKeyHint } from './coachkey'
 import {
   executeCoachTool,
@@ -879,12 +879,26 @@ export function registerIpc(): void {
 
   /** One round trip: the call that fills this list is the call that checks the key. */
   ipcMain.handle('coach:listModels', (): Promise<ModelList> => listLiveModels(readKey()))
-  ipcMain.handle('coach:listBackendModels', (): Promise<ModelList> => listCoachBackendModels(readKey()))
+  ipcMain.handle('coach:listBackendModels', async (_e, all = false): Promise<ModelList> => {
+    const owner = requireUser()
+    const list = await listCoachBackendModels(readKey())
+    if (requireUser() !== owner) throw new Error('The active user changed.')
+    const enabled = getCoachBackendModels()
+    return { ...list, models: all === true || enabled === null ? list.models : list.models.filter(model => enabled.includes(model.id)) }
+  })
+  ipcMain.handle('coach:backendModels', () => getCoachBackendModels())
+  ipcMain.handle('coach:setBackendModels', (_e, models: string[] | null) => {
+    const result = setCoachBackendModels(models)
+    notifyAIChanged()
+    return result
+  })
   ipcMain.handle('coach:allowDelete', () => getCoachAllowDelete())
   ipcMain.handle('coach:setAllowDelete', (_e, value: boolean) => { const result = setCoachAllowDelete(value); broadcast('coach:changed'); return result })
   ipcMain.handle('coach:projectRunState', (_e, projectId: string) => { if (!getProject(projectId)) throw new Error('That coach is gone.'); return { busy: isCoachProjectBusy(projectId) } })
   ipcMain.handle('coach:response', (e, sessionId: string, diagnostic: import('../core/types').CoachResponseDiagnostic) => reportCoachResponse(sessionId, e.sender.id, diagnostic))
   ipcMain.handle('coach:defaultModel', () => getDefaultCoachModel())
+  ipcMain.handle('coach:defaultBackendReasoning', () => getDefaultCoachBackendReasoning())
+  ipcMain.handle('coach:setDefaultBackendReasoning', (_e, reasoning: ReasoningEffort | null) => setDefaultCoachBackendReasoning(reasoning))
   ipcMain.handle('coach:defaultBackendModel', () => getDefaultCoachBackendModel())
   ipcMain.handle('coach:setDefaultBackendModel', (_e, model: string) => setDefaultCoachBackendModel(model))
   ipcMain.handle('coach:setDefaultModel', (_e, model: string) => setDefaultCoachModel(model))
@@ -894,15 +908,15 @@ export function registerIpc(): void {
   ipcMain.handle('coach:getProject', (_e, projectId: string): CoachProject | null => getProject(projectId))
 
   ipcMain.handle('coach:createProject', (_e, draft: CoachProjectDraft): CoachProject => {
-    const { name, model, backendModel, voice, instructions } = draft
-    const project = createProject({ name, model, backendModel, voice, instructions })
+    const { name, model, backendModel, backendReasoning, voice, instructions } = draft
+    const project = createProject({ name, model, backendModel, backendReasoning, voice, instructions })
     broadcast('coach:changed')
     return project
   })
 
   ipcMain.handle('coach:updateProject', (_e, projectId: string, patch: Partial<CoachProjectDraft>): CoachProject => {
-    const { name, model, backendModel, voice, instructions } = patch
-    const project = updateProject(projectId, { name, model, backendModel, voice, instructions })
+    const { name, model, backendModel, backendReasoning, voice, instructions } = patch
+    const project = updateProject(projectId, { name, model, backendModel, backendReasoning, voice, instructions })
     broadcast('coach:changed')
     return project
   })
@@ -917,8 +931,8 @@ export function registerIpc(): void {
 
   /*
    * The workspace. Note what is not here: no channel writes a file. The user
-   * reads, moves and deletes; only a live session's tool call can create or
-   * change one. Read-only in the app is a missing handler, not a disabled
+   * reads and deletes; only a live session's tool call can create, move or
+   * change files. Read-only in the app is a missing handler, not a disabled
    * button, and it should stay that way.
    */
   ipcMain.handle('coach:listFiles', (_e, projectId: string): CoachFileNode[] => listFiles(projectId))
@@ -933,18 +947,6 @@ export function registerIpc(): void {
 
   ipcMain.handle('coach:purgeFile', (_e, projectId: string, relPath: string): CoachMoveResult => {
     const result = purgeFile(projectId, relPath)
-    if (result.status === 'ok') broadcast('coach:filesChanged', projectId)
-    return result
-  })
-
-  ipcMain.handle('coach:moveFile', (_e, projectId: string, from: string, to: string): CoachMoveResult => {
-    const result = moveFile(projectId, from, to)
-    if (result.status === 'ok') broadcast('coach:filesChanged', projectId)
-    return result
-  })
-
-  ipcMain.handle('coach:createFolder', (_e, projectId: string, parent: string, name: string): CoachMoveResult => {
-    const result = createFolder(projectId, parent, name)
     if (result.status === 'ok') broadcast('coach:filesChanged', projectId)
     return result
   })

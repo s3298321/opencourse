@@ -25,7 +25,7 @@ const { createProject, workspaceDir } = await import('../src/main/coach')
 const { createFolder, listFiles, moveFile, purgeFile, readTextFile, trashFile, writeWorkspaceFile } = await import(
   '../src/main/coachfiles'
 )
-const { MAX_COACH_FILE_BYTES, TRASH_DIR, countFiles, folderPaths } = await import('../src/core/coach/files')
+const { MAX_COACH_FILE_BYTES, TRASH_DIR, countFiles } = await import('../src/core/coach/files')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -163,11 +163,6 @@ describe('the tree', () => {
     writeWorkspaceFile(project, 'zzz.md', 'x')
     trashFile(project, 'aaa.md')
     expect(listFiles(project).at(-1)?.name).toBe(TRASH_DIR)
-  })
-
-  it('offers every folder as a move target, root included', () => {
-    writeWorkspaceFile(project, 'weeks/one.md', 'x')
-    expect(folderPaths(listFiles(project))).toEqual(['', 'weeks'])
   })
 
   it('does not follow a symlink out of the project when listing', () => {

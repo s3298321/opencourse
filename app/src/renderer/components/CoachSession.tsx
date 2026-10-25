@@ -181,11 +181,6 @@ export default function CoachSession({
 
         {running ? (
           <div className="actions">
-            {view?.status.kind === 'live' && (view.speaking || view.responding) && (
-              <ActionButton icon="stop" className="secondary coach-interrupt" onClick={() => session.current?.interrupt()}>
-                Stop speaking
-              </ActionButton>
-            )}
             <ActionButton icon="stop" className="secondary" onClick={() => void stop()}>
               {stopRequested ? 'Stop now' : 'Finish session'}
             </ActionButton>

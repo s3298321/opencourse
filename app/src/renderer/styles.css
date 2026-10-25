@@ -1522,13 +1522,8 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .file-row.binary .file-name, .file-row.trash .file-name { color: var(--muted); cursor: default; }
 .file-glyph { flex: none; width: 1em; color: var(--muted); font-size: 0.8rem; }
 .file-size { flex: none; font-variant-numeric: tabular-nums; }
-.file-act { flex: none; padding: 0.1rem 0.35rem; color: var(--muted); font-size: 0.95rem; }
+.file-act { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 28px; padding: 0.1rem 0.35rem; color: var(--muted); font-size: 0.95rem; }
 .file-act:hover { color: var(--accent); }
-.file-move { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0 0.5rem; }
-.file-move select {
-  font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
-  color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-}
 .file-empty { margin: 0.75rem 0 0; }
 .file-foot { margin: 0.9rem 0 0; padding-top: 0.7rem; border-top: 1px solid var(--border); }
 
@@ -1583,6 +1578,7 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .coach-panel .import-note { margin: 0.7rem 0 0; }
 
 .coach-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.1rem; margin-top: 0.6rem; }
+.coach-models-status { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; }
 .coach-settings label { display: flex; align-items: center; gap: 0.4rem; }
 .coach-settings select {
   font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
@@ -1635,16 +1631,16 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
   box-shadow: 0 6px 18px rgb(var(--shadow-rgb) / 0.22);
 }
 .turn { margin: 0; font-size: 0.93rem; line-height: 1.55; }
-.turn.user { color: var(--fg); }
-.turn.user::before { content: 'You  '; color: var(--muted); font-weight: 600; font-size: 0.8rem; }
-.turn.assistant { color: var(--muted); }
-.turn.assistant::before { content: 'Coach  '; color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+.turn.user { color: var(--muted); }
+.turn.user::before { content: 'You: '; font-weight: 600; font-size: 0.8rem; }
+.turn.assistant { color: var(--fg); }
+.turn.assistant::before { content: 'Coach: '; font-weight: 600; font-size: 0.8rem; }
 .turn.system { color: var(--muted); font-style: italic; }
 .turn.partial { opacity: 0.6; }
 
 /* Past sessions. */
 .coach-sessions { margin-top: 1.25rem; }
-.session-row { display: flex; align-items: center; gap: 0.5rem; border-radius: 6px; }
+.session-row { display: flex; align-items: center; gap: 0.5rem; padding-right: 0.6rem; border-radius: 6px; }
 .session-row:hover { background: var(--chip-bg); }
 .session-row .session-open {
   flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
@@ -2107,7 +2103,7 @@ button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user
     background-color: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); box-shadow: none;
   }
 }
-.titlebar .user-chip:hover, .user-menu .menu-item { box-shadow: none; }
+.titlebar .user-chip:hover, .user-menu.shared-menu .menu-item { box-shadow: none; }
 .titlebar .user-chip:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
 .course-card, .user-card, .coach-card { transition: border-color 140ms ease, background-color 140ms ease, transform 140ms var(--ease); }
 /* Grain is a tiled background layer - fine frost without filtering text,

@@ -8,8 +8,8 @@
  * redirect.
  *
  * Note what is missing: there is no writer reachable from the renderer. The
- * user can read, move and delete; only a live session's tool calls can create
- * or change a file. "Read-only in the app" is structural here, not a disabled
+ * user can read and delete; only a live session's tool calls can create,
+ * move or change files and folders. "Read-only in the app" is structural here, not a disabled
  * button.
  */
 import { existsSync, mkdirSync, openSync, readFileSync, readSync, closeSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'

@@ -155,20 +155,6 @@ export function countFiles(nodes: readonly CoachFileNode[]): number {
   return n
 }
 
-/** Every directory in the tree, as move targets. '' is the project root. */
-export function folderPaths(nodes: readonly CoachFileNode[]): string[] {
-  const out: string[] = ['']
-  const walk = (list: readonly CoachFileNode[]): void => {
-    for (const node of list) {
-      if (node.kind !== 'dir') continue
-      out.push(node.path)
-      walk(node.children ?? [])
-    }
-  }
-  walk(nodes)
-  return out
-}
-
 /** A flat listing for the system prompt: the coach needs paths, not a drawing. */
 export function describeTree(nodes: readonly CoachFileNode[]): string[] {
   const out: string[] = []

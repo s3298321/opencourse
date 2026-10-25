@@ -32,6 +32,8 @@ export type ParsedToolCall =
   | { name: 'append_file'; path: string; content: string }
   | { name: 'read_file'; path: string }
   | { name: 'list_files' }
+  | { name: 'create_folder'; path: string }
+  | { name: 'move_file'; from: string; to: string }
   | { name: 'delete_file'; path: string }
   | { name: 'web_search'; query: string; recencyDays?: number }
 
@@ -43,6 +45,18 @@ const pathArg = {
 }
 
 const FILE_TOOLS: CoachFunctionTool[] = [
+  {
+    type: 'function',
+    name: 'create_folder',
+    description: 'Create a folder inside your workspace. Parent folders are created as needed. Existing paths are never replaced.',
+    parameters: { type: 'object', properties: { path: pathArg }, required: ['path'], additionalProperties: false }
+  },
+  {
+    type: 'function',
+    name: 'move_file',
+    description: 'Move or rename a workspace file or folder without overwriting anything. Use full source and destination paths. Cannot move the trash or app metadata; use delete_file for deletion when permitted.',
+    parameters: { type: 'object', properties: { from: pathArg, to: pathArg }, required: ['from', 'to'], additionalProperties: false }
+  },
   {
     type: 'function',
     name: 'write_file',
@@ -159,6 +173,7 @@ export function parseToolCall(name: string, rawArgs: string): ParsedToolCall | {
       return { name, path, content }
     }
     case 'read_file':
+    case 'create_folder':
     case 'delete_file': {
       const path = str(args['path'])
       if (!path) return { error: 'missing "path"' }
@@ -166,6 +181,12 @@ export function parseToolCall(name: string, rawArgs: string): ParsedToolCall | {
     }
     case 'list_files':
       return { name: 'list_files' }
+    case 'move_file': {
+      const from = str(args['from'])
+      const to = str(args['to'])
+      if (!from || !to) return { error: 'missing "from" or "to", which must be paths' }
+      return { name, from, to }
+    }
     case 'web_search': {
       const query = str(args['query'])?.trim()
       if (!query) return { error: 'missing "query"' }

@@ -12,10 +12,11 @@
  * The caller is a language model. An error it can read is an error it can
  * recover from; one that rejects the IPC call just stops the conversation.
  */
-import { describeTree } from '../core/coach/files'
+import { describeTree, MIRROR_FILE, TRASH_DIR } from '../core/coach/files'
 import { parseToolCall, type ParsedToolCall } from '../core/coach/tools'
+import { assertSafeRelativePath } from '../core/scaffold'
 import { readKey } from './coachkey'
-import { listFiles, readTextFile, trashFile, writeWorkspaceFile } from './coachfiles'
+import { createFolder, listFiles, moveFile, readTextFile, trashFile, writeWorkspaceFile } from './coachfiles'
 import { getCoachAllowDelete } from './preferences'
 import { selectSessionRow } from './coachdb'
 import { webSearch } from './openai'
@@ -45,6 +46,23 @@ function projectOf(sessionId: string): string {
 
 async function execute(projectId: string, call: ParsedToolCall): Promise<CoachToolResult> {
   switch (call.name) {
+    case 'create_folder':
+    case 'move_file': {
+      const paths = call.name === 'move_file' ? [call.from, call.to] : [call.path]
+      for (const path of paths) assertSafeRelativePath(path, 'coach file path')
+      if (paths.some(path => [MIRROR_FILE, TRASH_DIR].some(reserved => path.toLowerCase() === reserved || path.toLowerCase().startsWith(`${reserved}/`)))) {
+        return refuse('The trash and app metadata cannot be reorganized. Use delete_file to trash a file when permitted.', 'refused workspace reorganization')
+      }
+      const path = call.name === 'move_file' ? call.to : call.path
+      const slash = path.lastIndexOf('/')
+      const result = call.name === 'move_file'
+        ? moveFile(projectId, call.from, call.to)
+        : createFolder(projectId, slash < 0 ? '' : path.slice(0, slash), path.slice(slash + 1))
+      if (result.status === 'ok') return succeed({ path }, call.name === 'move_file' ? `moved ${call.from} to ${call.to}` : `created folder ${path}`)
+      const error = result.status === 'exists' ? 'The destination already exists; nothing was overwritten.'
+        : result.status === 'missing' ? 'The source does not exist. Use list_files to see what does.' : result.message
+      return refuse(error, `could not ${call.name === 'move_file' ? 'move' : 'create'} ${path}`)
+    }
     case 'write_file':
     case 'append_file': {
       const mode = call.name === 'append_file' ? 'append' : 'write'

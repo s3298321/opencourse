@@ -10,10 +10,10 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { CoachProject, CoachProjectSummary } from '../core/types'
+import type { CoachProject, CoachProjectSummary, ReasoningEffort } from '../core/types'
 import { newProjectId } from '../core/coach/ids'
-import { DEFAULT_VOICE, migrateCoachModel, isLiveModelId, isBackendModelId } from '../core/coach/models'
-import { getDefaultCoachBackendModel, getDefaultCoachModel } from './preferences'
+import { DEFAULT_VOICE, migrateCoachModel, isLiveModelId, isBackendModelId, normalizeBackendReasoning } from '../core/coach/models'
+import { getDefaultCoachBackendModel, getDefaultCoachBackendReasoning, getDefaultCoachModel } from './preferences'
 import { DEFAULT_INSTRUCTIONS, normalizeInstructions, normalizeProject, normalizeProjectName } from '../core/coach/projects'
 import {
   deleteProjectRow,
@@ -31,6 +31,7 @@ export interface CoachProjectDraft {
   name: string
   model?: string
   backendModel?: string
+  backendReasoning?: ReasoningEffort | null
   voice?: string
   instructions?: string
   allowDelete?: boolean
@@ -115,7 +116,7 @@ function migrateProject(project: CoachProject): CoachProject {
   const next = model === project.model ? project : { ...project, model }
   if (next !== project) updateProjectRow(next)
   const mirror = readMirror(project.id)
-  if (mirror?.model !== model || mirror?.backendModel !== next.backendModel) writeMirror(next)
+  if (mirror?.model !== model || mirror?.backendModel !== next.backendModel || mirror?.backendReasoning !== next.backendReasoning) writeMirror(next)
   return next
 }
 
@@ -127,6 +128,12 @@ function checkedModel(model: string): string {
 function checkedBackendModel(model: string): string {
   if (!isBackendModelId(model)) throw new Error('Choose a supported background model with function tools.')
   return model
+}
+
+function checkedBackendReasoning(model: string, value: ReasoningEffort | null): ReasoningEffort | null {
+  const reasoning = normalizeBackendReasoning(model, value)
+  if (value !== null && reasoning === null) throw new Error('Choose a supported reasoning level for this background model.')
+  return reasoning
 }
 
 export function listProjects(): CoachProjectSummary[] {
@@ -165,11 +172,13 @@ export function requireProject(id: string): CoachProject {
 
 export function createProject(draft: CoachProjectDraft, now = new Date()): CoachProject {
   const at = now.toISOString()
+  const backendModel = checkedBackendModel(draft.backendModel ?? getDefaultCoachBackendModel())
   const project: CoachProject = {
     id: newProjectId(),
     name: normalizeProjectName(draft.name),
     model: checkedModel(typeof draft.model === 'string' && draft.model ? draft.model : getDefaultCoachModel()),
-    backendModel: checkedBackendModel(draft.backendModel ?? getDefaultCoachBackendModel()),
+    backendModel,
+    backendReasoning: draft.backendReasoning === undefined ? normalizeBackendReasoning(backendModel, getDefaultCoachBackendReasoning()) : checkedBackendReasoning(backendModel, draft.backendReasoning),
     voice: typeof draft.voice === 'string' && draft.voice ? draft.voice : DEFAULT_VOICE,
     instructions: normalizeInstructions(draft.instructions ?? DEFAULT_INSTRUCTIONS),
     allowDelete: draft.allowDelete === true,
@@ -185,11 +194,13 @@ export function createProject(draft: CoachProjectDraft, now = new Date()): Coach
 
 export function updateProject(id: string, patch: Partial<CoachProjectDraft>, now = new Date()): CoachProject {
   const current = requireProject(id)
+  const backendModel = patch.backendModel === undefined ? current.backendModel : checkedBackendModel(patch.backendModel)
   const next: CoachProject = {
     ...current,
     ...(patch.name !== undefined ? { name: normalizeProjectName(patch.name) } : {}),
     ...(patch.model !== undefined && patch.model ? { model: checkedModel(patch.model) } : {}),
-    ...(patch.backendModel !== undefined ? { backendModel: checkedBackendModel(patch.backendModel) } : {}),
+    backendModel,
+    backendReasoning: patch.backendReasoning === undefined ? normalizeBackendReasoning(backendModel, current.backendReasoning) : checkedBackendReasoning(backendModel, patch.backendReasoning),
     ...(patch.voice !== undefined && patch.voice ? { voice: patch.voice } : {}),
     ...(patch.instructions !== undefined ? { instructions: normalizeInstructions(patch.instructions) } : {}),
     ...(patch.allowDelete !== undefined ? { allowDelete: patch.allowDelete === true } : {}),

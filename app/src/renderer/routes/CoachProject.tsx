@@ -1,8 +1,9 @@
 import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
-import type { CoachFileNode, CoachModel, CoachProject as Project, CoachSessionSummary, UserProfile } from '@core/types'
-import { BACKEND_MODELS, VOICES } from '@core/coach/models'
+import type { CoachFileNode, CoachModel, CoachProject as Project, CoachSessionSummary, ReasoningEffort, UserProfile } from '@core/types'
+import { VOICES, backendReasoningEffortsFor } from '@core/coach/models'
+import { REASONING_LABELS } from '@core/sidechat/models'
 import CoachFileTree from '../components/CoachFileTree'
 import CoachSession from '../components/CoachSession'
 import CoachSessions from '../components/CoachSessions'
@@ -32,7 +33,10 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
   const [tree, setTree] = useState<CoachFileNode[] | null>(null)
   const [viewing, setViewing] = useState<CoachFileNode | null>(null)
   const [models, setModels] = useState<CoachModel[] | null>(null)
-  const [backendModels, setBackendModels] = useState<readonly CoachModel[]>(BACKEND_MODELS)
+  const [backendModels, setBackendModels] = useState<readonly CoachModel[]>([])
+  const [modelsLoading, setModelsLoading] = useState(true)
+  const [modelsError, setModelsError] = useState(false)
+  const [modelsRetry, setModelsRetry] = useState(0)
   const [sessions, setSessions] = useState<CoachSessionSummary[] | null>(null)
 
   const refresh = useCallback(() => {
@@ -63,22 +67,23 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
 
   useEffect(() => {
     let cancelled = false
-    void window.opencourse.listCoachBackendModels().then(({ models }) => {
-      if (!cancelled) setBackendModels(models)
-    }).catch(() => { /* Keep the default choices when offline. */ })
-    return () => { cancelled = true }
-  }, [])
-
-  // With a key, an unreachable model catalog falls back to curated choices.
-  useEffect(() => {
-    let cancelled = false
-    void window.opencourse.listCoachModels().then(({ models: found }) => {
-      if (!cancelled) setModels(found)
-    })
-    return () => {
-      cancelled = true
+    let revision = 0
+    const load = () => {
+      const request = ++revision
+      setModelsLoading(true)
+      setModelsError(false)
+      void Promise.allSettled([window.opencourse.listCoachModels(), window.opencourse.listCoachBackendModels()]).then(([voice, background]) => {
+        if (cancelled || request !== revision) return
+        setModels(voice.status === 'fulfilled' ? voice.value.models : [])
+        setBackendModels(background.status === 'fulfilled' ? background.value.models : [])
+        setModelsError(voice.status === 'rejected' || background.status === 'rejected' || !!voice.value.error || !!background.value.error)
+        setModelsLoading(false)
+      })
     }
-  }, [])
+    load()
+    const unsubscribe = window.opencourse.onAIChanged(load)
+    return () => { cancelled = true; unsubscribe() }
+  }, [modelsRetry])
 
   // Another window can end a session or rename the project underneath this one.
   useEffect(
@@ -148,7 +153,9 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
             <div className="library-head">
               <div>
                 <h1>{project.name}</h1>
-                <div className="coach-settings">
+                <div className="coach-settings" aria-busy={modelsLoading}>
+                  {modelsLoading ? <span className="coach-models-status meta" role="status"><span className="sidechat-connection-spinner" aria-hidden="true" />Loading Coach models…</span> : <>
+                  {modelsError && <span className="coach-models-status meta" role="status">Couldn’t load all models. <button type="button" className="text-button" onClick={() => setModelsRetry(value => value + 1)}>Retry</button></span>}
                   {!!models?.length && <label>
                     <span className="meta">Voice model</span>
                     <select
@@ -176,16 +183,25 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
                       ))}
                     </select>
                   </label>
-                  {!!models?.length && backendModels.length > 0 && <label>
+                  {!!models?.length && <label>
                     <span className="meta">Background model</span>
-                    <select value={project.backendModel}
+                    <select value={project.backendModel} disabled={!backendModels.length}
                       onChange={(e) => void patch({ backendModel: e.target.value })}>
                       {backendModels.every(m => m.id !== project.backendModel) && (
-                        <option value={project.backendModel}>{project.backendModel}</option>
+                        <option value={project.backendModel} disabled>{project.backendModel} (saved)</option>
                       )}
                       {backendModels.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
                     </select>
                   </label>}
+                  {!!models?.length && <label>
+                    <span className="meta">Background reasoning</span>
+                    <select value={project.backendReasoning ?? ''} disabled={!backendReasoningEffortsFor(project.backendModel).length}
+                      onChange={event => void patch({ backendReasoning: (event.target.value || null) as ReasoningEffort | null })}>
+                      <option value="">Model default</option>
+                      {backendReasoningEffortsFor(project.backendModel).map(level => <option key={level} value={level}>{REASONING_LABELS[level]}</option>)}
+                    </select>
+                  </label>}
+                  </>}
                 </div>
               </div>
               <div className="actions">

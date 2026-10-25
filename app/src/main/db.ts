@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 24
+export const SCHEMA_VERSION = 25
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -341,6 +341,7 @@ function migrate(d: DatabaseSync): void {
   `); addColumn(d, 'documents', 'publication', 'TEXT') }
   // The last exercise code this machine and its server agreed on (exercise-code.ts).
   if (from < 24) d.exec('CREATE TABLE IF NOT EXISTS learning_exercise_code (local_id TEXT NOT NULL,block_id TEXT NOT NULL,operation TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(local_id,block_id))')
+  if (from < 25) addColumn(d, 'projects', 'backend_reasoning', 'TEXT')
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 

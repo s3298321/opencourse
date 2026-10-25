@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { CoachSessionSummary } from '@core/types'
+import { Icon } from './ActionButton'
 
 /** Generated topic title, with the opening line retained while naming is pending. */
 function title(session: CoachSessionSummary): string {
@@ -52,8 +53,8 @@ export default function CoachSessions({
               {session.error ? ` · ${session.error}` : ''}
             </span>
           </button>
-          <button className="ghost file-act" title="Delete this transcript" onClick={() => onDelete(session)}>
-            ✕
+          <button className="ghost file-act" title="Delete this transcript" aria-label="Delete this transcript" onClick={() => onDelete(session)}>
+            <Icon name="trash" />
           </button>
         </div>
       ))}

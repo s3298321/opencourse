@@ -2,9 +2,9 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { normalizePreferences } from '../core/preferences'
-import { BACKEND_MODEL, DEFAULT_MODEL, isBackendModelId, isLiveModelId } from '../core/coach/models'
+import { BACKEND_MODEL, DEFAULT_MODEL, isBackendModelId, isLiveModelId, normalizeBackendReasoning } from '../core/coach/models'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from '../core/reading-scale'
-import type { Preferences } from '../core/types'
+import type { Preferences, ReasoningEffort } from '../core/types'
 import { userPreferencesFile } from './paths'
 import { requireUser } from './users'
 import { normalizePomodoroSettings, validPomodoroMinutes, type PomodoroSettings } from '../core/pomodoro'
@@ -50,13 +50,42 @@ export function getDefaultCoachModel(): string {
 }
 
 export function getDefaultCoachBackendModel(): string {
-  return readPreferences().defaultCoachBackendModel ?? BACKEND_MODEL
+  const preferences = readPreferences()
+  const model = preferences.defaultCoachBackendModel ?? BACKEND_MODEL
+  return preferences.coachBackendModels?.length && !preferences.coachBackendModels.includes(model) ? preferences.coachBackendModels[0] : model
+}
+
+export function getCoachBackendModels(): string[] | null { return readPreferences().coachBackendModels ?? null }
+
+export function getDefaultCoachBackendReasoning(): ReasoningEffort | null {
+  return normalizeBackendReasoning(getDefaultCoachBackendModel(), readPreferences().defaultCoachBackendReasoning)
+}
+
+export function setDefaultCoachBackendReasoning(value: ReasoningEffort | null): ReasoningEffort | null {
+  const reasoning = normalizeBackendReasoning(getDefaultCoachBackendModel(), value)
+  if (value !== null && reasoning === null) throw new Error('Choose a supported reasoning level for this background model.')
+  writePreferences({ ...readPreferences(), defaultCoachBackendReasoning: reasoning })
+  return reasoning
+}
+
+export function setCoachBackendModels(models: string[] | null): { enabled: string[] | null; defaultModel: string } {
+  if (models !== null && (!Array.isArray(models) || models.length > 200 || !models.every(id => typeof id === 'string' && isBackendModelId(id)))) {
+    throw new Error('Choose supported background models with function tools.')
+  }
+  const { coachBackendModels: _previous, ...preferences } = readPreferences()
+  const current = getDefaultCoachBackendModel()
+  const enabled = models === null ? null : [...new Set(models)]
+  writePreferences({ ...preferences, ...(enabled === null ? {} : { coachBackendModels: enabled }),
+    defaultCoachBackendModel: enabled?.length && !enabled.includes(current) ? enabled[0] : current })
+  return { enabled: getCoachBackendModels(), defaultModel: getDefaultCoachBackendModel() }
 }
 
 export function setDefaultCoachBackendModel(model: string): string {
   if (typeof model !== 'string' || !isBackendModelId(model)) {
     throw new Error('Choose a supported background model with function tools.')
   }
+  const enabled = getCoachBackendModels()
+  if (enabled !== null && !enabled.includes(model)) throw new Error('Show this background model in Coach settings first.')
   writePreferences({ ...readPreferences(), defaultCoachBackendModel: model })
   return getDefaultCoachBackendModel()
 }

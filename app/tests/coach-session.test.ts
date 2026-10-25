@@ -439,6 +439,15 @@ describe('coach diagnostics', () => {
 
 
 describe('Live ownership and exactly-once tools', () => {
+  it('sends the selected reasoning and freezes it in the session snapshot', async () => {
+    updateProject(projectId, { backendReasoning: 'high' })
+    const result = await start()
+    if (result.status !== 'ok') throw new Error('not started')
+    updateProject(projectId, { backendReasoning: 'low' })
+    await connectSession(result.sessionId, 'v=0 offer', 1)
+    expect(JSON.parse(calls.at(-1)!.body).session.delegation.responses.reasoning).toEqual({ effort: 'high' })
+    expect(selectSessionSummary(result.sessionId)?.metadata?.backendSettings?.reasoning).toBe('high')
+  })
   it('freezes the selected background model for connection and session titles', async () => {
     updateProject(projectId, { backendModel: 'gpt-6-sol' })
     const result = await start()

@@ -4,7 +4,7 @@
  * setting it broke, never the app.
  */
 import { defaultChatModel, isChatModelId, isReasoningEffort, reasoningEffortsFor } from './sidechat/models'
-import { isBackendModelId, isLiveModelId, migrateCoachModel } from './coach/models'
+import { BACKEND_MODEL, isBackendModelId, isLiveModelId, migrateCoachModel, normalizeBackendReasoning } from './coach/models'
 import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
@@ -58,6 +58,8 @@ export function normalizePreferences(raw: unknown): Preferences {
       ? { defaultCoachModel: coachModel } : {}),
     ...(typeof values.defaultCoachBackendModel === 'string' && isBackendModelId(values.defaultCoachBackendModel)
       ? { defaultCoachBackendModel: values.defaultCoachBackendModel } : {}),
+    ...(Array.isArray(values.coachBackendModels) ? { coachBackendModels: [...new Set(values.coachBackendModels.filter((id): id is string => typeof id === 'string' && isBackendModelId(id)))].slice(0, MAX_CHAT_MODELS) } : {}),
+    ...(values.defaultCoachBackendReasoning !== undefined ? { defaultCoachBackendReasoning: normalizeBackendReasoning(typeof values.defaultCoachBackendModel === 'string' ? values.defaultCoachBackendModel : BACKEND_MODEL, values.defaultCoachBackendReasoning) } : {}),
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
     ...(typeof values.authoringWebSearch === 'boolean' ? { authoringWebSearch: values.authoringWebSearch } : {}),

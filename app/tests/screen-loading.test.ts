@@ -16,7 +16,7 @@ beforeEach(() => {
     touchCourse: pending, touchLesson: pending, onCoursesChanged: unsubscribe, onReviewChanged: unsubscribe,
     getCoachProjectRunState: vi.fn(async () => ({ busy: false })),
     getCoachProject: pending, listCoachFiles: pending, listCoachSessions: pending, listCoachModels: pending, listCoachBackendModels: pending,
-    onCoachChanged: unsubscribe, onCoachFilesChanged: unsubscribe, getCoachTranscript: pending
+    onCoachChanged: unsubscribe, onCoachFilesChanged: unsubscribe, onAIChanged: unsubscribe, getCoachTranscript: pending
   })
   container = document.createElement('div')
   document.body.append(container)

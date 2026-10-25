@@ -1,6 +1,16 @@
 /** Supported conversational Live models; transcription models are never coaches. */
-import type { CoachModel } from '../types'
-import { filterChatModels, isChatModelId } from '../sidechat/models'
+import type { CoachModel, ReasoningEffort } from '../types'
+import { filterChatModels, isChatModelId, isReasoningEffort, reasoningEffortsFor } from '../sidechat/models'
+
+/** Live delegation accepts the existing effort enum, with model-specific restrictions. */
+export function backendReasoningEffortsFor(model: string): readonly ReasoningEffort[] {
+  const levels = reasoningEffortsFor(model)
+  return /^gpt-(?:6\.1-sol|6-astra)(?:-|$)/.test(model) ? levels.filter(level => level !== 'none' && level !== 'minimal') : levels
+}
+
+export function normalizeBackendReasoning(model: string, value: unknown): ReasoningEffort | null {
+  return isReasoningEffort(value) && backendReasoningEffortsFor(model).includes(value) ? value : null
+}
 
 export const DEFAULT_MODEL = 'gpt-live-1'
 export const BACKEND_MODEL = 'gpt-6-luna'

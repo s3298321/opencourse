@@ -1,3 +1,4 @@
+import { writingNotebookChecks } from './writing-notebook-smoke'
 import { notebookChecks } from './notebook-smoke'
 import { editorSmoke } from './editor-smoke'
 import { themeChecks } from './theme-smoke'
@@ -3088,7 +3089,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         }
         throw new Error('Test user picker did not load');
       })()`)
-      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
       const unknown = only.filter((name) => !suites[name])
       if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
       const results: Result[] = []

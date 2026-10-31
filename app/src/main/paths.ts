@@ -167,3 +167,6 @@ export function courseProjectDir(id: string, courseId: string, moduleId: string)
 export function courseProjectStateDir(id: string, courseId: string): string {
   return join(userDir(id), 'course-project-state', assertSafeSegment(courseId, 'course slug'))
 }
+
+/** Personal Markdown notebooks, independent of course Python environments. */
+export function userWritingNotebooksDir(id: string): string { return join(userDir(id), 'writing-notebooks') }

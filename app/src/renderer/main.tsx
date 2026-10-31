@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import NotebookWindow from './writing-notebooks/NotebookWindow'
+import './writing-notebooks/writing-notebooks.css'
 import { ThemeProvider, bootTheme } from './theme/ThemeProvider'
 import '@xterm/xterm/css/xterm.css'
 import './styles.css'
@@ -11,7 +13,7 @@ void bootTheme().finally(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <ThemeProvider>
-        <App />
+        {new URLSearchParams(location.search).get('writingNotebook') ? <NotebookWindow id={new URLSearchParams(location.search).get('writingNotebook')!} /> : <App />}
       </ThemeProvider>
     </StrictMode>
   )

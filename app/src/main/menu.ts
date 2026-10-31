@@ -1,3 +1,4 @@
+import { sendToMainWindow, notebookWindowIdentity } from './writing-notebook-windows'
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
 import { BRAND } from '../core/brand'
 import type { NavAction } from '../core/types'
@@ -8,7 +9,10 @@ import { currentUserId } from './users'
 
 function send(action: NavAction): void {
   // The app has one window; an accelerator can still fire while it is not key.
-  ;(BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0])?.webContents.send('app:navigate', action)
+  const focused = BrowserWindow.getFocusedWindow()
+  if (focused && notebookWindowIdentity(focused.webContents) && action === 'saveCourse') { focused.webContents.send('writing:save'); return }
+  if (focused && !notebookWindowIdentity(focused.webContents)) focused.webContents.send('app:navigate', action)
+  else sendToMainWindow('app:navigate', action)
 }
 
 /**

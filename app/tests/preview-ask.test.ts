@@ -2,12 +2,32 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { APP_SOURCE, VIZ_SOURCE } from '../src/core/vizbridge'
-import { AskProvider } from '../src/renderer/ask-context'
+import { AskProvider, type AskOffer } from '../src/renderer/ask-context'
 import Visualization from '../src/renderer/blocks/Visualization'
 import { PreviewAskOffer, usePreviewAsk } from '../src/renderer/sidechat/usePreviewAsk'
 
 let root: Root | undefined
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals() })
+it('attaches notebook answer quotes without leaving a highlight or browser selection', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const mark = vi.fn()
+  const offer: AskOffer = { owner: {}, text: 'Quoted answer', from: 'answer', x: 100, y: 100, mark, unmark: () => {} }
+  function Screen() {
+    const panel = usePreviewAsk(true, 'notebook', false)
+    return createElement('div', null,
+      createElement('p', null, 'Quoted answer'),
+      createElement(PreviewAskOffer, { offer, attach: panel.ask.attach }),
+      createElement('output', null, panel.quote?.text))
+  }
+  const container = document.body.appendChild(document.createElement('div')); root = createRoot(container)
+  await act(async () => root!.render(createElement(Screen)))
+  const range = document.createRange(); range.selectNodeContents(container.querySelector('p')!)
+  window.getSelection()!.addRange(range)
+  await act(async () => container.querySelector<HTMLButtonElement>('.ask-about')!.click())
+  expect(container.querySelector('output')!.textContent).toBe('Quoted answer')
+  expect(mark).not.toHaveBeenCalled()
+  expect(window.getSelection()!.toString()).toBe('')
+})
 it('turns sandboxed visualization selections into preview quotes and marks/unmarks the originating frame', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   function Screen() {

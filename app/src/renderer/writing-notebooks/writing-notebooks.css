@@ -1,0 +1,129 @@
+.writing-launcher {
+  position: fixed; left: 16px; bottom: 16px; z-index: 35; width: 56px;
+  overflow: clip; background: var(--bg); border: 1px solid var(--border); border-radius: 28px;
+  box-shadow: 0 4px 24px rgb(var(--shadow-rgb) / .22);
+  transition: width 320ms var(--ease), height 320ms var(--ease), border-radius 320ms var(--ease), box-shadow 320ms var(--ease);
+}
+.writing-launcher.expanded { width: min(360px, calc(100vw - 32px)); border-radius: 18px; box-shadow: 0 12px 48px rgb(var(--shadow-rgb) / .3); }
+.writing-launcher .writing-launcher-toggle {
+  position: absolute; left: 0; bottom: 0; width: 54px; height: 54px; padding: 0; border-radius: 50%;
+  display: grid; place-items: center; color: var(--fg); background: transparent; border: 0;
+  transition: opacity 120ms ease 140ms, transform 320ms var(--ease), background-color 140ms ease;
+}
+.writing-launcher-toggle svg { width: 27px; height: 27px; }
+.writing-launcher-toggle:focus-visible { outline-offset: -4px; }
+.writing-launcher-toggle:hover { background: var(--selected); }
+.writing-launcher.expanded .writing-launcher-toggle { opacity: 0; transform: scale(.8); pointer-events: none; transition-delay: 0ms; }
+.writing-launcher-panel {
+  width: min(358px, calc(100vw - 34px)); max-height: calc(100dvh - 34px); overflow-y: auto; padding: 16px;
+  opacity: 0; transform: translateY(8px); pointer-events: none;
+  transition: opacity 100ms ease, transform 240ms var(--ease);
+}
+.writing-launcher.expanded .writing-launcher-panel { opacity: 1; transform: translateY(0); pointer-events: auto; transition-delay: 100ms; }
+.writing-launcher-panel header, .writing-page-heading { display: flex; align-items: center; gap: 10px; }
+.writing-launcher-panel header { justify-content: space-between; margin-bottom: 20px; }
+.writing-launcher-close {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  border-radius: 50%; color: var(--muted); background: var(--card); border: 1px solid var(--border);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.writing-launcher-close:hover {
+  filter: none; background-color: var(--chip-bg); color: var(--fg); border-color: var(--muted);
+}
+.writing-launcher-panel input, .writing-create { width: 100%; margin-bottom: 8px; }
+.writing-launcher-panel .writing-create { margin-bottom: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.writing-launcher-panel input[type=search] { height: 30px; padding: 4px 12px; border-radius: 999px; font-size: 13px; line-height: 1.4; }
+.writing-launcher-results { max-height: min(44vh, 390px); overflow: auto; }
+.writing-launcher-results h3 { color: var(--muted); font-size: 12px; font-weight: 500; margin: 12px 4px 6px; }
+.writing-associated { max-height: 180px; overflow: auto; }
+.writing-launcher-row { width: 100%; text-align: left; display: flex; flex-direction: column; align-items: stretch; padding: 6px 10px; gap: 2px; background: transparent; border: 0; border-radius: 8px; font-size: 13px; font-weight: 400; line-height: 1.4; }
+.writing-launcher-row strong { font-weight: 400; }
+.writing-launcher-row:hover, .writing-launcher-row:focus-visible { background: var(--selected); }
+.writing-launcher-row strong, .writing-launcher-row span, .writing-launcher-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.writing-launcher-row span, .writing-launcher-row small { color: var(--muted); font-size: 12px; }
+.dialog-backdrop.writing-dialog-backdrop { background: rgb(var(--shadow-rgb) / .45); backdrop-filter: blur(4px) saturate(.85); }
+.dialog.writing-title-dialog { background: var(--bg); }
+.dialog.writing-title-dialog h2 { margin-bottom: 16px; }
+.writing-title-dialog input[type=text] { display: block; width: 100%; min-width: 0; background: var(--card); }
+.writing-title-dialog input::placeholder { color: var(--muted); opacity: 1; }
+.writing-title-dialog .actions { margin-top: 16px; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .dialog-backdrop.writing-dialog-backdrop { backdrop-filter: none; }
+}
+.writing-titlebar strong { font: inherit; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sidebar.writing-sidebar { flex: 0 0 var(--writing-sidebar-width); width: var(--writing-sidebar-width); display: flex; flex-direction: column; padding: 12px 10px; min-height: 0; }
+.writing-sidebar nav { overflow: auto; flex: 1; }
+.writing-page-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.writing-new-page { margin-top: 12px; }
+.writing-delete-notebook { margin-top: 6px; }
+.writing-association { padding: 0 8px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.writing-page { --writing-text-width: 630px; flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; background: var(--bg); }
+.writing-page {
+  background-image: var(--reading-image); background-size: var(--reading-image-size);
+  background-position: var(--reading-image-position); background-repeat: var(--reading-image-repeat);
+}
+.writing-page-heading { padding: 16px 20px 8px; }
+.writing-page[data-layout=thin] .writing-page-heading { padding-left: max(20px, calc((100% - var(--writing-text-width)) / 2)); }
+.writing-page[data-layout=thin] .writing-page-heading h1 { max-width: var(--writing-text-width); }
+.writing-page-heading h1 { flex: 1; min-width: 0; margin: 0; font-size: calc(19px * var(--reading-scale)); }
+.writing-page-heading input.writing-page-title {
+  width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0;
+  background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-overflow: ellipsis;
+}
+.writing-page-heading input.writing-page-title:focus { outline: none; box-shadow: none; }
+.writing-page-title::placeholder { color: var(--muted); opacity: 1; }
+.writing-page-heading .meta { margin-left: auto; white-space: nowrap; font-size: 11px; }
+.writing-options-menu .menu-heading { margin-bottom: 6px; }
+.writing-options-menu .menu-item + .menu-item { margin-top: 6px; }
+.writing-editor { flex: 1; min-width: 0; min-height: 0; padding-bottom: 44px; }
+.writing-editor .cm-editor { height: 100%; background: transparent; color: var(--fg); font-size: calc(16px * var(--reading-scale)); }
+.writing-editor .cm-scroller { overflow: auto; padding-inline: 20px; font-family: var(--font-reading, system-ui); line-height: var(--reading-line-height, 1.75); }
+.writing-editor[data-layout=thin] .cm-scroller { padding-inline: max(20px, calc((100% - var(--writing-text-width, 630px)) / 2)); }
+.writing-editor .cm-content { min-width: 0; width: 0; padding: 8px 0 80px; caret-color: var(--fg); }
+.writing-editor .cm-gutters { background: transparent; color: var(--muted); border: 0; }
+.writing-editor .cm-lineNumbers .cm-gutterElement { padding-left: 0; padding-right: 12px; }
+/* Match a heading's line box and padding, but keep its number small on the same baseline. */
+.writing-heading-line-number { font-size: calc(16px * var(--reading-scale)); font-weight: 400; line-height: 1; }
+.writing-window[data-default-theme] .cm-gutters { color: color-mix(in srgb, var(--muted) 65%, var(--bg)); }
+@media (prefers-contrast: more) {
+  .writing-window[data-default-theme] .cm-gutters { color: var(--muted); }
+}
+.writing-editor .cm-focused { outline: none; }
+.writing-editor .cm-line { padding: 0; }
+.writing-editor .cm-cursor { border-left-color: var(--fg); }
+.writing-editor .cm-selectionBackground { background: var(--selected) !important; }
+.writing-bold { font-weight: 700; }.writing-italic { font-style: italic; }.writing-strike { text-decoration: line-through; }
+.writing-code, .writing-code-line { font-family: ui-monospace, monospace; background: var(--selected); }
+.writing-heading { font-weight: 650; line-height: 1.4; padding-top: .55em !important; padding-bottom: .25em !important; }
+.writing-h1 { font-size: 1.8em; }.writing-h2 { font-size: 1.5em; }.writing-h3 { font-size: 1.25em; }
+.writing-blockquote { border-left: 3px solid var(--muted); padding-left: 14px !important; color: var(--muted); }
+.writing-link { color: var(--accent); text-decoration: underline; }
+.writing-image img { max-width: 100%; max-height: 480px; height: auto; border-radius: 8px; vertical-align: middle; }
+.writing-preview table { border-collapse: collapse; margin: 10px 0; max-width: 100%; }.writing-preview td, .writing-preview th { border: 1px solid var(--border); padding: 6px 12px; }
+.writing-preview hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+/* Keep the default notebook typography; applied themes supply their own reading,
+   heading and code styles. Scope headings to content so gutter numbers stay small. */
+.writing-window:not([data-default-theme]) .cm-content .writing-heading {
+  font-family: var(--font-heading, inherit); font-weight: var(--heading-weight);
+  letter-spacing: var(--heading-letter-spacing, normal);
+}
+.writing-window:not([data-default-theme]) :is(.writing-code, .writing-code-line, .writing-preview code) {
+  font-family: var(--font-mono); background: var(--code-bg);
+}
+.writing-window:not([data-default-theme]) .writing-preview th { background: var(--chip-bg); }
+/* This editor uses native selection, whose background must be a color, not the
+   --selected gradient used for buttons and rows. Include nested Markdown marks. */
+.writing-window:not([data-default-theme]) .cm-content::selection,
+.writing-window:not([data-default-theme]) .cm-content ::selection {
+  background: var(--terminal-selection); color: var(--fg);
+}
+.writing-error { padding: 10px 24px; color: var(--err); display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.writing-body { --writing-sidebar-width: 210px; min-height: 0; flex: 1; }
+.writing-body .lesson-chat-host { max-width: calc(100% - var(--writing-sidebar-width) - 200px); }
+.writing-body .lesson-chat-host > .sidechat { min-width: 0; max-width: 100%; }
+@media (max-width: 800px) { .writing-body { --writing-sidebar-width: 165px; } }
+@media (prefers-reduced-motion: reduce) {
+  .writing-launcher, .writing-launcher-panel, .writing-launcher .writing-launcher-toggle, .writing-body .lesson-chat-host { transition: none; }
+}
+.writing-page-heading .spacer { flex: 1; }
+.writing-launcher-row { color: var(--fg); }

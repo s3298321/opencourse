@@ -33,7 +33,7 @@ export async function documentsChecks(win: BrowserWindow): Promise<Result[]> {
     results.push({ name: 'documents: local PDF worker indexes pages and bookmarks', ok: document.status === 'ready' && document.pages === 40 && document.sections.length === 40 && searchDocument(id, 'bounded passage').hits.length > 0, detail: JSON.stringify({ status: document.status, pages: document.pages, sections: document.sections.length, error: document.error }) })
     await run('documents: workspace, three panes and selectable PDF text load', `
       document.querySelector('[data-section="documents"]').click();
-      const card=await wait('.document-card-open');card.click();
+      const card=await wait('.document-card-open');card.click();(await wait('.course-continue')).click();
       await wait('.pdf-page .textLayer span');
       await wait('.document-sidebar .document-section');await wait('.document-reader .sidechat');
       assert(document.querySelectorAll('.section-switch button').length===3,'Missing workspace');
@@ -58,7 +58,7 @@ export async function documentsChecks(win: BrowserWindow): Promise<Result[]> {
       find('.document-title').click();const blurred=await change('Natural pedagogy PDF');blurred.blur();
       assert((await wait('.document-title')).textContent==='Natural pedagogy PDF','Blur did not save');
       [...document.querySelectorAll('.titlebar .crumbs a')].find(visible).click();
-      const card=await wait('.document-card-open');assert(card.textContent.includes('Natural pedagogy PDF'),'Library lost renamed title');card.click();
+      const card=await wait('.document-card-open');assert(card.textContent.includes('Natural pedagogy PDF'),'Library lost renamed title');card.click();(await wait('.course-continue')).click();
       assert((await wait('.document-title')).textContent==='Natural pedagogy PDF','Reopened reader lost title');
       await wait('.pdf-page canvas[data-rendered="true"] + .textLayer span');
       return 'Click title to edit; Enter saves, Escape cancels, blur saves; library and reader retain it';
@@ -104,7 +104,10 @@ export async function documentsChecks(win: BrowserWindow): Promise<Result[]> {
     appendDocumentMessage(chat.id, { role: 'assistant', text: 'Page five discusses bounded retrieval.', localSources: [{ kind: 'document', documentId: id, page: 5, title: 'Local reading · page 5' }], at: new Date().toISOString() })
     await run('documents: answer source buttons navigate to the cited page', `
       // Reopen to fetch the new persisted conversation without a network request.
-      [...document.querySelectorAll('.titlebar .crumbs a')].find(visible).click();(await wait('.document-card-open')).click();
+      [...document.querySelectorAll('.titlebar .crumbs a')].find(visible).click();(await wait('.document-card-open')).click();(await wait('.course-continue')).click();
+      (await wait('.sidechat-history-toggle')).click();(await wait('.sidechat-history-row')).click();
+      await wait('.pdf-page canvas[data-rendered="true"]');
+      (await wait('.chat-consulted-sources')).open=true;
       const source=await wait('.chat-local-sources button');source.click();
       await wait('.pdf-page[data-pdf-page="5"] canvas[data-rendered="true"]');
       for(let n=0;n<200 && find('#document-page')?.value!=='5';n++)await sleep(25);

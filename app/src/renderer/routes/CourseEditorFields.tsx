@@ -226,11 +226,11 @@ export function ElementFields({ element, manifest, courseId, set }: { element: O
 
 function NotebookTemplates({ notebook, onChange, courseId }: { notebook?: CourseManifest['notebook']; onChange: (value: CourseManifest['notebook']) => void; courseId: string }): JSX.Element {
   const cells = notebook?.cells ?? []
-  return <details className="author-section"><summary>Notebook starter cells</summary>
-    <label><input type="checkbox" checked={notebook !== undefined} onChange={event => onChange(event.target.checked ? {} : undefined)} /> Enable course notebook</label>
-    <p className="meta">Python lesson cells also enable the notebook. Starter cells are copied once when a learner starts the course and never run automatically.</p>
+  return <details className="author-section"><summary>Python notebook starter cells</summary>
+    <label><input type="checkbox" checked={notebook !== undefined} onChange={event => onChange(event.target.checked ? {} : undefined)} /> Enable Python notebook</label>
+    <p className="meta">Python lesson cells also enable the Python notebook. Starter cells are copied once when a learner starts the course and never run automatically.</p>
     {notebook && <>{cells.map((cell, index) => <div className="author-list-item" key={index}>
-      <Source label={`Notebook cell ${index + 1}`} name={`notebook/cells/${index}/content`} language="python" docKey={`${courseId}/notebook/${index}`} value={cell.content} onChange={content => onChange({ cells: cells.map((old, i) => i === index ? { content } : old) })} />
+      <Source label={`Python notebook cell ${index + 1}`} name={`notebook/cells/${index}/content`} language="python" docKey={`${courseId}/notebook/${index}`} value={cell.content} onChange={content => onChange({ cells: cells.map((old, i) => i === index ? { content } : old) })} />
       <button className="ghost" disabled={index === 0} onClick={() => { const next = [...cells]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; onChange({ cells: next }) }}>Move up</button>
       <button className="ghost" disabled={index === cells.length - 1} onClick={() => { const next = [...cells]; [next[index + 1], next[index]] = [next[index]!, next[index + 1]!]; onChange({ cells: next }) }}>Move down</button>
       <button className="ghost" onClick={() => onChange({ cells: cells.filter((_, i) => i !== index) })}>Delete cell</button>

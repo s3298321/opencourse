@@ -1,5 +1,5 @@
 import ActionButton from '../components/ActionButton'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { CoachFileNode, CoachModel, CoachProject as Project, CoachSessionSummary, ReasoningEffort, UserProfile } from '@core/types'
 import { VOICES, backendReasoningEffortsFor } from '@core/coach/models'
@@ -101,6 +101,14 @@ export default function CoachProject({ projectId, user, navigate, route }: Props
     () => window.opencourse.onCoachFilesChanged((changed) => { if (changed === projectId) refreshFiles() }),
     [projectId, refreshFiles]
   )
+
+  const lastSourceRequest = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!tree || route.name !== 'coachProject' || !route.sourceRequest || lastSourceRequest.current === route.sourceRequest) return
+    lastSourceRequest.current = route.sourceRequest
+    const find = (nodes: CoachFileNode[]): CoachFileNode | undefined => { for (const node of nodes) { if (node.path === route.sourcePath) return node; const child = node.children && find(node.children); if (child) return child } return undefined }
+    if (route.sourcePath) { const file = find(tree); if (file) setViewing(file); else setError('The referenced coach note is no longer available.') }
+  }, [tree, route])
 
   if (missing) {
     return (

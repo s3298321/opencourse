@@ -1,3 +1,4 @@
+import NotebookLauncher from '../writing-notebooks/NotebookLauncher'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UserProfile } from '@core/types'
@@ -29,6 +30,7 @@ export default function AppShell({ children, route, user, navigate, switchWorksp
     <div className="app">
       <TitleBarChrome {...current} route={route} user={user} navigate={navigate} switchWorkspace={switchWorkspace} coachLive={coachLive} />
       {children}
+      {user && <NotebookLauncher key={user.id} route={route} userId={user.id} />}
     </div>
   </ShellContext.Provider>
 }

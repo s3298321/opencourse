@@ -10,7 +10,9 @@ export interface MenuItem {
   hint?: string
   /** Set on a list that picks one of several - turns the row into a radio. */
   checked?: boolean
+  checkType?: 'checkbox' | 'radio'
   danger?: boolean
+  disabled?: boolean
   onSelect: () => void
 }
 
@@ -44,6 +46,9 @@ export default function Menu({
   side = 'auto',
   heading,
   resetKey,
+  triggerMode = 'click',
+  onClick,
+  'aria-current': ariaCurrent,
   items
 }: {
   screenActive?: boolean
@@ -62,11 +67,16 @@ export default function Menu({
   heading?: string
   /** Persistent chrome menus close when their screen changes. */
   resetKey?: unknown
+  /** Context menus keep the trigger's ordinary click action. */
+  triggerMode?: 'click' | 'contextmenu'
+  onClick?: () => void
+  'aria-current'?: 'page'
   items: MenuItem[]
 }): JSX.Element {
   const [open, setOpen] = useState(false)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
   const [active, setActive] = useState(0)
+  const [point, setPoint] = useState<{ x: number; y: number } | null>(null)
   const trigger = useRef<HTMLButtonElement | null>(null)
   const panel = useRef<HTMLDivElement | null>(null)
   // Letters typed in quick succession jump to a matching row, the way a native
@@ -87,6 +97,10 @@ export default function Menu({
     if (!button) return
     const width = panel.current?.offsetWidth ?? 0
     const height = panel.current?.offsetHeight ?? 0
+    if (point) {
+      setAt({ top: Math.max(8, Math.min(point.y, window.innerHeight - height - 8)), left: Math.max(8, Math.min(point.x, window.innerWidth - width - 8)) })
+      return
+    }
     const position = (): void => {
       const box = button.getBoundingClientRect()
       const left = align === 'right' ? box.right - width : box.left
@@ -116,7 +130,7 @@ export default function Menu({
     }
     follow()
     return () => cancelAnimationFrame(frame)
-  }, [open, align, side, items.length])
+  }, [open, align, side, items.length, point])
 
   useEffect(() => {
     if (!open) return
@@ -154,7 +168,8 @@ export default function Menu({
 
   // Open on the checked row when there is one: a picker should start where it
   // is set, not at the top of a list of forty models.
-  const show = (): void => {
+  const show = (point: { x: number; y: number } | null = null): void => {
+    setPoint(point)
     const checked = items.findIndex((item) => item.checked)
     setActive(checked >= 0 ? checked : 0)
     setOpen(true)
@@ -165,6 +180,7 @@ export default function Menu({
   }, [open])
 
   const choose = (item: MenuItem): void => {
+    if (item.disabled) return
     close()
     item.onSelect()
   }
@@ -211,10 +227,19 @@ export default function Menu({
         {...(title ? { title } : {})}
         {...(ariaLabel ? { 'aria-label': ariaLabel } : {})}
         aria-describedby={ariaDescribedBy}
+        aria-current={ariaCurrent}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => (open ? close() : show())}
+        onClick={() => { if (triggerMode === 'contextmenu') { close(false); onClick?.() } else if (open) close(); else show() }}
+        onContextMenu={event => {
+          if (triggerMode !== 'contextmenu' || disabled) return
+          event.preventDefault()
+          show({ x: event.clientX, y: event.clientY })
+        }}
         onKeyDown={(event) => {
+          if (triggerMode === 'contextmenu' && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
+            event.preventDefault(); show(); return
+          }
           if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
             event.preventDefault()
             show()
@@ -222,7 +247,7 @@ export default function Menu({
         }}
       >
         {label}
-        <span className="menu-caret" aria-hidden="true" />
+        {triggerMode === 'click' && <span className="menu-caret" aria-hidden="true" />}
       </button>
 
       {open && createPortal(
@@ -239,7 +264,8 @@ export default function Menu({
             <button
               type="button"
               key={item.id}
-              role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+              disabled={item.disabled}
+              role={item.checked === undefined ? 'menuitem' : item.checkType === 'checkbox' ? 'menuitemcheckbox' : 'menuitemradio'}
               {...(item.checked === undefined ? {} : { 'aria-checked': item.checked })}
               className={`menu-item${i === active ? ' active' : ''}${item.danger ? ' danger' : ''}${
                 item.checked ? ' checked' : ''

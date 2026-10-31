@@ -12,7 +12,7 @@ function markPassage(range: Range | null): void {
 }
 
 /** The lesson's selection/quote interaction, scoped to the authoring preview. */
-export function usePreviewAsk(enabled: boolean, selectionKey: string) {
+export function usePreviewAsk(enabled: boolean, selectionKey: string, highlightQuote = true) {
   const active = useScreenActive()
   const [selection, setSelection] = useState<AskOffer | null>(null)
   const [quote, setQuote] = useState<ChatQuote | null>(null)
@@ -50,9 +50,9 @@ export function usePreviewAsk(enabled: boolean, selectionKey: string) {
     marked.current?.unmark()
     setQuote({ text: offer.text, from: offer.from === 'answer' ? 'answer' : 'preview' })
     setSelection(null)
-    offer.mark()
-    marked.current = offer
-  }, [enabled, active])
+    if (highlightQuote) { offer.mark(); marked.current = offer }
+    else { marked.current = null; window.getSelection()?.removeAllRanges() }
+  }, [enabled, active, highlightQuote])
   const ask = useMemo<Ask>(() => ({
     // Visualization frames reuse the existing lesson bridge, so their source
     // becomes "preview" here while their mark/unmark callbacks stay intact.

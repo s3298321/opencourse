@@ -134,6 +134,12 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
     jump(number)
     setPositionReady(true)
   }, [positionReady, active, document, pdf, jump])
+  const lastSourceRequest = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!active || !positionReady || !pdf || route.name !== 'document' || !route.sourceRequest || lastSourceRequest.current === route.sourceRequest) return
+    lastSourceRequest.current = route.sourceRequest
+    if (route.sourcePage) jump(route.sourcePage)
+  }, [active, positionReady, pdf, route, jump])
   const sections = useMemo(() => [...(document?.sections ?? [])].sort((a, b) => a.page - b.page || (a.top ?? 0) - (b.top ?? 0)), [document?.sections])
   const currentSection = sections.reduce((found, section, index) => section.page < page || (section.page === page && (section.top ?? 0) <= readingTop + 40) ? index : found, -1)
   const goSection = useCallback((direction: 'prev' | 'next') => {

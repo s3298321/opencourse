@@ -64,7 +64,8 @@ const QUOTED_FROM: Record<QuoteSource, string> = {
   preview: 'From the course preview',
   answer: 'From one of your earlier answers',
   document: 'From the document',
-  notebook: 'From the course notebook'
+  notebook: 'From the course notebook',
+  'writing-notebook': 'From the notebook page'
 }
 
 /** A quoted passage rides with the question it was attached to, as a quotation. */
@@ -74,7 +75,7 @@ function withQuote(message: ChatMessage): string {
     .split('\n')
     .map((line) => `> ${line}`)
     .join('\n')
-  const location = message.quote.document ? ` (page ${message.quote.document.page})` : ''
+  const location = message.quote.writingNotebook ? ` (${message.quote.writingNotebook.title})` : message.quote.document ? ` (page ${message.quote.document.page})` : ''
   return `${QUOTED_FROM[message.quote.from]}${location}, I have highlighted this:\n\n${quoted}\n\nMy question about it:\n\n${message.text}`
 }
 
@@ -85,7 +86,7 @@ function itemFor(message: ChatMessage): ChatInputItem {
   // set of instructions. A user-voiced, clearly-labelled block is the honest
   // shape - and it is what the system prompt tells the model to expect.
   if (message.role === 'context') {
-    return { role: 'user', content: `[${message.document ? 'document' : message.notebook ? 'notebook' : 'lesson'} context]\n\n${message.text}` }
+    return { role: 'user', content: `[${message.writingNotebook ? 'writing-notebook' : message.document ? 'document' : message.notebook ? 'notebook' : 'lesson'} context]\n\n${message.text}` }
   }
   return { role: 'user', content: withQuote(message) }
 }
@@ -110,7 +111,7 @@ export function buildInput(
   const lastContext = messages.reduce<number>((found, m, i) => (m.role === 'context' ? i : found), -1)
   // Keep snapshots in the local transcript, but send only the current source context.
   const items = messages.map((message, index) => message.role === 'context' && index !== lastContext
-    ? { role: 'user' as const, content: message.document ? `[Earlier reading position: page ${message.document.page}]` : message.notebook ? '[Earlier notebook context. Current notebook content is supplied with notebook questions.]' : `[Earlier lesson: ${message.lesson?.moduleId ?? ''}/${message.lesson?.lessonId ?? ''}. Use course tools to retrieve its content.]` }
+    ? { role: 'user' as const, content: message.writingNotebook ? `[Earlier notebook page: ${message.writingNotebook.title}. Use notebook tools for its content.]` : message.document ? `[Earlier reading position: page ${message.document.page}]` : message.notebook ? '[Earlier notebook context. Current notebook content is supplied with notebook questions.]' : `[Earlier lesson: ${message.lesson?.moduleId ?? ''}/${message.lesson?.lessonId ?? ''}. Use course tools to retrieve its content.]` }
     : itemFor(message))
   const required = new Set<number>([messages.length - 1])
   if (lastContext >= 0) required.add(lastContext)

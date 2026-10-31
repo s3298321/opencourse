@@ -154,3 +154,27 @@ covered in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [MIT](LICENSE). The example theme's pictures and font are free to use, change
 and share, as [its README](docs/example-theme/README.md) says.
+
+## Personal notebooks
+
+The notebook button at the bottom-left of the desktop app opens your recent
+notebooks and searches notebook titles, page titles, and Markdown contents.
+Create a standalone notebook, or create one linked to the course, PDF, or coach
+you are viewing. Title matches come first in search; related notebooks are
+preferred within each match group.
+
+Each notebook opens in its own window with a page list and a live Markdown
+editor. Markdown syntax appears where you edit; headings, lists, tables, and
+images format in place. Drop or paste PNG, JPEG, WebP, or GIF images to copy them
+into the notebook. Pages save automatically. Edit a page title directly, use
+the options menu to reorder pages, or delete pages and notebooks from the sidebar.
+
+Highlight text and choose **Ask about this** to attach a passage to the shared
+chat interface. Conversations continue when you switch pages; the assistant can
+read other pages and the notebook’s linked course, PDF, or coach notes and saved
+transcripts. Notebook chat uses your local AI connection and never edits your
+pages. Missing linked material does not remove your notebook.
+
+Personal notebooks belong to the selected local user and do not sync to servers.
+The existing executable course notebooks are now labelled **Python notebook**;
+their saved cells, outputs, and environments are unchanged.

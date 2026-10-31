@@ -8,7 +8,7 @@ import { requestDiagnostics } from './ai-diagnostics'
 import { log } from './log'
 
 export interface TextSession {
-  mode: 'chat' | 'document' | 'project' | 'authoring'
+  mode: 'chat' | 'document' | 'project' | 'authoring' | 'writing-notebook'
   chatId: string
   turnSeq: number
   model: string
@@ -23,7 +23,7 @@ export interface TextSession {
   volatileTools?: boolean
   sourceVersion?: string | number
 }
-const tables = { chat: 'chats', document: 'document_chats', project: 'course_project_chats', authoring: 'authoring_chats' }
+const tables = { 'writing-notebook': 'writing_notebook_chats', chat: 'chats', document: 'document_chats', project: 'course_project_chats', authoring: 'authoring_chats' }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
 /** Reject malformed checkpoints before they can become protocol input. */

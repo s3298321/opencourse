@@ -99,7 +99,7 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
     <AskProvider value={ask}><div className="body lesson-body notebook-body">
       <Sidebar course={course} current={{ notebook: true }} progress={progress} navigate={navigate} />
       <div className="content scroll"><div className="content-inner notebook-inner">
-        <div className="notebook-heading"><h1>Notebook</h1><span className="spacer" /><span className="meta">{status?.kernel ?? 'stopped'} · {document.dirty ? 'Saving…' : 'Saved'}</span>
+        <div className="notebook-heading"><h1>Python notebook</h1><span className="spacer" /><span className="meta">{status?.kernel ?? 'stopped'} · {document.dirty ? 'Saving…' : 'Saved'}</span>
           <ActionButton icon="stop" className="secondary" disabled={status?.kernel === 'stopped' || status?.kernel === 'stopping'} onClick={() => stop()}>Stop kernel</ActionButton>
           <ActionButton icon="restart" className="secondary" disabled={status?.stage !== 'ready' || status?.kernel === 'stopping'} onClick={() => stop(true)}>Restart kernel</ActionButton></div>
         <p className="meta">Cells share Python variables until you stop or restart the kernel. Installed packages stay in this course’s environment.</p>

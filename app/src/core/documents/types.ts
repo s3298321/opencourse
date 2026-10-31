@@ -45,6 +45,8 @@ export interface DocumentChatSummary extends Omit<ChatSummary, 'courseId' | 'sta
 }
 export interface DocumentChatThread { chat: DocumentChatSummary; messages: ChatMessage[] }
 export type ReadingSource =
+  | { kind: 'writing-notebook'; notebookId: string; pageId: string; title: string }
+  | { kind: 'coach'; projectId: string; sessionId?: string; path?: string; title: string }
   | { kind: 'document'; documentId: string; page: number; title: string }
   | { kind: 'course'; courseId: string; moduleId: string; lessonId?: string; title: string }
 

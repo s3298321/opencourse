@@ -1,3 +1,5 @@
+import { writingNotebookAsset } from './writing-notebook-assets'
+import { WRITING_ASSET_HOST } from '../core/writing-notebooks/types'
 /**
  * The opencourse:// scheme. Replaces apps/courses/viz.py - same containment check
  * (the zip-slip guard from ingest.py) and the same CSP for visualization
@@ -103,6 +105,13 @@ export function registerSchemePrivileges(): void {
 export function registerProtocolHandler(): void {
   for (const scheme of ASSET_SCHEMES) protocol.handle(scheme, async (request) => {
     const url = new URL(request.url)
+    if (url.hostname === WRITING_ASSET_HOST) {
+      const parts = url.pathname.split('/')
+      const file = parts.length === 4 && parts[2] === 'assets' ? writingNotebookAsset(parts[1]!, parts[3]!) : null
+      if (!file) return new Response('not found', { status: 404 })
+      const response = await net.fetch(pathToFileURL(file).toString())
+      return new Response(response.body, { headers: { 'content-type': MIME[extname(file)] ?? 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'" } })
+    }
     // opencourse://themes/<theme-uuid>/<path>: the current user's installed
     // theme pictures. Answered before any course lookup, like the viz bridge.
     if (url.hostname === THEME_HOST) return serveThemeImage(url)

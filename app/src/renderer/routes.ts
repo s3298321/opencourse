@@ -15,7 +15,7 @@ export type Screen =
   | { name: 'catalog'; serverId: string }
   | { name: 'documents'; source?: string }
   | { name: 'documentOverview'; documentId: string }
-  | { name: 'document'; documentId: string }
+  | { name: 'document'; documentId: string; sourcePage?: number; sourceRequest?: string }
   | { name: 'documentCatalog'; serverId: string }
   | { name: 'catalogDocument'; serverId: string; documentId: string }
   | { name: 'documentPublication'; serverId: string; documentId: string }
@@ -28,7 +28,7 @@ export type Screen =
   | { name: 'notebook'; courseId: string }
   | { name: 'project'; courseId: string; moduleId: string }
   | { name: 'coach' }
-  | { name: 'coachProject'; projectId: string }
+  | { name: 'coachProject'; projectId: string; sourcePath?: string; sourceRequest?: string }
   | { name: 'coachSession'; projectId: string; sessionId: string }
 
 export type SettingsSection = 'profile' | 'appearance' | 'pomodoro' | 'connections' | 'ai' | 'coach' | 'servers' | 'updates' | 'about'

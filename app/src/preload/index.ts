@@ -1,3 +1,5 @@
+import type { NotebookAssociation, WritingNotebook, WritingNotebookHit, WritingNotebookPage, WritingNotebookSaveResult, WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
+import type { ReadingSource } from '../core/documents/types'
 import type { CellTarget, CellRunRequest, NotebookDocument, NotebookEvent, NotebookSaveResult, NotebookStatus, CellExecution } from '../core/notebook/types'
 import type { AppInfo, AppLinks, AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
 import type { DocumentChatSummary, DocumentChatThread, DocumentImportResult, DocumentSearch, DocumentSummary, DocumentView } from '../core/documents/types'
@@ -85,6 +87,52 @@ export interface QuizVerdict extends GradeResult {
 export type { NavAction }
 
 const api = {
+  writing: {
+    mainReady: (): void => ipcRenderer.send('writing:mainReady'),
+    ready: (): void => ipcRenderer.send('writing:ready'),
+    list: (): Promise<WritingNotebook[]> => ipcRenderer.invoke('writing:list'),
+    search: (query: string, association?: NotebookAssociation): Promise<WritingNotebookHit[]> => ipcRenderer.invoke('writing:search', query, association),
+    association: (value?: NotebookAssociation): Promise<NotebookAssociation | undefined> => ipcRenderer.invoke('writing:association', value),
+    create: (title: string, association?: NotebookAssociation): Promise<WritingNotebook> => ipcRenderer.invoke('writing:create', title, association),
+    get: (id: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:get', id),
+    page: (id: string, pageId: string): Promise<WritingNotebookPage> => ipcRenderer.invoke('writing:page', id, pageId),
+    update: (id: string, patch: Partial<Pick<WritingNotebook, 'selectedPageId' | 'textScale' | 'chatOpen' | 'showLineNumbers' | 'textLayout'>>): Promise<WritingNotebook> => ipcRenderer.invoke('writing:update', id, patch),
+    save: (id: string, pageId: string, revision: number, markdown: string): Promise<WritingNotebookSaveResult> => ipcRenderer.invoke('writing:save', id, pageId, revision, markdown),
+    addPage: (id: string, title?: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:addPage', id, title),
+    renamePage: (id: string, pageId: string, title: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:renamePage', id, pageId, title),
+    reorder: (id: string, ids: string[]): Promise<WritingNotebook> => ipcRenderer.invoke('writing:reorder', id, ids),
+    deletePage: (id: string, pageId: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:deletePage', id, pageId),
+    remove: (id: string): Promise<void> => ipcRenderer.invoke('writing:delete', id),
+    open: (id: string, pageId?: string): Promise<void> => ipcRenderer.invoke('writing:open', id, pageId),
+    image: (id: string, bytes: Uint8Array): Promise<string> => ipcRenderer.invoke('writing:image', id, bytes),
+    settings: (): Promise<void> => ipcRenderer.invoke('writing:settings'),
+    source: (source: ReadingSource): Promise<void> => ipcRenderer.invoke('writing:source', source),
+    onSource: (fn: (source: ReadingSource) => void) => subscribe('writing:source', fn),
+    onChanged: (fn: (id: string) => void) => subscribe('writing:changed', fn),
+    onSelectPage: (fn: (id: string) => void) => subscribe('writing:selectPage', fn),
+    onSave: (fn: () => void) => subscribe('writing:save', fn),
+    onResume: (fn: () => void) => subscribe('writing:resume', fn),
+    onFlush: (fn: (id: string) => void) => subscribe('writing:flush', fn),
+    flushed: (id: string, ok: boolean): void => ipcRenderer.send('writing:flushed', id, ok),
+    chat: {
+      list: (id: string): Promise<WritingNotebookChatSummary[]> => ipcRenderer.invoke('writingChat:list', id),
+      get: (id: string): Promise<WritingNotebookChatThread | null> => ipcRenderer.invoke('writingChat:get', id),
+      create: (id: string, page: string): Promise<WritingNotebookChatSummary> => ipcRenderer.invoke('writingChat:create', id, page),
+      remove: (id: string): Promise<void> => ipcRenderer.invoke('writingChat:remove', id),
+      send: (id: string, text: string, quote: ChatQuote | undefined, page: string): Promise<ChatSendResult> => ipcRenderer.invoke('writingChat:send', id, text, quote, page),
+      cancel: (id: string): Promise<void> => ipcRenderer.invoke('writingChat:cancel', id),
+      setModel: (id: string, model: string): Promise<WritingNotebookChatSummary> => ipcRenderer.invoke('writingChat:model', id, model),
+      setReasoning: (id: string, reasoning: ReasoningEffort | null): Promise<WritingNotebookChatSummary> => ipcRenderer.invoke('writingChat:reasoning', id, reasoning),
+      setProvider: (id: string, provider: AIProvider | null): Promise<WritingNotebookChatSummary> => ipcRenderer.invoke('writingChat:provider', id, provider),
+      icons: (id: string, seq: number): Promise<Record<string, string | null>> => ipcRenderer.invoke('writingChat:icons', id, seq),
+      onDelta: (fn: (id: string, text: string) => void) => subscribe('writingChat:delta', fn),
+      onDone: (fn: (id: string) => void) => subscribe('writingChat:done', fn),
+      onTitle: (fn: (id: string, title: string) => void) => subscribe('writingChat:title', fn),
+      onError: (fn: (id: string, error: string) => void) => subscribe('writingChat:error', fn),
+      onActivity: (fn: (id: string, activity: string) => void) => subscribe('writingChat:activity', fn)
+    }
+  },
+
   getNotebookStatus: (courseId: string): Promise<NotebookStatus> => ipcRenderer.invoke('notebook:status', courseId),
   ensureNotebook: (courseId: string, retry = false): Promise<NotebookStatus> => ipcRenderer.invoke('notebook:ensure', courseId, retry),
   rebuildNotebook: (courseId: string): Promise<NotebookStatus> => ipcRenderer.invoke('notebook:rebuild', courseId),

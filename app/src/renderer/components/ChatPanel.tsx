@@ -47,7 +47,7 @@ const MIN_CONTENT = 320
 const COUNT_FROM = MAX_MESSAGE_CHARS * 0.8
 
 /** What an attached passage is called, by where it was highlighted. */
-const QUOTE_LABEL: Record<QuoteSource, string> = { lesson: 'From the lesson', answer: 'From an answer', preview: 'From the preview', document: 'From the document', notebook: 'From the notebook' }
+const QUOTE_LABEL: Record<QuoteSource, string> = { lesson: 'From the lesson', answer: 'From an answer', preview: 'From the preview', document: 'From the document', notebook: 'From the Python notebook', 'writing-notebook': 'From the notebook page' }
 
 /** Only the ends of the scale need saying; the middle explains itself. */
 const REASONING_HINTS: Partial<Record<ReasoningEffort, string>> = { none: 'fastest', xhigh: 'slowest' }
@@ -264,7 +264,7 @@ function Message({ message, fresh, chatId, onSource, sourceIcons }: { message: C
   if (message.role === 'context') {
     return (
       <div className={`chat-context${fresh ? ' enter' : ''}`} title={message.authoring ? "The current course selection was supplied to the assistant here" : message.project ? "The project requirements were given to the assistant here" : "The lesson was given to the assistant here"}>
-        {message.notebook ? 'Course notebook context' : message.document ? `Reading page ${message.document.page}` : message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lessonTitle ? `Now reading: ${message.lessonTitle}` : 'Lesson context'}
+        {message.writingNotebook ? `Notebook page: ${message.writingNotebook.title}` : message.notebook ? 'Python notebook context' : message.document ? `Reading page ${message.document.page}` : message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lessonTitle ? `Now reading: ${message.lessonTitle}` : 'Lesson context'}
       </div>
     )
   }

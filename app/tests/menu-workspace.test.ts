@@ -32,3 +32,19 @@ it('ignores scroll events from parked panes but dismisses when the visible scree
   await act(async () => document.querySelector('.visible-content')!.dispatchEvent(new Event('scroll')))
   expect(document.querySelector('.menu-panel')).toBeNull()
 })
+it('keeps normal page clicks and supports keyboard context-menu dismissal and disabled actions', async () => {
+  const select = vi.fn(), remove = vi.fn()
+  await act(async () => root.render(h(Menu, { label: 'Page', triggerMode: 'contextmenu', onClick: select, items: [{ id: 'delete', label: 'Delete page', disabled: true, onSelect: remove }] })))
+  const trigger = document.querySelector<HTMLButtonElement>('.menu-trigger')!
+  await act(async () => trigger.click())
+  expect(select).toHaveBeenCalledOnce()
+  expect(document.querySelector('[role="menu"]')).toBeNull()
+  await act(async () => { trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })) })
+  const menu = document.querySelector<HTMLElement>('[role="menu"]')!
+  expect(document.activeElement).toBe(menu)
+  await act(async () => { menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+  expect(remove).not.toHaveBeenCalled()
+  await act(async () => { menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+  expect(document.querySelector('[role="menu"]')).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+})

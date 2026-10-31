@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 25
+export const SCHEMA_VERSION = 26
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -342,6 +342,24 @@ function migrate(d: DatabaseSync): void {
   // The last exercise code this machine and its server agreed on (exercise-code.ts).
   if (from < 24) d.exec('CREATE TABLE IF NOT EXISTS learning_exercise_code (local_id TEXT NOT NULL,block_id TEXT NOT NULL,operation TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(local_id,block_id))')
   if (from < 25) addColumn(d, 'projects', 'backend_reasoning', 'TEXT')
+  if (from < 26) d.exec(`
+    CREATE TABLE IF NOT EXISTS writing_notebook_page_index (notebook_id TEXT NOT NULL,page_id TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(notebook_id,page_id));
+    CREATE TABLE IF NOT EXISTS writing_notebook_index (notebook_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
+    CREATE VIRTUAL TABLE IF NOT EXISTS writing_notebook_search USING fts5(notebook_id UNINDEXED,page_id UNINDEXED,title,page_title,content,tokenize='unicode61 remove_diacritics 2');
+    CREATE TABLE IF NOT EXISTS writing_notebook_chats (
+      id TEXT PRIMARY KEY, notebook_id TEXT NOT NULL, started_on TEXT NOT NULL,
+      model TEXT NOT NULL, reasoning TEXT, provider TEXT NOT NULL, pinned_provider TEXT,
+      generated_title TEXT, next_seq INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS writing_chats_by_notebook ON writing_notebook_chats(notebook_id,updated_at DESC);
+    CREATE TABLE IF NOT EXISTS writing_notebook_messages (
+      chat_id TEXT NOT NULL REFERENCES writing_notebook_chats(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL,role TEXT NOT NULL,text TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(chat_id,seq)
+    );
+    CREATE TRIGGER IF NOT EXISTS writing_chats_delete_state AFTER DELETE ON writing_notebook_chats BEGIN
+      DELETE FROM text_chat_state WHERE mode='writing-notebook' AND chat_id=OLD.id;
+    END;
+  `)
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 

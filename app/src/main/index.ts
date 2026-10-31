@@ -1,3 +1,4 @@
+import { configureNotebookWindows, registerMainWindow, closeWritingWindows, focusMainWindow } from './writing-notebook-windows'
 import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -100,7 +101,7 @@ function allowPermission(permission: string, details?: unknown): boolean {
   return types.length > 0 && types.every((t) => t === 'audio') && wantsMic()
 }
 
-function createWindow(): BrowserWindow {
+function createWindow(notebookId?: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1240,
     height: 860,
@@ -124,6 +125,7 @@ function createWindow(): BrowserWindow {
       backgroundThrottling: !Boolean(process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS'] || process.env['OPENCOURSE_FLASHCARD_SMOKE'])
     }
   })
+  if (!notebookId) registerMainWindow(win)
   const updateGlass = (): void => applyWindowLook(win)
   nativeTheme.on('updated', updateGlass)
   const reviewWindowId = win.webContents.id
@@ -153,11 +155,11 @@ function createWindow(): BrowserWindow {
   win.once('ready-to-show', () => {
     // Fill the window's display on launch. Automated runs keep their fixed
     // dimensions for screenshots and responsive layout checks.
-    if (!process.env['OPENCOURSE_SMOKE'] && !process.env['OPENCOURSE_SHOTS'] && !process.env['OPENCOURSE_FLASHCARD_SMOKE']) win.maximize()
+    if (!notebookId && !process.env['OPENCOURSE_SMOKE'] && !process.env['OPENCOURSE_SHOTS'] && !process.env['OPENCOURSE_FLASHCARD_SMOKE']) win.maximize()
     win.show()
-    if (process.env['OPENCOURSE_SMOKE']) void import('./smoke').then(({ runSmoke }) => runSmoke(win))
-    else if (process.env['OPENCOURSE_SHOTS']) void import('./shots').then(({ runShots }) => runShots(win))
-    else if (process.env['OPENCOURSE_FLASHCARD_SMOKE']) void import('./flashcard-smoke').then(({ runFlashcardSmoke }) => runFlashcardSmoke(win))
+    if (!notebookId && process.env['OPENCOURSE_SMOKE']) void import('./smoke').then(({ runSmoke }) => runSmoke(win))
+    else if (!notebookId && process.env['OPENCOURSE_SHOTS']) void import('./shots').then(({ runShots }) => runShots(win))
+    else if (!notebookId && process.env['OPENCOURSE_FLASHCARD_SMOKE']) void import('./flashcard-smoke').then(({ runFlashcardSmoke }) => runFlashcardSmoke(win))
   })
 
   // Nothing in this app should ever navigate away or open a second window.
@@ -188,8 +190,8 @@ function createWindow(): BrowserWindow {
   })
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) void win.loadURL(devUrl)
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
+  if (devUrl) void win.loadURL(notebookId ? `${devUrl}?writingNotebook=${encodeURIComponent(notebookId)}` : devUrl)
+  else void win.loadFile(join(__dirname, '../renderer/index.html'), notebookId ? { query: { writingNotebook: notebookId } } : {})
 
   return win
 }
@@ -199,6 +201,7 @@ app.whenReady().then(async () => {
   const icon = app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'resources/icon.png')
   app.setAboutPanelOptions({ applicationName: displayName, applicationVersion: app.getVersion(), iconPath: icon })
   if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon)
+  configureNotebookWindows(createWindow)
   registerProtocolHandler()
   registerIpc()
   buildMenu()
@@ -231,20 +234,20 @@ app.whenReady().then(async () => {
   app.on('before-quit', (event) => {
     if (notebooksStopped) { notebooksStopped = false; return }
     event.preventDefault()
-    void import('./notebooks').then(module => module.stopAllNotebooks()).finally(() => {
+    void closeWritingWindows().then(() => import('./notebooks')).then(module => module.stopAllNotebooks()).then(() => {
       notebooksStopped = true
       // Let macOS finish cancelling the native Cmd+Q request before retrying.
       // Quitting inside this microtask can close the windows while the original
       // request resets Electron's quitting state, leaving the app in the Dock.
       setImmediate(() => app.quit())
-    })
+    }).catch(() => { quitVetoed() })
   })
   app.on('before-quit', closeDb)
 
   createWindow()
   startUpdates()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    focusMainWindow()
   })
 }).catch((error: unknown) => {
   dialog.showErrorBox('OpenCourse could not start', error instanceof Error ? error.message : String(error))

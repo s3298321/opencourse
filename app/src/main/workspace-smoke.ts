@@ -36,7 +36,7 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
   win.webContents.send('app:navigate', 'library')
   await run('workspaces: library source, course screen and lesson position survive Coach', `
     await wait('.library');
-    const source = find('.course-source-tabs [aria-selected="true"]'); await roundTrip();
+    const source = await wait('.course-source-tabs [aria-selected="true"]'); await roundTrip();
     assert(find('.course-source-tabs [aria-selected="true"]') === source, 'Library source was reset');
     const gaps = [];
     const checkSurface = () => {

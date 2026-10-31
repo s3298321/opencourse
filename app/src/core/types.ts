@@ -663,10 +663,11 @@ export interface ChatLessonRef {
  * it would then try to reconcile with the lesson.
  */
 export type ChatContextRef = ChatLessonRef | { kind: 'notebook' }
-export type QuoteSource = 'lesson' | 'answer' | 'preview' | 'document' | 'notebook'
+export type QuoteSource = 'lesson' | 'answer' | 'preview' | 'document' | 'notebook' | 'writing-notebook'
 export type { ReadingSource } from './documents/types'
 
 export interface ChatQuote {
+  writingNotebook?: import('./writing-notebooks/types').WritingNotebookContext
   notebook?: { cellId?: string }
   text: string
   from: QuoteSource
@@ -688,6 +689,7 @@ export interface ChatCitation {
 }
 
 export interface ChatMessage {
+  writingNotebook?: import('./writing-notebooks/types').WritingNotebookContext
   notebook?: boolean
   seq: number
   role: ChatRole

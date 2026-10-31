@@ -24,7 +24,7 @@ export default function Sidebar({ course, current, progress, navigate }: Props):
       </div>
       {notebook?.enabled && <div className="sidebar-notebook">
         <button className={`sidebar-notebook-link${current.notebook ? ' current' : ''}`} aria-current={current.notebook ? 'page' : undefined} disabled={notebook.stage !== 'ready'} onClick={() => navigate({ name: 'notebook', courseId: course.courseId })}>
-          <span className="check"><Icon name="notebook" /></span><span>{notebook.stage === 'failed' ? 'Notebook setup failed' : notebook.stage === 'ready' ? 'Notebook' : 'Creating notebook…'}</span>
+          <span className="check"><Icon name="notebook" /></span><span>{notebook.stage === 'failed' ? 'Python notebook setup failed' : notebook.stage === 'ready' ? 'Python notebook' : 'Creating Python notebook…'}</span>
         </button>
         {notebook.stage === 'failed' && <><p className="error">{notebook.message}</p><div className="sidebar-notebook-repair"><ActionButton icon="refresh" className="ghost" onClick={() => void window.opencourse.ensureNotebook(course.courseId, true).catch(() => {})}>Retry</ActionButton><ActionButton icon="restart" className="ghost" onClick={() => void window.opencourse.rebuildNotebook(course.courseId).catch(() => {})}>Rebuild environment…</ActionButton></div></>}
       </div>}

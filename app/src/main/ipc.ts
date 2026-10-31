@@ -1,3 +1,6 @@
+import { registerWritingNotebookIpc } from './writing-notebook-ipc'
+import { closeWritingWindows } from './writing-notebook-windows'
+import { cancelAllWritingNotebookChats } from './writing-notebook-chat'
 import { registerLearningLifecycle, removeLearningDownload, startLearningSync, stopLearningSync, syncAll, syncServer, syncStatuses, learningRequest, enrollFromDesktop } from './learning'
 import { anyBinding, bindingFor, learningEvents, learningPreference } from './learning-store'
 import { publication, savePublication, chooseDocumentCover, documentCoverPreview, publishDocument } from './document-publish'
@@ -276,6 +279,7 @@ function holdEditor(sender: WebContents): number {
 }
 
 export function registerIpc(): void {
+  registerWritingNotebookIpc()
   startLearningSync()
   registerLearningLifecycle()
   learningEvents.on('content', () => broadcast('courses:changed'))
@@ -324,8 +328,8 @@ export function registerIpc(): void {
   coachActivity.on('changed', () => broadcast('coach:changed'))
   authoringEvents.on('run', (...args) => broadcast('authoring:runState', ...args))
   subscriptionEvents.on('changed', notifyAIConnectionChanged)
-  subscriptionEvents.on('stop', () => { cancelAllChats('chatgpt'); cancelAllProjectChats('chatgpt'); cancelAllAuthoringChats('chatgpt'); cancelAllDocumentChats('chatgpt') })
-  app.on('before-quit', releaseSubscriptionSession)
+  subscriptionEvents.on('stop', () => { cancelAllChats('chatgpt'); cancelAllProjectChats('chatgpt'); cancelAllAuthoringChats('chatgpt'); cancelAllDocumentChats('chatgpt'); cancelAllWritingNotebookChats('chatgpt') })
+  app.on('before-quit', () => { cancelAllWritingNotebookChats(); releaseSubscriptionSession() })
   ipcMain.handle('ai:settings', (_e, scope: AIScope, provider?: AIProvider, refresh = false) => {
     if (process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS']) smokeCatalogs()
     return getAIModelSettings(scope, provider, refresh)
@@ -352,10 +356,11 @@ export function registerIpc(): void {
   ipcMain.handle('session:get', (): Session => { startLearningSync(); refreshHealth(); return getSession() })
   ipcMain.handle('users:list', (): UserProfile[] => listUsers())
   ipcMain.handle('users:create', async (_e, name: string): Promise<UserProfile> => {
+    await closeWritingWindows()
     stopLearningSync()
     await stopAllNotebooks()
     endAllReviews()
-    releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); cancelAllDocumentChats(); stopDocumentWorkers(); endAllSessions(); closeDb(); forgetVolatileKeys()
+    releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); cancelAllDocumentChats(); cancelAllWritingNotebookChats(); stopDocumentWorkers(); endAllSessions(); closeDb(); forgetVolatileKeys()
     const user = createUser(name)
     startLearningSync()
     refreshHealth()
@@ -367,6 +372,7 @@ export function registerIpc(): void {
   // rewrites a file whose path main builds.
   ipcMain.handle('users:rename', (_e, name: string): UserProfile => renameUser(name))
   ipcMain.handle('users:switch', async (_e, id: string): Promise<UserProfile> => {
+    await closeWritingWindows()
     stopLearningSync()
     await stopAllNotebooks()
     endAllReviews()
@@ -379,6 +385,7 @@ export function registerIpc(): void {
     // streaming lands in a database that no longer belongs to anyone.
     cancelAllChats()
     cancelAllDocumentChats()
+    cancelAllWritingNotebookChats()
     stopDocumentWorkers()
     cancelAllProjectChats()
     cancelAllAuthoringChats()
@@ -395,6 +402,7 @@ export function registerIpc(): void {
     return user
   })
   ipcMain.handle('users:delete', async (_e, id: string): Promise<Session> => {
+    await closeWritingWindows()
     stopLearningSync()
     await stopAllNotebooks()
     endAllReviews()
@@ -404,6 +412,7 @@ export function registerIpc(): void {
     releaseSubscriptionSession()
     cancelAllChats()
     cancelAllDocumentChats()
+    cancelAllWritingNotebookChats()
     stopDocumentWorkers()
     cancelAllProjectChats()
     cancelAllAuthoringChats()
@@ -875,7 +884,7 @@ export function registerIpc(): void {
     return result
   })
 
-  ipcMain.handle('coach:clearKey', (): void => { cancelAllAuthoringChats('apiKey'); clearKey(); notifyAIConnectionChanged() })
+  ipcMain.handle('coach:clearKey', (): void => { cancelAllAuthoringChats('apiKey'); cancelAllWritingNotebookChats('apiKey'); clearKey(); notifyAIConnectionChanged() })
 
   /** One round trip: the call that fills this list is the call that checks the key. */
   ipcMain.handle('coach:listModels', (): Promise<ModelList> => listLiveModels(readKey()))

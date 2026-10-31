@@ -1,5 +1,6 @@
 import { getCourse } from './courses'
 import { readDocument } from './course-store'
+import { getWritingNotebook } from './writing-notebooks'
 import { getDocument } from './documents'
 import type { WebContents } from 'electron'
 import type { AIProvider, AIScope, ReasoningEffort } from '../core/types'
@@ -12,11 +13,11 @@ import { aiEvents, prepareTitleRequest } from './ai'
 import { log } from './log'
 import { whenSenderGone } from './senders'
 
-type TitleScope = AIScope | 'document'
-const TABLES: Record<TitleScope, string> = { chat: 'chats', project: 'course_project_chats', authoring: 'authoring_chats', document: 'document_chats' }
-const MESSAGES: Record<TitleScope, string> = { chat: 'chat_messages', project: 'course_project_messages', authoring: 'authoring_messages', document: 'document_messages' }
+type TitleScope = AIScope | 'document' | 'writing-notebook'
+const TABLES: Record<TitleScope, string> = { 'writing-notebook': 'writing_notebook_chats', chat: 'chats', project: 'course_project_chats', authoring: 'authoring_chats', document: 'document_chats' }
+const MESSAGES: Record<TitleScope, string> = { 'writing-notebook': 'writing_notebook_messages', chat: 'chat_messages', project: 'course_project_messages', authoring: 'authoring_messages', document: 'document_messages' }
 const pending = new Map<string, { controller: AbortController; scope: TitleScope; chatId: string; provider: AIProvider; courseId: string; senderId: number }>()
-aiEvents.on('changed', () => { cancelChatTitles('chat'); cancelChatTitles('project'); cancelChatTitles('authoring'); cancelChatTitles('document') })
+aiEvents.on('changed', () => { cancelChatTitles('chat'); cancelChatTitles('project'); cancelChatTitles('authoring'); cancelChatTitles('document'); cancelChatTitles('writing-notebook') })
 
 export function cancelChatTitles(scope: TitleScope, filter: { chatId?: string; provider?: AIProvider; courseId?: string; senderId?: number } = {}): void {
   for (const [id, task] of pending) {
@@ -29,12 +30,12 @@ export function cancelChatTitles(scope: TitleScope, filter: { chatId?: string; p
 
 /** A separate, best-effort request: it never holds up the answer or writes into its transcript. */
 export async function generateChatTitle(options: {
-  scope: TitleScope; chatId: string; courseId?: string; documentId?: string; owner: string; sender: WebContents
+  scope: TitleScope; chatId: string; courseId?: string; documentId?: string; notebookId?: string; owner: string; sender: WebContents
   key: string; provider: AIProvider; model: string; reasoningEfforts: readonly ReasoningEffort[]
 }): Promise<void> {
   const { scope, chatId, owner, sender, provider } = options
-  const courseId = options.documentId ?? options.courseId!
-  const courseRevision = () => scope === 'document' ? getDocument(courseId).fingerprint : scope === 'authoring' ? readDocument(courseId).revision : getCourse(courseId)?.revision
+  const courseId = options.notebookId ?? options.documentId ?? options.courseId!
+  const courseRevision = () => scope === 'writing-notebook' ? getWritingNotebook(courseId).createdAt : scope === 'document' ? getDocument(courseId).fingerprint : scope === 'authoring' ? readDocument(courseId).revision : getCourse(courseId)?.revision
   const revision = courseRevision()
   const id = `${scope}:${chatId}`
   const logger = log.child('chat.title', { userId: owner, data: { scope, chatId } })
@@ -86,7 +87,7 @@ export async function generateChatTitle(options: {
       return
     }
     const saved = db().prepare(`UPDATE ${table} SET generated_title = ? WHERE id = ? AND generated_title IS NULL`).run(title, chatId)
-    if (Number(saved.changes)) sender.send(scope === 'document' ? 'documentChat:title' : scope === 'chat' ? 'chat:title' : scope === 'project' ? 'projectChat:title' : 'authoringChat:title', chatId, title)
+    if (Number(saved.changes)) sender.send(scope === 'writing-notebook' ? 'writingChat:title' : scope === 'document' ? 'documentChat:title' : scope === 'chat' ? 'chat:title' : scope === 'project' ? 'projectChat:title' : 'authoringChat:title', chatId, title)
   } catch (error) {
     // Naming failures leave the prompt title in place; answering is unaffected.
     if (controller.signal.aborted) return cancelled()

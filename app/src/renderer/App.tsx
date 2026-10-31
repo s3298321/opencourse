@@ -146,6 +146,12 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('reading:source', source)
   }, [navigate])
 
+  useEffect(() => window.opencourse.writing.onSource(ref => {
+    if (ref.kind === 'course') navigate(ref.lessonId ? { name: 'lesson', courseId: ref.courseId, moduleId: ref.moduleId, lessonId: ref.lessonId } : { name: 'project', courseId: ref.courseId, moduleId: ref.moduleId })
+    else if (ref.kind === 'document') navigate({ name: 'document', documentId: ref.documentId, sourcePage: ref.page, sourceRequest: crypto.randomUUID() })
+    else if (ref.kind === 'coach') navigate(ref.sessionId ? { name: 'coachSession', projectId: ref.projectId, sessionId: ref.sessionId } : { name: 'coachProject', projectId: ref.projectId, sourcePath: ref.path, sourceRequest: crypto.randomUUID() })
+  }), [navigate])
+
   // Closing or reloading the window with unsaved edits: main asks natively
   // (will-prevent-unload), because a page that is unloading cannot.
   useEffect(() => {
@@ -272,6 +278,7 @@ export default function App(): JSX.Element {
 
   const user = session?.user ?? null
   const userId = user?.id ?? null
+  useEffect(() => { if (session) window.opencourse.writing.mainReady() }, [session])
   // Per user: read again whenever the user changes, and nothing to read before one is picked.
   useEffect(() => {
     let alive = true

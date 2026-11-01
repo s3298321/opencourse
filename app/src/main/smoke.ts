@@ -2195,14 +2195,18 @@ async function projectChecks(win: BrowserWindow): Promise<Result[]> {
   await ensureExampleCourse(win)
   // Direct fixture imports must notify the retained library just like a real import.
   win.webContents.send('courses:changed')
+  await win.webContents.executeJavaScript(`document.querySelector('[data-section="courses"]').click(); new Promise(resolve => setTimeout(resolve, 100))`)
+  win.webContents.send('app:navigate', 'library')
   const begin = `(async () => {
     const wait = async (selector) => { for (let n = 0; n < 160; n++) { const el = document.querySelector(selector); if (el && el.getBoundingClientRect().width) return el; await new Promise(r => setTimeout(r, 50)); } throw new Error('No ' + selector); };
-    document.querySelector('.titlebar [data-section="courses"]').click(); await wait('.library');
+    await wait('.library');
+    document.querySelector('.course-status-filter[aria-pressed="true"]')?.click();
+    [...document.querySelectorAll('.course-source-tabs button')].find(button => /^Local/.test(button.textContent))?.click();
     for (let n = 0; n < 160; n++) {
       if ([...document.querySelectorAll('.course-card')].some(card => /The OpenCourse example course/.test(card.textContent))) return true;
       await new Promise(r => setTimeout(r, 50));
     }
-    throw new Error('Imported example card did not load');
+    throw new Error('Imported example card did not load: ' + document.body.innerText.slice(0, 1800));
   })()`
   await win.webContents.executeJavaScript(begin)
   const checks: Result[] = []
@@ -2686,7 +2690,8 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         }
         throw new Error('Test user picker did not load');
       })()`)
-      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { coach: floatingCoachChecks, writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
+      await win.webContents.executeJavaScript(FIXTURE_API)
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { project: projectChecks, coach: floatingCoachChecks, writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
       const unknown = only.filter((name) => !suites[name])
       if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
       const results: Result[] = []

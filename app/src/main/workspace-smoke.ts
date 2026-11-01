@@ -28,6 +28,7 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
       const detail = await win.webContents.executeJavaScript(`(async () => { ${HELPERS} ${source} })()`)
       results.push({ name, ok: true, detail: String(detail) })
     } catch (error) {
+      console.error(`Smoke check failed: ${name}`, error)
       results.push({ name, ok: false, detail: String(error) })
       writeFileSync(join(tmpdir(), 'opencourse-workspace-failure.png'), (await win.webContents.capturePage()).toPNG())
     }
@@ -128,6 +129,7 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
   } finally { win.setSize(originalSize[0]!, originalSize[1]!) }
   await run('settings: categories preserve input and About reports installed runtimes', `
     find('.titlebar .user-chip').click(); (await wait('.user-menu')).querySelector('.menu-item').click(); await wait('.settings-nav');
+    find('[data-settings-category="profile"]').click(); await wait('.settings-name');
     const name = find('.settings-name'), setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     setter.call(name, 'Unfinished settings name'); name.dispatchEvent(new Event('input', { bubbles: true })); await sleep(50);
     for (const category of ['appearance','connections','ai','coach','servers','updates','about']) {

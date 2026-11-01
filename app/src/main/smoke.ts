@@ -2737,28 +2737,18 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
     const answerResults = (await win.webContents.executeJavaScript(ANSWER_QUOTE_SCRIPT)) as Result[]
     await win.webContents.executeJavaScript('window.opencourse.clearOpenAIKey()')
     const coachFileResults = await floatingCoachChecks(win)
-    const results = [
-      ...appearance,
-      ...rendererResults,
-      ...beforeNav,
-      ...answerResults,
-      ...coachFileResults,
-      ...(await coachChecks()),
-      // Themes go on and come off again inside their own suite, which ends in
-      // the library on the app's own look - where projectChecks starts anyway,
-      // and the suites after that depend on the screen it leaves.
-      ...(await themeChecks(win)),
-      ...(await projectChecks(win)),
-      ...(await motionChecks(win)),
-      ...(await subscriptionChecks(win)),
-      ...(await editorSmoke(win)),
-      // Last: they bring the example course and a side chat of their own, and
-      // nothing after them should have to account for either.
-      ...(await readingSizeChecks(win)),
-      ...(await appUpdateChecks(win)),
-      ...(await workspaceChecks(win)),
-      ...(await serverHealthChecks(win))
+    const results: Result[] = [...appearance, ...rendererResults, ...beforeNav, ...answerResults, ...coachFileResults, ...(await coachChecks())]
+    const suites: [string, (win: BrowserWindow) => Promise<Result[]>][] = [
+      ['themes', themeChecks], ['projects', projectChecks], ['motion', motionChecks],
+      ['subscriptions', subscriptionChecks], ['editor', editorSmoke],
+      ['reading', readingSizeChecks], ['updates', appUpdateChecks],
+      ['workspaces', workspaceChecks], ['servers', serverHealthChecks]
     ]
+    for (const [name, suite] of suites) {
+      console.log(`Smoke suite: ${name}`)
+      try { results.push(...await suite(win)) }
+      catch (error) { results.push({ name: `${name}: suite setup`, ok: false, detail: String(error) }) }
+    }
     clearTimeout(watchdog)
     const failed = results.filter((r) => !r.ok)
     report({ passed: results.length - failed.length, failed: failed.length, results })

@@ -168,7 +168,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
         if(document.querySelector('.dialog')) throw new Error('Parking asked to stop the turn');
         document.querySelector('[data-section="courses"]').click(); await sleep(80);
         document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
-        document.querySelector('.dialog-confirm').click(); await wait(()=>document.querySelector('.library'));
+        document.querySelector('.dialog-confirm').click(); await wait(()=>find('.library'));
         if((await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Leaving did not stop the turn');
         const card=await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>visible(c) && c.textContent.includes('Editor smoke course')));card.click();
         (await wait(()=>button('Edit course'))).click(); await wait(()=>document.querySelector('.course-editor'));
@@ -181,7 +181,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
       document.querySelector('.crumbs a').click();
       await wait(()=>document.querySelector('.dialog')); document.querySelector('.dialog-confirm').click();
-      await wait(()=>document.querySelector('.library'));
+      await wait(()=>find('.library'));
       const saved=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID);
       if(saved.document.manifest.title!=='Editor smoke course' || saved.draft.dirty) throw new Error('Discard changed the saved course');
       await window.opencourse.discardCourseDraft(window.__EDITOR_SMOKE_ID);
@@ -191,7 +191,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
       document.querySelector('.crumbs a').click();
       await wait(()=>document.querySelector('.dialog')); document.querySelector('.dialog-confirm').click();
-      await wait(()=>document.querySelector('.library'));
+      await wait(()=>find('.library'));
       if((await window.opencourse.listCourses()).length!==before) throw new Error('A discarded new course left a library entry');
       [...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       return 'Saved course untouched; discarded new course gone';
@@ -208,15 +208,15 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
     const image = await win.webContents.capturePage()
     writeFileSync(join(tmpdir(), 'opencourse-course-editor.png'), image.toPNG())
     await run('editor: learn, edit, rename and preserve progress', `
-      document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.library'));
+      document.querySelector('.crumbs a').click(); await wait(()=>find('.library'));
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>document.querySelector('.detail'));
       document.querySelector('.lesson-row').click(); await wait(()=>document.querySelector('.lesson-head'));
       if(!document.querySelector('.lesson-head').parentElement.textContent.includes('Stable identities')) throw new Error('Saved content not readable');
       button('Mark lesson completed').click(); await wait(()=>button('Lesson completed'));
       const before=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID); window.__EDITOR_SMOKE_LESSON=before.document.manifest.modules[0].lessons[0].nodeId;
       // A lesson's back link is its course overview, and the overview's is All courses.
-      for (let n=0;n<3 && !document.querySelector('.library');n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
-      await wait(()=>document.querySelector('.library'));
+      for (let n=0;n<3 && !find('.library');n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+      await wait(()=>find('.library'));
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       [...document.querySelectorAll('.outline-row')].find(b=>b.textContent.includes('First lesson')).click(); await field('Lesson title','Renamed lesson'); await field('Lesson slug','renamed-lesson');
       button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved'));

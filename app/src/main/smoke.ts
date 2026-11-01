@@ -2632,8 +2632,9 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
     })()`)
     await check('asynchronously loaded course and lesson screens open without entrance motion', `(async () => {
       const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const findVisible = selector => [...document.querySelectorAll(selector)].find(e => e.checkVisibility({ visibilityProperty: true }));
       const wait = async selector => {
-        for (let n = 0; n < 150; n++) { const el = document.querySelector(selector); if (el) return el; await sleep(8); }
+        for (let n = 0; n < 150; n++) { const el = findVisible(selector); if (el) return el; await sleep(8); }
         throw new Error('No ' + selector);
       };
       const verify = async headingSelector => {
@@ -2644,7 +2645,7 @@ async function motionChecks(win: BrowserWindow): Promise<Result[]> {
         return headingSelector + ': immediately visible';
       };
       // A lesson's back link is its course overview, and the overview's is All courses.
-      for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+      for (let n = 0; n < 3 && !findVisible('.library'); n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
       await wait('.library');
       for (let n = 0; n < 150 && !document.querySelector('.course-card'); n++) await sleep(8);
       [...document.querySelectorAll('.course-card')].find(card => /The OpenCourse example course/.test(card.textContent)).click();

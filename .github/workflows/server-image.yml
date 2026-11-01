@@ -54,4 +54,6 @@ jobs:
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # The image has already been published when the optional cache exports.
+          # A cache-service outage must not turn a successful release red.
+          cache-to: type=gha,mode=max,ignore-error=true

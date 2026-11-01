@@ -36,8 +36,9 @@ const HELPERS = `
   const css = (target, prop, pseudo) => getComputedStyle(el(target), pseudo).getPropertyValue(prop).trim();
   const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const themed = () => Boolean(document.getElementById('opencourse-theme'));
+  const find = selector => [...document.querySelectorAll(selector)].find(e => e.checkVisibility({ visibilityProperty: true }));
   const openSettings = async () => {
-    if (document.querySelector('.settings-appearance')) return;
+    if (find('.settings-appearance')) return;
     document.querySelector('.titlebar .user-chip').click();
     const menu = await wait('.menu-panel');
     [...menu.querySelectorAll('.menu-item')].find((b) => /Settings/.test(b.textContent)).click();
@@ -47,12 +48,12 @@ const HELPERS = `
   const card = (name) => [...document.querySelectorAll('.settings-appearance .theme-card')].find((c) => c.querySelector('.theme-name').textContent === name);
   // The wordmark is only on screens without a back link, so look at it in the library.
   const library = async () => {
-    if (document.querySelector('.settings')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+    if (find('.settings')) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
     document.querySelector('.titlebar [data-section="courses"]').click();
     await sleep(100);
     // The courses switch restores the last courses screen. A lesson's back link
     // is its course overview, and the overview's is All courses.
-    for (let n = 0; n < 3 && !document.querySelector('.library'); n++) { document.querySelector('.titlebar .crumbs a')?.click(); await sleep(250); }
+    for (let n = 0; n < 3 && !find('.library'); n++) { document.querySelector('.titlebar .crumbs a')?.click(); await sleep(250); }
     await wait('.library');
     await wait('.titlebar .brand img');
   };
@@ -246,7 +247,7 @@ export async function themeChecks(win: BrowserWindow): Promise<Result[]> {
       if (css(titlebar, 'background-color') !== 'rgb(238, 231, 218)') throw new Error('titlebar ' + css(titlebar, 'background-color'));
       if (css(titlebar, 'background-image') !== 'none') throw new Error('titlebar keeps its grain');
       if (css(document.body, 'background-image', '::before') !== 'none') throw new Error('the window picture stayed');
-      const list = document.querySelector('.content');
+      const list = el('.content');
       if (css(list, 'background-color') !== 'rgb(240, 234, 222)') throw new Error('the library list stayed translucent: ' + css(list, 'background-color'));
       if (css(list, 'background-image') !== 'none') throw new Error('the library list keeps its grain');
       if (token('--border') !== '#99948d') throw new Error('contrast border ' + token('--border'));

@@ -1,3 +1,4 @@
+import { useCoachContextProvider, selectedContent, contextExcerpt } from '../coach/context'
 import { useLearningPreference } from '../learning/useLearningPreference'
 import { RemoteReading } from '../learning/RemoteReading'
 import ActionButton from '../components/ActionButton'
@@ -152,6 +153,7 @@ export default function LessonView({
   const contentRef = useRef<HTMLDivElement | null>(null)
   // Shared with App so returning to the same lesson can restore its offset.
   const lessonScroll = scrollRef
+  useCoachContextProvider(request => request.tool === 'get_app_context' && active ? { kind: 'lesson', visible: true, source: { id: courseId, server_id: null, version: null }, title: course?.title, moduleId, lessonId, ...selectedContent(contentRef.current), ...contextExcerpt(contentRef.current?.innerText ?? '') } : null)
   const here = `${courseId}/${moduleId}/${lessonId}`
 
   const activeLesson = useRef({ moduleId, lessonId })

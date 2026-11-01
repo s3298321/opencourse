@@ -1,3 +1,5 @@
+import { readNotebookCells } from '@core/notebook/reading'
+import { useCoachContextProvider, selectedContent, contextExcerpt } from '../coach/context'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type JSX, type SetStateAction } from 'react'
 import type { ChatQuote, CourseProgress, CourseView, UserProfile } from '@core/types'
 import { MAX_NOTEBOOK_CELLS } from '@core/notebook/types'
@@ -31,6 +33,13 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
   const active = useScreenActive()
   const status = useNotebookStatus(courseId)
   const document = useNotebookDocument(courseId)
+  useCoachContextProvider(request => {
+    if (!document.cells) return null
+    if (request.tool === 'get_app_context') return { kind: 'notebook', visible: active, source: { id: courseId, server_id: null, version: null }, title: course?.title, unsaved: document.dirty,
+      ...(active ? selectedContent(globalThis.document.querySelector('.notebook-inner')) : { selectedText: '' }), ...contextExcerpt(document.cells.slice(0, 10).map(cell => cell.content.slice(0, 1001)).join('\n')) }
+    if (request.tool === 'read_notebook_cells' && request.args.course_id === courseId) return { value: { ...JSON.parse(readNotebookCells({ version: 1, revision: 0, cells: document.cells }, request.args, { chars: 0, signal: new AbortController().signal })), state: 'open editor', unsaved: document.dirty, revision: null } }
+    return null
+  })
   const cellsRef = useRef(document.cells); cellsRef.current = document.cells
   const dirtyRef = useRef(document.dirty); dirtyRef.current = document.dirty
   useEffect(() => { registerNotebook({ flush: document.flush, dirty: () => dirtyRef.current }); return () => registerNotebook(null) }, [document.flush, registerNotebook])

@@ -1,3 +1,4 @@
+import { floatingCoachChecks } from './coach-smoke'
 import { writingNotebookChecks } from './writing-notebook-smoke'
 import { notebookChecks } from './notebook-smoke'
 import { editorSmoke } from './editor-smoke'
@@ -19,7 +20,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { app, net, type BrowserWindow } from 'electron'
 import { RENDERER_CSP } from './csp'
-import type { WebContents, WebFrameMain } from 'electron'
+import type { WebFrameMain } from 'electron'
 import { specResourcesDir } from './paths'
 
 const OUT = process.env['OPENCOURSE_SMOKE_OUT'] ?? '/tmp/opencourse-smoke.json'
@@ -1001,99 +1002,10 @@ const SCRIPT = `(async () => {
   })
 
   // --- one Mac, several people -----------------------------------------
-  // --- the coach ---------------------------------------------------------
-  // The other half of the app. It ships nothing either, so like the library it
-  // has to be brought into existence before it can be checked.
-
-  await step('the titlebar switch reaches the coaches list, and says which half you are in', async () => {
-    const coach = await waitFor('.titlebar [data-section="coach"]')
-    const courses = document.querySelector('.titlebar [data-section="courses"]')
-    assert(courses, 'the switch offers no courses half')
-    // The old control was one button labelled with the *destination*, so it
-    // read "Coach" while you were in courses. Both halves are labelled now and
-    // exactly one of them is checked - that is the thing worth asserting.
-    assert(courses.getAttribute('aria-checked') === 'true', 'courses is not marked while in a lesson')
-    assert(coach.getAttribute('aria-checked') === 'false', 'coach is marked while in a lesson')
-    coach.click()
-    const head = await waitFor('.coach h1')
-    assert(
-      document.querySelector('.titlebar [data-section="coach"]').getAttribute('aria-checked') === 'true',
-      'the switch did not follow the move into coach'
-    )
-    return head.textContent
-  })
-
-  await step('an empty coach list explains itself instead of showing nothing', async () => {
-    const empty = await waitFor('.coach .empty-library h3')
-    assert(/no coaches yet/i.test(empty.textContent), 'it said ' + empty.textContent)
-    return empty.textContent
-  })
-
-  await step('creating a coach opens it, with a brief that sets up its memory', async () => {
-    const button = [...document.querySelectorAll('.coach .actions button')]
-      .find((b) => /New coach/i.test(b.textContent))
-    assert(button, 'no New coach button')
-    button.click()
-
-    const input = await waitFor('.coach-card.new input')
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-    setter.call(input, 'French vocabulary')
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-
-    const create = [...document.querySelectorAll('.coach-card.new button')]
-      .find((b) => b.textContent.trim() === 'Create')
-    assert(create && !create.disabled, 'no enabled Create button')
-    create.click()
-
-    await waitFor('.coach-project')
-    // The brief folds away by default: the workspace is what you came to see.
-    const fold = await waitFor('.coach-brief')
-    assert(!fold.open, 'the brief is open by default')
-    fold.open = true
-    // Assert the brief actually rendered its text, not that the box exists.
-    const brief = await waitFor('.coach-brief-text')
-    assert(/coach/i.test(brief.textContent), 'the brief never mentions coaching')
-    assert(/context\.md/.test(brief.textContent), 'the brief does not set up the memory files')
-    assert(/review\.md/.test(brief.textContent), 'the brief does not set up a review list')
-
-    const projects = await window.fixtureAPI.listCoachProjects()
-    assert(projects.length === 1, 'expected one project, found ' + projects.length)
-    window.__OPENCOURSE_SMOKE_PROJECT = projects[0].id
-    return projects[0].name + ' / ' + projects[0].model
-  })
-
-  await step('the brief can be rewritten and the change survives a reload of the screen', async () => {
-    document.querySelector('.coach-brief').open = true
-    const edit = [...document.querySelectorAll('.coach-brief button')].find((b) => b.textContent.trim() === 'Edit')
-    assert(edit, 'no Edit button on the brief')
-    edit.click()
-
-    const box = await waitFor('.coach-brief textarea')
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
-    setter.call(box, 'You are a French vocabulary coach. Drill me on irregular verbs.')
-    box.dispatchEvent(new Event('input', { bubbles: true }))
-    ;[...document.querySelectorAll('.coach-brief button')].find((b) => b.textContent.trim() === 'Save').click()
-
-    await waitFor('.coach-brief-text')
-    const stored = await window.fixtureAPI.getCoachProject(window.__OPENCOURSE_SMOKE_PROJECT)
-    assert(/irregular verbs/.test(stored.instructions), 'the brief did not persist: ' + stored.instructions)
-    return stored.instructions.slice(0, 40) + '…'
-  })
-
-  await step('the coach exposes no way to write a workspace file from the renderer', async () => {
-    // Read-only in the app is structural: there is no channel that writes one.
-    // This pins the exact set, so adding a writer has to be a deliberate edit
-    // here rather than something that slips in.
-    const fileMethods = Object.keys(window.opencourse).filter((k) => /CoachFile|CoachFolder/.test(k)).sort()
-    assert(
-      fileMethods.join(',') ===
-        'listCoachFiles,onCoachFilesChanged,purgeCoachFile,readCoachFile,trashCoachFile',
-      'the workspace surface changed: ' + fileMethods.join(', ')
-    )
-    // The one writer that does exist is for transcripts, and it needs a live
-    // session id - it cannot name a file at all.
-    assert(typeof window.fixtureAPI.writeCoachFile === 'undefined', 'a workspace writer appeared')
-    return fileMethods.length + ' workspace methods, none of them writers'
+  await step('coaches are available through the floating launcher without a workspace tab', async () => {
+    assert(!document.querySelector('[data-section="coach"]'), 'Coach tab remains');
+    await waitFor('.coach-floating .writing-launcher-toggle');
+    return 'Floating coach entry point';
   })
 
   await step('a second user gets their own, empty library', async () => {
@@ -1407,33 +1319,23 @@ const SCRIPT = `(async () => {
     return 'model, supported reasoning and speech model saved and applied'
   })
 
-  await step('Coach background checklist filters pickers and preserves saved coaches', async () => {
+  await step('Coach settings offer all background models as shared defaults', async () => {
     await openSettings()
     document.querySelector('[data-settings-category="coach"]').click()
-    const section = await waitFor('.settings-coach-backend-models')
-    const all = (await window.opencourse.listCoachBackendModels(true)).models
-    assert(all.length > 1, 'not enough background models to check filtering')
-    const existing = await window.fixtureAPI.createCoachProject({ name: 'Model checklist check' })
+    const picker = await waitFor('.settings-default-coach-backend-model')
+    const all = (await window.opencourse.listCoachBackendModels()).models
+    assert(all.length > 1, 'not enough background models to check defaults')
+    assert(!document.querySelector('.settings-coach-backend-models'), 'obsolete background checklist is still shown')
+    assert(all.every(model => [...picker.options].some(option => option.value === model.id)), 'available models are missing from the default picker')
+    const before = await window.opencourse.getDefaultCoachBackendModel()
+    const reasoningBefore = await window.opencourse.getDefaultCoachBackendReasoning()
     try {
-      section.querySelector('.settings-models-unselect-all').click()
-      await until(() => [...document.querySelectorAll('.settings-coach-backend-models input[type=checkbox]')].length > 0 && [...document.querySelectorAll('.settings-coach-backend-models input[type=checkbox]')].every(box => !box.checked), 'background models to be cleared')
-      assert((await window.opencourse.listCoachBackendModels()).models.length === 0, 'cleared models still appear in the Coach picker')
-      assert(document.querySelector('.settings-default-coach-backend-model').disabled, 'empty default picker is enabled')
-      const row = [...document.querySelectorAll('.settings-coach-backend-models .settings-model')].find(row => row.querySelector('.settings-model-id').textContent === all[1].label)
-      await until(() => !row.querySelector('input').disabled, 'checklist to be ready')
-      row.querySelector('input').click()
-      await until(() => document.querySelector('.settings-default-coach-backend-model')?.value === all[1].id && !document.querySelector('.settings-default-coach-backend-model').disabled, 'selected model to become the default')
-      assert((await window.opencourse.listCoachBackendModels()).models.map(model => model.id).join(',') === all[1].id, 'picker did not follow the checklist')
-      assert((await window.fixtureAPI.getCoachProject(existing.id)).backendModel === existing.backendModel, 'existing coach changed its model')
-      document.querySelector('.settings-coach-backend-models .settings-models-select-all').click()
-      await until(() => document.querySelector('.settings-coach-backend-models .settings-models-select-all')?.disabled, 'all models to be restored')
-      assert(await window.opencourse.getCoachBackendModels() === null, 'Select all did not include future models')
-      assert((await window.opencourse.listCoachBackendModels()).models.length === all.length, 'models did not return to the picker')
-      return 'Checklist persists through IPC, filters pickers and keeps existing coach choices'
+      await select('.settings-default-coach-backend-model', all[1].id)
+      assert(await window.opencourse.getDefaultCoachBackendModel() === all[1].id, 'shared background default did not save')
+      return 'All available background models can be selected as the shared default'
     } finally {
-      await window.opencourse.setCoachBackendModels(null)
-      await window.opencourse.setDefaultCoachBackendModel(existing.backendModel)
-      await window.fixtureAPI.deleteCoachProject(existing.id)
+      await window.opencourse.setDefaultCoachBackendModel(before)
+      await window.opencourse.setDefaultCoachBackendReasoning(reasoningBefore)
       document.querySelector('.titlebar .crumbs a').click()
       await waitFor('.lesson-head h1')
     }
@@ -2144,311 +2046,6 @@ const ANSWER_QUOTE_SCRIPT = `(async () => {
   return results
 })()`
 
-/**
- * The workspace browser, in a second pass.
- *
- * It runs after protocolChecks and fullscreenChecks because it navigates away
- * from the lesson those two inspect, and after main has seeded the project with
- * files - the only writer is a live session's tool call, and there is no
- * session here.
- */
-const COACH_FILES_SCRIPT = `(async () => {
-  const results = []
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-  const waitFor = async (selector, timeout = 8000) => {
-    const t0 = Date.now()
-    while (Date.now() - t0 < timeout) {
-      const el = [...document.querySelectorAll(selector)].find(el => el.checkVisibility({ visibilityProperty: true }))
-      if (el) return el
-      await sleep(50)
-    }
-    throw new Error('timed out waiting for ' + selector)
-  }
-  const step = async (name, fn) => {
-    try {
-      const detail = await fn()
-      results.push({ name, ok: true, detail: String(detail ?? '') })
-    } catch (err) {
-      results.push({ name, ok: false, detail: String(err && err.message ? err.message : err) })
-    }
-  }
-  const assert = (cond, message) => {
-    if (!cond) throw new Error(message)
-  }
-  const rowFor = (name) =>
-    [...document.querySelectorAll('.file-row')].find((r) => r.querySelector('.file-name').textContent.includes(name))
-
-  const projectId = window.__OPENCOURSE_SMOKE_PROJECT
-
-  // --- the key ------------------------------------------------------------
-  // Every check here stays offline: a malformed key is refused before any
-  // request, and the model list falls back without one.
-
-  await step('a missing key is said out loud rather than discovered at the worst moment', async () => {
-    document.querySelector('.titlebar [data-section="coach"]').click()
-    const banner = await waitFor('.key-banner')
-    assert(/no openai key/i.test(banner.textContent), 'it said ' + banner.textContent)
-    const stored = await window.fixtureAPI.hasOpenAIKey()
-    assert(stored.has === false, 'a key is stored in a fresh profile')
-    return banner.textContent.trim().slice(0, 44)
-  })
-
-  await step('the renderer is told whether a key exists, and nothing more', async () => {
-    const stored = await window.fixtureAPI.hasOpenAIKey()
-    assert(Object.keys(stored).sort().join(',') === 'has,hint', 'it returned ' + JSON.stringify(stored))
-    assert(typeof window.fixtureAPI.getOpenAIKey === 'undefined', 'the bridge can read the key back')
-    const readers = Object.keys(window.opencourse).filter((k) => /key/i.test(k))
-    assert(readers.sort().join(',') === 'clearOpenAIKey,hasOpenAIKey,setOpenAIKey', readers.join(','))
-    return readers.join(', ')
-  })
-
-  await step('a key of the wrong shape is refused without asking OpenAI', async () => {
-    for (const bad of ['hunter2', 'sk-short', '']) {
-      const result = await window.fixtureAPI.setOpenAIKey(bad)
-      assert(result.status === 'invalid', bad + ' gave ' + JSON.stringify(result))
-    }
-    assert((await window.fixtureAPI.hasOpenAIKey()).has === false, 'something got stored')
-    return 'three refused, nothing stored'
-  })
-
-  await step('Coach hides model choices until an API key is connected', async () => {
-    const list = await window.fixtureAPI.listCoachModels()
-    assert(list.source === 'fallback', 'source was ' + list.source)
-    assert(list.models.length === 0, 'voice models were offered without a key')
-    assert((await window.opencourse.listCoachBackendModels()).models.length === 0, 'background models were offered without a key')
-    return 'Voice and background model choices require an API key'
-  })
-
-  await step('the key lives in settings, and settings never shows it back', async () => {
-    // The banner used to open a dialog owned by Coach, which made the app's one
-    // shared secret look like a Coach feature - the side chat needed the same
-    // key and had grown a second door to the same modal.
-    document.querySelector('.key-banner button').click()
-    const field = await waitFor('.settings-section .settings-key')
-    assert(field.type === 'password', 'the field is a ' + field.type)
-    assert(field.value === '', 'the field is prefilled')
-    // Scoped to the key's own card: the screen has a name field too, and that
-    // one is supposed to be readable.
-    const card = field.closest('.settings-section')
-    assert(!card.querySelector('input[type=text]'), 'there is a plain text field beside the key')
-    // Leave the way a person would, or the checks after this run with settings
-    // still on screen.
-    document.querySelector('.titlebar .crumbs a').click()
-    await sleep(200)
-    return field.type + ', empty'
-  })
-
-  await step('the workspace lists what the coach wrote', async () => {
-    await waitFor('.coach-card')
-    document.querySelector('.coach-card').click()
-    await waitFor('.coach-files')
-
-    const learned = rowFor('learned.md')
-    const audio = rowFor('note.mp3')
-    const weeks = rowFor('weeks')
-    assert(learned, 'learned.md is not in the tree')
-    assert(audio, 'note.mp3 is not in the tree')
-    assert(weeks, 'the weeks folder is not in the tree')
-    assert(learned.className.includes('text'), 'learned.md is ' + learned.className)
-    assert(audio.className.includes('binary'), 'note.mp3 is ' + audio.className)
-    assert(weeks.className.includes('dir'), 'weeks is ' + weeks.className)
-    return [...document.querySelectorAll('.file-row')].length + ' rows'
-  })
-
-  await step('a nested note shows under its folder', async () => {
-    const nested = rowFor('mots-a-reviser.md')
-    assert(nested, 'the nested note is not shown')
-    return nested.querySelector('.file-name').textContent.trim()
-  })
-
-  await step('opening a markdown note renders it, read-only', async () => {
-    rowFor('learned.md').querySelector('.file-name').click()
-    await waitFor('.coach-panel')
-    // Assert what rendered, not that the panel exists.
-    const heading = await waitFor('.coach-panel .prose h1')
-    assert(/mots/i.test(heading.textContent), 'the heading says ' + heading.textContent)
-    const items = document.querySelectorAll('.coach-panel .prose li')
-    assert(items.length === 2, items.length + ' list items rendered')
-    assert(/chien/.test(document.querySelector('.coach-panel .prose').textContent), 'the words are missing')
-    assert(!document.querySelector('.coach-panel textarea'), 'the viewer offers a textarea')
-    assert(/read-only/.test(document.querySelector('.coach-panel-head').textContent), 'it does not say read-only')
-    return heading.textContent + ', ' + items.length + ' words'
-  })
-
-  await step('Escape closes the viewer', async () => {
-    document.querySelector('.coach-panel').dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
-    )
-    const t0 = Date.now()
-    while (Date.now() - t0 < 3000 && document.querySelector('.coach-panel')) await sleep(50)
-    assert(!document.querySelector('.coach-panel'), 'the viewer is still open')
-    return 'closed'
-  })
-
-  await step('a file the app cannot show does not open', async () => {
-    rowFor('note.mp3').querySelector('.file-name').click()
-    await sleep(400)
-    assert(!document.querySelector('.coach-panel'), 'a binary file opened a viewer')
-    return 'stayed shut'
-  })
-
-  await step('the workspace lets the learner view and delete, without folder or move controls', async () => {
-    assert(!document.querySelector('.coach-files [title=Move]'), 'a Move button is still shown')
-    assert(!document.querySelector('.coach-files .file-move'), 'a move picker is still shown')
-    assert(!document.querySelector('.coach-files .coach-brief-head button'), 'folder creation is still shown')
-    assert(rowFor('learned.md').querySelector('[title=Delete]'), 'Delete is missing')
-    return 'View and delete remain; folder creation and moves are model-only'
-  })
-
-  await step('the tree follows a change it did not make itself', async () => {
-    const result = await window.fixtureAPI.trashCoachFile(projectId, 'note.mp3')
-    assert(result.status === 'ok', JSON.stringify(result))
-    const t0 = Date.now()
-    while (Date.now() - t0 < 4000 && rowFor('note.mp3')) await sleep(50)
-    assert(!rowFor('note.mp3'), 'the deleted file stayed in the tree')
-    assert(rowFor('trash'), 'the trash never appeared')
-    return 'An external deletion refreshed the tree'
-  })
-
-  await step('deleting a note moves it to the trash rather than destroying it', async () => {
-    rowFor('learned.md').querySelector('[title=Delete]').click()
-    const t0 = Date.now()
-    while (Date.now() - t0 < 4000 && rowFor('learned.md')) await sleep(50)
-    assert(rowFor('trash'), 'no trash folder appeared')
-
-    const files = await window.fixtureAPI.listCoachFiles(projectId)
-    const trash = files.find((f) => f.path === 'trash')
-    assert(trash, 'the trash is not in the tree')
-    assert(trash.children.length === 2, trash.children.length + ' things in the trash')
-    assert(trash.children.some(file => /learned\.md$/.test(file.name)), 'the trash does not hold learned.md')
-    assert(!files.some((f) => f.path === 'learned.md'), 'learned.md is still at the top level')
-    return 'trash/' + trash.children[0].name
-  })
-
-  await step('a past session is listed with what was said and how long it took', async () => {
-    const list = await waitFor('.coach-sessions')
-    const row = await waitFor('.session-row')
-    assert(/bonjour/.test(row.textContent), 'the row does not show the opening line: ' + row.textContent)
-    assert(/4 turns/.test(row.textContent), 'the row does not say how many turns: ' + row.textContent)
-    assert(!/Loading/.test(list.textContent), 'the list is still loading')
-    return row.querySelector('.session-title').textContent
-  })
-
-  await step('opening a session shows its transcript, both sides, in order', async () => {
-    document.querySelector('.session-row .session-open').click()
-    await waitFor('.transcript')
-    const turns = [...document.querySelectorAll('.transcript .turn')]
-    assert(turns.length === 4, turns.length + ' turns rendered')
-    assert(turns[0].className.includes('user'), 'the first turn is ' + turns[0].className)
-    assert(turns[1].className.includes('assistant'), 'the second turn is ' + turns[1].className)
-    assert(/bonjour/.test(turns[0].textContent), 'first turn: ' + turns[0].textContent)
-    assert(/le chien/.test(turns[3].textContent), 'last turn: ' + turns[3].textContent)
-    return turns.map((t) => t.textContent.slice(0, 12)).join(' | ')
-  })
-
-  await step('a transcript keeps the brief that produced it, not the current one', async () => {
-    const folds = [...document.querySelectorAll('.coach-project details')]
-    const brief = folds.find((f) => /brief this session ran with/i.test(f.textContent))
-    assert(brief, 'the session brief is not shown')
-    brief.open = true
-    await sleep(100)
-    assert(/French vocabulary coach/.test(brief.textContent), 'it shows: ' + brief.textContent.slice(0, 80))
-    return 'snapshotted'
-  })
-
-  await step('starting a session with no key says so instead of failing silently', async () => {
-    document.querySelector('.titlebar .crumbs a').click()
-    await waitFor('.coach-live')
-    const start = [...document.querySelectorAll('.coach-live button')].find((b) => /Start a session/.test(b.textContent))
-    assert(start, 'no Start button')
-    start.click()
-
-    const note = await waitFor('.coach-live .import-note.error')
-    assert(/OpenAI key/i.test(note.textContent), 'it said: ' + note.textContent)
-    // No session may have been recorded, and no microphone opened.
-    const sessions = await window.fixtureAPI.listCoachSessions(projectId)
-    assert(sessions.length === 1, sessions.length + ' sessions after a refused start')
-    return note.textContent.slice(0, 40)
-  })
-
-  await step('a coach can be deleted, and takes its list entry with it', async () => {
-    const remove = await waitFor('.coach-project .coach-delete')
-
-    // window.confirm would block a headless run on a real dialog.
-    const realConfirm = window.confirm
-    window.confirm = () => true
-    try {
-      remove.click()
-      const t0 = Date.now()
-      while (Date.now() - t0 < 4000) {
-        if ((await window.fixtureAPI.listCoachProjects()).length === 0) break
-        await sleep(50)
-      }
-    } finally {
-      window.confirm = realConfirm
-    }
-    assert((await window.fixtureAPI.listCoachProjects()).length === 0, 'the project survived')
-    await waitFor('.coach .empty-library h3')
-    return 'gone, and the empty state came back'
-  })
-
-  return results
-})()`
-
-/**
- * Stands in for what a tool call will write once there is a live session. Main
- * does it, because the renderer has no way to write a workspace file at all -
- * which is the property the checks above are there to protect.
- */
-function send(sender: WebContents, channel: string, ...args: unknown[]): void {
-  if (!sender.isDestroyed()) sender.send(channel, ...args)
-}
-
-async function seedCoachFiles(win: BrowserWindow): Promise<string> {
-  const { listProjects } = await import('./coach')
-  const { writeWorkspaceFile, workspaceFileHost } = await import('./coachfiles')
-  const project = listProjects()[0]
-  if (!project) throw new Error('no coach project to seed')
-
-  const wrote = [
-    writeWorkspaceFile(project.id, 'learned.md', '# mots appris\n\n- le chien\n- le chat\n'),
-    writeWorkspaceFile(project.id, 'weeks/mots-a-reviser.md', '# a reviser\n\n- etre\n')
-  ]
-  for (const result of wrote) if (!result.ok) throw new Error(result.error)
-  // Something the app must list but never open.
-  writeFileSync(join(workspaceFileHost(project.id), 'note.mp3'), Buffer.from([0xff, 0xfb, 0x00, 0x11]))
-
-  // A finished session, so the list and the transcript have something to show.
-  const { insertSession, finishSession, saveTurns, recordToolCall } = await import('./coachdb')
-  const { newSessionId } = await import('../core/coach/ids')
-  const sessionId = newSessionId()
-  insertSession({
-    id: sessionId,
-    projectId: project.id,
-    startedAt: new Date(Date.now() - 12 * 60_000).toISOString(),
-    model: 'gpt-live-1',
-    instructions: 'You are a French vocabulary coach.'
-  })
-  saveTurns(sessionId, [
-    { seq: 0, role: 'user', text: 'bonjour, je veux apprendre des mots', at: new Date().toISOString() },
-    { seq: 1, role: 'assistant', text: 'tres bien, commencons par les animaux', at: new Date().toISOString() },
-    { seq: 2, role: 'user', text: 'comment dit-on dog', at: new Date().toISOString() },
-    { seq: 3, role: 'assistant', text: 'le chien', at: new Date().toISOString() }
-  ])
-  recordToolCall(sessionId, {
-    seq: 4,
-    callId: 'call_seed',
-    name: 'write_file',
-    arguments: '{"path":"learned.md"}',
-    ok: true,
-    at: new Date().toISOString()
-  })
-  finishSession(sessionId, 'ended')
-
-  send(win.webContents, 'coach:filesChanged', project.id)
-  return project.id
-}
-
 /** What the coach leaves on disk. The renderer cannot look, so main does. */
 async function coachChecks(): Promise<Result[]> {
   const results: Result[] = []
@@ -2598,7 +2195,7 @@ async function projectChecks(win: BrowserWindow): Promise<Result[]> {
     if (imported.status !== 'ok') throw new Error(JSON.stringify(imported));
     // This direct IPC fixture import bypasses Library's own import handler.
     // Remount it so the cards are fetched before selecting the new course.
-    document.querySelector('.titlebar [data-section="coach"]').click();
+    document.querySelector('.titlebar [data-section="documents"]').click();
     await new Promise(r => setTimeout(r, 250));
     document.querySelector('.titlebar [data-section="courses"]').click();
     for (let n = 0; n < 160; n++) {
@@ -3089,7 +2686,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         }
         throw new Error('Test user picker did not load');
       })()`)
-      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { coach: floatingCoachChecks, writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
       const unknown = only.filter((name) => !suites[name])
       if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
       const results: Result[] = []
@@ -3133,8 +2730,7 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
     await seedAnsweredChat()
     const answerResults = (await win.webContents.executeJavaScript(ANSWER_QUOTE_SCRIPT)) as Result[]
     await win.webContents.executeJavaScript('window.opencourse.clearOpenAIKey()')
-    await seedCoachFiles(win)
-    const coachFileResults = (await win.webContents.executeJavaScript(COACH_FILES_SCRIPT)) as Result[]
+    const coachFileResults = await floatingCoachChecks(win)
     const results = [
       ...appearance,
       ...rendererResults,

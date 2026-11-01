@@ -40,7 +40,7 @@ const {
 } = await import('../src/main/coachdb')
 const { updateSessionMetadata } = await import('../src/main/coachdb')
 const { createProject, deleteProject, getProject, listProjects, updateProject, workspaceDir } = await import('../src/main/coach')
-const { getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getDefaultCoachModel, setDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getCoachBackendModels, setCoachBackendModels, readPreferences } = await import('../src/main/preferences')
+const { getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getDefaultCoachModel, setDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, readPreferences } = await import('../src/main/preferences')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -60,7 +60,7 @@ const startSession = (projectId: string, model = 'gpt-realtime-2.1'): string => 
 }
 
 describe('the schema', () => {
-  it('persists per-user reasoning defaults and applies them only to new coaches', () => {
+  it('persists per-user reasoning defaults and retains legacy coach records', () => {
     const ada = createUser('Ada')
     const existing = createProject({ name: 'Existing' })
     expect(getDefaultCoachBackendReasoning()).toBeNull()
@@ -90,7 +90,7 @@ describe('the schema', () => {
     expect(getDefaultCoachBackendReasoning()).toBeNull()
     expect(() => setDefaultCoachBackendReasoning('none')).toThrow('reasoning level')
     setDefaultCoachBackendReasoning('high')
-    setCoachBackendModels(['gpt-4o'])
+    setDefaultCoachBackendModel('gpt-4o')
     expect(getDefaultCoachBackendReasoning()).toBeNull()
   })
   it('recovers reasoning from mirrors after database loss', () => {
@@ -113,28 +113,17 @@ describe('the schema', () => {
     expect(getProject(project.id)?.backendReasoning).toBeNull()
     expect(selectTurns(session)[0].text).toBe('Bonjour')
   })
-  it('persists per-user background model visibility and preserves existing coaches', () => {
-    const ada = createUser('Ada')
-    const existing = createProject({ name: 'Existing' })
-    expect(getCoachBackendModels()).toBeNull()
-    expect(setCoachBackendModels(['gpt-6-sol', 'gpt-6-sol'])).toEqual({ enabled: ['gpt-6-sol'], defaultModel: 'gpt-6-sol' })
-    expect(readPreferences().coachBackendModels).toEqual(['gpt-6-sol'])
-    expect(createProject({ name: 'New' }).backendModel).toBe('gpt-6-sol')
-    expect(getProject(existing.id)?.backendModel).toBe('gpt-6-luna')
-    expect(() => setDefaultCoachBackendModel('gpt-6-luna')).toThrow('Show this background model')
-    expect(() => setCoachBackendModels(['gpt-live-1'])).toThrow('supported background models')
-    expect(getCoachBackendModels()).toEqual(['gpt-6-sol'])
-    createUser('Grace')
-    expect(getCoachBackendModels()).toBeNull()
-    switchUser(ada.id)
-    expect(getCoachBackendModels()).toEqual(['gpt-6-sol'])
-    setCoachBackendModels([])
-    expect(readPreferences().coachBackendModels).toEqual([])
-    setCoachBackendModels(null)
-    expect(getCoachBackendModels()).toBeNull()
+  it.each([{ enabled: [] }, { enabled: ['gpt-6-sol'] }])('ignores obsolete background model visibility $enabled', ({ enabled }) => {
+    const user = createUser('Ada')
+    writeFileSync(userPreferencesFile(user.id), JSON.stringify({
+      defaultCoachBackendModel: 'gpt-6-luna', coachBackendModels: enabled
+    }))
+    expect(getDefaultCoachBackendModel()).toBe('gpt-6-luna')
     expect(readPreferences()).not.toHaveProperty('coachBackendModels')
+    expect(setDefaultCoachBackendModel('gpt-4o')).toBe('gpt-4o')
+    expect(JSON.parse(readFileSync(userPreferencesFile(user.id), 'utf8'))).not.toHaveProperty('coachBackendModels')
   })
-  it('persists user defaults, applies them to new coaches, and honors per-coach choices', () => {
+  it('persists user defaults and retains legacy per-coach model records', () => {
     const ada = createUser('Ada')
     const existing = createProject({ name: 'Existing' })
     expect(getDefaultCoachBackendModel()).toBe('gpt-6-luna')

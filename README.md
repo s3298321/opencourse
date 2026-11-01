@@ -36,7 +36,13 @@ Coach, notebooks and project files stay on your Mac.
   knows the lesson you are on, and never sees quiz answers or solutions.
   **Documents** gives local PDFs the same chat.
 - **Coach.** A spoken conversation with an OpenAI voice model about whatever you
-  want to get better at. It keeps its own notes between sessions.
+  want to get better at. Open the floating button above Notebooks, choose or
+  create a coach, and start talking. The coach can inspect your open lesson, PDF
+  page, notebooks, and selected text when needed, and search and read courses,
+  documents, and notebooks across your library and connected servers. Open
+  notebook reads include unsaved edits. It manages its own memory files;
+  there is no separate coach workspace, file browser, or session-history view.
+  Hide the button in Settings → Appearance.
 - **Write courses in the app.** A full course editor with a live preview, and an
   AI mode that drafts or revises the course for you. Nothing is written until
   you save.
@@ -65,7 +71,7 @@ falls back to local credentials. Subscription connections remain local.
   </tr>
   <tr>
     <td><img src="site/src/assets/screens/documents-reader.png" alt="A local PDF with its document chat open"></td>
-    <td><img src="site/src/assets/screens/coach-workspace.png" alt="A coach with its session history and workspace files"></td>
+    <td><img src="site/src/assets/screens/coach-launcher.png" alt="The floating Coaches launcher with a saved coach and search"></td>
     <td><img src="site/src/assets/screens/course-editor-ai.png" alt="The course editor with a lesson preview and AI assistant"></td>
   </tr>
   <tr>
@@ -159,7 +165,7 @@ and share, as [its README](docs/example-theme/README.md) says.
 
 The notebook button at the bottom-left of the desktop app opens your recent
 notebooks and searches notebook titles, page titles, and Markdown contents.
-Create a standalone notebook, or create one linked to the course, PDF, or coach
+Create a standalone notebook, or create one linked to the course or PDF
 you are viewing. Title matches come first in search; related notebooks are
 preferred within each match group.
 
@@ -171,8 +177,7 @@ the options menu to reorder pages, or delete pages and notebooks from the sideba
 
 Highlight text and choose **Ask about this** to attach a passage to the shared
 chat interface. Conversations continue when you switch pages; the assistant can
-read other pages and the notebook’s linked course, PDF, or coach notes and saved
-transcripts. Notebook chat uses your local AI connection and never edits your
+read other pages and the notebook’s linked course or PDF. Notebook chat uses your local AI connection and never edits your
 pages. Missing linked material does not remove your notebook.
 
 Personal notebooks belong to the selected local user and do not sync to servers.

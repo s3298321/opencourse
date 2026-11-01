@@ -70,7 +70,7 @@ const { createUser, deleteUser, listUsers, requireUser, switchUser } = await imp
 const { closeDb } = await import('../src/main/db')
 const { selectSessionRow, selectSessions, selectToolCalls, selectSessionSummary } = await import('../src/main/coachdb')
 const { createProject, updateProject, deleteProject } = await import('../src/main/coach')
-const { getCoachAllowDelete, setCoachAllowDelete } = await import('../src/main/preferences')
+const { getCoachAllowDelete, setCoachAllowDelete, setDefaultCoachBackendModel, setDefaultCoachBackendReasoning } = await import('../src/main/preferences')
 const { isCoachProjectBusy } = await import('../src/main/coach-activity')
 const { setKey } = await import('../src/main/coachkey')
 const { log } = await import('../src/main/log')
@@ -199,9 +199,11 @@ describe('starting a session', () => {
     const off = await start()
     expect(off.status === 'ok' && (off.tools as { name: string }[]).map((t) => t.name)).not.toContain('delete_file')
 
+    endAllSessions()
     updateProject(projectId, { allowDelete: true })
     const legacy = await start(2)
     expect(legacy.status === 'ok' && (legacy.tools as { name: string }[]).map(t => t.name)).not.toContain('delete_file')
+    endAllSessions()
     setCoachAllowDelete(true)
     const on = await start(3)
     expect(on.status === 'ok' && (on.tools as { name: string }[]).map((t) => t.name)).toContain('delete_file')
@@ -250,6 +252,7 @@ describe('project deletion while connecting or running', () => {
     let grant!: (value: boolean) => void
     micRequest = new Promise(resolve => { grant = resolve })
     const connecting = start()
+    expect(await start(8)).toMatchObject({ status: 'failed' })
     expect(() => deleteProject(projectId)).toThrow(/Finish/)
     grant(false)
     await connecting
@@ -333,15 +336,16 @@ describe('a session that does not end by being stopped', () => {
     expect(wantsMic()).toBe(false)
   })
 
-  it('leaves another renderer’s session alone', async () => {
+  it('refuses overlapping conversations and ignores an unrelated renderer closing', async () => {
     const mine = await start(7)
-    const theirs = await start(8)
-    if (mine.status !== 'ok' || theirs.status !== 'ok') throw new Error('did not start')
-
-    endForSender(7, 'the window closed')
-
+    if (mine.status !== 'ok') throw new Error('did not start')
+    expect(await start(8)).toMatchObject({ status: 'failed' })
+    endForSender(8, 'the window closed')
     expect(liveSessionCount()).toBe(1)
-    expect(selectSessionRow(theirs.sessionId)?.status).toBe('live')
+    expect(selectSessionRow(mine.sessionId)?.status).toBe('live')
+    endForSender(7, 'the window closed')
+    expect(liveSessionCount()).toBe(0)
+    expect(await start(8)).toMatchObject({ status: 'ok' })
   })
 
   it('is closed when the app quits', async () => {
@@ -439,24 +443,33 @@ describe('coach diagnostics', () => {
 
 
 describe('Live ownership and exactly-once tools', () => {
-  it('sends the selected reasoning and freezes it in the session snapshot', async () => {
-    updateProject(projectId, { backendReasoning: 'high' })
+  it('uses shared reasoning over legacy overrides and freezes it in the session snapshot', async () => {
+    updateProject(projectId, { backendReasoning: 'low' })
+    setDefaultCoachBackendReasoning('high')
     const result = await start()
     if (result.status !== 'ok') throw new Error('not started')
-    updateProject(projectId, { backendReasoning: 'low' })
+    setDefaultCoachBackendReasoning('low')
     await connectSession(result.sessionId, 'v=0 offer', 1)
     expect(JSON.parse(calls.at(-1)!.body).session.delegation.responses.reasoning).toEqual({ effort: 'high' })
     expect(selectSessionSummary(result.sessionId)?.metadata?.backendSettings?.reasoning).toBe('high')
   })
-  it('freezes the selected background model for connection and session titles', async () => {
-    updateProject(projectId, { backendModel: 'gpt-6-sol' })
+  it('uses shared models for existing coaches and freezes them for connection and session titles', async () => {
+    // A legacy model that is no longer supported must not block the shared default.
+    const { db } = await import('../src/main/db')
+    db().prepare('UPDATE projects SET model = ?, backend_model = ? WHERE id = ?').run('retired-voice-model', 'gpt-4o', projectId)
+    setDefaultCoachBackendModel('gpt-6-sol')
     const result = await start()
     if (result.status !== 'ok') throw new Error('not started')
+    expect(result.model).toBe('gpt-live-1')
     expect(result.backendModel).toBe('gpt-6-sol')
-    updateProject(projectId, { backendModel: 'gpt-6-luna' })
+    setDefaultCoachBackendModel('gpt-6-luna')
     await connectSession(result.sessionId, 'v=0 offer', 1)
     expect(JSON.parse(calls.at(-1)!.body).session.delegation.responses.model).toBe('gpt-6-sol')
     expect(selectSessionSummary(result.sessionId)?.metadata?.backendModel).toBe('gpt-6-sol')
+    expect(selectSessionSummary(result.sessionId)?.model).toBe('gpt-live-1')
+    endSession(result.sessionId, { status: 'ended', turns: [] })
+    const next = await start()
+    expect(next).toMatchObject({ status: 'ok', model: 'gpt-live-1', backendModel: 'gpt-6-luna' })
   })
   it('lists available background models separately from voice models, with an offline fallback', async () => {
     const { listCoachBackendModels } = await import('../src/main/openai')

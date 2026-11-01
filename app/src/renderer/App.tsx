@@ -1,3 +1,4 @@
+import { useCoachContextBridge, useCoachContextProvider } from './coach/context'
 import DocumentOverview from './routes/DocumentOverview'
 import DocumentServerCatalog from './routes/DocumentServerCatalog'
 import CatalogDocument from './routes/CatalogDocument'
@@ -18,9 +19,6 @@ import Publication from './routes/Publication'
 import Review from './routes/Review'
 import LessonView from './routes/Lesson'
 import Project from './routes/Project'
-import Coach from './routes/Coach'
-import CoachProject from './routes/CoachProject'
-import CoachTranscript from './routes/CoachTranscript'
 import Settings from './routes/Settings'
 import Logs from './routes/Logs'
 import Search from './components/Search'
@@ -53,7 +51,6 @@ export default function App(): JSX.Element {
   const [importSignal, setImportSignal] = useState(0)
   const [documentImportSignal, setDocumentImportSignal] = useState(0)
   const [documentFindSignal, setDocumentFindSignal] = useState(0)
-  const [coachNewSignal, setCoachNewSignal] = useState(0)
   const [searchCourse, setSearchCourse] = useState<CourseView | null>(null)
   // Shared across lessons; the mounted workspace also retains its chat draft.
   const [chatOpen, setChatOpen] = useState(false)
@@ -133,7 +130,6 @@ export default function App(): JSX.Element {
   }, [confirmLeave])
 
   const coursesNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'courses'), [navigate])
-  const coachNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'coach'), [navigate])
   const documentsNavigate = useCallback((next: Route, options?: { keepScroll?: boolean; skipGuard?: boolean }) => navigate(next, options, 'documents'), [navigate])
 
   useEffect(() => { const online=()=>{void window.opencourse.syncLearning().catch(()=>{})};window.addEventListener('online',online);return()=>window.removeEventListener('online',online) }, [])
@@ -149,7 +145,6 @@ export default function App(): JSX.Element {
   useEffect(() => window.opencourse.writing.onSource(ref => {
     if (ref.kind === 'course') navigate(ref.lessonId ? { name: 'lesson', courseId: ref.courseId, moduleId: ref.moduleId, lessonId: ref.lessonId } : { name: 'project', courseId: ref.courseId, moduleId: ref.moduleId })
     else if (ref.kind === 'document') navigate({ name: 'document', documentId: ref.documentId, sourcePage: ref.page, sourceRequest: crypto.randomUUID() })
-    else if (ref.kind === 'coach') navigate(ref.sessionId ? { name: 'coachSession', projectId: ref.projectId, sessionId: ref.sessionId } : { name: 'coachProject', projectId: ref.projectId, sourcePath: ref.path, sourceRequest: crypto.randomUUID() })
   }), [navigate])
 
   // Closing or reloading the window with unsaved edits: main asks natively
@@ -182,11 +177,9 @@ export default function App(): JSX.Element {
   useEffect(() => {
     return window.opencourse.onNavigate((action) => {
       void (async () => {
-      if (action === 'coach') { switchWorkspace('coach'); return }
       if (action === 'documents') { switchWorkspace('documents'); return }
       if (action === 'importDocument') { setRoute({ name: 'documents' }); setDocumentImportSignal(value => value + 1); return }
       if (action === 'library' && sectionOf(routeRef.current) === 'documents') { setRoute({ name: 'documents' }); return }
-      if (action === 'library' && sectionOf(routeRef.current) === 'coach') { switchWorkspace('courses'); return }
       if (action === 'saveCourse') {
         if (routeRef.current.name !== 'courseEditor') return
         // Course ▸ Save Course (⌘S) is only enabled while an editor is mounted.
@@ -209,7 +202,6 @@ export default function App(): JSX.Element {
       const target: Route | null =
         action === 'library' || action === 'import' ? { name: 'library' }
           : action === 'users' ? { name: 'users' }
-          : action === 'coachNew' ? { name: 'coach' }
           : action === 'settings' ? { name: 'settings', from: screenOf(routeRef.current) }
           : null
       if (!(await confirmLeave(target))) return
@@ -219,10 +211,6 @@ export default function App(): JSX.Element {
       } else if (action === 'users') {
         setSearchCourse(null)
         setRoute({ name: 'users' })
-      } else if (action === 'coachNew') {
-        setSearchCourse(null)
-        setRoute({ name: 'coach' })
-        setCoachNewSignal((n) => n + 1)
       } else if (action === 'courseNew') {
         const { document } = await window.opencourse.createCourse()
         setRoute({ name: 'courseEditor', courseId: document.courseId })
@@ -269,7 +257,6 @@ export default function App(): JSX.Element {
       setImportSignal(0)
       setDocumentImportSignal(0)
       setDocumentFindSignal(0)
-      setCoachNewSignal(0)
       setNavSignal(null)
       setNavigation(navigateWorkspace(initialNavigation(), user ? { name: 'library' } : { name: 'users' }))
     },
@@ -278,6 +265,8 @@ export default function App(): JSX.Element {
 
   const user = session?.user ?? null
   const userId = user?.id ?? null
+  useCoachContextBridge(userId)
+  useCoachContextProvider(request => request.tool === 'get_app_context' ? { kind: 'screen', visible: true, screen: route.name, ...('courseId' in route && !('serverId' in route) ? { source: { id: route.courseId, server_id: null, version: null } } : {}), ...('documentId' in route && !('serverId' in route) ? { source: { id: route.documentId, server_id: null, version: null } } : {}) } : null)
   useEffect(() => { if (session) window.opencourse.writing.mainReady() }, [session])
   // Per user: read again whenever the user changes, and nothing to read before one is picked.
   useEffect(() => {
@@ -293,7 +282,7 @@ export default function App(): JSX.Element {
     void window.opencourse.setReadingScale(scale).then(setReadingScale).catch(() => {})
   }, [])
   const renderScreen = (screen: Screen, active: boolean): JSX.Element => {
-    const screenNavigate = sectionOf(screen) === 'coach' ? coachNavigate : sectionOf(screen) === 'documents' ? documentsNavigate : coursesNavigate
+    const screenNavigate = sectionOf(screen) === 'documents' ? documentsNavigate : coursesNavigate
     switch (screen.name) {
       case 'users': return <Users session={session} onSessionChanged={onSessionChanged} />
       case 'library': return <Library user={user} navigate={screenNavigate} importSignal={importSignal} route={screen} />
@@ -315,9 +304,6 @@ export default function App(): JSX.Element {
         scrollRef={lessonScroll} readingScale={readingScale} setReadingScale={changeReadingScale} />
       case 'notebook': return <Notebook courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} chatOpen={chatOpen} setChatOpen={setChatOpen} textScale={readingScale ?? 1} registerNotebook={registerNotebook} />
       case 'project': return <Project courseId={screen.courseId} moduleId={screen.moduleId} user={user} navigate={screenNavigate} route={screen} active={active} navSignal={navSignal} />
-      case 'coach': return <Coach user={user} navigate={screenNavigate} newSignal={coachNewSignal} route={screen} />
-      case 'coachProject': return <CoachProject projectId={screen.projectId} user={user} navigate={screenNavigate} route={screen} />
-      case 'coachSession': return <CoachTranscript projectId={screen.projectId} sessionId={screen.sessionId} user={user} navigate={screenNavigate} route={screen} />
     }
   }
   const section = sectionOf(route)
@@ -325,7 +311,7 @@ export default function App(): JSX.Element {
 
   return <MarkdownProvider>
     <AppShell key={userId ?? 'picker'} user={user} route={route} navigate={navigate} switchWorkspace={switchWorkspace}>
-      {(['courses', 'documents', 'coach'] as const).map(workspace => {
+      {(['courses', 'documents'] as const).map(workspace => {
         const screen = navigation[workspace]
         const active = section === workspace && !overlay
         return screen && <ScreenHost key={workspace} active={active} className={`workspace-${workspace}${screen.name === 'project' ? ' project-screen' : ''}${screen.name === 'review' ? ' review-screen-host' : ''}`}>

@@ -13,7 +13,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
   const js = (window: BrowserWindow, code: string) => window.webContents.executeJavaScript(`(async()=>{${helpers}${code}})()`)
   let window: BrowserWindow | undefined, id = ''
   await run('launcher creates a notebook in a minimal separate window', async () => {
-    await js(main, `(await wait('.writing-launcher-toggle')).click(); (await wait('.writing-create')).click(); (await wait('.dialog input')).focus();`)
+    await js(main, `(await wait('.notebook-floating .writing-launcher-toggle')).click(); (await wait('.notebook-floating .writing-create')).click(); (await wait('.dialog input')).focus();`)
     await main.webContents.insertText('Smoke notebook')
     await js(main, `document.querySelector('.dialog').requestSubmit();`)
     for (let n = 0; n < 400; n++) {
@@ -78,7 +78,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
         `)
         writeFileSync(`/tmp/opencourse-writing-${name}.png`, (await notebookWindow.webContents.capturePage()).toPNG())
         await js(notebookWindow, `document.querySelector('.chat-chip').click(); await until(()=>document.querySelector('.lesson-chat-host').getBoundingClientRect().width < 2, 'Themed chat did not collapse');`)
-        await js(main, `(await wait('.writing-launcher-toggle')).click(); await pause(400); assert(getComputedStyle(document.querySelector('.writing-launcher')).backgroundColor === ${JSON.stringify(background)}, 'Launcher surface did not follow theme');`)
+        await js(main, `(await wait('.notebook-floating .writing-launcher-toggle')).click(); await pause(400); assert(getComputedStyle(document.querySelector('.writing-launcher')).backgroundColor === ${JSON.stringify(background)}, 'Launcher surface did not follow theme');`)
         writeFileSync(`/tmp/opencourse-writing-launcher-${name}.png`, (await main.webContents.capturePage()).toPNG())
         await js(main, `document.querySelector('.writing-launcher-close').click(); await pause(350);`)
       }

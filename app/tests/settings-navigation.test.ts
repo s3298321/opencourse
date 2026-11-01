@@ -12,7 +12,7 @@ const user = { id: 'user', name: 'Learner', color: '#abc', createdAt: '2026-10-1
 const about = { name: 'OpenCourse', description: 'Learn', version: '0.3.0', python: { version: '3.14.8', release: '20261003' }, electron: '44', chromium: '150', node: '22', platform: 'darwin', architecture: 'arm64', license: 'MIT', website: 'https://opencourse.dev', links: { website: 'https://opencourse.dev', legal: 'https://opencourse.dev/legal', catalog: 'https://catalog.opencourse.dev', download: 'https://opencourse.dev/download' } }
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  vi.stubGlobal('opencourse', { onAIChanged: () => () => {}, getAppInfo: vi.fn(async () => about) })
+  vi.stubGlobal('opencourse', { onAIChanged: () => () => {}, getAppInfo: vi.fn(async () => about), getFloatingCoachButton: vi.fn(async () => true), setFloatingCoachButton: vi.fn(async (on: boolean) => on), getFloatingNotebookButton: vi.fn(async () => true), setFloatingNotebookButton: vi.fn(async (on: boolean) => on) })
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
 afterEach(async () => { await act(async () => root.unmount()); document.body.replaceChildren(); vi.unstubAllGlobals() })
@@ -38,6 +38,20 @@ describe('categorized Settings', () => {
     expect(filter.value).toBe('paper')
     expect([...container.querySelectorAll<HTMLAnchorElement>('.settings-links a')].map(a => a.href)).toEqual(['https://opencourse.dev/legal', 'https://opencourse.dev/', 'https://catalog.opencourse.dev/'])
     expect(container.querySelector('[aria-current="page"]')?.textContent).toBe('Appearance')
+  })
+  it('keeps the floating notebooks button on until this user turns it off', async () => {
+    await render({ name: 'settings', from: { name: 'library' }, section: 'appearance' })
+    const box = () => container.querySelector<HTMLInputElement>('.settings-floating-notebooks')!
+    await act(async () => {})
+    expect(box().disabled).toBe(false)
+    expect(box().checked).toBe(true)
+    expect(box().labels?.[0]?.textContent).toContain('Show the floating notebooks button')
+    await act(async () => { box().click() })
+    expect(window.opencourse.setFloatingNotebookButton).toHaveBeenCalledWith(false)
+    expect(box().checked).toBe(false)
+    await act(async () => { box().click() })
+    expect(window.opencourse.setFloatingNotebookButton).toHaveBeenLastCalledWith(true)
+    expect(box().checked).toBe(true)
   })
   it('opens About directly and displays runtime metadata', async () => {
     await render({ name: 'settings', from: { name: 'library' }, section: 'about' })

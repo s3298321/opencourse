@@ -91,7 +91,7 @@ export async function documentsChecks(win: BrowserWindow): Promise<Result[]> {
       const markedPage=Number(find('#document-page').value);
       find('.document-reading-progress .action-button').click();await sleep(100);
       assert(find('[aria-label="Reading progress"]').value===markedPage,'Progress did not save');
-      document.querySelector('[data-section="coach"]').click();await sleep(100);
+      document.querySelector('[data-section="courses"]').click();await sleep(100);
       document.querySelector('[data-section="documents"]').click();await sleep(100);
       assert(find('.pdf-scroll')===reader,'Reader was remounted');
       assert(Math.abs(reader.scrollTop-old)<3,'Reading position lost');

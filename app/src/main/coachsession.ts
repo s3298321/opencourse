@@ -28,7 +28,7 @@ import { isLiveModelId } from '../core/coach/models'
 import type { CoachTranscriptFragment, CoachSessionMetadata, CoachEndOutcome } from '../core/types'
 import { log } from './log'
 import { holdCoachProject } from './coach-activity'
-import { getCoachAllowDelete } from './preferences'
+import { getCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, getDefaultCoachBackendReasoning } from './preferences'
 import { currentUserId, requireUser } from './users'
 import { runCoachTool, type CoachToolResult } from './coachtools'
 import type { CoachResponseDiagnostic } from '../core/types'
@@ -52,6 +52,7 @@ interface Live {
   owner: string
 }
 
+let startingSession = false
 const live = new Map<string, Live>()
 const owners = new Map<string, { owner: string; senderId: number }>()
 const watched = new WeakSet<WebContents>()
@@ -111,12 +112,21 @@ export function liveSessionCount(): number {
  * microphone before connectSession creates a remote, billable session.
  */
 export async function startSession(sender: WebContents, projectId: string): Promise<CoachStartResult> {
-  const project = requireProject(projectId)
+  // Resolve shared defaults at each start, including coaches with legacy overrides.
+  // The resulting config stays frozen for the lifetime of this session.
+  const project = {
+    ...requireProject(projectId),
+    model: getDefaultCoachModel(),
+    backendModel: getDefaultCoachBackendModel(),
+    backendReasoning: getDefaultCoachBackendReasoning()
+  }
 
   const key = readKey()
   if (!key) return { status: 'no-key' }
 
+  if (startingSession || live.size > 0) return { status: 'failed', message: 'End the current conversation before starting another coach.' }
   const releaseProject = holdCoachProject(projectId)
+  startingSession = true
   let kept = false
   const releaseMic = holdMic()
   try {
@@ -137,7 +147,7 @@ export async function startSession(sender: WebContents, projectId: string): Prom
     // The coach should start knowing what it already wrote down.
     if (currentUserId() !== owner) { releaseMic(); throw new Error('The user changed while connecting.') }
     const effectiveProject = { ...project, allowDelete: getCoachAllowDelete() }
-    if (!isLiveModelId(project.model)) throw new Error('Choose a supported GPT-Live model in this coach’s settings.')
+    if (!isLiveModelId(project.model)) throw new Error('Choose a supported GPT-Live model in Settings → Coach.')
     if (sender.isDestroyed?.()) throw new Error('The window closed while connecting.')
     const instructions = buildLiveInstructions(effectiveProject)
     const backendInstructions = buildBackendInstructions(effectiveProject, listFiles(projectId))
@@ -183,6 +193,7 @@ export async function startSession(sender: WebContents, projectId: string): Prom
       startedAt
     }
   } finally {
+    startingSession = false
     if (!kept) { releaseMic(); releaseProject() }
   }
 }

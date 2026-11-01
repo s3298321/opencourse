@@ -1,3 +1,4 @@
+import type { CoachContextRequest } from '../src/core/coach/context'
 import { act, createElement as h, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -6,10 +7,12 @@ import NotebookWindow from '../src/renderer/writing-notebooks/NotebookWindow'
 
 vi.mock('../src/renderer/markdown-context', () => ({ MarkdownProvider: ({ children }: { children: ReactNode }) => children }))
 vi.mock('../src/renderer/components/ChatPanel', () => ({ default: () => null }))
-vi.mock('../src/renderer/writing-notebooks/MarkdownEditor', () => ({ default: () => null }))
+vi.mock('../src/renderer/writing-notebooks/MarkdownEditor', () => ({ default: (props: { onChange: (text: string) => void }) => { changeBody = props.onChange; return null } }))
 vi.mock('../src/renderer/sidechat/useChat', () => ({ useConversationPanel: () => ({}) }))
 vi.mock('../src/renderer/sidechat/usePreviewAsk', () => ({ usePreviewAsk: () => ({ clearQuote, selection: null }), PreviewAskOffer: () => null }))
 const { clearQuote } = vi.hoisted(() => ({ clearQuote: () => {} }))
+let changeBody: (text: string) => void, contextRequest: (request: CoachContextRequest) => void
+const contextReply = vi.fn()
 let root: Root, container: HTMLDivElement, notebook: WritingNotebook
 let pages: Record<string, WritingNotebookPage>, flushRequest: (request: string) => void
 const rename = vi.fn(), flushed = vi.fn(), deletePage = vi.fn(), remove = vi.fn()
@@ -36,7 +39,7 @@ beforeEach(async () => {
     if (notebook.selectedPageId === pageId) notebook.selectedPageId = notebook.pages[0]!.id
     return structuredClone(notebook)
   })
-  Object.defineProperty(window, 'opencourse', { configurable: true, value: { writing: {
+  Object.defineProperty(window, 'opencourse', { configurable: true, value: { onCoachContextRequest: (handler: typeof contextRequest) => { contextRequest = handler; return () => {} }, replyCoachContext: contextReply, writing: {
     get: async () => structuredClone(notebook), page: async (_id: string, pageId: string) => structuredClone(pages[pageId]),
     update: async (_id: string, patch: Partial<WritingNotebook>) => { Object.assign(notebook, patch); return structuredClone(notebook) },
     renamePage: rename, deletePage, remove, chat: {}, ready: () => {}, flushed,
@@ -119,4 +122,21 @@ it('offers default layout settings beside Saved and saves changes to the noteboo
   await act(async () => options.click())
   await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent === 'Thin text')!.click() })
   expect(notebook.textLayout).toBe('thin')
+})
+
+it('lets the coach inspect and read unsaved open pages and follows page switches', async () => {
+  const request = (tool: CoachContextRequest['tool'], args = {}) => contextRequest({ requestId: 'context', userId: 'learner', tool, args })
+  await act(async () => changeBody('Unsaved notebook passage'))
+  request('get_app_context')
+  expect(contextReply.mock.lastCall?.[1]).toMatchObject({ entries: [{ kind: 'writing-notebook', notebookId: 'notebook', pageId: 'one', excerpt: 'Unsaved notebook passage', unsaved: true }] })
+  request('read_notebook_page', { notebook_id: 'notebook', page_id: 'one', offset: 8 })
+  expect(contextReply.mock.lastCall?.[1]).toMatchObject({ value: { text: 'notebook passage', unsaved: true, state: 'open editor' } })
+  expect(pages.one!.markdown).toBe('Body')
+  // Restore the original text so switching pages requires no save in this title fixture.
+  await act(async () => changeBody('Body'))
+  await act(async () => { (container.querySelectorAll('.writing-page-link')[1] as HTMLButtonElement).click() })
+  request('get_app_context')
+  expect(contextReply.mock.lastCall?.[1]).toMatchObject({ entries: [{ pageId: 'two', unsaved: false }] })
+  request('read_notebook_page', { notebook_id: 'notebook', page_id: 'one', offset: 0 })
+  expect(contextReply.mock.lastCall?.[1]).toEqual({})
 })

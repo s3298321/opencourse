@@ -677,3 +677,48 @@ describe('learning lifecycle boundaries', () => {
     expect((await call('GET', '/me/learning')).json().items[0].fields.readPage.value).toBe(1)
   })
 })
+
+
+describe('read-only coach content access', () => {
+  it('reads catalog courses without enrollment, excludes answers, and follows access changes', async () => {
+    const learner = await signUp(server), path = `/learn/course/${id}/1.0.0/read`
+    const outline = await call('POST', path, { name: 'list_course_sections', args: { cursor: 0 } }, learner.token)
+    expect(outline.statusCode, outline.body).toBe(200)
+    const section = outline.json().sections.find((s: { lessonId: string | null }) => s.lessonId)
+    expect(section).toBeTruthy()
+    const text = await call('POST', path, { name: 'read_course_section', args: { module_id: section.moduleId, lesson_id: section.lessonId, offset: 0 } }, learner.token)
+    expect(text.statusCode, text.body).toBe(200)
+    expect(text.body).not.toMatch(/SECRET-(EXPLANATION|SOLUTION|OUTPUT|ANSWER)/)
+    expect((await call('GET', '/me/learning', undefined, learner.token)).json().items).toEqual([])
+    expect((await call('POST', path, { name: 'list_course_sections', args: { cursor: -1 } }, learner.token)).statusCode).toBe(400)
+    expect((await call('POST', path, { name: 'read_document_pages', args: {} }, learner.token)).statusCode).toBe(400)
+    await call('DELETE', `/courses/${id}`)
+    expect((await call('POST', path, { name: 'list_course_sections', args: { cursor: 0 } }, learner.token)).statusCode).toBe(404)
+    // The owner can still inspect their own unlisted source.
+    expect((await call('POST', path, { name: 'list_course_sections', args: { cursor: 0 } })).statusCode).toBe(200)
+    server.ctx.db.prepare('UPDATE courses SET moderated_at=? WHERE id=?').run('now', id)
+    expect((await call('POST', path, { name: 'list_course_sections', args: { cursor: 0 } })).statusCode).toBe(404)
+  })
+  it('reads and searches remote PDF text with bounded continuation and no enrollment', async () => {
+    const doc = randomUUID()
+    expect((await publishPdf(doc)).statusCode).toBe(201)
+    const reader = await signUp(server), path = `/learn/document/${doc}/1.0.0/read`
+    await vi.waitFor(() => expect(server.ctx.db.prepare('SELECT status FROM document_versions WHERE document_id=? AND version=?').get(doc, '1.0.0')).toMatchObject({ status: 'ready' }), { timeout: 10000 })
+    // Replace the indexed fixture text to exercise a page larger than a tool response.
+    const text = 'needle ' + 'long passage '.repeat(1000)
+    server.ctx.db.prepare('UPDATE document_text SET text=? WHERE document_id=? AND version=? AND page=1').run(text, doc, '1.0.0')
+    const first = await call('POST', path, { name: 'read_document_pages', args: { start_page: 1, count: 1, offset: 0 } }, reader.token)
+    expect(first.statusCode, first.body).toBe(200)
+    expect(first.json().pages[0].text).toHaveLength(6500)
+    expect(first.json()).toMatchObject({ nextPage: 1, nextOffset: 6500 })
+    const next = await call('POST', path, { name: 'read_document_pages', args: { start_page: 1, count: 1, offset: 6500 } }, reader.token)
+    expect(next.json().pages[0].text).toBe(text.slice(6500, 13000))
+    const search = await call('POST', path, { name: 'search_document', args: { query: 'needle', cursor: 0 } }, reader.token)
+    expect(search.json()).toMatchObject({ hits: [{ page: 1, source: 'Test PDF · page 1' }], nextCursor: null })
+    expect((await call('POST', path, { name: 'search_document', args: { query: 'missing', cursor: 0 } }, reader.token)).json()).toMatchObject({ hits: [], nextCursor: null })
+    expect((await call('GET', '/me/learning', undefined, reader.token)).json().items).toEqual([])
+    expect((await call('POST', path, { name: 'read_document_pages', args: { start_page: 0, count: 1, offset: 0 } }, reader.token)).statusCode).toBe(400)
+    await call('DELETE', `/documents/${doc}`)
+    expect((await call('POST', path, { name: 'search_document', args: { query: 'needle', cursor: 0 } }, reader.token)).statusCode).toBe(404)
+  })
+})

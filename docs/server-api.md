@@ -233,6 +233,7 @@ No progress, credentials or local conversations belong in a publication.
 | `PUT /me/learning/:kind/:id { version? }` | Enroll, or explicitly accept the specified version |
 | `DELETE /me/learning/:kind/:id` | Synchronize unenrollment; retain progress/chats |
 | `GET /learn/:kind/:id/:version` | Learner-safe course or document metadata and learning state |
+| `POST /learn/:kind/:id/:version/read { name, args }` | Authenticated, bounded, read-only source retrieval for coaches; accessible catalog, owned, or enrolled content, with no enrollment or download mutation |
 | `GET /learn/:kind/:id/:version/cover` | The held version's cover image, sandboxed; 404 when it has none |
 | `GET /learn/:kind/:id/:version/download` | Version-specific authenticated package/PDF with hash headers; course ZIPs require desktop authentication |
 | `GET /learn/document/:id/:version/pdf` | Authenticated PDF, supports `Range: bytes=start-end` |
@@ -290,6 +291,17 @@ with journal/outbox recovery. Uploads debounce 2 seconds with a 10-second maximu
 active pull is every 30 seconds. Failures back off with jitter to 5 minutes;
 connectivity/resume/manual retry restart synchronization. One unavailable server
 does not block local learning or other servers.
+
+The `/learn/:kind/:id/:version/read` endpoint accepts the matching
+`list_course_sections`, `search_course`, `read_course_section`,
+`list_document_sections`, `search_document`, or `read_document_pages` tool.
+Arguments follow the shared reading-tool schemas. Results contain source labels,
+bounded passages, indexing status for documents, and `nextCursor` or
+`nextPage`/`nextOffset` continuations. PDF reads accept one to three physical
+pages and at most 6,500 text characters per response. Course retrieval excludes
+quiz keys, explanations, and exercise solutions. Catalog-readable content does
+not require enrollment; unlisted content requires ownership or an active
+enrollment, and moderated/deleted content remains unavailable.
 
 ## Reading AI
 

@@ -58,7 +58,6 @@ export function normalizePreferences(raw: unknown): Preferences {
       ? { defaultCoachModel: coachModel } : {}),
     ...(typeof values.defaultCoachBackendModel === 'string' && isBackendModelId(values.defaultCoachBackendModel)
       ? { defaultCoachBackendModel: values.defaultCoachBackendModel } : {}),
-    ...(Array.isArray(values.coachBackendModels) ? { coachBackendModels: [...new Set(values.coachBackendModels.filter((id): id is string => typeof id === 'string' && isBackendModelId(id)))].slice(0, MAX_CHAT_MODELS) } : {}),
     ...(values.defaultCoachBackendReasoning !== undefined ? { defaultCoachBackendReasoning: normalizeBackendReasoning(typeof values.defaultCoachBackendModel === 'string' ? values.defaultCoachBackendModel : BACKEND_MODEL, values.defaultCoachBackendReasoning) } : {}),
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
@@ -66,7 +65,9 @@ export function normalizePreferences(raw: unknown): Preferences {
     ...(values['coachAllowDelete'] === true ? { coachAllowDelete: true } : {}),
     ...(typeof theme === 'string' && (UUID.test(theme) || isBuiltinThemeId(theme)) ? { theme } : {}),
     ...(typeof values['activeServer'] === 'string' && UUID.test(values['activeServer']) ? { activeServer: values['activeServer'] } : {}),
-    ...(readingScale !== DEFAULT_READING_SCALE ? { readingScale } : {})
+    ...(readingScale !== DEFAULT_READING_SCALE ? { readingScale } : {}),
+    ...(typeof values.floatingCoachButton === 'boolean' ? { floatingCoachButton: values.floatingCoachButton } : {}),
+    ...(typeof values.floatingNotebookButton === 'boolean' ? { floatingNotebookButton: values.floatingNotebookButton } : {})
   }
   if (values['ai'] && typeof values['ai'] === 'object') kept.ai = aiSettings({ ...kept, ai: values['ai'] as Preferences['ai'] })
   const title = values['titleGeneration'] as Partial<NonNullable<Preferences['titleGeneration']>> | undefined

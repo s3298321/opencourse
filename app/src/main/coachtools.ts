@@ -13,6 +13,7 @@
  * recover from; one that rejects the IPC call just stops the conversation.
  */
 import { describeTree, MIRROR_FILE, TRASH_DIR } from '../core/coach/files'
+import { COACH_READING_NAMES } from '../core/coach/reading'
 import { parseToolCall, type ParsedToolCall } from '../core/coach/tools'
 import { assertSafeRelativePath } from '../core/scaffold'
 import { readKey } from './coachkey'
@@ -124,6 +125,11 @@ export async function runCoachTool(
   rawArgs: string,
   caps: { toolCalls: number; searches: number; maxToolCalls: number; maxSearches: number }
 ): Promise<CoachToolResult> {
+  if (COACH_READING_NAMES.includes(name)) {
+    if (caps.toolCalls >= caps.maxToolCalls) return refuse('Tool limit reached.', 'tool limit reached')
+    try { const { runCoachReadingTool } = await import('./coach-reading'); return { ok: true, output: await runCoachReadingTool(projectOf(sessionId), name, JSON.parse(rawArgs.trim() || '{}')), summary: name.replaceAll('_', ' ') } }
+    catch (error) { return refuse((error as Error).message, `could not run ${name}`) }
+  }
   const parsed = parseToolCall(name, rawArgs)
   if ('error' in parsed) return refuse(parsed.error, `could not run ${name}`)
 

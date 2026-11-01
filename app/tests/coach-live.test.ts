@@ -12,6 +12,7 @@ import { buildLiveInstructions, buildBackendInstructions } from '../src/core/coa
 import { filterLiveModels } from '../src/core/coach/models'
 
 const sent: any[] = []
+const meters: { level: number }[] = []
 let channel: any, audio: any, session: LiveSession, api: any, pc: any
 const track = { stop: vi.fn(), enabled: true }
 const config = { status: 'ok' as const, sessionId: 'session', model: 'gpt-live-1', voice: 'marin', instructions: 'Teach French', backendModel: 'gpt-6-luna', backendInstructions: 'Remember progress', tools: [], startedAt: '2026-10-16T10:00:00Z' }
@@ -32,12 +33,16 @@ async function connect(): Promise<void> {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  sent.length = 0; eventId = 0; track.enabled = true; track.stop.mockClear()
+  sent.length = 0; meters.length = 0; eventId = 0; track.enabled = true; track.stop.mockClear()
   vi.stubGlobal('navigator', {mediaDevices: {getUserMedia: vi.fn(async () => ({getTracks: () => [track], getAudioTracks: () => [track]}))}})
   vi.stubGlobal('Audio', class { muted = false; autoplay = false; srcObject = null; constructor() {audio = this} play = vi.fn(async () => {}) })
   vi.stubGlobal('AudioContext', class {
     resume = vi.fn(async () => {}); close = vi.fn(async () => {})
-    createAnalyser = () => ({fftSize: 512, getFloatTimeDomainData: (a: Float32Array) => a.fill(0)})
+    createAnalyser = () => {
+      const meter = { level: 0, fftSize: 512, getFloatTimeDomainData: (a: Float32Array) => a.fill(meter.level) }
+      meters.push(meter)
+      return meter
+    }
     createMediaStreamSource = () => ({connect: vi.fn()})
   })
   vi.stubGlobal('RTCPeerConnection', class {
@@ -72,6 +77,33 @@ beforeEach(() => {
 afterEach(async () => { const stopping = session.stop({skipWrapUp: true}); await tick(6000); await stopping; vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('Live connection and conversation parity', () => {
+  it('reports audible coach volume, excluding microphone input, silence, interruptions and stopping', async () => {
+    await connect()
+    pc.ontrack({ streams: [{}] })
+    meters[0].level = .2
+    await tick(60)
+    expect(session.view().inputLevel).toBeCloseTo(.2)
+    expect(session.view().outputLevel).toBe(0)
+    meters[1].level = .06
+    await tick(60)
+    expect(session.view().speaking).toBe(true)
+    expect(session.view().outputLevel).toBeCloseTo(.06)
+    meters[1].level = .12
+    await tick(60)
+    expect(session.view().outputLevel).toBeCloseTo(.12)
+    meters[1].level = 0
+    await tick(60)
+    expect(session.view().outputLevel).toBe(0)
+    meters[1].level = .1
+    await tick(60)
+    session.interrupt()
+    expect(session.view().outputLevel).toBe(0)
+    await tick(60)
+    expect(session.view().outputLevel).toBe(0)
+    const stopping = session.stop({ skipWrapUp: true })
+    expect(session.view().outputLevel).toBe(0)
+    await tick(); await stopping
+  })
   it('uses one connection and enables the microphone only after session.started', async () => {
     const starting = session.start(); await tick()
     expect(track.enabled).toBe(false)
@@ -114,6 +146,21 @@ describe('Live connection and conversation parity', () => {
     expect(api.runCoachTool).toHaveBeenCalledOnce()
     expect(audio.muted).toBe(true)
     expect(sent.some(e => ['response.cancel', 'output_audio_buffer.clear'].includes(e.type))).toBe(false)
+  })
+  it('describes running searches and clears their running state after completion or failure', async () => {
+    await connect()
+    let finish!: (value: unknown) => void, fail!: (reason: unknown) => void
+    api.runCoachTool.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+    response('tools')
+    backend({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'search', name: 'web_search', arguments: JSON.stringify({ query: 'Einstein 1905' }) } })
+    tool('read', 'read_file')
+    await tick()
+    expect(session.view().activity.filter(entry => entry.state === 'running').map(entry => entry.text)).toEqual(['Searching web “Einstein 1905”', 'Reading file'])
+    finish({ ok: true, output: '{}', summary: 'Found sources' }); await tick()
+    expect(session.view().activity.filter(entry => entry.state === 'running').map(entry => entry.text)).toEqual(['Reading file'])
+    fail(new Error('Unavailable')); await tick()
+    expect(session.view().activity.filter(entry => entry.state === 'running')).toEqual([])
   })
   it('collects overlapping and late captions without backend text or duplicate events', async () => {
     await connect()
@@ -213,6 +260,65 @@ describe('pure Live state', () => {
 
 
 describe('Live race and failure regressions', () => {
+  it('recovers from an uncorrelated backend error without waiting for learner speech', async () => {
+    await connect(); response('stalled')
+    expect(session.view().responding).toBe(true)
+    event({type: 'error', error: {code: 'invalid_request_error', type: 'invalid_request_error', message: 'PRIVATE'}})
+    expect(session.view().responding).toBe(false)
+    expect(session.view().warning).toContain('background work failed')
+    expect(track.enabled).toBe(true)
+    const feedback = sent.filter(e => e.type === 'session.commentary.append')
+    expect(feedback).toHaveLength(1)
+    expect(feedback[0]).toMatchObject({delegation_id: null, content: expect.stringContaining('background work failed')})
+    expect(sent.some(e => e.type === 'response.create')).toBe(false)
+    expect(JSON.stringify(session.view())).not.toContain('PRIVATE')
+    event({type: 'error', error: {code: 'invalid_request_error'}})
+    expect(sent.filter(e => e.type === 'session.commentary.append')).toHaveLength(1)
+    backend({type: 'response.failed', response: {id: 'stalled', status: 'failed', usage: {total_tokens: 7}}})
+    expect(sent.filter(e => e.type === 'session.commentary.append')).toHaveLength(1)
+    response('next'); done('next')
+    expect(session.view().warning).toBeUndefined()
+    expect(session.view().responding).toBe(false)
+    await tick(3100)
+    expect(api.saveCoachFragments.mock.calls.at(-1)[2].backendUsage.totalTokens).toBe(7)
+  })
+  it('handles nested backend errors and announces a new failure only after new work starts', async () => {
+    await connect(); response('first')
+    backend({type: 'error', code: 'invalid_request_error', message: 'PRIVATE'})
+    expect(session.view().responding).toBe(false)
+    expect(session.view().warning).toContain('background work failed')
+    response('second')
+    backend({type: 'response.failed', response: {id: 'second', status: 'failed'}})
+    expect(sent.filter(e => e.type === 'session.commentary.append')).toHaveLength(2)
+  })
+  it('does not abandon backend work for an unrelated correlated command error', async () => {
+    await connect(); response('healthy')
+    event({type: 'error', error: {code: 'invalid_request_error', client_event_id: 'unrelated'}})
+    expect(session.view().responding).toBe(true)
+    expect(session.view().warning).toBeUndefined()
+    expect(sent.filter(e => e.type === 'session.commentary.append')).toHaveLength(0)
+    done('healthy')
+    expect(session.view().responding).toBe(false)
+  })
+  it('settles a running tool after a backend failure without restarting the failed turn', async () => {
+    await connect()
+    let finish!: (value: unknown) => void
+    api.runCoachTool.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    response('failed-write'); tool('write'); await tick()
+    event({type: 'error', error: {code: 'invalid_request_error'}})
+    finish({ok: true, output: '{}', summary: 'Saved notes'}); await tick()
+    done('failed-write'); await tick()
+    expect(api.runCoachTool).toHaveBeenCalledOnce()
+    expect(session.view().responding).toBe(false)
+    expect(sent.filter(e => e.type === 'response.create')).toHaveLength(0)
+  })
+  it('does not announce backend errors during silent wrap-up', async () => {
+    await connect(); const stopping = session.stop(); await tick()
+    response('wrap-failure')
+    event({type: 'error', error: {code: 'invalid_request_error'}})
+    expect(sent.filter(e => e.type === 'session.commentary.append')).toHaveLength(0)
+    const now = session.stop({skipWrapUp: true}); await tick(); await now; await stopping
+  })
   it('waits for the complete ICE offer before spending a remote session', async () => {
     const start = session.start()
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
@@ -295,6 +401,22 @@ describe('Live race and failure regressions', () => {
     const d = new LiveDelegation({send: () => 'request1', tool: vi.fn(), note: vi.fn(), changed: vi.fn()})
     d.request(); expect(d.busy).toBe(true)
     d.reject('request1'); expect(d.busy).toBe(false)
+  })
+  it('does not release a delayed continuation after its request fails', async () => {
+    let allow!: (value: boolean) => void
+    const send = vi.fn(), d = new LiveDelegation({
+      send, tool: vi.fn(async () => ({ok: true, output: '{}', summary: 'Saved'})), note: vi.fn(), changed: vi.fn(),
+      beforeContinue: () => new Promise(resolve => { allow = resolve })
+    })
+    const emit = (event: any) => d.handle({delegation_id: 'd', event})
+    emit({type: 'response.created', response: {id: 'r'}})
+    emit({type: 'response.output_item.done', item: {type: 'function_call', call_id: 'c', name: 'write_file', arguments: '{}'}})
+    emit({type: 'response.completed', response: {id: 'r', status: 'completed'}})
+    await tick()
+    expect(d.reject()).toBe(true)
+    allow(true); await tick()
+    expect(send.mock.calls.map(c => c[0].type)).toEqual(['response.item.create'])
+    expect(d.busy).toBe(false)
   })
 })
 

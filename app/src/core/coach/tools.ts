@@ -7,6 +7,7 @@
  * and retry from, not an exception that ends the conversation.
  */
 import type { CoachProject } from '../types'
+import { coachReadingTools } from './reading'
 import { WRITABLE_EXTENSIONS } from './files'
 
 /** A custom function exposed to the Live Responses backend. */
@@ -103,7 +104,7 @@ const FILE_TOOLS: CoachFunctionTool[] = [
 const DELETE_TOOL: CoachFunctionTool = {
   type: 'function',
   name: 'delete_file',
-  description: 'Move a file in your workspace to the trash. The learner can still recover it.',
+  description: 'Move a file in your workspace to the trash. Files in the trash remain on disk.',
   parameters: { type: 'object', properties: { path: pathArg }, required: ['path'], additionalProperties: false }
 }
 
@@ -128,14 +129,14 @@ const WEB_SEARCH_TOOL: CoachFunctionTool = {
 }
 
 /**
- * What this project's coach can do. `delete_file` is absent unless the project
- * turns it on - the requirement is that the *user* can delete, not the model.
+ * File deletion is offered only when the effective session configuration
+ * permits it. Reading tools cover the learner’s app and library.
  */
 export function toolsFor(project: Pick<CoachProject, 'allowDelete'>): CoachFunctionTool[] {
-  return [...FILE_TOOLS, ...(project.allowDelete ? [DELETE_TOOL] : []), WEB_SEARCH_TOOL].map(tool => ({ ...tool, strict: false }))
+  return [...FILE_TOOLS, ...(project.allowDelete ? [DELETE_TOOL] : []), WEB_SEARCH_TOOL, ...coachReadingTools()].map(tool => ({ ...tool, strict: false }))
 }
 
-/** Every tool that exists, for tests and for the prompt's own description. */
+/** Base workspace and web tools; reading tools are added to every session. */
 export const COACH_TOOLS: readonly CoachFunctionTool[] = [...FILE_TOOLS, DELETE_TOOL, WEB_SEARCH_TOOL]
 
 export const TOOL_NAMES: readonly string[] = COACH_TOOLS.map((tool) => tool.name)

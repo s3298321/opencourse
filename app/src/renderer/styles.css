@@ -410,8 +410,6 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .section-switch button:hover { filter: none; }
 .section-switch button:not([aria-checked='true']):hover { color: var(--fg); }
 .section-switch button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
-.section-switch .coach-live-indicator { flex: none; width: 7px; height: 7px; }
-.titlebar[data-builtin-theme] .coach-live-indicator { background: #f59a3d; }
 @media (prefers-reduced-motion: reduce) {
   .section-switch-thumb, .section-switch button { transition: none; }
 }
@@ -484,6 +482,8 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .settings-section .meta { margin: 0.35rem 0; }
 .settings-section .actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
 .settings-section .import-note { margin-top: 0.9rem; }
+.coach-toggle { display: flex; align-items: center; gap: 0.5rem; }
+.coach-toggle input { margin: 0; flex: none; }
 .settings-section.settings-key-ready { border-color: var(--ok-border); }
 .settings-key-status {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
@@ -618,7 +618,7 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .settings-section.danger ul { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; }
 button.danger { background: var(--err); color: var(--err-fg); }
 button.secondary.danger { background: var(--chip-bg); color: var(--err); border-color: var(--err-border); }
-button.course-delete[data-builtin-theme], button.coach-delete[data-builtin-theme], button.dialog-confirm.danger[data-builtin-theme] { --danger-button-bg: #6b2430; background: var(--danger-button-bg); color: #fff0f1; border-color: #8c3341; }
+button.course-delete[data-builtin-theme], button.dialog-confirm.danger[data-builtin-theme] { --danger-button-bg: #6b2430; background: var(--danger-button-bg); color: #fff0f1; border-color: #8c3341; }
 
 /* ---------- logs ---------- */
 /* Wider than settings: a log is a table, and the message column is the one
@@ -1466,189 +1466,10 @@ figure figcaption { color: var(--muted); font-size: calc(0.86rem * var(--reading
 .term-host .xterm .xterm-scrollable-element > .scrollbar > .slider:hover,
 .term-host .xterm .xterm-scrollable-element > .scrollbar > .slider.active { border-width: 4px; }
 
-/* ---------- coach ---------- */
-.coach, .coach-project { max-width: 880px; margin: 0 auto; padding: 1.75rem 2rem 5rem; }
-.coach-card {
-  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-  padding: 1.1rem 1.3rem; margin-bottom: 1rem; display: flex; gap: 1.1rem; align-items: flex-start;
-  cursor: pointer; transition: border-color 0.15s, transform 0.1s;
-}
-.coach-card:hover { border-color: var(--accent); }
-.coach-card:active { transform: translateY(1px); }
-.coach-card > div:first-child { flex: 1; min-width: 0; }
-.coach-card h3 { margin: 0 0 0.3rem; font-size: 1.15rem; }
-.coach-card .meta { margin-bottom: 0.5rem; }
-/* The naming card is a form, not a link: it must not look clickable. */
-.coach-card.new { cursor: default; border-color: var(--accent); }
-.coach-card.new:hover { border-color: var(--accent); }
-.coach-card.new:active { transform: none; }
-.coach-card.new input[type=text] { width: 100%; margin: 0.5rem 0 0.4rem; }
-.coach-card.new .actions { flex: none; display: flex; flex-direction: column; gap: 0.4rem; }
-
-.coach-brief { margin-top: 1.5rem; }
-.coach-brief .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.65rem; }
-.coach-brief-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
-.coach-brief-head h2 { margin: 0; font-size: 1rem; }
-.coach-brief-text {
-  margin: 0.75rem 0 0; white-space: pre-wrap; word-break: break-word;
-  font-family: var(--font-mono); font-size: 0.84rem;
-  color: var(--muted); background: var(--code-bg); border-radius: 8px; padding: 0.9rem 1rem;
-}
-.coach-brief-text + .action-button { margin-top: 0.75rem; }
-.coach-brief textarea {
-  width: 100%; margin: 0.75rem 0 0.6rem; padding: 0.7rem 0.8rem; resize: vertical;
-  font-family: var(--font-mono); font-size: 0.84rem; line-height: 1.5;
-  color: var(--fg); background: var(--bg);
-  border: 1px solid var(--border); border-radius: 8px;
-}
-.coach-brief textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
-
-.coach-files { margin-top: 1.5rem; }
-.file-row {
-  display: flex; align-items: center; gap: 0.5rem;
-  padding-right: 0.4rem; border-radius: 6px; min-height: 30px;
-}
-.file-row:hover { background: var(--chip-bg); }
-/* Out-specifies button.ghost, which would otherwise paint every row accent. */
-.file-row .file-name {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem;
-  text-align: left; font-size: 0.9rem; padding: 0.2rem 0; color: var(--fg);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.file-row.text .file-name:hover { color: var(--accent); }
-.file-row.dir .file-name { font-weight: 600; }
-.file-row.dir .file-name:hover { color: var(--accent); }
-/* A file the app will not open must not look like a link that failed. */
-.file-row.binary .file-name, .file-row.trash .file-name { color: var(--muted); cursor: default; }
-.file-glyph { flex: none; width: 1em; color: var(--muted); font-size: 0.8rem; }
-.file-size { flex: none; font-variant-numeric: tabular-nums; }
-.file-act { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 28px; padding: 0.1rem 0.35rem; color: var(--muted); font-size: 0.95rem; }
-.file-act:hover { color: var(--accent); }
-.file-empty { margin: 0.75rem 0 0; }
-.file-foot { margin: 0.9rem 0 0; padding-top: 0.7rem; border-top: 1px solid var(--border); }
-
-/* The read-only viewer. Same overlay shape as the search panel. */
-.coach-overlay {
-  position: fixed; inset: 0; z-index: 10;
-  background: var(--overlay);
-  display: flex; align-items: flex-start; justify-content: center; padding: 6vh 1rem;
-}
-.coach-panel {
-  width: min(760px, 92vw); max-height: 84vh; display: flex; flex-direction: column;
-  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 0.28);
-}
-.coach-panel:focus { outline: none; }
-.coach-panel-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
-  padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--border);
-}
-.coach-panel-head h2 { margin: 0 0 0.15rem; font-size: 1rem; }
-.coach-panel-body { padding: 0.4rem 1.1rem 1.1rem; min-height: 0; }
-.coach-file-text {
-  white-space: pre-wrap; word-break: break-word;
-  font-family: var(--font-mono); font-size: 0.84rem;
-  color: var(--fg); background: var(--code-bg); border-radius: 8px; padding: 0.9rem 1rem;
-}
-
-/* The brief is settings, not the thing you came to look at. */
-.coach-brief summary {
-  display: flex; align-items: center; gap: 0.65rem;
-  cursor: pointer; list-style: none;
-  font-size: 1rem; font-weight: 600; color: var(--fg);
-}
-.coach-brief summary::-webkit-details-marker { display: none; }
-.brief-chevron {
-  width: 18px; height: 18px; flex: none; color: var(--muted);
-  fill: none; stroke: currentColor; stroke-width: 1.8;
-  stroke-linecap: round; stroke-linejoin: round;
-  transition: transform 160ms var(--ease);
-}
-.coach-brief[open] .brief-chevron { transform: rotate(90deg); }
-
-.key-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-  margin-bottom: 1rem; padding: 0.7rem 1rem;
-  font-size: 0.9rem; color: var(--fg);
-  background: var(--chip-bg); border: 1px solid var(--border); border-radius: 8px;
-}
-.coach-panel.narrow { width: min(520px, 92vw); }
-.coach-panel input[type=password] { width: 100%; margin: 0.9rem 0 0.2rem; font-family: var(--font-mono); }
-.coach-panel .actions { display: flex; gap: 0.5rem; margin: 0.9rem 0; }
-.coach-panel .import-note { margin: 0.7rem 0 0; }
-
-.coach-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.1rem; margin-top: 0.6rem; }
-.coach-models-status { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; }
-.coach-settings label { display: flex; align-items: center; gap: 0.4rem; }
-.coach-settings select {
-  font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
-  color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-}
-.coach-toggle { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
-
-/* The live panel. */
-.coach-live { margin-top: 1.25rem; }
-.live-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.live-head .actions { display: flex; align-items: center; gap: 0.5rem; }
-.live-status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; font-weight: 600; }
-.live-status.error { color: var(--err); }
-.live-status.live { color: var(--ok); }
-.live-clock { font-weight: 400; font-variant-numeric: tabular-nums; }
-.live-dot {
-  width: 9px; height: 9px; border-radius: 50%; background: var(--ok);
-  animation: live-pulse 1.6s ease-in-out infinite;
-}
-@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+/* Live conversation indicator, also visible when the launcher is collapsed. */
+.live-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--ok); animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
-
-.live-activity { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.8rem; }
-.tool-chip {
-  padding: 0.12rem 0.5rem; border-radius: 999px; font-size: 0.78rem;
-  color: var(--chip-fg); background: var(--chip-bg); border: 1px solid var(--border);
-}
-.tool-chip.failed { color: var(--err); background: var(--err-bg); border-color: var(--err-border); }
-.live-diagnostics { margin-top: 0.9rem; }
-.live-diagnostics summary { cursor: pointer; }
-
-/* Transcripts, live and recorded. */
-.transcript { display: flex; flex-direction: column; gap: 0.55rem; }
-/* The live transcript is a window onto the conversation, not a section of the
-   page: it stops growing and scrolls instead, so the cards below it stay put
-   and the newest line stays where you are already looking. A recorded
-   transcript (.transcript with no .live) is a document and reads full length. */
-.transcript-window { position: relative; margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--border); }
-.transcript.live { max-height: 360px; overflow-y: auto; padding-right: 0.3rem; }
-/* Floats over the transcript rather than beside it, so appearing and going
-   does not reflow what you are reading. */
-.transcript-latest {
-  position: absolute;
-  top: calc(0.9rem + 8px);
-  right: 8px;
-  z-index: 2;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.74rem;
-  border-radius: 999px;
-  box-shadow: 0 6px 18px rgb(var(--shadow-rgb) / 0.22);
-}
-.turn { margin: 0; font-size: 0.93rem; line-height: 1.55; }
-.turn.user { color: var(--muted); }
-.turn.user::before { content: 'You: '; font-weight: 600; font-size: 0.8rem; }
-.turn.assistant { color: var(--fg); }
-.turn.assistant::before { content: 'Coach: '; font-weight: 600; font-size: 0.8rem; }
-.turn.system { color: var(--muted); font-style: italic; }
-.turn.partial { opacity: 0.6; }
-
-/* Past sessions. */
-.coach-sessions { margin-top: 1.25rem; }
-.session-row { display: flex; align-items: center; gap: 0.5rem; padding-right: 0.6rem; border-radius: 6px; }
-.session-row:hover { background: var(--chip-bg); }
-.session-row .session-open {
-  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
-  padding: 0.45rem 0.6rem; text-align: left; color: var(--fg);
-}
-.session-title { font-size: 0.92rem; }
-.session-row.failed .session-title { color: var(--muted); }
-.tag.failed { color: var(--err); background: var(--err-bg); }
 
 /* ---------- side chat ---------- */
 .lesson-body { position: relative; }
@@ -2105,7 +1926,7 @@ button:not(.action-button):not(.ghost):not(.secondary):not(.user-pick):not(.user
 }
 .titlebar .user-chip:hover, .user-menu.shared-menu .menu-item { box-shadow: none; }
 .titlebar .user-chip:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
-.course-card, .user-card, .coach-card { transition: border-color 140ms ease, background-color 140ms ease, transform 140ms var(--ease); }
+.course-card, .user-card { transition: border-color 140ms ease, background-color 140ms ease, transform 140ms var(--ease); }
 /* Grain is a tiled background layer - fine frost without filtering text,
    intercepting input, or creating a containing block for fixed menus. No
    animated noise. Each region reads its own layers (see :root). */
@@ -2286,7 +2107,6 @@ select:not([multiple]):not([size]) {
 
 .author-mode button:hover { filter: none; }
 .author-mode button:not(.active):hover { color: var(--fg); }
-.coach-card .card-remove { opacity: 1; }
 .catalog-library-status { color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
 
 .course-reader-host { position: relative; }

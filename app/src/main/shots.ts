@@ -49,59 +49,23 @@ const NAV = `(async (target) => {
     if (result.status !== 'ok') throw new Error('import said ' + JSON.stringify(result))
     await waitFor('.course-card')
   } else if (target === 'coach-empty') {
-    click(find('.titlebar [data-section="coach"]'))
-    await waitFor('.coach .empty-library')
-    await sleep(250)
+    click(await waitFor('.coach-floating .writing-launcher-toggle'))
+    await waitFor('.coach-floating.expanded'); await sleep(400)
   } else if (target === 'coach-new') {
-    click([...all('.coach .actions button')].find((b) => /New coach/i.test(b.textContent)))
-    const input = await waitFor('.coach-card.new input')
+    click([...all('.coach-floating .writing-create')].find(b => b.textContent.trim() === '＋ New coach'))
+    const input = await waitFor('.writing-title-dialog input')
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-    setter.call(input, 'French vocabulary')
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await sleep(250)
-  } else if (target === 'coach-project') {
-    click([...all('.coach-card.new button')].find((b) => b.textContent.trim() === 'Create'))
-    const fold = await waitFor('.coach-brief')
-    fold.open = true
-    await waitFor('.coach-brief-text')
-    await sleep(300)
-  } else if (target === 'coach-files') {
-    await waitFor('.file-row')
-    await waitFor('.session-row')
-    find('.coach-brief').open = false
-    find('.content.scroll').scrollTop = 0
-    await sleep(300)
-  } else if (target === 'coach-brief-edit') {
-    click([...all('.coach-brief button')].find(b => b.textContent.trim() === 'Edit'))
-    await waitFor('.coach-brief textarea')
-    find('.coach-brief').scrollIntoView({ block: 'start' })
-    await sleep(250)
-  } else if (target === 'coach-brief-cancel') {
-    click([...all('.coach-brief button')].find(b => b.textContent.trim() === 'Cancel'))
-    await waitFor('.coach-brief-text')
-  } else if (target === 'coach-transcript') {
-    click(find('.session-row .session-open'))
-    await waitFor('.transcript .turn')
-    await sleep(300)
-  } else if (target === 'back-to-coach') {
-    click(find('.titlebar .crumbs a'))
-    await waitFor('.coach-live')
-    await sleep(200)
-  } else if (target === 'coach-file-open') {
-    const row = [...all('.file-row')]
-      .find((r) => r.querySelector('.file-name').textContent.includes('learned.md'))
-    click(row.querySelector('.file-name'))
-    await waitFor('.coach-panel .prose h1')
-    await sleep(300)
+    setter.call(input, 'French vocabulary'); input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(250)
+  } else if (target === 'coach-conversation') {
+    click([...all('.writing-title-dialog button')].find(b => b.textContent.trim() === 'Create'))
+    await waitFor('.coach-conversation'); await sleep(400)
   } else if (target === 'coach-list') {
-    const close = find('.coach-panel-head button')
-    if (close) { close.click(); await sleep(200) }
-    click(find('.titlebar .crumbs a'))
-    await waitFor('.coach-card')
-    await sleep(250)
+    click([...all('.coach-conversation button')].find(b => b.textContent.trim() === 'Back to coaches'))
+    await waitFor('.coach-floating .writing-launcher-row'); await sleep(400)
   } else if (target === 'documents-reader') {
     click(find('.titlebar [data-section="documents"]'))
     click(await waitFor('.document-card-open'))
+    click(await waitFor('.course-continue'))
     await waitFor('.pdf-page canvas[data-rendered="true"]')
     await waitFor('.document-reader .chat-turn.assistant')
     await document.fonts.ready
@@ -488,57 +452,6 @@ function buildArchives(): { zips: Record<string, string>; drop: () => void } {
   return { zips, drop: () => rmSync(dir, { recursive: true, force: true }) }
 }
 
-/** Stands in for a session's tool calls, which need a key and a conversation. */
-async function seedCoachWorkspace(win: BrowserWindow): Promise<void> {
-  const { listProjects } = await import('./coach')
-  const { writeWorkspaceFile } = await import('./coachfiles')
-  const project = listProjects()[0]
-  if (!project) throw new Error('no coach project to seed')
-  writeWorkspaceFile(
-    project.id,
-    'context.md',
-    '# French vocabulary\n\nSam wants conversational French for a trip in March.\nSessions are going well; verbs are the weak spot.\n'
-  )
-  writeWorkspaceFile(
-    project.id,
-    'learned.md',
-    '# Mots appris\n\n- le chien - dog\n- le chat - cat\n- la maison - house\n- le livre - book\n'
-  )
-  writeWorkspaceFile(project.id, 'review.md', '# A reviser\n\n- etre (irregular)\n- avoir (irregular)\n')
-  writeWorkspaceFile(project.id, 'weeks/week-01.md', '# Week 1\n\nGreetings and numbers.\n')
-  // A finished session, so the list and the transcript have something to show.
-  const { insertSession, finishSession, saveTurns } = await import('./coachdb')
-  const { newSessionId } = await import('../core/coach/ids')
-  const sessionId = newSessionId()
-  insertSession({
-    id: sessionId,
-    projectId: project.id,
-    startedAt: new Date(Date.now() - 14 * 60_000).toISOString(),
-    model: 'gpt-live-1',
-    instructions: 'You are a French vocabulary coach. Sam is preparing for a trip in March.'
-  })
-  saveTurns(
-    sessionId,
-    [
-      ['user', 'bonjour ! je veux apprendre des mots pour voyager'],
-      ['assistant', 'tres bien. commencons par les animaux - comment dit-on "dog" ?'],
-      ['user', 'euh... le chien ?'],
-      ['assistant', 'exactement, le chien. et "cat" ?'],
-      ['user', 'le chat'],
-      ['assistant', 'parfait. je les note tous les deux.']
-    ].map(([role, text], seq) => ({
-      seq,
-      role: role as 'user' | 'assistant',
-      text,
-      at: new Date(Date.now() - (14 - seq) * 60_000).toISOString()
-    }))
-  )
-  finishSession(sessionId, 'ended')
-
-  win.webContents.send('coach:filesChanged', project.id)
-  win.webContents.send('coach:changed')
-}
-
 /**
  * A side chat already under way, so its shot shows both voices and what tells
  * them apart - a run has no key, so nothing could ever be said in it otherwise.
@@ -689,13 +602,7 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     // Coach.
     { target: 'coach-empty', photo: true },
     { target: 'coach-new', photo: true },
-    { target: 'coach-project', photo: true },
-    { target: 'coach-brief-edit', photo: true },
-    { target: 'coach-brief-cancel', photo: false },
-    { target: 'coach-files', photo: true },
-    { target: 'coach-file-open', photo: true },
-    { target: 'coach-transcript', photo: true },
-    { target: 'back-to-coach', photo: false },
+    { target: 'coach-conversation', photo: true },
     { target: 'coach-list', photo: true },
     // Settings before the picker: once nobody is selected the titlebar renders
     // bare, and there is no chip left to open the menu from.
@@ -731,7 +638,9 @@ export async function runShots(win: BrowserWindow): Promise<void> {
   ]
   const neonSteps = whiteSteps.map(step => ({ ...step, target: step.target.replace(/^white-/, 'neon-') }))
   const coachSteps = steps.filter(step => ['users', 'create-user'].includes(step.target) || step.target.startsWith('coach-') || step.target === 'back-to-coach')
-  const selectedSteps = process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' ? whiteSteps
+  const marketingSteps = steps.filter(step => ['users', 'create-user', 'import-project-course', 'project', 'documents-reader', 'author-ai', 'author-back', 'coach-empty', 'coach-new', 'coach-conversation', 'coach-list'].includes(step.target))
+  const selectedSteps = process.env['OPENCOURSE_SHOTS_ONLY'] === 'marketing' ? marketingSteps
+    : process.env['OPENCOURSE_SHOTS_ONLY'] === 'white' ? whiteSteps
     : process.env['OPENCOURSE_SHOTS_ONLY'] === 'neon' ? neonSteps
     : process.env['OPENCOURSE_SHOTS_ONLY'] === 'coach' ? coachSteps : steps
 
@@ -753,7 +662,6 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     let n = 0
     for (const { target, photo } of selectedSteps) {
       // What a tool call will write once there is a live session to make one.
-      if (target === 'coach-files') await seedCoachWorkspace(win)
       if (target === 'sidechat') await seedSideChat()
       if (target === 'project') await seedProjectChat()
       if (target === 'documents-reader') { win.setSize(1440, 960); await seedDocumentChat() }
@@ -774,7 +682,7 @@ export async function runShots(win: BrowserWindow): Promise<void> {
       }
       if (!photo) continue
       n += 1
-      const published: Record<string, string> = { 'sidechat-ask-answer': '07-sidechat-ask-answer', viz: '11-viz', quiz: '12-quiz', 'workbench-pass': '17-workbench-pass', 'documents-reader': 'documents-reader', 'coach-files': 'coach-workspace', 'author-ai': 'course-editor-ai' }
+      const published: Record<string, string> = { 'sidechat-ask-answer': '07-sidechat-ask-answer', viz: '11-viz', quiz: '12-quiz', 'workbench-pass': '17-workbench-pass', 'documents-reader': 'documents-reader', 'coach-list': 'coach-launcher', 'author-ai': 'course-editor-ai' }
       await win.webContents.executeJavaScript('document.fonts.ready')
       win.webContents.invalidate()
       await new Promise(resolve => setTimeout(resolve, 150))

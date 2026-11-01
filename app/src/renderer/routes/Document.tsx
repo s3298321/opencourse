@@ -1,3 +1,4 @@
+import { useCoachContextProvider, selectedContent } from '../coach/context'
 import { useLearningPreference } from '../learning/useLearningPreference'
 import { RemoteReading } from '../learning/RemoteReading'
 import ActionButton from '../components/ActionButton'
@@ -54,6 +55,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
   const [findOpen, setFindOpen] = useState(false), [query, setQuery] = useState(''), [search, setSearch] = useState<DocumentSearch | null>(null)
   const [password, setPassword] = useState('')
   const reader = useRef<HTMLDivElement>(null), host = useRef<HTMLDivElement>(null), findField = useRef<HTMLInputElement>(null)
+  useCoachContextProvider(request => request.tool === 'get_app_context' && active ? { kind: 'document', visible: true, source: { id: documentId, server_id: null, version: null }, title: document?.title, page, ...selectedContent(reader.current) } : null)
   const lastNav = useRef(navSignal?.n ?? 0), lastFind = useRef(findSignal)
   const refresh = useCallback(() => {
     void window.opencourse.getDocument(documentId).then(setDocument).catch(error => setError(error.message))

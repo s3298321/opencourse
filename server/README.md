@@ -182,3 +182,12 @@ Automated AI tests inject a fake provider. A separate, opt-in real-provider
 smoke check is `npm run smoke:ai` with `OPENCOURSE_AI_SMOKE_KEY` in the
 environment. It creates a temporary account/course and makes a billable
 request; never use a production user database for this check.
+
+## Server 0.3.0
+
+The versioned learning API now offers authenticated, read-only course and PDF
+retrieval for desktop Coach. It supports bounded listing, search and page reads
+without enrolling the user or recording a download. Access follows publication,
+moderation and held-version rules; course quiz answers and exercise solutions
+are excluded. See the [reading endpoint](../docs/server-api.md) for tool names
+and continuation fields.

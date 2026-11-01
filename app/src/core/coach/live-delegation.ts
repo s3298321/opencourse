@@ -5,7 +5,9 @@ interface ResponseState {
   id: string
   delegationId: string
   ended: boolean
+  failed: boolean
   continued: boolean
+  continuing: boolean
   calls: Map<string, { name: string; args: string; settled: boolean }>
 }
 
@@ -28,9 +30,10 @@ export class LiveDelegation {
     changed: () => void
     beforeContinue?: () => Promise<boolean>
     diagnostic?: (id: string, status: string) => void
+    failed?: () => void
   }) {}
 
-  get busy(): boolean { return this.queued.length > 0 || this.pending.size > 0 || [...this.responses.values()].some(r => !r.ended) }
+  get busy(): boolean { return this.queued.length > 0 || this.pending.size > 0 || [...this.responses.values()].some(r => !r.ended && !r.failed) }
   get pendingTools(): number { return this.pending.size }
 
   handle(envelope: Event): void {
@@ -45,11 +48,21 @@ export class LiveDelegation {
       if (this.responses.has(id)) return
       this.queued.shift()
       this.current.set(delegationId, id)
-      this.responses.set(id, { id, delegationId, ended: false, continued: false, calls: new Map() })
+      this.responses.set(id, { id, delegationId, ended: false, failed: false, continued: false, continuing: false, calls: new Map() })
     }
     const state = typeof id === 'string' ? this.responses.get(id) : undefined
     if (!state) return
+    if (event.type === 'error') {
+      if (!state.ended && !state.failed) {
+        state.failed = true
+        state.continued = true
+        this.hooks.failed?.()
+        this.hooks.changed()
+      }
+      return
+    }
     if (event.type === 'response.output_item.done' && event.item?.type === 'function_call') {
+      if (state.failed) return
       const item = event.item
       if (typeof item.call_id !== 'string' || typeof item.name !== 'string' || typeof item.arguments !== 'string') {
         this.hooks.note('The coach returned an incomplete tool call.', false)
@@ -89,6 +102,8 @@ export class LiveDelegation {
       if (status !== 'completed') {
         state.continued = true
         this.hooks.note('The coach’s background work did not finish. Please try your request again.', false)
+        if (!state.failed && !this.disposed) this.hooks.failed?.()
+        state.failed = true
       }
       this.continue(state)
     }
@@ -98,9 +113,10 @@ export class LiveDelegation {
   private continue(state: ResponseState): void {
     if (this.disposed || !state.ended || state.continued || !state.calls.size || [...state.calls.values()].some(c => !c.settled)) return
     state.continued = true
+    state.continuing = true
     const continuing = Promise.resolve(this.hooks.beforeContinue?.() ?? true).then(allowed => {
-      if (allowed) this.request()
-    }).finally(() => { this.pending.delete(continuing); this.hooks.changed() })
+      if (allowed && !state.failed) this.request()
+    }).finally(() => { state.continuing = false; this.pending.delete(continuing); this.hooks.changed() })
     this.pending.add(continuing)
   }
 
@@ -110,9 +126,25 @@ export class LiveDelegation {
     this.queued.push(id ?? '')
   }
 
-  reject(clientEventId: string): void {
-    const index = this.queued.indexOf(clientEventId)
-    if (index >= 0) { this.queued.splice(index, 1); this.hooks.changed() }
+  reject(clientEventId?: string): boolean {
+    if (this.disposed) return false
+    if (clientEventId) {
+      const index = this.queued.indexOf(clientEventId)
+      // An unrelated command error must not cancel healthy backend work.
+      if (index < 0) return false
+      this.queued.splice(index, 1)
+    } else {
+      // Automatic delegations can fail with only a session error: no client ID
+      // and no terminal response event. Release their stale busy state without
+      // replaying tools. Keep the response for any late usage/completion event.
+      const active = [...this.responses.values()].filter(r => (!r.ended || r.continuing) && !r.failed)
+      if (!active.length && !this.queued.length) return false
+      this.queued = []
+      for (const state of active) { state.failed = true; state.continued = true }
+    }
+    this.hooks.failed?.()
+    this.hooks.changed()
+    return true
   }
 
   dispose(): void { this.disposed = true }

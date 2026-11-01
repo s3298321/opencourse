@@ -14,7 +14,7 @@ const HELPERS = `
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const roundTrip = async () => {
     const bar = document.querySelector('.titlebar'), thumb = bar.querySelector('.section-switch-thumb');
-    bar.querySelector('[data-section="coach"]').click(); await sleep(80);
+    bar.querySelector('[data-section="documents"]').click(); await sleep(80);
     assert(document.querySelector('.titlebar') === bar && document.querySelector('.section-switch-thumb') === thumb, 'Chrome was remounted');
     bar.querySelector('[data-section="courses"]').click(); await sleep(80);
   };
@@ -33,8 +33,9 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
     }
   }
   await ensureExampleCourse(win)
+  await win.webContents.executeJavaScript(`document.querySelector('[data-section="courses"]').click(); new Promise(resolve => setTimeout(resolve, 100))`)
   win.webContents.send('app:navigate', 'library')
-  await run('workspaces: library source, course screen and lesson position survive Coach', `
+  await run('workspaces: library source, course screen and lesson position survive Documents', `
     await wait('.library');
     const source = await wait('.course-source-tabs [aria-selected="true"]'); await roundTrip();
     assert(find('.course-source-tabs [aria-selected="true"]') === source, 'Library source was reset');
@@ -85,7 +86,7 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
     assert(brief.scrollTop === briefTop, 'Exercise brief position reset');
     content.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true })); await sleep(80);
     assert(!content.textContent.includes('# workspace edit'), 'Undo history was lost');
-    return 'Edited buffer, cursor, focus, undo history, brief and Ask draft retained after Coach';
+    return 'Edited buffer, cursor, focus, undo history, brief and Ask draft retained after Documents';
   `)
   if (process.env['OPENCOURSE_SMOKE_PYTHON']) {
     await run('workspaces: an interactive terminal keeps output and receives output while parked', `
@@ -101,48 +102,12 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
       assert(find('.workbench .pane:last-child .xterm') === terminal, 'Terminal was recreated');
       assert(terminal.textContent.includes('workspace-terminal-marker'), 'Terminal output was lost');
       assert(find('.workbench-tabs button.active').textContent === 'Terminal', 'Selected terminal tab was lost');
-      find('.titlebar [data-section="coach"]').click(); await sleep(80);
+      find('.titlebar [data-section="documents"]').click(); await sleep(80);
       await window.opencourse.writePty(exercise.id + '-shell', "echo output-while-parked\\r"); await sleep(200);
       find('.titlebar [data-section="courses"]').click(); await sleep(150);
       assert(find('.workbench .pane:last-child .xterm') === terminal, 'Parked terminal was recreated');
       assert(terminal.textContent.includes('output-while-parked'), 'Background terminal output was lost');
-      return 'Same live shell, terminal output and selected pane across Coach';
-    `)
-  }
-  await run('workspaces: Coach project instructions survive a trip to Courses', `
-    const project = await window.opencourse.createCoachProject({ name: 'Workspace retention coach' });
-    find('.titlebar [data-section="coach"]').click(); await wait('.coach'); await sleep(100);
-    const card = [...document.querySelectorAll('.coach-card')].find(c => c.textContent.includes(project.name)); assert(card, 'Coach card missing'); card.click();
-    const page = await wait('.coach-project'), brief = find('.coach-brief'); brief.open = true;
-    [...brief.querySelectorAll('button')].find(b => b.textContent.trim() === 'Edit').click();
-    const field = await wait('.coach-brief textarea'), setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-    setter.call(field, 'Unfinished Coach instructions'); field.dispatchEvent(new Event('input', { bubbles: true })); await sleep(50);
-    find('.titlebar [data-section="courses"]').click(); await wait('.cm-editor');
-    find('.titlebar [data-section="coach"]').click(); await sleep(80);
-    assert(find('.coach-project') === page && find('.coach-brief textarea') === field && field.value === 'Unfinished Coach instructions' && brief.open, 'Coach state was reset');
-    find('.titlebar [data-section="courses"]').click(); await wait('.cm-editor');
-    return 'Same Coach project, expanded brief and unsaved instructions';
-  `)
-  const { listProjects } = await import('./coach')
-  const project = listProjects().find(project => project.name === 'Workspace retention coach')
-  if (project) {
-    const { insertSession, saveTurns, finishSession } = await import('./coachdb')
-    const { newSessionId } = await import('../core/coach/ids')
-    const id = newSessionId(), at = new Date().toISOString()
-    insertSession({ id, projectId: project.id, startedAt: at, model: 'smoke-model', instructions: 'Transcript retention fixture.' })
-    saveTurns(id, Array.from({ length: 40 }, (_, seq) => ({ seq, role: seq % 2 ? 'assistant' as const : 'user' as const, text: `Retained transcript turn ${seq}.`, at })))
-    finishSession(id, 'ended')
-    win.webContents.send('coach:changed')
-    await run('workspaces: a Coach transcript keeps scroll and expanded instructions', `
-      find('.titlebar [data-section="coach"]').click(); (await wait('.session-open')).click();
-      const transcript = await wait('.transcript'), content = find('.content.scroll'), brief = find('.coach-brief');
-      brief.open = true; content.scrollTop = 200; await sleep(80); const top = content.scrollTop;
-      assert(top > 0, 'Transcript is not scrollable');
-      find('.titlebar [data-section="courses"]').click(); await wait('.cm-editor');
-      find('.titlebar [data-section="coach"]').click(); await sleep(80);
-      assert(find('.transcript') === transcript && content.scrollTop === top && brief.open, 'Transcript state reset');
-      find('.titlebar [data-section="courses"]').click(); await wait('.cm-editor');
-      return 'Same transcript, reading offset and expanded instructions';
+      return 'Same live shell, terminal output and selected pane across Documents';
     `)
   }
   const originalSize = win.getSize()

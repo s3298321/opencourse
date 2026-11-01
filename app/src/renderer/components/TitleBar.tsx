@@ -50,9 +50,8 @@ export default function TitleBar(props: TitleBarProps): JSX.Element | null {
   return shell ? null : <TitleBarChrome {...props} />
 }
 
-export function TitleBarChrome({ back, user, navigate, route, actions, switchWorkspace, coachLive = false }: TitleBarProps & {
+export function TitleBarChrome({ back, user, navigate, route, actions, switchWorkspace }: TitleBarProps & {
   switchWorkspace?: (section: Workspace) => void
-  coachLive?: boolean
 }): JSX.Element {
   const theme = useActiveTheme()
   const section = route ? sectionOf(route) : null
@@ -78,7 +77,7 @@ export function TitleBarChrome({ back, user, navigate, route, actions, switchWor
     observer.observe(workspaceSwitch)
     workspaceSwitch.querySelectorAll('button').forEach(button => observer.observe(button))
     return () => observer.disconnect()
-  }, [section, coachLive, navigate])
+  }, [section, navigate])
 
   useLayoutEffect(() => {
     const controls = controlsRef.current
@@ -113,11 +112,11 @@ export function TitleBarChrome({ back, user, navigate, route, actions, switchWor
             onKeyDown={event => {
               if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
               event.preventDefault()
-              const sections: Workspace[] = ['courses', 'documents', 'coach']
+              const sections: Workspace[] = ['courses', 'documents']
               const current = sections.indexOf(section)
-              const next = event.key === 'Home' ? sections[0]! : event.key === 'End' ? sections[2]! : sections[(current + (event.key === 'ArrowLeft' ? -1 : 1) + sections.length) % sections.length]!
+              const next = event.key === 'Home' ? sections[0]! : event.key === 'End' ? sections[sections.length - 1]! : sections[(current + (event.key === 'ArrowLeft' ? -1 : 1) + sections.length) % sections.length]!
               if (switchWorkspace) switchWorkspace(next)
-              else navigate({ name: next === 'courses' ? 'library' : next === 'documents' ? 'documents' : 'coach' })
+              else navigate({ name: next === 'courses' ? 'library' : 'documents' })
               const button = event.currentTarget.querySelector<HTMLButtonElement>(`[data-section="${next}"]`)
               requestAnimationFrame(() => button?.focus())
             }}
@@ -142,18 +141,6 @@ export function TitleBarChrome({ back, user, navigate, route, actions, switchWor
               onClick={() => switchWorkspace ? switchWorkspace('documents') : navigate({ name: 'documents' })}
             >
               Documents
-            </button>
-            <button
-              data-section="coach"
-              role="radio"
-              aria-checked={section === 'coach'}
-              aria-label={coachLive ? 'Coach (live)' : 'Coach'}
-              title={coachLive ? 'Coach is live' : undefined}
-              tabIndex={section === 'coach' ? 0 : -1}
-              onClick={() => switchWorkspace ? switchWorkspace('coach') : navigate({ name: 'coach' })}
-            >
-              Coach
-              {coachLive && <span className="live-dot coach-live-indicator" aria-hidden="true" />}
             </button>
           </div>
         )}

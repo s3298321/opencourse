@@ -106,8 +106,8 @@ export async function coursePackage(ctx: Ctx, record: ContentRecord): Promise<st
   extracting.set(root, work)
   return work
 }
-export async function readCourse(ctx: Ctx, accountId: string, ref: ContentRef): Promise<Course> {
-  const root = await coursePackage(ctx, contentRecord(ctx, accountId, ref))
+export async function readCourse(ctx: Ctx, accountId: string, ref: ContentRef, allowUnenrolled = false): Promise<Course> {
+  const root = await coursePackage(ctx, contentRecord(ctx, accountId, ref, allowUnenrolled))
   const manifest = JSON.parse(readFileSync(join(root, 'course.json'), 'utf8')) as CourseManifest
   const adopted = adoptPublishedManifest(manifest)
   if (!adopted.ok || adopted.courseId !== ref.id) throw notFound('Invalid published course.')

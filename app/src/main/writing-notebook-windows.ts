@@ -2,7 +2,6 @@ import { BrowserWindow, dialog, ipcMain, screen, type WebContents } from 'electr
 import { randomUUID } from 'node:crypto'
 import { getCourse } from './courses'
 import { getDocument } from './documents'
-import { getProject } from './coach'
 import { currentUserId, requireUser } from './users'
 import { getWritingNotebook, touchWritingNotebook, updateWritingNotebook, writingNotebookEvents } from './writing-notebooks'
 import type { ReadingSource } from '../core/documents/types'
@@ -109,9 +108,19 @@ export function registerWritingWindowIpc(): void {
     if (source.kind === 'writing-notebook') return openWritingNotebook(source.notebookId, source.pageId)
     if (source.kind === 'course' && !getCourse(source.courseId)) throw new Error('This course is no longer available locally.')
     if (source.kind === 'document') getDocument(source.documentId)
-    if (source.kind === 'coach' && !getProject(source.projectId)) throw new Error('This coach is no longer available.')
+    if (source.kind === 'coach') throw new Error('Coach files and previous transcripts are no longer available to browse.')
     sendToMainWindow('writing:source', source)
   })
   writingNotebookEvents.on('changed', id => { for (const entry of windows.values()) if (entry.notebookId === id && entry.owner === currentUserId() && !entry.window.isDestroyed()) { try { entry.window.setTitle(getWritingNotebook(id).title) } catch { /* Deleted. */ } } })
   writingNotebookEvents.on('removing', id => { for (const entry of windows.values()) if (entry.notebookId === id && entry.owner === currentUserId()) { entry.closing = true; entry.window.destroy() } })
+}
+
+/** Only app-owned windows for the current learner; never devtools or other users. */
+export function coachContextWindows(owner: string, target?: string): BrowserWindow[] {
+  const result: BrowserWindow[] = []
+  if ((!target || target === 'main') && mainWindow && !mainWindow.isDestroyed()) result.push(mainWindow)
+  if (target !== 'main') for (const entry of windows.values()) {
+    if (entry.owner === owner && !entry.closing && !entry.window.isDestroyed() && (!target || target === entry.notebookId)) result.push(entry.window)
+  }
+  return result
 }

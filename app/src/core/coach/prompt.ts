@@ -10,6 +10,7 @@
  * must produce the same prompt, or two sessions of the same project are not
  * comparable.
  */
+import { COACH_CONTEXT_INSTRUCTIONS } from './reading'
 import type { CoachFileNode, CoachProject } from '../types'
 import { WRITABLE_EXTENSIONS, describeTree } from './files'
 
@@ -39,14 +40,14 @@ function houseRules(allowDelete: boolean): string {
     '- Folders are made for you when you write into them.',
     '- Use create_folder for an empty folder and move_file to organize or rename files and folders. Never overwrite a destination or reorganize the trash or project.json.',
     allowDelete
-      ? '- delete_file moves a file to the trash; the learner can still get it back.'
+      ? '- delete_file moves a file to the trash; it remains on disk.'
       : '- You cannot delete files. If something is wrong, rewrite it or say so.',
     '- If a tool returns an error, read it and try again - it tells you what was wrong.',
     '',
     'Use web_search when you need a fact you are not certain of, or something recent. Keep talking while it',
     'runs; do not announce that you are searching.',
     '',
-    'Do not read your notes out loud or narrate writing them. The learner can see the files. Keep the',
+    'Do not read your notes out loud or narrate writing them. Your workspace is managed by you; there is no user-facing file browser. Keep the',
     'conversation about the thing you are teaching.'
   ].join('\n')
 }
@@ -80,7 +81,7 @@ export function buildInstructions(
     '',
     workspaceSection(workspace),
     '',
-    houseRules(project.allowDelete)
+    houseRules(project.allowDelete), COACH_CONTEXT_INSTRUCTIONS
   ].join('\n')
 
   if (prompt.length <= MAX_PROMPT_LENGTH) return prompt
@@ -95,7 +96,7 @@ export function buildInstructions(
     '',
     workspaceSection(workspace),
     '',
-    houseRules(project.allowDelete)
+    houseRules(project.allowDelete), COACH_CONTEXT_INSTRUCTIONS
   ].join('\n')
 }
 
@@ -124,13 +125,13 @@ export const WRAPUP_FORCED_TEXT = [
 /** Preserve the complete user brief in both models; only house rules are split. */
 export function buildLiveInstructions(project: Pick<CoachProject, 'name' | 'instructions'>): string {
   return [
-    `This coaching project is called "${project.name}".`, project.instructions.trim(),
+    `This coaching project is called "${project.name}".`, project.instructions.trim(), COACH_CONTEXT_INSTRUCTIONS,
     'You handle the spoken coaching conversation. Your backend handles files, research, and careful reasoning.',
     'Backchannel policy: Acknowledge naturally without competing with the learner.',
     'Interruption policy: Stop your answer when the learner interrupts. Listen and follow their latest request. Do not resume an obsolete answer when a delayed backend result arrives.',
     'Delegation policy:',
-    'Backend tools: Read, list, write, append and move project files, create folders, and (when permitted) trash files; search the web.',
-    'Delegate to the backend when: starting a session to read existing notes; learning something worth remembering; researching uncertain or current facts; evaluating an answer requiring careful reasoning; or receiving a correction to earlier work.',
+    'Backend tools: Read, list, write, append and move project files, create folders, and (when permitted) trash files; search the web; inspect the current app context and selection; list, search and read available courses, documents, and notebooks.',
+    'Delegate to the backend when: starting a session to read existing notes; learning something worth remembering; researching uncertain or current facts; evaluating an answer requiring careful reasoning; receiving a correction to earlier work; or answering about what the learner is viewing or has selected.',
     'Do not delegate to the backend when: greeting, clarifying, repeating a current result, or conducting ordinary spoken practice.',
     'Before substantive coaching, ask the backend to read relevant notes so you can pick up where the learner left off. For a new workspace ask about their goals and have the backend create context.md.',
     'Delegate before claiming a result that depends on tools. Never claim notes were saved until the backend confirms a successful write.',
@@ -140,7 +141,7 @@ export function buildLiveInstructions(project: Pick<CoachProject, 'name' | 'inst
 
 export function buildBackendInstructions(project: Pick<CoachProject, 'name' | 'instructions' | 'allowDelete'>, workspace: readonly CoachFileNode[]): string {
   return [
-    `This coaching project is called "${project.name}".`, project.instructions.trim(),
+    `This coaching project is called "${project.name}".`, project.instructions.trim(), COACH_CONTEXT_INSTRUCTIONS,
     'You are the reasoning and tool backend for a spoken coach. Return concise, grounded findings for the voice model. Do not generate a second spoken conversation.',
     workspaceSection(workspace), houseRules(project.allowDelete),
     'Read relevant notes at the start. Maintain context.md, learned.md and review.md as useful, concise learning records. Use the latest learner corrections. Report tool failures honestly; never claim a save without a successful write_file or append_file result.'

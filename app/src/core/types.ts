@@ -504,11 +504,11 @@ export interface CoachProject {
   /** Absent/null preserves the background model's own reasoning default. */
   backendReasoning?: ReasoningEffort | null
   voice: string
-  /** The project's own system prompt: what the coach is for. User-editable. */
+  /** The coach's persisted brief, including briefs saved before the floating interface. */
   instructions: string
   /**
-   * Whether the coach may delete files. Off by default: the requirements say
-   * the *user* can delete, not that the model must be able to.
+   * Legacy saved deletion flag. Live sessions apply the current user-wide
+   * coachAllowDelete preference instead.
    */
   allowDelete: boolean
   createdAt: string
@@ -887,8 +887,6 @@ export interface Preferences {
   defaultCoachModel?: string
   defaultCoachBackendModel?: string
   defaultCoachBackendReasoning?: ReasoningEffort | null
-  /** Background models shown in Coach pickers. Absent: all; empty: none. */
-  coachBackendModels?: string[]
   /** All coaches may trash files only while this user opts in. */
   coachAllowDelete?: boolean
   projectEditor?: string
@@ -914,6 +912,12 @@ export interface Preferences {
    * (core/reading-scale.ts). Absent means 1 - the app's own size.
    */
   readingScale?: number
+  /**
+   * The floating notebooks button in the lower-left corner. Absent means shown;
+   * only a literal false hides it.
+   */
+  floatingNotebookButton?: boolean
+  floatingCoachButton?: boolean
 }
 
 /**
@@ -941,10 +945,8 @@ export type NavAction =
   | 'users'
   | 'courseNew'
   | 'import'
-  | 'coach'
   | 'documents'
   | 'importDocument'
-  | 'coachNew'
   | 'settings'
   | 'saveCourse'
 

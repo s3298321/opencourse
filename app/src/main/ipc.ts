@@ -1,3 +1,4 @@
+import { registerCoachContextIpc } from './coach-context'
 import { registerWritingNotebookIpc } from './writing-notebook-ipc'
 import { closeWritingWindows } from './writing-notebook-windows'
 import { cancelAllWritingNotebookChats } from './writing-notebook-chat'
@@ -9,7 +10,6 @@ import { watchNotebook, ensureNotebook, getNotebook, saveNotebook, clearNotebook
 import type { CellTarget, CellRunRequest } from '../core/notebook/types'
 import { authoringEvents, authoringRunState, cancelCourseAuthoring } from './authoring-state'
 import { appInfo, appLinks } from './app-info'
-import { nameCoachSession } from './coachtitles'
 import { readPdfResource } from './pdf-resources'
 import { documentEvents, getDocument, importDocument, listDocuments, readDocumentRange, removeDocument, renameDocument, retryDocumentIndex, searchDocument, setDocumentPage, setDocumentProgress, stopDocumentWorkers } from './documents'
 import { cancelAllDocumentChats, cancelDocumentChat, createDocumentChat, deleteDocumentChat, documentSourceIcons, getDocumentChat, listDocumentChats, sendDocumentMessage, setDocumentChatModel, setDocumentChatProvider, setDocumentChatReasoning } from './document-chat'
@@ -44,14 +44,10 @@ import type {
   Block,
   ChatContextRef,
   ChatQuote,
-  CoachFileNode,
   CoachKeyResult,
-  CoachSessionSummary,
   CoachStartResult,
   CoachToolOutcome,
-  CoachTranscript,
   TranscriptTurn,
-  CoachMoveResult,
   CoachProject,
   CoachProjectSummary,
   Course,
@@ -74,7 +70,6 @@ import {
   getProject,
   listProjects,
   updateProject,
-  workspaceDir,
   type CoachProjectDraft
 } from './coach'
 import {
@@ -96,22 +91,13 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getCoachBackendModels, setCoachBackendModels, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
-import { getPomodoroSettings, setPomodoroSettings } from './preferences'
+import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { getFloatingCoachButton, setFloatingCoachButton, getFloatingNotebookButton, getPomodoroSettings, setFloatingNotebookButton, setPomodoroSettings } from './preferences'
 import type { PomodoroSettings } from '../core/pomodoro'
 import { coachActivity, isCoachProjectBusy } from './coach-activity'
 import { appUpdateInfo, checkForAppUpdate, installAppUpdate, setAppUpdateAutomatic, updateEvents } from './updates'
 import type { ChatDefaults, ThemeImportResult } from '../core/types'
 import { closeDb } from './db'
-import {
-  deleteSessionRow,
-  selectSessionRow,
-  selectSessionSummary,
-  selectSessions,
-  selectToolCalls,
-  selectTurns
-} from './coachdb'
-import { listFiles, purgeFile, readTextFile, trashFile } from './coachfiles'
 import { clearKey, forgetVolatileKeys, hasKey, readKey, setKey, storedKeyHint } from './coachkey'
 import {
   executeCoachTool,
@@ -144,16 +130,9 @@ import { normalizeLogQuery, type LogPage } from '../core/logging/query'
 import {
   openExercise,
   readExerciseFile,
-  revealInFinder,
   runContextFor,
   writeExerciseFile
 } from './workspace'
-
-function requireSessionProject(sessionId: string): string {
-  const row = selectSessionRow(sessionId)
-  if (!row) throw new Error('that session does not exist')
-  return row.project_id
-}
 
 /** A renderer that navigated or reloaded must not be written to. */
 function send(sender: WebContents, channel: string, ...args: unknown[]): void {
@@ -279,6 +258,7 @@ function holdEditor(sender: WebContents): number {
 }
 
 export function registerIpc(): void {
+  registerCoachContextIpc()
   registerWritingNotebookIpc()
   startLearningSync()
   registerLearningLifecycle()
@@ -626,6 +606,10 @@ export function registerIpc(): void {
   ipcMain.handle('reading:scale', () => getReadingScale())
   ipcMain.handle('pomodoro:settings', () => getPomodoroSettings())
   ipcMain.handle('pomodoro:setSettings', (_e, settings: PomodoroSettings) => setPomodoroSettings(settings))
+  ipcMain.handle('coach:floatingButton', () => getFloatingCoachButton())
+  ipcMain.handle('coach:setFloatingButton', (_e, on: boolean) => setFloatingCoachButton(on))
+  ipcMain.handle('notebooks:floatingButton', () => getFloatingNotebookButton())
+  ipcMain.handle('notebooks:setFloatingButton', (_e, on: boolean) => setFloatingNotebookButton(on))
   ipcMain.handle('reading:setScale', (_e, scale: number) => setReadingScale(scale))
 
   /* --- themes --------------------------------------------------------------
@@ -888,18 +872,11 @@ export function registerIpc(): void {
 
   /** One round trip: the call that fills this list is the call that checks the key. */
   ipcMain.handle('coach:listModels', (): Promise<ModelList> => listLiveModels(readKey()))
-  ipcMain.handle('coach:listBackendModels', async (_e, all = false): Promise<ModelList> => {
+  ipcMain.handle('coach:listBackendModels', async (): Promise<ModelList> => {
     const owner = requireUser()
     const list = await listCoachBackendModels(readKey())
     if (requireUser() !== owner) throw new Error('The active user changed.')
-    const enabled = getCoachBackendModels()
-    return { ...list, models: all === true || enabled === null ? list.models : list.models.filter(model => enabled.includes(model.id)) }
-  })
-  ipcMain.handle('coach:backendModels', () => getCoachBackendModels())
-  ipcMain.handle('coach:setBackendModels', (_e, models: string[] | null) => {
-    const result = setCoachBackendModels(models)
-    notifyAIChanged()
-    return result
+    return list
   })
   ipcMain.handle('coach:allowDelete', () => getCoachAllowDelete())
   ipcMain.handle('coach:setAllowDelete', (_e, value: boolean) => { const result = setCoachAllowDelete(value); broadcast('coach:changed'); return result })
@@ -935,31 +912,6 @@ export function registerIpc(): void {
     broadcast('coach:changed')
   })
 
-  /** The workspace is the user's: they should be able to get at it outside the app. */
-  ipcMain.handle('coach:revealProject', (_e, projectId: string): void => revealInFinder(workspaceDir(projectId)))
-
-  /*
-   * The workspace. Note what is not here: no channel writes a file. The user
-   * reads and deletes; only a live session's tool call can create, move or
-   * change files. Read-only in the app is a missing handler, not a disabled
-   * button, and it should stay that way.
-   */
-  ipcMain.handle('coach:listFiles', (_e, projectId: string): CoachFileNode[] => listFiles(projectId))
-
-  ipcMain.handle('coach:readFile', (_e, projectId: string, relPath: string) => readTextFile(projectId, relPath))
-
-  ipcMain.handle('coach:trashFile', (_e, projectId: string, relPath: string): CoachMoveResult => {
-    const result = trashFile(projectId, relPath)
-    if (result.status === 'ok') broadcast('coach:filesChanged', projectId)
-    return result
-  })
-
-  ipcMain.handle('coach:purgeFile', (_e, projectId: string, relPath: string): CoachMoveResult => {
-    const result = purgeFile(projectId, relPath)
-    if (result.status === 'ok') broadcast('coach:filesChanged', projectId)
-    return result
-  })
-
   /*
    * A live session. The renderer drives the peer connection and the microphone;
    * main keeps the key, the configuration and the record of what is running.
@@ -976,9 +928,6 @@ export function registerIpc(): void {
     async (e, sessionId: string, name: string, args: string, callId: string): Promise<CoachToolOutcome> => {
       if (typeof callId !== 'string' || !callId) throw new Error('Missing tool call identity.')
       const result = await executeCoachTool(sessionId, e.sender.id, name, args, callId)
-      if (result.ok && name !== 'web_search' && name !== 'read_file' && name !== 'list_files') {
-        broadcast('coach:filesChanged', requireSessionProject(sessionId))
-      }
       return result
     }
   )
@@ -995,37 +944,10 @@ export function registerIpc(): void {
     (e, sessionId: string, outcome: import('../core/types').CoachEndOutcome) => {
       assertCoachOwner(sessionId, e.sender.id)
       const summary = endSession(sessionId, outcome)
-      void nameCoachSession(sessionId, () => broadcast('coach:changed'))
       broadcast('coach:changed')
       return summary
     }
   )
-
-  ipcMain.handle('coach:listSessions', (_e, projectId: string): CoachSessionSummary[] => {
-    const sessions = selectSessions(projectId)
-    for (const session of sessions) {
-      if (session.status !== 'live' && session.turns && !session.metadata?.generatedTitle) {
-        void nameCoachSession(session.id, () => broadcast('coach:changed'))
-      }
-    }
-    return sessions
-  })
-
-  ipcMain.handle('coach:getTranscript', (_e, sessionId: string): CoachTranscript | null => {
-    const session = selectSessionSummary(sessionId)
-    if (!session) return null
-    return {
-      session,
-      instructions: selectSessionRow(sessionId)?.instructions ?? '',
-      turns: selectTurns(sessionId),
-      toolCalls: selectToolCalls(sessionId)
-    }
-  })
-
-  ipcMain.handle('coach:deleteSession', (_e, sessionId: string): void => {
-    deleteSessionRow(sessionId)
-    broadcast('coach:changed')
-  })
 
   /* --- the side chat ------------------------------------------------------ */
 

@@ -14,6 +14,8 @@ import ServerSettings from '../components/ServerSettings'
 import ConnectionIcon from '../components/ConnectionIcon'
 import { formatDownloadSize, useAppUpdate } from '../components/useAppUpdate'
 import type { Route, Screen, SettingsSection } from '../routes'
+import { FLOATING_COACH_BUTTON_CHANGED } from '../coach/CoachLauncher'
+import { FLOATING_NOTEBOOK_BUTTON_CHANGED } from '../writing-notebooks/NotebookLauncher'
 
 interface Props {
   user: UserProfile | null
@@ -55,7 +57,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
   const content = (category: SettingsSection): JSX.Element => {
     switch (category) {
       case 'profile': return user ? <><NameSection user={user} onSession={onSession} /><DangerSection user={user} onSessionChanged={onSessionChanged} /></> : <p className="meta">Choose a user to edit their profile.</p>
-      case 'appearance': return <ThemeSection />
+      case 'appearance': return <><ThemeSection />{user ? <><NotebookButtonSection /><CoachButtonSection /></> : <p className="meta">Choose a user to configure the notebooks button.</p>}</>
       case 'pomodoro': return user ? <PomodoroSettings /> : <p className="meta">Choose a user to configure Pomodoro.</p>
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
       case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
@@ -376,6 +378,52 @@ function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
   )
 }
 
+function CoachButtonSection(): JSX.Element {
+  const [on, setOn] = useState<boolean | null>(null), [error, setError] = useState('')
+  useEffect(() => { void window.opencourse.getFloatingCoachButton().then(setOn).catch(cause => setError(cause.message)) }, [])
+  const toggle = async (next: boolean) => {
+    try { setOn(await window.opencourse.setFloatingCoachButton(next)); window.dispatchEvent(new Event(FLOATING_COACH_BUTTON_CHANGED)); setError('') }
+    catch (cause) { setError((cause as Error).message) }
+  }
+  return <section className="settings-section"><h2>Coaches</h2><label className="settings-check"><input type="checkbox" className="settings-floating-coaches" checked={on === true} disabled={on === null} onChange={event => void toggle(event.target.checked)} /><span>Show the floating coaches button</span></label><p className="meta">Open your coaches above the notebooks button. Turning this off finishes an active conversation before hiding the button.</p>{error && <p className="error" role="alert">{error}</p>}</section>
+}
+
+function NotebookButtonSection(): JSX.Element {
+  const [on, setOn] = useState<boolean | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    void window.opencourse.getFloatingNotebookButton().then(setOn).catch(err => setError((err as Error).message))
+  }, [])
+  const toggle = async (next: boolean): Promise<void> => {
+    setError(null)
+    setOn(next)
+    try {
+      setOn(await window.opencourse.setFloatingNotebookButton(next))
+      window.dispatchEvent(new Event(FLOATING_NOTEBOOK_BUTTON_CHANGED))
+    } catch (err) {
+      setOn(!next)
+      setError((err as Error).message)
+    }
+  }
+  return (
+    <section className="settings-section">
+      <h2>Notebooks</h2>
+      <label className="settings-check">
+        <input
+          type="checkbox"
+          className="settings-floating-notebooks"
+          checked={on === true}
+          disabled={on === null}
+          onChange={e => void toggle(e.target.checked)}
+        />
+        <span>Show the floating notebooks button</span>
+      </label>
+      <p className="meta">The button in the lower-left corner opens your notebooks from any screen. It is on by default.</p>
+      {error && <p className="import-note error">{error}</p>}
+    </section>
+  )
+}
+
 export function WebSearchSection({ authoring = false }: { authoring?: boolean }): JSX.Element {
   const [on, setOn] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -430,8 +478,6 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
   const [backendModels, setBackendModels] = useState<CoachModel[]>([])
   const [backendModel, setBackendModel] = useState<string | null>(null)
   const [backendReasoning, setBackendReasoning] = useState<ReasoningEffort | null>(null)
-  const [enabledBackendModels, setEnabledBackendModels] = useState<string[] | null>(null)
-  const [modelFilter, setModelFilter] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -443,15 +489,14 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
     setError(null)
     void Promise.all([
       window.opencourse.listCoachModels(), window.opencourse.getDefaultCoachModel(),
-      window.opencourse.listCoachBackendModels(true), window.opencourse.getDefaultCoachBackendModel(), window.opencourse.getCoachBackendModels(), window.opencourse.getDefaultCoachBackendReasoning()
+      window.opencourse.listCoachBackendModels(), window.opencourse.getDefaultCoachBackendModel(), window.opencourse.getDefaultCoachBackendReasoning()
     ])
-      .then(([list, selected, backendList, selectedBackend, enabled, reasoning]) => {
+      .then(([list, selected, backendList, selectedBackend, reasoning]) => {
         if (cancelled) return
         setModels(list.models)
         setModel(selected)
         setBackendModels(backendList.models)
         setBackendModel(selectedBackend)
-        setEnabledBackendModels(enabled)
         setBackendReasoning(reasoning)
       })
       .catch((err: Error) => !cancelled && setError(err.message))
@@ -488,23 +533,6 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
     finally { setBusy(false) }
   }
 
-  const offeredBackendModels = backendModels.filter(option => enabledBackendModels === null || enabledBackendModels.includes(option.id))
-  const saveBackendModels = async (enabled: string[] | null): Promise<void> => {
-    if (busy) return
-    setBusy(true); setSaved(false); setError(null)
-    try {
-      const result = await window.opencourse.setCoachBackendModels(enabled)
-      setEnabledBackendModels(result.enabled); setBackendModel(result.defaultModel); setSaved(true)
-      setBackendReasoning(normalizeBackendReasoning(result.defaultModel, backendReasoning))
-    } catch (err) { setError((err as Error).message) }
-    finally { setBusy(false) }
-  }
-  const toggleBackendModel = (id: string, checked: boolean): void => {
-    const enabled = new Set(enabledBackendModels ?? backendModels.map(option => option.id))
-    if (checked) enabled.add(id); else enabled.delete(id)
-    void saveBackendModels([...enabled])
-  }
-
   return (
     <section className="settings-section">
       <h2>Coach</h2>
@@ -519,7 +547,8 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
       </label>
       <p className="meta">Files go to the coach’s trash. Enabling applies to new sessions; disabling blocks deletion immediately.</p>
       {model === null ? <p className="meta">Loading models…</p> : !models.length && !backendModels.length ? <p className="meta">Add an OpenAI API key in Connections to choose Coach models.</p> : <>
-        <h3>Defaults for new coaches</h3>
+        <h3>Defaults for all coaches</h3>
+        <p className="meta">Every coach uses these settings when a new session starts.</p>
         <div className="settings-defaults">
           <label>
             <span>Default voice model</span>
@@ -539,40 +568,24 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
             <select
               className="settings-default-coach-backend-model"
               value={backendModel ?? ''}
-              disabled={backendModel === null || busy || !offeredBackendModels.length}
+              disabled={backendModel === null || busy || !backendModels.length}
               onChange={(e) => void save(e.target.value, true)}
             >
               {backendModel === null && <option value="">Loading models…</option>}
-              {backendModel && !offeredBackendModels.some(option => option.id === backendModel) && <option value={backendModel} disabled>{offeredBackendModels.length ? `${backendModel} (unavailable)` : 'Select a background model below'}</option>}
-              {offeredBackendModels.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+              {backendModel && !backendModels.some(option => option.id === backendModel) && <option value={backendModel} disabled>{backendModel} (unavailable)</option>}
+              {backendModels.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
             </select>
           </label>
           <label>
             <span>Default background reasoning</span>
             <select className="settings-default-coach-backend-reasoning" value={backendReasoning ?? ''}
-              disabled={busy || !offeredBackendModels.length || !backendReasoningEffortsFor(backendModel ?? '').length}
+              disabled={busy || !backendModels.length || !backendReasoningEffortsFor(backendModel ?? '').length}
               onChange={event => void saveReasoning((event.target.value || null) as ReasoningEffort | null)}>
               <option value="">Model default</option>
               {backendReasoningEffortsFor(backendModel ?? '').map(level => <option key={level} value={level}>{REASONING_LABELS[level]}</option>)}
             </select>
           </label>
         </div>
-        {backendModels.length > 0 && <div className="settings-coach-backend-models">
-          <h3>Background models shown in Coach</h3>
-          <p className="meta">Choose which models appear in background model dropdowns. Existing coaches keep their saved model.</p>
-          {backendModels.length > 8 && <input type="search" className="settings-key settings-filter" aria-label="Filter Coach background models" placeholder="Filter models…" value={modelFilter} onChange={event => setModelFilter(event.target.value)} />}
-          <div className="actions">
-            <ActionButton icon="selectAll" className="secondary settings-models-select-all" disabled={busy || enabledBackendModels === null} onClick={() => void saveBackendModels(null)}>Select all</ActionButton>
-            <ActionButton icon="unselectAll" className="secondary settings-models-unselect-all" disabled={busy || !offeredBackendModels.length} onClick={() => void saveBackendModels([])}>Unselect all</ActionButton>
-          </div>
-          <div className="settings-models" role="group" aria-label="Coach background models">
-            {backendModels.filter(option => option.label.toLowerCase().includes(modelFilter.toLowerCase())).map(option => <label className="settings-model" key={option.id}>
-              <input type="checkbox" checked={enabledBackendModels === null || enabledBackendModels.includes(option.id)} disabled={busy} onChange={event => toggleBackendModel(option.id, event.target.checked)} />
-              <span className="settings-model-id">{option.label}</span>{option.id === backendModel && offeredBackendModels.some(model => model.id === option.id) && <span className="settings-model-note">new coaches start here</span>}
-            </label>)}
-          </div>
-          <p className="meta">{offeredBackendModels.length} of {backendModels.length} models shown. {enabledBackendModels === null ? 'New models are shown automatically.' : 'New models stay hidden until you select them.'}</p>
-        </div>}
       </>}
       {saved && <p className="import-note" role="status">Coach settings saved.</p>}
       {error && <p className="import-note error">{error}</p>}

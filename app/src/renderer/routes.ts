@@ -27,9 +27,6 @@ export type Screen =
   | { name: 'lesson'; courseId: string; moduleId: string; lessonId: string }
   | { name: 'notebook'; courseId: string }
   | { name: 'project'; courseId: string; moduleId: string }
-  | { name: 'coach' }
-  | { name: 'coachProject'; projectId: string; sourcePath?: string; sourceRequest?: string }
-  | { name: 'coachSession'; projectId: string; sessionId: string }
 
 export type SettingsSection = 'profile' | 'appearance' | 'pomodoro' | 'connections' | 'ai' | 'coach' | 'servers' | 'updates' | 'about'
 
@@ -46,7 +43,7 @@ export function screenOf(route: Route): Screen {
 }
 
 /** Which workspace a route belongs to, for the titlebar's switch. */
-export function sectionOf(route: Route): 'courses' | 'documents' | 'coach' | null {
+export function sectionOf(route: Route): 'courses' | 'documents' | null {
   switch (route.name) {
     case 'library':
     case 'catalog':
@@ -59,10 +56,6 @@ export function sectionOf(route: Route): 'courses' | 'documents' | 'coach' | nul
     case 'notebook':
     case 'project':
       return 'courses'
-    case 'coach':
-    case 'coachProject':
-    case 'coachSession':
-      return 'coach'
     case 'documents':
     case 'document':
     case 'documentOverview':

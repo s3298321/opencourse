@@ -1,3 +1,4 @@
+import { readLearningContent } from './reading'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -125,6 +126,16 @@ export function registerLearningRoutes(app: FastifyInstance, ctx: Ctx): void {
             .get(ref.id, ref.version),
           state: state(ctx, account, ref.kind, ref.id)
         }
+  })
+  app.post('/api/v1/learn/:kind/:id/:version/read', async req => {
+    const ref = reference(req.params), account = requireAccount(req).id
+    const body = req.body as { name?: unknown; args?: unknown } | null
+    if (typeof body?.name !== 'string') throw badRequest('invalid_tool', 'Specify a reading tool.')
+    try { return await readLearningContent(ctx, account, ref, body.name, body.args) }
+    catch (error) {
+      if (error instanceof Error && /Invalid retrieval|Use a search query/.test(error.message)) throw badRequest('invalid_arguments', error.message)
+      throw error
+    }
   })
   // The cover of the version a learner holds, which stays theirs after the
   // course is unlisted - the catalog's cover is the current, listed one only.

@@ -223,16 +223,17 @@ function Sources({ chatId, seq, sources, fetchIcons }: { chatId: string; seq: nu
 function AnswerTurn({ chatId, message, onSource, sourceIcons: fetchIcons }: { chatId: string | null; message: ChatMessage; onSource?: Props['onSource']; sourceIcons?: Props['sourceIcons'] }): JSX.Element {
   const cited = useMemo(() => citeAnswer(message.text, message.citations), [message.text, message.citations])
   const consulted = normalizeResearchSources(message.researchSources).filter(source => !cited.sources.some(c => c.url === source.url))
-  const localSourcesLabel = message.localSources?.every(source => source.kind === 'document') ? 'Consulted pages' : 'Consulted sources'
+  const localSources = message.localSources?.filter(source => source.kind !== 'coach')
+  const localSourcesLabel = localSources?.every(source => source.kind === 'document') ? 'Consulted pages' : 'Consulted sources'
   return (
     <div className="chat-turn assistant">
       <div className="chat-answer" data-ask="answer">
         <Answer text={cited.markdown} />
       </div>
       {(message.status === 'stopped' || message.status === 'failed') && <p className="meta" data-ask="none">{message.status === 'stopped' ? 'Stopped · partial response' : 'Response failed · partial text preserved'}</p>}
-      {!!message.localSources?.length && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label={localSourcesLabel}>
-        <summary className="chat-sources-label">{localSourcesLabel} ({message.localSources.length})</summary>
-        <nav className="chat-local-sources" aria-label="Reading sources">{message.localSources.map((source, index) => <button className="ghost" key={index} onClick={() => onSource ? onSource(source) : window.dispatchEvent(new CustomEvent('reading:source', { detail: source }))}>{source.kind === 'document' ? `Page ${source.page}` : source.title}</button>)}</nav>
+      {!!localSources?.length && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label={localSourcesLabel}>
+        <summary className="chat-sources-label">{localSourcesLabel} ({localSources.length})</summary>
+        <nav className="chat-local-sources" aria-label="Reading sources">{localSources.map((source, index) => <button className="ghost" key={index} onClick={() => onSource ? onSource(source) : window.dispatchEvent(new CustomEvent('reading:source', { detail: source }))}>{source.kind === 'document' ? `Page ${source.page}` : source.title}</button>)}</nav>
       </details>}
       {chatId && cited.sources.length > 0 && <Sources chatId={chatId} seq={message.seq} sources={cited.sources} fetchIcons={fetchIcons} />}
       {consulted.length > 0 && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label="Other research sources">

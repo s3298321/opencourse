@@ -32,14 +32,11 @@ import type {
   ChatPickerModels,
   ChatQuote,
   ChatSendResult,
-  CoachFileNode,
   CoachKeyResult,
   CoachModel,
-  CoachMoveResult,
   CoachSessionSummary,
   CoachStartResult,
   CoachToolOutcome,
-  CoachTranscript,
   TranscriptTurn,
   CoachProject,
   CoachProjectSummary,
@@ -266,6 +263,10 @@ const api = {
   getReadingScale: (): Promise<number> => ipcRenderer.invoke('reading:scale'),
   getPomodoroSettings: (): Promise<PomodoroSettings> => ipcRenderer.invoke('pomodoro:settings'),
   setPomodoroSettings: (settings: PomodoroSettings): Promise<PomodoroSettings> => ipcRenderer.invoke('pomodoro:setSettings', settings),
+  getFloatingCoachButton: (): Promise<boolean> => ipcRenderer.invoke('coach:floatingButton'),
+  setFloatingCoachButton: (value: boolean): Promise<boolean> => ipcRenderer.invoke('coach:setFloatingButton', value),
+  getFloatingNotebookButton: (): Promise<boolean> => ipcRenderer.invoke('notebooks:floatingButton'),
+  setFloatingNotebookButton: (on: boolean): Promise<boolean> => ipcRenderer.invoke('notebooks:setFloatingButton', on),
   setReadingScale: (scale: number): Promise<number> => ipcRenderer.invoke('reading:setScale', scale),
 
   getProgress: (courseId: string): Promise<CourseProgress> => ipcRenderer.invoke('progress:get', courseId),
@@ -342,10 +343,8 @@ const api = {
   clearOpenAIKey: (): Promise<void> => ipcRenderer.invoke('coach:clearKey'),
   listCoachModels: (): Promise<{ models: CoachModel[]; source: 'api' | 'fallback'; error?: string }> =>
     ipcRenderer.invoke('coach:listModels'),
-  listCoachBackendModels: (all = false): Promise<{ models: CoachModel[]; source: 'api' | 'fallback'; error?: string }> =>
-    ipcRenderer.invoke('coach:listBackendModels', all),
-  getCoachBackendModels: (): Promise<string[] | null> => ipcRenderer.invoke('coach:backendModels'),
-  setCoachBackendModels: (models: string[] | null): Promise<{ enabled: string[] | null; defaultModel: string }> => ipcRenderer.invoke('coach:setBackendModels', models),
+  listCoachBackendModels: (): Promise<{ models: CoachModel[]; source: 'api' | 'fallback'; error?: string }> =>
+    ipcRenderer.invoke('coach:listBackendModels'),
   getDefaultCoachModel: (): Promise<string> => ipcRenderer.invoke('coach:defaultModel'),
   setDefaultCoachModel: (model: string): Promise<string> => ipcRenderer.invoke('coach:setDefaultModel', model),
   getDefaultCoachBackendReasoning: (): Promise<ReasoningEffort | null> => ipcRenderer.invoke('coach:defaultBackendReasoning'),
@@ -374,23 +373,9 @@ const api = {
     patch: { name?: string; model?: string; backendModel?: string; backendReasoning?: ReasoningEffort | null; voice?: string; instructions?: string }
   ): Promise<CoachProject> => ipcRenderer.invoke('coach:updateProject', projectId, patch),
   deleteCoachProject: (projectId: string): Promise<void> => ipcRenderer.invoke('coach:deleteProject', projectId),
-  revealCoachProject: (projectId: string): Promise<void> => ipcRenderer.invoke('coach:revealProject', projectId),
+  onCoachContextRequest: (handler: (request: import('../core/coach/context').CoachContextRequest) => void): (() => void) => subscribe('coach:contextRequest', handler),
+  replyCoachContext: (id: string, reply: import('../core/coach/context').CoachContextReply): void => ipcRenderer.send('coach:contextReply', id, reply),
   onCoachChanged: (handler: () => void): (() => void) => subscribe('coach:changed', handler),
-
-  // The workspace is readable and deletable - never writable. There is
-  // deliberately no counterpart to writeExerciseFile here.
-  listCoachFiles: (projectId: string): Promise<CoachFileNode[]> => ipcRenderer.invoke('coach:listFiles', projectId),
-  readCoachFile: (
-    projectId: string,
-    relPath: string
-  ): Promise<{ content: string; bytes: number; truncated: boolean }> =>
-    ipcRenderer.invoke('coach:readFile', projectId, relPath),
-  trashCoachFile: (projectId: string, relPath: string): Promise<CoachMoveResult> =>
-    ipcRenderer.invoke('coach:trashFile', projectId, relPath),
-  purgeCoachFile: (projectId: string, relPath: string): Promise<CoachMoveResult> =>
-    ipcRenderer.invoke('coach:purgeFile', projectId, relPath),
-  onCoachFilesChanged: (handler: (projectId: string) => void): (() => void) =>
-    subscribe('coach:filesChanged', handler),
 
   // A live session. The peer connection lives in the renderer; the credentials
   // never do - `startCoachSession` deliberately returns no secret, and the SDP
@@ -409,12 +394,6 @@ const api = {
     sessionId: string,
     outcome: import('../core/types').CoachEndOutcome
   ): Promise<CoachSessionSummary | null> => ipcRenderer.invoke('coach:endSession', sessionId, outcome),
-  listCoachSessions: (projectId: string): Promise<CoachSessionSummary[]> =>
-    ipcRenderer.invoke('coach:listSessions', projectId),
-  getCoachTranscript: (sessionId: string): Promise<CoachTranscript | null> =>
-    ipcRenderer.invoke('coach:getTranscript', sessionId),
-  deleteCoachSession: (sessionId: string): Promise<void> => ipcRenderer.invoke('coach:deleteSession', sessionId),
-
   // --- the side chat ---
   // The reply does not come back from `sendChatMessage`: it streams in on
   // onChatDelta and finishes on onChatDone or onChatError. Main owns that

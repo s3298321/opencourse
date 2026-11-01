@@ -78,8 +78,8 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       await sleep(300);
       if((await window.opencourse.listCourses()).some(c=>c.title==='Editor smoke course')) throw new Error('An unsaved course reached the library');
       const parkedEditor = document.querySelector('.course-editor');
-      document.querySelector('.titlebar [data-section="coach"]').click();
-      await wait(()=>document.querySelector('.titlebar [data-section="coach"]').getAttribute('aria-checked')==='true');
+      document.querySelector('.titlebar [data-section="documents"]').click();
+      await wait(()=>document.querySelector('.titlebar [data-section="documents"]').getAttribute('aria-checked')==='true');
       if(document.querySelector('.dialog')) throw new Error('Switching halves asked to discard the parked draft');
       document.dispatchEvent(new Event('authoring:save')); await sleep(100);
       if((await window.opencourse.listCourses()).some(c=>c.title==='Editor smoke course')) throw new Error('Hidden editor handled Save');
@@ -164,7 +164,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
         if(!document.querySelector('.dialog').textContent.includes('The assistant is still working. Leaving stops it.')) throw new Error('Clean running turn had no warning');
         document.querySelector('.dialog-cancel').click(); await sleep(80);
         if(!(await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Cancelling stopped the assistant');
-        document.querySelector('[data-section="coach"]').click(); await sleep(80);
+        document.querySelector('[data-section="documents"]').click(); await sleep(80);
         if(document.querySelector('.dialog')) throw new Error('Parking asked to stop the turn');
         document.querySelector('[data-section="courses"]').click(); await sleep(80);
         document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));

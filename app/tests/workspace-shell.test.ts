@@ -4,7 +4,7 @@ import { EditorView } from '@codemirror/view'
 import { undo } from '@codemirror/commands'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../src/renderer/components/useAppUpdate', () => ({ useAppUpdate: () => null }))
-import AppShell, { useAppShell } from '../src/renderer/components/AppShell'
+import AppShell from '../src/renderer/components/AppShell'
 import TitleBar from '../src/renderer/components/TitleBar'
 import { ScreenHost, useScreenActive } from '../src/renderer/screen-activity'
 import { initialNavigation, navigateWorkspace, switchWorkspace } from '../src/renderer/workspaces'
@@ -16,28 +16,23 @@ const theme: WorkbenchTheme = { dark: true, fg: '#eee', bg: '#111', muted: '#aaa
 const handled = vi.fn()
 function Fixture({ screen, navigate }: { screen: Screen; navigate: (route: Route) => void }) {
   const active = useScreenActive()
-  const shell = useAppShell()
   useEffect(() => {
     if (!active) return
     const handler = (): void => handled(screen.name)
     document.addEventListener('test-shortcut', handler)
     return () => document.removeEventListener('test-shortcut', handler)
   }, [active, screen.name])
-  useEffect(() => {
-    if (screen.name === 'coach') shell?.reportCoachLive(true)
-    return () => { if (screen.name === 'coach') shell?.reportCoachLive(false) }
-  }, [shell, screen.name])
   return h('div', { className: 'body' },
     h(TitleBar, { route: screen, navigate, back: { label: screen.name, onClick: () => navigate({ name: 'library' }) },
       actions: h('button', { className: 'fixture-settings', onClick: () => navigate({ name: 'settings', from: screen }) }, 'Settings') }),
-    screen.name === 'library' ? h(CodeEditor, { docKey: 'exercise', language: 'python', indentUnit: '    ', initialDoc: 'print(1)', theme, onChange: () => {}, onSave: () => {}, onRun: () => {} }) : h('input', { className: screen.name === 'documents' ? 'document-draft' : 'coach-draft', defaultValue: '' }))
+    screen.name === 'library' ? h(CodeEditor, { docKey: 'exercise', language: 'python', indentUnit: '    ', initialDoc: 'print(1)', theme, onChange: () => {}, onSave: () => {}, onRun: () => {} }) : h('input', { className: 'document-draft', defaultValue: '' }))
 }
 function Harness() {
   const [state, setState] = useState(() => navigateWorkspace(initialNavigation(), { name: 'library' }))
   const navigate = (route: Route): void => setState(value => navigateWorkspace(value, route))
   const overlay = state.route.name === 'settings'
   return h(AppShell, { route: state.route, user: null, navigate, switchWorkspace: section => setState(value => switchWorkspace(value, section)) },
-    ...(['courses', 'documents', 'coach'] as const).map(section => state[section] && h(ScreenHost, { key: section, active: !overlay && state.route === state[section] }, h(Fixture, { screen: state[section]!, navigate }))),
+    ...(['courses', 'documents'] as const).map(section => state[section] && h(ScreenHost, { key: section, active: !overlay && state.route === state[section] }, h(Fixture, { screen: state[section]!, navigate }))),
     overlay && h(ScreenHost, { active: true }, h(TitleBar, { route: state.route, navigate, back: { label: 'Back', onClick: () => navigate(state.route.name === 'settings' ? state.route.from : state.route) } }), h('div', { className: 'settings' }, 'Overlay')))
 }
 let root: Root, container: HTMLDivElement
@@ -78,19 +73,14 @@ describe('persistent shell', () => {
     const editorElement = container.querySelector<HTMLElement>('.cm-editor')!
     const view = EditorView.findFromDOM(editorElement)!
     await act(async () => view.dispatch({ changes: { from: 6, to: 7, insert: '2' }, selection: { anchor: 7 } }))
-    await click('[data-section="coach"]')
+    await click('[data-section="documents"]')
     expect(container.querySelectorAll('.titlebar')).toHaveLength(1)
     expect(container.querySelector('.titlebar')).toBe(chrome)
     expect(container.querySelector('.section-switch-thumb')).toBe(thumb)
-    const liveIndicator = container.querySelector('[data-section="coach"] .coach-live-indicator')
-    expect(liveIndicator).not.toBeNull()
+    expect(container.querySelector('[data-section="coach"]')).toBeNull()
     await act(async () => document.dispatchEvent(new Event('test-shortcut')))
-    expect(handled).toHaveBeenLastCalledWith('coach')
+    expect(handled).toHaveBeenLastCalledWith('documents')
     expect(handled).toHaveBeenCalledOnce()
-    const coach = container.querySelector<HTMLInputElement>('.coach-draft')!
-    coach.value = 'unfinished instructions'
-    await click('[data-section="documents"]')
-    expect(container.querySelector('.titlebar')).toBe(chrome)
     const documentDraft = container.querySelector<HTMLInputElement>('.document-draft')!
     documentDraft.value = 'A document question'
     await click('[data-section="courses"]')
@@ -99,11 +89,6 @@ describe('persistent shell', () => {
     expect(view.state.selection.main.anchor).toBe(7)
     await act(async () => undo(view))
     expect(view.state.doc.toString()).toBe('print(1)')
-    expect(container.querySelector('.coach-live-indicator')).toBe(liveIndicator)
-    await click('[data-section="coach"]')
-    expect(container.querySelector('.coach-live-indicator')).toBe(liveIndicator)
-    expect(container.querySelector('.coach-draft')).toBe(coach)
-    expect(coach.value).toBe('unfinished instructions')
     await click('[data-section="documents"]')
     expect(container.querySelector('.document-draft')).toBe(documentDraft)
     expect(documentDraft.value).toBe('A document question')

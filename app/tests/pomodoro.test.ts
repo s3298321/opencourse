@@ -61,7 +61,7 @@ describe('Pomodoro title bar', () => {
     await act(async () => root.render(createElement(TitleBarChrome, { user, route: { name: 'library' } })))
     await start(); await advance(5_000)
     const control = container.querySelector('.pomodoro')
-    await act(async () => root.render(createElement(TitleBarChrome, { user, route: { name: 'coach' } })))
+    await act(async () => root.render(createElement(TitleBarChrome, { user, route: { name: 'documents' } })))
     expect(container.querySelector('.pomodoro')).toBe(control)
     expect(phase()).toBe('study')
     await hover(false); await hover(true)

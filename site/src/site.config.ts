@@ -23,7 +23,7 @@ export const SITE = {
   contactEmail: 'contact@opencourse.dev',
   minimumMacOS: 'macOS 13 Ventura',
   docsBranch: 'master',
-  description: 'OpenCourse is a free, open-source Mac app for studying and creating courses on any subject, with lessons, quizzes, flashcards, coding exercises and optional AI help.'
+  description: 'OpenCourse is a free, open-source Mac app for courses, PDFs and personal notebooks, with voice coaching, quizzes, coding practice, AI authoring and optional web learning sync.'
 } as const
 
 export const catalogHost = SITE.catalogUrl.replace(/^https?:\/\//, '')

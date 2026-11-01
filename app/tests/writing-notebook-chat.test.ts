@@ -59,7 +59,7 @@ describe('writing notebook chat', () => {
     expect(selectWritingNotebookMessages(chat.id)).toEqual([])
     await expect(chats.sendWritingNotebookMessage(window as never, chat.id, 'Ask', undefined, other.selectedPageId)).rejects.toThrow('page no longer exists')
   })
-  it('reads only the associated coach brief, notes, and saved transcripts', async () => {
+  it('does not expose coach files or past transcripts through legacy notebook associations', async () => {
     const { createProject, deleteProject } = await import('../src/main/coach')
     const { writeWorkspaceFile } = await import('../src/main/coachfiles')
     const { insertSession, saveTurns } = await import('../src/main/coachdb')
@@ -73,13 +73,10 @@ describe('writing notebook chat', () => {
     const notebook = notes.createWritingNotebook('French', { kind: 'coach', id: project.id, title: 'ignored' })
     const budget = { chars: 0, signal: new AbortController().signal }, sources: import('../src/core/types').ReadingSource[] = []
     const read = (id: string) => JSON.parse(runWritingReadingTool(notebook, notebookSnapshot(notebook), 'read_coach_material', { id, offset: 0 }, budget, sources))
-    expect(read('instructions').text).toContain('French pronunciation')
-    expect(read('file:notes.md').text).toContain('nasal vowels')
-    expect(read('session:session-fixture').text).toContain('liaison')
-    expect(() => read('file:private.md')).toThrow('not in the associated coach')
-    expect(sources.every(source => source.kind === 'coach' && source.projectId === project.id)).toBe(true)
+    for (const id of ['instructions', 'file:notes.md', 'session:session-fixture', 'file:private.md']) expect(() => read(id)).toThrow('not available')
+    expect(sources).toEqual([])
     deleteProject(project.id)
-    expect(() => read('instructions')).toThrow('unavailable')
+    expect(() => read('instructions')).toThrow('not available')
     expect(notes.getWritingNotebook(notebook.id).associationAvailable).toBe(false)
   })
   it('preserves partial responses and prevents duplicate sends when the window disappears', async () => {

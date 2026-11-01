@@ -12,14 +12,42 @@ export interface SessionView {
   status: LiveStatus
   turns: TranscriptTurn[]
   partial: { role: 'user' | 'assistant'; text: string } | null
-  activity: { id: number; text: string; ok: boolean }[]
+  activity: { id: number; text: string; ok: boolean; state?: 'running' | 'completed' | 'failed' }[]
   elapsedMs: number
   speaking: boolean
+  inputLevel?: number
+  outputLevel?: number
   responding: boolean
+  warning?: string
   unknown: Record<string, number>
 }
 export const MAX_SESSION_MS = 45 * 60 * 1000
 const CLOSE_MS = 5000
+
+function runningToolLabel(name: string, raw: string): string {
+  const labels: Record<string, string> = {
+    web_search: 'Searching web', read_file: 'Reading file', list_files: 'Listing files',
+    write_file: 'Writing file', append_file: 'Updating file', create_folder: 'Creating folder',
+    move_file: 'Moving file', delete_file: 'Deleting file', search_course: 'Searching course',
+    read_course_section: 'Reading course', list_course_sections: 'Listing course sections',
+    search_document: 'Searching document', read_document_pages: 'Reading document',
+    list_document_sections: 'Listing document sections', list_notebooks: 'Listing notebooks',
+    search_notebooks: 'Searching notebooks', list_notebook_pages: 'Listing notebook pages',
+    read_notebook_page: 'Reading notebook', read_notebook_cells: 'Reading Python notebook',
+    get_app_context: 'Reading current app context', list_learning_sources: 'Listing learning sources', list_learning_content: 'Browsing learning content'
+  }
+  const label = labels[name] ?? name.replaceAll('_', ' ')
+  try {
+    const args = JSON.parse(raw), detail = args?.query ?? args?.path ?? args?.from
+    if (typeof detail === 'string' && detail.trim()) return `${label} “${detail.replace(/\s+/g, ' ').trim().slice(0, 300)}”`
+  } catch { /* The tool dispatcher handles malformed arguments. */ }
+  return label
+}
+
+// Keep every running call visible even when completed work fills the diagnostic tail.
+function retainActivity(activity: SessionView['activity']): SessionView['activity'] {
+  return activity.filter((entry, index) => entry.state === 'running' || index >= activity.length - 12)
+}
 
 /** WebRTC owns media; main owns credentials, persistence, and tool permissions. */
 export class LiveSession {
@@ -28,6 +56,8 @@ export class LiveSession {
   private mic: MediaStream | null = null
   private audio: HTMLAudioElement | null = null
   private context: AudioContext | null = null
+  private inputLevel = 0
+  private outputLevel = 0
   private inputMeter: AnalyserNode | null = null
   private outputMeter: AnalyserNode | null = null
   private meterTimer: ReturnType<typeof setInterval> | null = null
@@ -58,15 +88,30 @@ export class LiveSession {
   private metadata: CoachSessionMetadata = { finalization: 'pending' }
   private forcedSave = false
   private restoreChoice: Promise<boolean> | null = null
+  private backendWarning: string | undefined
+  private failureAnnounced = false
   private gate = new PlaybackGate()
   private delegation: LiveDelegation
 
   constructor(private readonly config: Ready, private readonly onChange: () => void) {
     this.delegation = new LiveDelegation({
       send: e => this.send(e),
-      tool: (id, name, args) => window.opencourse.runCoachTool(config.sessionId, name, args, id),
+      tool: async (id, name, args) => {
+        const activityId = ++this.eventNumber
+        this.activity = retainActivity([...this.activity, { id: activityId, text: runningToolLabel(name, args), ok: true, state: 'running' }])
+        onChange()
+        try {
+          const result = await window.opencourse.runCoachTool(config.sessionId, name, args, id)
+          this.activity = this.activity.map(entry => entry.id === activityId ? { ...entry, text: result.summary, ok: result.ok, state: result.ok ? 'completed' : 'failed' } : entry)
+          return result
+        } catch (error) {
+          this.activity = this.activity.map(entry => entry.id === activityId ? { ...entry, text: `Could not run ${name}`, ok: false, state: 'failed' } : entry)
+          throw error
+        } finally { onChange() }
+      },
       note: (text, ok) => this.note(text, ok), changed: onChange,
       beforeContinue: () => this.restoreChoice ?? Promise.resolve(true),
+      failed: () => this.backendFailed(),
       diagnostic: (responseId, status) => { void window.opencourse.reportCoachResponse(config.sessionId, { event: 'response.done', responseId, status, wrappingUp: this.stopping }).catch(() => {}) }
     })
     this.unsubscribe = window.opencourse.onCoachShutdown?.(id => { if (id === config.sessionId) this.abandon() })
@@ -75,14 +120,29 @@ export class LiveSession {
   view(): SessionView {
     return {
       status: this.status, turns: liveTranscript([...this.fragments.values()], this.config.startedAt), partial: null,
-      activity: this.activity, elapsedMs: this.startedAt ? Date.now() - this.startedAt : 0,
+      activity: this.activity, elapsedMs: this.startedAt ? Math.min(this.stoppedAtMs, Date.now() - this.startedAt) : 0,
+      inputLevel: this.stopping ? 0 : this.inputLevel,
+      outputLevel: this.stopping || this.audio?.muted || !this.gate.speaking ? 0 : this.outputLevel,
       speaking: !this.stopping && this.gate.speaking, responding: this.delegation.busy,
+      warning: this.backendWarning,
       unknown: this.unknown
     }
   }
   private set(status: LiveStatus): void { this.status = status; this.onChange() }
+  private backendFailed(): void {
+    this.backendWarning = 'The coach’s background work failed. You can keep talking, or start a new conversation if this keeps happening.'
+    // Speech and backend work are independent. Tell the voice model about the
+    // failure once, without retrying an operation that may already have run.
+    if (!this.failureAnnounced && !this.stopping && !this.closing) {
+      this.failureAnnounced = true
+      this.send({ type: 'session.commentary.append', delegation_id: null,
+        content: 'Your background work failed; no completed result is available from that request. Briefly tell the learner about the failure now, then help with their latest question using what you already know. Do not claim the background task succeeded or ask them to keep waiting. Do not automatically retry the failed work.' })
+    }
+    this.onChange()
+  }
   private note(text: string, ok: boolean): void {
-    this.activity = [...this.activity, { id: ++this.eventNumber, text, ok }].slice(-12)
+    if (this.activity.at(-1)?.text === text && this.activity.at(-1)?.ok === ok) return
+    this.activity = retainActivity([...this.activity, { id: ++this.eventNumber, text, ok }])
     this.onChange()
   }
   private send(payload: Record<string, unknown>): string {
@@ -165,7 +225,9 @@ export class LiveSession {
   }
   private sampleAudio(): void {
     if (this.stopping || this.disposed) return
-    this.gate.sample(this.level(this.inputMeter), this.level(this.outputMeter), Date.now())
+    this.inputLevel = this.level(this.inputMeter)
+    this.outputLevel = this.level(this.outputMeter)
+    this.gate.sample(this.inputLevel, this.outputLevel, Date.now())
     if (this.audio) this.audio.muted = this.gate.muted
     this.onChange()
   }
@@ -210,6 +272,10 @@ export class LiveSession {
         break
       }
       case 'response.event':
+        if (event.event?.type === 'response.created') {
+          this.backendWarning = undefined
+          this.failureAnnounced = false
+        }
         if (this.forcedSave && event.event?.type === 'response.output_item.done' && event.event.item?.type === 'function_call') {
           this.forcedSave = false
           const id = this.send({ type: 'session.update', session: { delegation: { type: 'responses', responses: { tool_choice: 'auto' } } } })
@@ -233,7 +299,11 @@ export class LiveSession {
       case 'error': {
         const error = event.error ?? {}
         const clientEventId = error.client_event_id ?? event.client_event_id
-        if (clientEventId) { this.rejected.add(clientEventId); this.delegation.reject(clientEventId) }
+        if (clientEventId) this.rejected.add(clientEventId)
+        if (error.code !== 'responses_validation_failed') {
+          const failed = this.delegation.reject(clientEventId)
+          if (!clientEventId && !failed) this.backendFailed()
+        }
         // Do not log raw provider messages: they may contain prompt or tool contents.
         void window.opencourse.reportCoachResponse(this.config.sessionId, {
           event: 'session.error', clientEventId, errorCode: error.code, errorType: error.type,

@@ -113,13 +113,6 @@ export function buildMenu(): void {
       ]
     },
     {
-      label: 'Coach',
-      submenu: [
-        { label: 'Coaches', accelerator: 'CmdOrCtrl+Shift+C', click: () => send('coach') },
-        { label: 'New Coach', click: () => send('coachNew') }
-      ]
-    },
-    {
       label: 'View',
       submenu: [
         { role: 'reload' },

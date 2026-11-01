@@ -1,6 +1,6 @@
 {
   "name": "opencourse-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "OpenCourse server: hosts and versions courses, authenticates accounts, serves the catalog's web app",
   "type": "module",

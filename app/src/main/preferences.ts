@@ -50,12 +50,8 @@ export function getDefaultCoachModel(): string {
 }
 
 export function getDefaultCoachBackendModel(): string {
-  const preferences = readPreferences()
-  const model = preferences.defaultCoachBackendModel ?? BACKEND_MODEL
-  return preferences.coachBackendModels?.length && !preferences.coachBackendModels.includes(model) ? preferences.coachBackendModels[0] : model
+  return readPreferences().defaultCoachBackendModel ?? BACKEND_MODEL
 }
-
-export function getCoachBackendModels(): string[] | null { return readPreferences().coachBackendModels ?? null }
 
 export function getDefaultCoachBackendReasoning(): ReasoningEffort | null {
   return normalizeBackendReasoning(getDefaultCoachBackendModel(), readPreferences().defaultCoachBackendReasoning)
@@ -68,24 +64,10 @@ export function setDefaultCoachBackendReasoning(value: ReasoningEffort | null): 
   return reasoning
 }
 
-export function setCoachBackendModels(models: string[] | null): { enabled: string[] | null; defaultModel: string } {
-  if (models !== null && (!Array.isArray(models) || models.length > 200 || !models.every(id => typeof id === 'string' && isBackendModelId(id)))) {
-    throw new Error('Choose supported background models with function tools.')
-  }
-  const { coachBackendModels: _previous, ...preferences } = readPreferences()
-  const current = getDefaultCoachBackendModel()
-  const enabled = models === null ? null : [...new Set(models)]
-  writePreferences({ ...preferences, ...(enabled === null ? {} : { coachBackendModels: enabled }),
-    defaultCoachBackendModel: enabled?.length && !enabled.includes(current) ? enabled[0] : current })
-  return { enabled: getCoachBackendModels(), defaultModel: getDefaultCoachBackendModel() }
-}
-
 export function setDefaultCoachBackendModel(model: string): string {
   if (typeof model !== 'string' || !isBackendModelId(model)) {
     throw new Error('Choose a supported background model with function tools.')
   }
-  const enabled = getCoachBackendModels()
-  if (enabled !== null && !enabled.includes(model)) throw new Error('Show this background model in Coach settings first.')
   writePreferences({ ...readPreferences(), defaultCoachBackendModel: model })
   return getDefaultCoachBackendModel()
 }
@@ -119,10 +101,25 @@ export function setCoachAllowDelete(value: boolean): boolean {
   return getCoachAllowDelete()
 }
 
+/** Shown unless this user turns it off. Anything but a literal false stays on. */
+export function getFloatingNotebookButton(): boolean { return readPreferences().floatingNotebookButton !== false }
+export function setFloatingNotebookButton(value: boolean): boolean {
+  if (typeof value !== 'boolean') throw new Error('Choose whether to show the notebooks button.')
+  writePreferences({ ...readPreferences(), floatingNotebookButton: value })
+  return getFloatingNotebookButton()
+}
+
 /** Independent from the opt-in learner chat setting. */
 export function getAuthoringWebSearch(): boolean { return readPreferences().authoringWebSearch !== false }
 export function setAuthoringWebSearch(value: boolean): boolean {
   if (typeof value !== 'boolean') throw new Error('Choose whether course authoring may search the web.')
   writePreferences({ ...readPreferences(), authoringWebSearch: value })
   return getAuthoringWebSearch()
+}
+
+export function getFloatingCoachButton(): boolean { return readPreferences().floatingCoachButton !== false }
+export function setFloatingCoachButton(value: boolean): boolean {
+  if (typeof value !== 'boolean') throw new Error('Choose whether to show the coach button.')
+  writePreferences({ ...readPreferences(), floatingCoachButton: value })
+  return getFloatingCoachButton()
 }

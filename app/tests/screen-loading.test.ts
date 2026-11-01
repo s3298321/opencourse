@@ -3,8 +3,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CourseDetail from '../src/renderer/routes/CourseDetail'
 import Lesson from '../src/renderer/routes/Lesson'
-import CoachProject from '../src/renderer/routes/CoachProject'
-import CoachTranscript from '../src/renderer/routes/CoachTranscript'
 
 let root: Root, container: HTMLDivElement
 const pending = () => new Promise<never>(() => {})
@@ -35,8 +33,6 @@ describe('page surfaces while navigation data is pending', () => {
     lesson: () => h(Lesson, { ...shared, courseId: 'course', moduleId: 'module', lessonId: 'lesson',
       route: { name: 'lesson', courseId: 'course', moduleId: 'module', lessonId: 'lesson' }, navSignal: null,
       chatOpen: false, setChatOpen: vi.fn(), scrollRef: { current: { key: '', top: 0 } }, readingScale: 1, setReadingScale: vi.fn() }),
-    'coach project': () => h(CoachProject, { ...shared, projectId: 'project', route: { name: 'coachProject', projectId: 'project' } }),
-    transcript: () => h(CoachTranscript, { ...shared, projectId: 'project', sessionId: 'session', route: { name: 'coachSession', projectId: 'project', sessionId: 'session' } })
   }
   it.each(Object.entries(screens))('%s retains the themed content surface until data arrives', async (_name, screen) => {
     await act(async () => root.render(screen()))

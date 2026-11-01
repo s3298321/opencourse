@@ -25,6 +25,7 @@ restarts the app, so new IPC handlers load with the UI that calls them.
 | `npm run smoke` | Boots the app on a throwaway profile and drives the real renderer; writes a report to `/tmp/opencourse-smoke.json` |
 | `OPENCOURSE_SMOKE_ONLY=editor,reading,updates npm run smoke` | Only those suites (also `notebook`) |
 | `OPENCOURSE_SMOKE_PYTHON=1 npm run smoke` | Also builds a virtualenv and runs pytest for real |
+| `OPENCOURSE_SHOTS_ONLY=marketing npm run shots` | Current PDF reader, course authoring and floating Coach screenshots for the website |
 | `npm run shots` | Screenshots the app's screens into `/tmp/opencourse-shots` (`OPENCOURSE_SHOTS=<dir>` to choose); `OPENCOURSE_SHOTS_HOLD=<target>` stops there and leaves the window to you |
 | `npm run validate:content` | Schema, assets, unique ids, and that every exercise plans, for every course in `content/` |
 | `npm run check:exercises` | Every exercise's solution passes its checks and every starter fails them |
@@ -182,8 +183,9 @@ nothing from anywhere else.
 
 ## Releasing
 
-1. Raise `version` in `app/package.json` and commit.
-2. Tag it: `git tag v0.4.1 && git push origin v0.4.1`.
+1. Raise `version` in `app/package.json` and the root package entries in
+   `app/package-lock.json`. Run the app, server and website checks, then commit.
+2. Tag it: `git tag v0.7.0 && git push origin v0.7.0`.
 3. `.github/workflows/release.yml` builds `OpenCourse-mac-arm64.dmg` and uploads
    it to a draft release. It is signed and notarized when the repository has
    the Apple secrets. Otherwise it is ad-hoc signed and marked unsigned, and
@@ -191,8 +193,11 @@ nothing from anywhere else.
 4. Write the notes and publish the draft. opencourse.dev rebuilds with the new
    version.
 
-The catalog server is released the same way with a `server-v<version>` tag,
-which publishes `ghcr.io/s3298321/opencourse-server`.
+For the learning server, update `server/package.json` and its lockfile
+together, then push `server-v<version>` (for example, `server-v0.3.0`). This
+publishes `ghcr.io/s3298321/opencourse-server` for amd64 and arm64. The public
+catalog is pinned separately in `opencourse-infra`; update that pin only after
+the image is published, and inspect the production plan before applying it.
 
 ## macOS and `~/Documents`
 

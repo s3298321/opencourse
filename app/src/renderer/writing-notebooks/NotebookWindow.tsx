@@ -1,3 +1,5 @@
+import { nonnegativeInteger } from '@core/reading/tools'
+import { useCoachContextBridge, useCoachContextProvider, selectedContent, contextExcerpt } from '../coach/context'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { WritingNotebook, WritingNotebookPage } from '@core/writing-notebooks/types'
 import { MAX_QUOTE_CHARS } from '@core/sidechat/thread'
@@ -26,6 +28,19 @@ function NotebookContent({ id }: { id: string }) {
   const [conflict, setConflict] = useState<WritingNotebookPage | null>(null)
   const editor = useRef<MarkdownEditorHandle>(null), current = useRef<WritingNotebookPage | null>(null), saved = useRef(''), timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTitle = useRef(''), titleBeforeEdit = useRef('')
+  useCoachContextBridge()
+  useCoachContextProvider(request => {
+    const value = current.current
+    if (!notebook || !value) return null
+    const unsaved = value.markdown !== saved.current || value.title !== savedTitle.current
+    if (request.tool === 'get_app_context') return { kind: 'writing-notebook', visible: true, notebookId: id, title: notebook.title, pageId: value.id, pageTitle: value.title, unsaved,
+      ...selectedContent(document.querySelector('.writing-editor')), ...contextExcerpt(value.markdown) }
+    if (request.tool === 'read_notebook_page' && request.args.notebook_id === id && request.args.page_id === value.id) {
+      const offset = nonnegativeInteger(request.args.offset), text = value.markdown.slice(offset, offset + 6500)
+      return { value: { source: `${notebook.title} · ${value.title}`, text, state: 'open editor', unsaved, revision: value.revision, nextOffset: offset + text.length < value.markdown.length ? offset + text.length : null } }
+    }
+    return null
+  })
   const saving = useRef<Promise<void> | null>(null), conflictRef = useRef(false)
   const flush = useCallback(async (): Promise<void> => {
     if (timer.current) clearTimeout(timer.current)

@@ -187,10 +187,16 @@ serve a copied production identity as a second independent public server.
 
 Before upgrading, stop and back up the server and desktop user data. Rehearse
 the upgrade on copies in an isolated environment with outbound mail/AI disabled.
-This release migrates server schema 2 to 5 and desktop schema 22 to 24. Desktop
-migration preserves existing local IDs, snapshots legacy learning progress and
-imports eligible reading history once. Existing server values win when old
-local data has no comparable timestamp. Local-only content is not enrolled.
+Server 0.3.0 keeps server schema 5; upgrading from 0.2.0 adds the authenticated
+Coach reading endpoint without a new server database migration. App 0.7.0
+advances desktop schema 26 to 27, preserving existing Coach memory and history.
+The new nullable compatibility column does not associate coaches with content.
+
+For installations upgrading from before server 0.2.0 / app 0.5.0, the earlier
+learning migration advances server schema 2 to 5 and desktop schema 22 to 24
+before subsequent migrations run. It preserves local IDs, snapshots legacy
+progress and imports eligible reading history once. Existing server values win
+when local data has no comparable timestamp. Local-only content is not enrolled.
 
 Check multiple accounts and servers, offline pending changes, web enrollment
 downloads, accepted updates, PDF replacement and unpublishing on the rehearsal.
@@ -199,12 +205,15 @@ binary, not running the old binary against a newer database.
 
 From a checkout with Node 22, run app/server typechecks and tests, build the
 server, run its Playwright journeys, and run the desktop integration tests with
-`OPENCOURSE_TEST_SERVER=1`. Tests use fake AI providers. Before release, run the
-controlled `npm --prefix server run smoke:ai` with a dedicated low-budget
-`OPENCOURSE_AI_SMOKE_KEY`; it makes a real billable request in a disposable
-server and deletes its data afterward. Deploy first to a staging instance and
-verify backup restoration, TLS/cookie behavior and mail delivery. Desktop
-subscription authorization does not gate this API-key release.
+`OPENCOURSE_TEST_SERVER=1`. Run the desktop smoke suites, including Coach,
+personal notebooks and PDFs. Release checks run unattended with fake AI
+providers and do not require API keys or a physical microphone.
+
+An optional provider diagnostic, `npm --prefix server run smoke:ai`, uses a
+dedicated `OPENCOURSE_AI_SMOKE_KEY` and makes a billable request in a disposable
+server before deleting its data. It is not a release gate. Verify backup
+restoration and deployment health; desktop ChatGPT connections remain separate
+from server API-key configuration.
 
 ## Connecting the app
 

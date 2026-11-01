@@ -3,7 +3,7 @@ import { writingNotebookChecks } from './writing-notebook-smoke'
 import { notebookChecks } from './notebook-smoke'
 import { editorSmoke } from './editor-smoke'
 import { themeChecks } from './theme-smoke'
-import { readingSizeChecks } from './reading-smoke'
+import { ensureExampleCourse, readingSizeChecks } from './reading-smoke'
 import { appUpdateChecks } from './update-smoke'
 import { serverHealthChecks } from './server-health-smoke'
 import { workspaceChecks } from './workspace-smoke'
@@ -2192,16 +2192,12 @@ function buildFixtures(): { example: string; asyncio: string; notACourse: string
 
 /** Projects are checked after existing screens so this course cannot change their fixtures. */
 async function projectChecks(win: BrowserWindow): Promise<Result[]> {
+  await ensureExampleCourse(win)
+  // Direct fixture imports must notify the retained library just like a real import.
+  win.webContents.send('courses:changed')
   const begin = `(async () => {
     const wait = async (selector) => { for (let n = 0; n < 160; n++) { const el = document.querySelector(selector); if (el && el.getBoundingClientRect().width) return el; await new Promise(r => setTimeout(r, 50)); } throw new Error('No ' + selector); };
     document.querySelector('.titlebar [data-section="courses"]').click(); await wait('.library');
-    const imported = await window.fixtureAPI.importCoursePath(window.__OPENCOURSE_SMOKE_ZIPS.example);
-    if (imported.status !== 'ok') throw new Error(JSON.stringify(imported));
-    // This direct IPC fixture import bypasses Library's own import handler.
-    // Workspace switches preserve the library; open a course and return to
-    // actually remount it and fetch the newly imported fixture.
-    (await wait('.course-card')).click(); await wait('.detail');
-    document.querySelector('.titlebar .crumbs a').click();
     for (let n = 0; n < 160; n++) {
       if ([...document.querySelectorAll('.course-card')].some(card => /The OpenCourse example course/.test(card.textContent))) return true;
       await new Promise(r => setTimeout(r, 50));

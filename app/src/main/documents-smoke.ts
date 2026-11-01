@@ -36,8 +36,8 @@ export async function documentsChecks(win: BrowserWindow): Promise<Result[]> {
       const card=await wait('.document-card-open');card.click();(await wait('.course-continue')).click();
       await wait('.pdf-page .textLayer span');
       await wait('.document-sidebar .document-section');await wait('.document-reader .sidechat');
-      assert(document.querySelectorAll('.section-switch button').length===3,'Missing workspace');
-      assert([...document.querySelectorAll('.section-switch button')].map(button=>button.textContent.trim()).join(',')==='Courses,Documents,Coach','Wrong switch order');
+      assert(document.querySelectorAll('.section-switch button').length===2,'Missing workspace');
+      assert([...document.querySelectorAll('.section-switch button')].map(button=>button.textContent.trim()).join(',')==='Courses,Documents','Wrong switch order');
       const canvas=await wait('.pdf-page canvas[data-rendered="true"]');
       assert(canvas.width>0,'Canvas is empty');
       assert(document.querySelectorAll('.pdf-page').length<=7,'Too many pages rendered');

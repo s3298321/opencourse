@@ -1,6 +1,6 @@
 # Coach GPT-Live migration and release checks
 
-Coach uses `gpt-live-1` for voice and `gpt-6-luna` for Responses delegation. Settings supplies model and reasoning defaults for new coaches; existing saved configurations are preserved. Model default omits an explicit reasoning effort. Tool choice is automatic and calls are sequential. The model manages its private workspace files; users have no file browser or session-history interface. Credentials and HTTP remain in Electron main; audio travels directly over WebRTC. There is no Realtime fallback, reconnect loop, recording storage or idle timeout.
+Coach uses `gpt-live-1` for voice and `gpt-6-luna` for Responses delegation. Settings supplies shared model and reasoning choices for every coach at the start of each conversation; those choices remain fixed until that conversation ends. Model default omits an explicit reasoning effort. Tool choice is automatic and calls are sequential. The model manages its private workspace files; users have no file browser or session-history interface. Credentials and HTTP remain in Electron main; audio travels directly over WebRTC. There is no Realtime fallback, reconnect loop, recording storage or idle timeout.
 
 Existing Realtime project models and default preferences migrate on access. SQLite and project mirrors are repaired independently, including recovered backup projects. Historical session models, briefs and legacy turns stay unchanged. Current conversations store original caption fragments and materialize the same independently grouped speaker bubbles used in the live view.
 
@@ -57,7 +57,7 @@ transcripts through legacy notebook associations.
 
 Automated coverage: `coach-reading.test.ts`, `coach-context.test.ts`,
 `coach-context-renderer.test.ts`, `coach-background.test.ts`, and the server's
-`learning.test.ts`. Live voice/provider validation remains a manual check.
+`learning.test.ts`. Automated provider and voice checks use deterministic test doubles.
 
 ## Feature parity checklist
 

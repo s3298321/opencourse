@@ -25,6 +25,7 @@ export async function floatingCoachChecks(win: BrowserWindow): Promise<Result[]>
     assert(coach.getBoundingClientRect().bottom < notebook.getBoundingClientRect().top, 'Coach is not above notebooks');
     coach.click(); await pause(400);
     const panel = await wait('.coach-floating.expanded');
+    for (let n = 0; n < 200 && panel.getBoundingClientRect().width <= 300; n++) await pause(25);
     assert(panel.getBoundingClientRect().width > 300, 'Panel did not expand');
     assert(getComputedStyle(panel).transitionDuration.includes('0.32s'), 'Morph timing changed');
     return 'Shared 320ms morph; coach above notebooks; no tab';

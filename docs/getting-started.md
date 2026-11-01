@@ -125,6 +125,8 @@ local credential is protected by your Mac's keychain.
   and read accessible material in your library and connected servers. Each
   coach maintains its own memory between conversations. You can rename or
   delete coaches in the launcher and hide it in **Settings ▸ Appearance**.
+  **Settings ▸ Coach** sets the shared voice and background model choices
+  used when any coach starts a conversation.
   The former Coach workspace, file browser and session-history screens have
   been removed; memory files are managed by the coach.
 

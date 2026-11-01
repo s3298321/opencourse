@@ -1330,7 +1330,11 @@ const SCRIPT = `(async () => {
     const before = await window.opencourse.getDefaultCoachBackendModel()
     const reasoningBefore = await window.opencourse.getDefaultCoachBackendReasoning()
     try {
-      await select('.settings-default-coach-backend-model', all[1].id)
+      await until(() => !picker.disabled, 'background model picker to be ready')
+      picker.value = all[1].id
+      picker.dispatchEvent(new Event('change', { bubbles: true }))
+      await sleep(100)
+      await until(() => !picker.disabled && picker.value === all[1].id, 'background model default to save')
       assert(await window.opencourse.getDefaultCoachBackendModel() === all[1].id, 'shared background default did not save')
       return 'All available background models can be selected as the shared default'
     } finally {
@@ -2194,10 +2198,10 @@ async function projectChecks(win: BrowserWindow): Promise<Result[]> {
     const imported = await window.fixtureAPI.importCoursePath(window.__OPENCOURSE_SMOKE_ZIPS.example);
     if (imported.status !== 'ok') throw new Error(JSON.stringify(imported));
     // This direct IPC fixture import bypasses Library's own import handler.
-    // Remount it so the cards are fetched before selecting the new course.
-    document.querySelector('.titlebar [data-section="documents"]').click();
-    await new Promise(r => setTimeout(r, 250));
-    document.querySelector('.titlebar [data-section="courses"]').click();
+    // Workspace switches preserve the library; open a course and return to
+    // actually remount it and fetch the newly imported fixture.
+    (await wait('.course-card')).click(); await wait('.detail');
+    document.querySelector('.titlebar .crumbs a').click();
     for (let n = 0; n < 160; n++) {
       if ([...document.querySelectorAll('.course-card')].some(card => /The OpenCourse example course/.test(card.textContent))) return true;
       await new Promise(r => setTimeout(r, 50));

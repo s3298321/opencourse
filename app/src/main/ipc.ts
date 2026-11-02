@@ -1,4 +1,7 @@
 import { registerCoachContextIpc } from './coach-context'
+import { previewCoachVoice } from './coach-voice-preview'
+import { getDefaultCoachPrompts, setDefaultCoachPrompts } from './preferences'
+import type { CoachPrompts } from '../core/types'
 import { registerWritingNotebookIpc } from './writing-notebook-ipc'
 import { closeWritingWindows } from './writing-notebook-windows'
 import { cancelAllWritingNotebookChats } from './writing-notebook-chat'
@@ -91,9 +94,10 @@ import {
   setChatWebSearch,
   getSourceIcons
 } from './chat'
-import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
+import { getAuthoringWebSearch, setAuthoringWebSearch, getCoachAllowDelete, setCoachAllowDelete, getDefaultCoachModel, getDefaultCoachVoice, setDefaultCoachVoice, getDefaultCoachBackendModel, setDefaultCoachBackendModel, getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getReadingScale, setDefaultCoachModel, setReadingScale } from './preferences'
 import { getFloatingCoachButton, setFloatingCoachButton, getFloatingNotebookButton, getPomodoroSettings, setFloatingNotebookButton, setPomodoroSettings } from './preferences'
-import type { PomodoroSettings } from '../core/pomodoro'
+import type { PomodoroCommand, PomodoroSettings } from '../core/pomodoro'
+import { PomodoroTimer } from './pomodoro'
 import { coachActivity, isCoachProjectBusy } from './coach-activity'
 import { appUpdateInfo, checkForAppUpdate, installAppUpdate, setAppUpdateAutomatic, updateEvents } from './updates'
 import type { ChatDefaults, ThemeImportResult } from '../core/types'
@@ -258,6 +262,8 @@ function holdEditor(sender: WebContents): number {
 }
 
 export function registerIpc(): void {
+  const pomodoro = new PomodoroTimer(getPomodoroSettings, state => broadcast('pomodoro:changed', state))
+  powerMonitor.on('resume', () => pomodoro.get())
   registerCoachContextIpc()
   registerWritingNotebookIpc()
   startLearningSync()
@@ -342,6 +348,7 @@ export function registerIpc(): void {
     endAllReviews()
     releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); cancelAllDocumentChats(); cancelAllWritingNotebookChats(); stopDocumentWorkers(); endAllSessions(); closeDb(); forgetVolatileKeys()
     const user = createUser(name)
+    pomodoro.reset()
     startLearningSync()
     refreshHealth()
     // After the session moved, so the line is already theirs.
@@ -374,6 +381,7 @@ export function registerIpc(): void {
     closeDb()
     forgetVolatileKeys()
     const user = switchUser(id)
+    pomodoro.reset()
     startLearningSync()
     refreshHealth()
     log.child('users').info('User selected')
@@ -400,6 +408,7 @@ export function registerIpc(): void {
     closeDb()
     forgetVolatileKeys()
     deleteUser(id)
+    pomodoro.reset()
     forgetSubscriptionUser(id)
     // Their log lines are theirs too. Flushed first, so nothing of theirs still
     // queued lands after the delete. Done here rather than in users.ts, which
@@ -605,6 +614,8 @@ export function registerIpc(): void {
 
   ipcMain.handle('reading:scale', () => getReadingScale())
   ipcMain.handle('pomodoro:settings', () => getPomodoroSettings())
+  ipcMain.handle('pomodoro:state', () => { requireUser(); return pomodoro.get() })
+  ipcMain.handle('pomodoro:command', (_e, command: PomodoroCommand) => { requireUser(); return pomodoro.command(command) })
   ipcMain.handle('pomodoro:setSettings', (_e, settings: PomodoroSettings) => setPomodoroSettings(settings))
   ipcMain.handle('coach:floatingButton', () => getFloatingCoachButton())
   ipcMain.handle('coach:setFloatingButton', (_e, on: boolean) => setFloatingCoachButton(on))
@@ -883,6 +894,11 @@ export function registerIpc(): void {
   ipcMain.handle('coach:projectRunState', (_e, projectId: string) => { if (!getProject(projectId)) throw new Error('That coach is gone.'); return { busy: isCoachProjectBusy(projectId) } })
   ipcMain.handle('coach:response', (e, sessionId: string, diagnostic: import('../core/types').CoachResponseDiagnostic) => reportCoachResponse(sessionId, e.sender.id, diagnostic))
   ipcMain.handle('coach:defaultModel', () => getDefaultCoachModel())
+  ipcMain.handle('coach:defaultVoice', () => getDefaultCoachVoice())
+  ipcMain.handle('coach:defaultPrompts', () => getDefaultCoachPrompts())
+  ipcMain.handle('coach:setDefaultPrompts', (_e, prompts: CoachPrompts) => setDefaultCoachPrompts(prompts))
+  ipcMain.handle('coach:previewVoice', (e, voice: string, offerSdp: string) => previewCoachVoice(e.sender, voice, offerSdp))
+  ipcMain.handle('coach:setDefaultVoice', (_e, voice: string) => setDefaultCoachVoice(voice))
   ipcMain.handle('coach:defaultBackendReasoning', () => getDefaultCoachBackendReasoning())
   ipcMain.handle('coach:setDefaultBackendReasoning', (_e, reasoning: ReasoningEffort | null) => setDefaultCoachBackendReasoning(reasoning))
   ipcMain.handle('coach:defaultBackendModel', () => getDefaultCoachBackendModel())

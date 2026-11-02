@@ -33,6 +33,8 @@ import { useAppShell } from './AppShell'
  * once there is nothing to update.
  */
 export interface TitleBarProps {
+  title?: string
+  showPomodoro?: boolean
   back?: { label: string; onClick: () => void }
   user?: UserProfile | null
   navigate?: (r: Route) => void
@@ -46,11 +48,11 @@ export default function TitleBar(props: TitleBarProps): JSX.Element | null {
   const active = useScreenActive()
   useLayoutEffect(() => {
     if (active) shell?.declareTitleBar(props)
-  }, [active, shell, props.back, props.user, props.navigate, props.route, props.actions])
+  }, [active, shell, props.back, props.user, props.navigate, props.route, props.actions, props.title, props.showPomodoro])
   return shell ? null : <TitleBarChrome {...props} />
 }
 
-export function TitleBarChrome({ back, user, navigate, route, actions, switchWorkspace }: TitleBarProps & {
+export function TitleBarChrome({ back, user, navigate, route, actions, title, showPomodoro = Boolean(user), switchWorkspace }: TitleBarProps & {
   switchWorkspace?: (section: Workspace) => void
 }): JSX.Element {
   const theme = useActiveTheme()
@@ -95,8 +97,8 @@ export function TitleBarChrome({ back, user, navigate, route, actions, switchWor
 
   return (
     <div className="titlebar" data-dark-chrome={theme.id === WHITE_THEME_ID ? '' : undefined} data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined} style={{ '--titlebar-controls-width': `${controlsWidth}px`, '--titlebar-left-width': `${leftWidth}px` } as CSSProperties}>
-      {back ? <div className="crumbs"><a role="button" tabIndex={0} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); back.onClick() } }} onClick={back.onClick}>← {back.label}</a></div> : <Brand />}
-      <div className="titlebar-left" ref={leftRef}>{user && <Pomodoro key={user.id} />}</div>
+      {back ? <div className="crumbs"><a role="button" tabIndex={0} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); back.onClick() } }} onClick={back.onClick}>← {back.label}</a></div> : title ? <strong className="titlebar-title">{title}</strong> : <Brand />}
+      <div className="titlebar-left" ref={leftRef}>{showPomodoro && <Pomodoro key={user?.id} />}</div>
       <div className="titlebar-right" ref={controlsRef}>
         <UpdateButton
           openSettings={navigate && route ? () => navigate({ name: 'settings', from: screenOf(route), section: 'updates' }) : undefined}

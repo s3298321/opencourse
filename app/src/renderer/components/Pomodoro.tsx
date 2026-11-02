@@ -1,13 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { advancePomodoro, DEFAULT_POMODORO, formatPomodoroTime, type PomodoroCycle } from '@core/pomodoro'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { formatPomodoroTime, type PomodoroCommand, type PomodoroState } from '@core/pomodoro'
 import PomodoroIcon from './PomodoroIcon'
-
-export const POMODORO_SETTINGS_CHANGED = 'opencourse:pomodoro-settings-changed'
 
 /** Mounted in the shared chrome, so navigation never restarts a cycle. */
 export default function Pomodoro() {
-  const [settings, setSettings] = useState(DEFAULT_POMODORO)
-  const [cycle, setCycle] = useState<PomodoroCycle>({ phase: 'idle' })
+  const [state, setState] = useState<PomodoroState>({ revision: -1, cycle: { phase: 'idle' } })
+  const latest = useRef(state)
+  const cycle = state.cycle
+  const [error, setError] = useState('')
   const [now, setNow] = useState(Date.now)
   const [prompt, setPrompt] = useState<'start' | 'stop' | null>(null)
   const [previewUntil, setPreviewUntil] = useState(0)
@@ -18,27 +18,48 @@ export default function Pomodoro() {
   const icon = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
 
+  const receive = useCallback((value: PomodoroState) => {
+    if (value.revision < latest.current.revision) return
+    if (value.revision !== latest.current.revision) {
+      if (panel.current?.contains(document.activeElement)) icon.current?.focus()
+      setPrompt(null)
+      setSuppressPeek(true)
+      setFocused(false)
+      setPreviewUntil(value.cycle.phase === 'study' ? Date.now() + 3_000 : 0)
+    }
+    latest.current = value
+    setState(value)
+    setNow(Date.now())
+    setError('')
+  }, [])
+
   useEffect(() => {
     let alive = true
-    const refresh = () => { void window.opencourse.getPomodoroSettings().then(value => { if (alive) setSettings(value) }).catch(() => { /* Defaults remain usable. */ }) }
+    const update = (value: PomodoroState) => { if (alive) receive(value) }
+    const refresh = () => { void window.opencourse.getPomodoroState().then(update).catch(err => { if (alive) setError((err as Error).message) }) }
+    // Subscribe before reading so a change during the initial request is not lost.
+    const unsubscribe = window.opencourse.onPomodoroChanged(update)
     refresh()
-    window.addEventListener(POMODORO_SETTINGS_CHANGED, refresh)
-    return () => { alive = false; window.removeEventListener(POMODORO_SETTINGS_CHANGED, refresh) }
-  }, [])
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      alive = false
+      unsubscribe()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [receive])
 
   const timed = cycle.phase === 'study' || cycle.phase === 'break'
   useEffect(() => {
     if (!timed) return
-    const tick = () => {
-      const time = Date.now()
-      setNow(time)
-      setCycle(current => advancePomodoro(current, time))
-    }
-    const timer = window.setInterval(tick, 250)
-    window.addEventListener('focus', tick)
-    document.addEventListener('visibilitychange', tick)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', tick); document.removeEventListener('visibilitychange', tick) }
+    const timer = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(timer)
   }, [timed])
+
+  const command = (action: PomodoroCommand['action']) => {
+    void window.opencourse.commandPomodoro({ action, revision: state.revision }).then(receive).catch(err => setError((err as Error).message))
+  }
 
   const restoreFocus = () => {
     if (panel.current?.contains(document.activeElement)) icon.current?.focus()
@@ -49,7 +70,7 @@ export default function Pomodoro() {
     setPreviewUntil(0)
     setSuppressPeek(true)
     setFocused(false)
-    if (cycle.phase === 'ready' || cycle.phase === 'breakReady') setCycle({ phase: 'idle' })
+    if (cycle.phase === 'ready' || cycle.phase === 'breakReady') command('dismiss')
   }
   useEffect(() => {
     if (prompt === 'stop' && (now >= stopUntil || (cycle.phase !== 'study' && cycle.phase !== 'break'))) {
@@ -73,33 +94,23 @@ export default function Pomodoro() {
     setPrompt(null)
     setSuppressPeek(true)
     setFocused(false)
-    const time = Date.now()
-    setNow(time)
-    if (cycle.phase === 'breakReady') {
-      setCycle({ phase: 'break', endsAt: time + cycle.breakMinutes * 60_000 })
-      setPreviewUntil(0)
-    }
-    else if (prompt === 'stop') { setCycle({ phase: 'idle' }); setPreviewUntil(0) }
-    else {
-      setCycle({ phase: 'study', endsAt: time + settings.studyMinutes * 60_000, breakMinutes: settings.breakMinutes })
-      setPreviewUntil(time + 3_000)
-    }
+    if (cycle.phase === 'breakReady') command('break')
+    else if (prompt === 'stop') command('stop')
+    else command('start')
   }
 
   return <div className="pomodoro" data-phase={cycle.phase} data-expanded={expanded}
     onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setSuppressPeek(false) }}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) { setFocused(false); setSuppressPeek(false) } }}
     onKeyDown={event => { if (event.key === 'Escape' && question) { event.preventDefault(); dismiss() } }}>
-    <button ref={icon} type="button" className="pomodoro-icon" aria-label={label} aria-expanded={expanded}
+    <button ref={icon} type="button" className="pomodoro-icon" aria-label={label} aria-expanded={expanded} disabled={state.revision < 0}
       onFocus={event => { if (event.currentTarget.matches(':focus-visible')) { setFocused(true); setSuppressPeek(false) } }}
       onClick={() => {
         if (question) { dismiss(); return }
         const time = Date.now()
         setNow(time)
-        const current = advancePomodoro(cycle, time)
-        setCycle(current)
-        if (current.phase === 'study' || current.phase === 'break') { setPrompt('stop'); setStopUntil(time + 10_000) }
-        else if (current.phase === 'idle') setPrompt('start')
+        if (cycle.phase === 'study' || cycle.phase === 'break') { setPrompt('stop'); setStopUntil(time + 10_000) }
+        else if (cycle.phase === 'idle') setPrompt('start')
       }}>
       <PomodoroIcon phase={cycle.phase} />
     </button>
@@ -119,6 +130,7 @@ export default function Pomodoro() {
         </div>
       </PomodoroReveal>
     </div>
+    {error && <span role="alert">{error}</span>}
     <span className="sr-only" role="status">{cycle.phase === 'study' ? 'Study session started.' : cycle.phase === 'breakReady' ? "Time's up! Start break?" : cycle.phase === 'break' ? 'Break started.' : cycle.phase === 'ready' ? 'Break finished. Start another session?' : ''}</span>
   </div>
 }

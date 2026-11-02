@@ -4,12 +4,13 @@
  * setting it broke, never the app.
  */
 import { defaultChatModel, isChatModelId, isReasoningEffort, reasoningEffortsFor } from './sidechat/models'
-import { BACKEND_MODEL, isBackendModelId, isLiveModelId, migrateCoachModel, normalizeBackendReasoning } from './coach/models'
+import { BACKEND_MODEL, VOICES, isBackendModelId, isLiveModelId, migrateCoachModel, normalizeBackendReasoning } from './coach/models'
 import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
 import { isBuiltinThemeId } from './theme/builtin-ids'
 import { normalizePomodoroSettings } from './pomodoro'
+import { normalizeCoachPrompts } from './coach/prompt-defaults'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -49,6 +50,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   const theme = values['theme']
   const readingScale = normalizeReadingScale(values['readingScale'])
   const kept: Preferences = {
+    ...(values.defaultCoachPrompts && typeof values.defaultCoachPrompts === 'object' ? { defaultCoachPrompts: normalizeCoachPrompts(values.defaultCoachPrompts) } : {}),
     ...(values.pomodoro && typeof values.pomodoro === 'object' ? { pomodoro: normalizePomodoroSettings(values.pomodoro) } : {}),
     ...(chatModels ? { chatModels } : {}),
     ...(preferred ? { defaultChatModel: preferred } : {}),
@@ -56,6 +58,8 @@ export function normalizePreferences(raw: unknown): Preferences {
       ? { defaultChatReasoning: reasoning } : {}),
     ...(typeof coachModel === 'string' && coachModel.length <= 100 && isLiveModelId(coachModel)
       ? { defaultCoachModel: coachModel } : {}),
+    ...(typeof values.defaultCoachVoice === 'string' && VOICES.includes(values.defaultCoachVoice)
+      ? { defaultCoachVoice: values.defaultCoachVoice } : {}),
     ...(typeof values.defaultCoachBackendModel === 'string' && isBackendModelId(values.defaultCoachBackendModel)
       ? { defaultCoachBackendModel: values.defaultCoachBackendModel } : {}),
     ...(values.defaultCoachBackendReasoning !== undefined ? { defaultCoachBackendReasoning: normalizeBackendReasoning(typeof values.defaultCoachBackendModel === 'string' ? values.defaultCoachBackendModel : BACKEND_MODEL, values.defaultCoachBackendReasoning) } : {}),

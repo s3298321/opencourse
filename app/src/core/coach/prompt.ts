@@ -52,9 +52,10 @@ function houseRules(allowDelete: boolean): string {
   ].join('\n')
 }
 
-function workspaceSection(workspace: readonly CoachFileNode[]): string {
+function workspaceSection(workspace: readonly CoachFileNode[], includeOnboarding = true): string {
   const files = describeTree(workspace)
   if (!files.length) {
+    if (!includeOnboarding) return 'Your workspace is empty.'
     return [
       'Your workspace is empty: this is the first session, or nothing has been kept yet.',
       'Start by asking what the learner wants out of this, then write context.md before you get far in.'
@@ -123,7 +124,11 @@ export const WRAPUP_FORCED_TEXT = [
 ].join(' ')
 
 /** Preserve the complete user brief in both models; only house rules are split. */
-export function buildLiveInstructions(project: Pick<CoachProject, 'name' | 'instructions'>): string {
+export function buildLiveInstructions(project: Pick<CoachProject, 'name' | 'instructions' | 'prompts'>, phase: 'firstConversation' | 'followingConversations' = 'firstConversation'): string {
+  if (project.prompts) return [
+    `This coaching project is called "${project.name}".`, project.instructions.trim(),
+    project.prompts.voice, project.prompts[phase], COACH_CONTEXT_INSTRUCTIONS
+  ].join('\n\n')
   return [
     `This coaching project is called "${project.name}".`, project.instructions.trim(), COACH_CONTEXT_INSTRUCTIONS,
     'You handle the spoken coaching conversation. Your backend handles files, research, and careful reasoning.',
@@ -139,7 +144,12 @@ export function buildLiveInstructions(project: Pick<CoachProject, 'name' | 'inst
   ].join('\n\n')
 }
 
-export function buildBackendInstructions(project: Pick<CoachProject, 'name' | 'instructions' | 'allowDelete'>, workspace: readonly CoachFileNode[]): string {
+export function buildBackendInstructions(project: Pick<CoachProject, 'name' | 'instructions' | 'allowDelete' | 'prompts'>, workspace: readonly CoachFileNode[], phase: 'firstConversation' | 'followingConversations' = 'firstConversation'): string {
+  if (project.prompts) return [
+    `This coaching project is called "${project.name}".`, project.instructions.trim(),
+    project.prompts.backend, project.prompts[phase], COACH_CONTEXT_INSTRUCTIONS,
+    workspaceSection(workspace, false), houseRules(project.allowDelete)
+  ].join('\n\n')
   return [
     `This coaching project is called "${project.name}".`, project.instructions.trim(), COACH_CONTEXT_INSTRUCTIONS,
     'You are the reasoning and tool backend for a spoken coach. Return concise, grounded findings for the voice model. Do not generate a second spoken conversation.',

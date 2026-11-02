@@ -8,6 +8,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_COACH_PROMPTS } from '../src/core/coach/prompt-defaults'
+import { buildLiveInstructions, buildBackendInstructions } from '../src/core/coach/prompt'
 
 const root = mkdtempSync(join(tmpdir(), 'opencourse-coach-'))
 let dataDir = join(root, 'data')
@@ -39,8 +41,9 @@ const {
   selectTurns
 } = await import('../src/main/coachdb')
 const { updateSessionMetadata } = await import('../src/main/coachdb')
+const { getDefaultCoachPrompts, setDefaultCoachPrompts } = await import('../src/main/preferences')
 const { createProject, deleteProject, getProject, listProjects, updateProject, workspaceDir } = await import('../src/main/coach')
-const { getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getDefaultCoachModel, setDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, readPreferences } = await import('../src/main/preferences')
+const { getDefaultCoachVoice, setDefaultCoachVoice, getDefaultCoachBackendReasoning, setDefaultCoachBackendReasoning, getDefaultCoachModel, setDefaultCoachModel, getDefaultCoachBackendModel, setDefaultCoachBackendModel, readPreferences } = await import('../src/main/preferences')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -60,6 +63,77 @@ const startSession = (projectId: string, model = 'gpt-realtime-2.1'): string => 
 }
 
 describe('the schema', () => {
+  it('snapshots prompt defaults only for new coaches and persists them across user switches and recovery', () => {
+    const ada = createUser('Ada')
+    const existing = createProject({ name: 'Existing' })
+    const custom = { ...DEFAULT_COACH_PROMPTS, shared: 'Coach patiently.', voice: 'Speak concisely.', backend: 'Keep useful notes.', firstConversation: 'Ask their goal.', followingConversations: 'Review their progress.' }
+    setDefaultCoachPrompts(custom)
+    const coach = createProject({ name: 'New' })
+    expect(coach.instructions).toBe(custom.shared)
+    expect(coach.prompts).toEqual(custom)
+    expect(getProject(existing.id)?.prompts).toEqual(DEFAULT_COACH_PROMPTS)
+    setDefaultCoachPrompts({ ...custom, followingConversations: 'A later default' })
+    closeDb()
+    expect(getProject(coach.id)?.prompts).toEqual(custom)
+    expect(getDefaultCoachPrompts().followingConversations).toBe('A later default')
+    expect(JSON.parse(readFileSync(join(coachProjectDir(ada.id, coach.id), 'project.json'), 'utf8')).prompts).toEqual(custom)
+    createUser('Grace')
+    expect(getDefaultCoachPrompts()).toEqual(DEFAULT_COACH_PROMPTS)
+    switchUser(ada.id)
+    expect(getDefaultCoachPrompts().followingConversations).toBe('A later default')
+    closeDb()
+    writeFileSync(userDbFile(ada.id), 'corrupt')
+    listProjects()
+    expect(getProject(coach.id)?.prompts).toEqual(custom)
+  })
+  it('migrates old coaches without assigning the user’s new prompts', () => {
+    createUser('Ada')
+    const coach = createProject({ name: 'Legacy', instructions: 'An old custom brief.' })
+    db().exec('ALTER TABLE projects DROP COLUMN prompts; PRAGMA user_version = 27')
+    closeDb()
+    setDefaultCoachPrompts({ ...DEFAULT_COACH_PROMPTS, shared: 'New shared instructions', voice: 'New voice instructions' })
+    const legacy = getProject(coach.id)!
+    expect(legacy.prompts).toBeUndefined()
+    expect(legacy.instructions).toBe('An old custom brief.')
+    expect(buildLiveInstructions(legacy)).toContain('An old custom brief.')
+    expect(buildLiveInstructions(legacy)).not.toContain('New voice instructions')
+    expect(buildBackendInstructions(legacy, [])).toContain('Start by asking what the learner wants')
+    expect(getProject(createProject({ name: 'New' }).id)?.prompts?.voice).toBe('New voice instructions')
+  })
+  it('rejects invalid prompt saves atomically and recovers individual malformed preference fields', () => {
+    const user = createUser('Ada')
+    const saved = { ...DEFAULT_COACH_PROMPTS, shared: 'Saved teaching instructions' }
+    setDefaultCoachPrompts(saved)
+    expect(() => setDefaultCoachPrompts({ ...saved, voice: '   ' })).toThrow('Each coach prompt')
+    expect(() => setDefaultCoachPrompts({ ...saved, backend: 'x'.repeat(8001) })).toThrow('Each coach prompt')
+    expect(getDefaultCoachPrompts()).toEqual(saved)
+    writeFileSync(userPreferencesFile(user.id), JSON.stringify({ defaultCoachPrompts: { shared: 'Recovered instructions', voice: 12 } }))
+    expect(getDefaultCoachPrompts()).toEqual({ ...DEFAULT_COACH_PROMPTS, shared: 'Recovered instructions' })
+  })
+  it('persists voice defaults per user and applies them to new coaches', () => {
+    const ada = createUser('Ada')
+    const existing = createProject({ name: 'Existing' })
+    expect(getDefaultCoachVoice()).toBe('marin')
+    expect(setDefaultCoachVoice('cedar')).toBe('cedar')
+    expect(JSON.parse(readFileSync(userPreferencesFile(ada.id), 'utf8')).defaultCoachVoice).toBe('cedar')
+    closeDb()
+    expect(getDefaultCoachVoice()).toBe('cedar')
+    expect(createProject({ name: 'New' }).voice).toBe('cedar')
+    expect(getProject(existing.id)?.voice).toBe('marin')
+    expect(createProject({ name: 'Override', voice: 'echo' }).voice).toBe('echo')
+    expect(() => setDefaultCoachVoice('unknown')).toThrow('supported coach voice')
+    expect(getDefaultCoachVoice()).toBe('cedar')
+    createUser('Grace')
+    expect(getDefaultCoachVoice()).toBe('marin')
+    switchUser(ada.id)
+    expect(getDefaultCoachVoice()).toBe('cedar')
+  })
+  it.each(['unknown', '', 42, null])('falls back safely for invalid saved voice %s', voice => {
+    const user = createUser('Ada')
+    writeFileSync(userPreferencesFile(user.id), JSON.stringify({ defaultCoachVoice: voice, readingScale: 1.2 }))
+    expect(getDefaultCoachVoice()).toBe('marin')
+    expect(readPreferences().readingScale).toBe(1.2)
+  })
   it('persists per-user reasoning defaults and retains legacy coach records', () => {
     const ada = createUser('Ada')
     const existing = createProject({ name: 'Existing' })

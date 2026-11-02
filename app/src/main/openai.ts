@@ -28,6 +28,7 @@ import { log } from './log'
 import { BACKEND_MODELS, LIVE_MODELS, WEB_SEARCH_MODEL, filterLiveModels, filterBackendModels } from '../core/coach/models'
 import { CHAT_MODELS, filterChatModels } from '../core/sidechat/models'
 import { COACH_TITLE_INSTRUCTIONS } from '../core/coach/title'
+import { VOICE_PREVIEW_INSTRUCTIONS } from '../core/coach/voice-preview'
 import { normalizeChatTitle } from '../core/sidechat/title'
 import type { ChatCitation, ChatModel, CoachModel, ReasoningEffort } from '../core/types'
 
@@ -300,6 +301,27 @@ export interface LiveSessionConfig {
   backendReasoning?: ReasoningEffort | null
   backendInstructions: string
   tools: unknown[]
+}
+
+/** A preview has no coach history, tools, storage, or microphone input. */
+export async function createLiveVoicePreview(key: string, model: string, voice: string, offerSdp: string): Promise<{ answerSdp: string }> {
+  const body = await request('/live/sessions', {
+    key, method: 'POST', contentType: 'application/json', timeoutMs: 30_000,
+    privateErrors: 'The voice preview could not start. Check your API key and GPT-Live access.',
+    body: JSON.stringify({
+      session: {
+        model, instructions: VOICE_PREVIEW_INSTRUCTIONS, store: false,
+        audio: { output: { voice } }, delegation: { type: 'client' },
+        input: [{ role: 'developer', content: [{ type: 'input_text', text: VOICE_PREVIEW_INSTRUCTIONS }] }]
+      },
+      transport: { type: 'webrtc', sdp: offerSdp }
+    })
+  })
+  const result = JSON.parse(body)
+  if (result.transport?.type !== 'webrtc' || typeof result.transport.sdp !== 'string' || !result.transport.sdp.includes('v=0')) {
+    throw new Error('OpenAI returned an invalid voice preview connection.')
+  }
+  return { answerSdp: result.transport.sdp }
 }
 
 /** One creation attempt only: a timed-out request may already have started billing. */

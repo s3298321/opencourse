@@ -191,6 +191,8 @@ Server 0.3.0 keeps server schema 5; upgrading from 0.2.0 adds the authenticated
 Coach reading endpoint without a new server database migration. App 0.7.0
 advances desktop schema 26 to 27, preserving existing Coach memory and history.
 The new nullable compatibility column does not associate coaches with content.
+App 0.7.1 advances desktop schema 27 to 28, adding saved prompt settings for
+new coaches. Existing coaches retain their instructions and behavior.
 
 For installations upgrading from before server 0.2.0 / app 0.5.0, the earlier
 learning migration advances server schema 2 to 5 and desktop schema 22 to 24

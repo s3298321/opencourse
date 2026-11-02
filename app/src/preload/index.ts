@@ -1,5 +1,6 @@
 import type { NotebookAssociation, WritingNotebook, WritingNotebookHit, WritingNotebookPage, WritingNotebookSaveResult, WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
 import type { ReadingSource } from '../core/documents/types'
+import type { CoachPrompts } from '../core/types'
 import type { CellTarget, CellRunRequest, NotebookDocument, NotebookEvent, NotebookSaveResult, NotebookStatus, CellExecution } from '../core/notebook/types'
 import type { AppInfo, AppLinks, AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
 import type { DocumentChatSummary, DocumentChatThread, DocumentImportResult, DocumentSearch, DocumentSummary, DocumentView } from '../core/documents/types'
@@ -10,7 +11,7 @@ import type { ReviewAnswer, ReviewCount, ReviewRating, ReviewSession, ReviewSumm
 import type { LogPage, LogQuery } from '../core/logging/query'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { BRAND } from '../core/brand'
-import type { PomodoroSettings } from '../core/pomodoro'
+import type { PomodoroCommand, PomodoroSettings, PomodoroState } from '../core/pomodoro'
 import type {
   ActiveTheme,
   ThemeImportResult,
@@ -262,6 +263,9 @@ const api = {
   // --- the reader's text size on a lesson screen: one of READING_SCALES ---
   getReadingScale: (): Promise<number> => ipcRenderer.invoke('reading:scale'),
   getPomodoroSettings: (): Promise<PomodoroSettings> => ipcRenderer.invoke('pomodoro:settings'),
+  getPomodoroState: (): Promise<PomodoroState> => ipcRenderer.invoke('pomodoro:state'),
+  commandPomodoro: (command: PomodoroCommand): Promise<PomodoroState> => ipcRenderer.invoke('pomodoro:command', command),
+  onPomodoroChanged: (handler: (state: PomodoroState) => void): (() => void) => subscribe('pomodoro:changed', handler),
   setPomodoroSettings: (settings: PomodoroSettings): Promise<PomodoroSettings> => ipcRenderer.invoke('pomodoro:setSettings', settings),
   getFloatingCoachButton: (): Promise<boolean> => ipcRenderer.invoke('coach:floatingButton'),
   setFloatingCoachButton: (value: boolean): Promise<boolean> => ipcRenderer.invoke('coach:setFloatingButton', value),
@@ -346,6 +350,11 @@ const api = {
   listCoachBackendModels: (): Promise<{ models: CoachModel[]; source: 'api' | 'fallback'; error?: string }> =>
     ipcRenderer.invoke('coach:listBackendModels'),
   getDefaultCoachModel: (): Promise<string> => ipcRenderer.invoke('coach:defaultModel'),
+  getDefaultCoachVoice: (): Promise<string> => ipcRenderer.invoke('coach:defaultVoice'),
+  getDefaultCoachPrompts: (): Promise<CoachPrompts> => ipcRenderer.invoke('coach:defaultPrompts'),
+  setDefaultCoachPrompts: (prompts: CoachPrompts): Promise<CoachPrompts> => ipcRenderer.invoke('coach:setDefaultPrompts', prompts),
+  previewCoachVoice: (voice: string, offerSdp: string): Promise<{ answerSdp: string }> => ipcRenderer.invoke('coach:previewVoice', voice, offerSdp),
+  setDefaultCoachVoice: (voice: string): Promise<string> => ipcRenderer.invoke('coach:setDefaultVoice', voice),
   setDefaultCoachModel: (model: string): Promise<string> => ipcRenderer.invoke('coach:setDefaultModel', model),
   getDefaultCoachBackendReasoning: (): Promise<ReasoningEffort | null> => ipcRenderer.invoke('coach:defaultBackendReasoning'),
   setDefaultCoachBackendReasoning: (reasoning: ReasoningEffort | null): Promise<ReasoningEffort | null> => ipcRenderer.invoke('coach:setDefaultBackendReasoning', reasoning),

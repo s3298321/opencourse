@@ -128,7 +128,10 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
     }
   } finally { win.setSize(originalSize[0]!, originalSize[1]!) }
   await run('settings: categories preserve input and About reports installed runtimes', `
-    find('.titlebar .user-chip').click(); (await wait('.user-menu')).querySelector('.menu-item').click(); await wait('.settings-nav');
+    // Restoring the window size emits resize asynchronously, which closes menus.
+    await sleep(180);
+    if (!find('.user-menu')) find('.titlebar .user-chip').click();
+    (await wait('.user-menu')).querySelector('.menu-item').click(); await wait('.settings-nav');
     find('[data-settings-category="profile"]').click(); await wait('.settings-name');
     const name = find('.settings-name'), setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     setter.call(name, 'Unfinished settings name'); name.dispatchEvent(new Event('input', { bubbles: true })); await sleep(50);

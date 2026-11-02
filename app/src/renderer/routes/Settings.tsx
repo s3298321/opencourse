@@ -10,6 +10,8 @@ import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
 import ThemeSection from '../components/ThemeSettings'
 import PomodoroSettings from '../components/PomodoroSettings'
+import CoachVoicePicker from '../components/CoachVoicePicker'
+import CoachPromptSettings from '../components/CoachPromptSettings'
 import ServerSettings from '../components/ServerSettings'
 import ConnectionIcon from '../components/ConnectionIcon'
 import { formatDownloadSize, useAppUpdate } from '../components/useAppUpdate'
@@ -61,7 +63,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
       case 'pomodoro': return user ? <PomodoroSettings /> : <p className="meta">Choose a user to configure Pomodoro.</p>
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
       case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
-      case 'coach': return <CoachDefaultsSection keyVersion={keyVersion} />
+      case 'coach': return <><CoachDefaultsSection keyVersion={keyVersion} active={section === 'coach'} /><CoachPromptSettings /></>
       case 'servers': return <ServerSettings />
       case 'updates': return <UpdatesSection focus={section === 'updates'} />
       case 'about': return <AboutSection />
@@ -465,7 +467,7 @@ export function WebSearchSection({ authoring = false }: { authoring?: boolean })
   )
 }
 
-function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Element {
+function CoachDefaultsSection({ keyVersion, active }: { keyVersion: number; active: boolean }): JSX.Element {
   const [allowDelete, setAllowDelete] = useState<boolean | null>(null)
   const [savingPermission, setSavingPermission] = useState(false)
   useEffect(() => {
@@ -475,6 +477,7 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
   }, [])
   const [models, setModels] = useState<CoachModel[]>([])
   const [model, setModel] = useState<string | null>(null)
+  const [voice, setVoice] = useState<string | null>(null)
   const [backendModels, setBackendModels] = useState<CoachModel[]>([])
   const [backendModel, setBackendModel] = useState<string | null>(null)
   const [backendReasoning, setBackendReasoning] = useState<ReasoningEffort | null>(null)
@@ -485,16 +488,19 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
   useEffect(() => {
     let cancelled = false
     setModel(null)
+    setVoice(null)
     setBackendModel(null)
     setError(null)
     void Promise.all([
       window.opencourse.listCoachModels(), window.opencourse.getDefaultCoachModel(),
-      window.opencourse.listCoachBackendModels(), window.opencourse.getDefaultCoachBackendModel(), window.opencourse.getDefaultCoachBackendReasoning()
+      window.opencourse.listCoachBackendModels(), window.opencourse.getDefaultCoachBackendModel(), window.opencourse.getDefaultCoachBackendReasoning(),
+      window.opencourse.getDefaultCoachVoice()
     ])
-      .then(([list, selected, backendList, selectedBackend, reasoning]) => {
+      .then(([list, selected, backendList, selectedBackend, reasoning, selectedVoice]) => {
         if (cancelled) return
         setModels(list.models)
         setModel(selected)
+        setVoice(selectedVoice)
         setBackendModels(backendList.models)
         setBackendModel(selectedBackend)
         setBackendReasoning(reasoning)
@@ -521,6 +527,16 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
     } finally {
       setBusy(false)
     }
+  }
+
+  const saveVoice = async (next: string): Promise<void> => {
+    if (busy) return
+    setBusy(true); setSaved(false); setError(null)
+    try {
+      setVoice(await window.opencourse.setDefaultCoachVoice(next))
+      setSaved(true)
+    } catch (err) { setError((err as Error).message) }
+    finally { setBusy(false) }
   }
 
   const saveReasoning = async (reasoning: ReasoningEffort | null): Promise<void> => {
@@ -563,6 +579,7 @@ function CoachDefaultsSection({ keyVersion }: { keyVersion: number }): JSX.Eleme
               {models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
             </select>
           </label>
+          <CoachVoicePicker voice={voice} busy={busy} active={active} onSave={saveVoice} />
           <label>
             <span>Default background model</span>
             <select

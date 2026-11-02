@@ -4,7 +4,7 @@ import { BrowserWindow } from 'electron'
 import { writeFileSync } from 'node:fs'
 import { getWritingNotebook, getWritingPage, listWritingNotebooks, saveWritingPage, createWritingNotebook } from './writing-notebooks'
 import { openWritingNotebook, closeWritingWindows, notebookWindowIdentity } from './writing-notebook-windows'
-import { WHITE_THEME_ID, NEON_THEME_ID } from '../core/theme/builtin-ids'
+import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
 interface Result { name: string; ok: boolean; detail: string }
 const helpers = `const pause=ms=>new Promise(r=>setTimeout(r,ms)); const until=async (condition,message)=>{ for(let i=0;i<400;i++){ if(condition()) return; await pause(25); } throw new Error(message) }; const wait=async selector=>{ for(let i=0;i<400;i++){ const el=document.querySelector(selector); if(el) return el; await pause(25); } throw new Error('Missing '+selector) }; const assert=(v,m)=>{if(!v) throw new Error(m)};`
 export async function writingNotebookChecks(main: BrowserWindow): Promise<Result[]> {
@@ -28,6 +28,25 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
   })
   if (!window) return results
   const notebookWindow = window
+  await run('Pomodoro shares one deadline across main and notebook windows, including reloads', async () => {
+    await js(main, `const icon=await wait('.pomodoro-icon'); await until(()=>!icon.disabled,'Timer did not load'); icon.click(); (await wait('.pomodoro-yes')).click(); await until(()=>document.querySelector('.pomodoro').dataset.phase==='study','Study did not start');`)
+    const started = await js(main, `return window.opencourse.getPomodoroState();`)
+    await js(notebookWindow, `await until(()=>document.querySelector('.pomodoro')?.dataset.phase==='study','Notebook timer did not synchronize');`)
+    notebookWindow.reload()
+    await js(notebookWindow, `await wait('.writing-editor .cm-content'); await until(()=>document.querySelector('.pomodoro')?.dataset.phase==='study','Reload lost the timer'); const state=await window.opencourse.getPomodoroState(); assert(state.cycle.endsAt===${started.cycle.endsAt},'Reload changed the deadline'); document.querySelector('.pomodoro-icon').click();`)
+    const [width, height] = notebookWindow.getSize()
+    try {
+      notebookWindow.setSize(720, height)
+      await js(notebookWindow, `await pause(450); const timer=document.querySelector('.pomodoro').getBoundingClientRect(), title=document.querySelector('.titlebar-title').getBoundingClientRect(), actions=document.querySelector('.titlebar-right').getBoundingClientRect(); assert(timer.left>=76,'Timer covers window controls'); assert(timer.right<=title.left && title.right<=actions.left,'Notebook titlebar controls overlap');`)
+      writeFileSync('/tmp/opencourse-writing-pomodoro.png', (await notebookWindow.webContents.capturePage()).toPNG())
+      await js(notebookWindow, `document.querySelector('.pomodoro-yes').click();`)
+      await js(main, `await until(()=>document.querySelector('.pomodoro').dataset.phase==='idle','Notebook stop did not reach main');`)
+    } finally {
+      notebookWindow.setSize(width, height)
+      await js(main, `const state=await window.opencourse.getPomodoroState(); await window.opencourse.commandPomodoro({action:'stop',revision:state.revision});`)
+    }
+    return 'Start, shared deadline, reload, stop from notebook, and titlebar layout at minimum width'
+  })
   await run('live Markdown saves and switches pages without losing content', async () => {
     await js(notebookWindow, `(await wait('.cm-content')).focus();`)
     await notebookWindow.webContents.insertText('# Heading\n\nA **bold** thought and *emphasis*.\n\n- [x] Done\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nTail')
@@ -49,7 +68,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     await js(notebookWindow, `const offer=await wait('.ask-about'); offer.dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); offer.dispatchEvent(new MouseEvent('mouseup',{bubbles:true})); offer.click(); await pause(450); await wait('.sidechat-quote'); assert(!document.querySelector('.writing-attached-quote'),'Quote should not highlight the source'); const host=document.querySelector('.lesson-chat-host'); assert(host.getBoundingClientRect().width>200,'Chat did not expand'); document.querySelector('.chat-chip').click(); await until(()=>host.getBoundingClientRect().width<2,'Chat did not collapse');`)
     return 'Selection attached without source highlight, reversible chat transition'
   })
-  await run('White and Neon theme open notebooks in place and restore the default look', async () => {
+  await run('White applies to open notebooks in place and Dark restores the default look', async () => {
     await js(notebookWindow, `
       window.__writingThemeEditor = document.querySelector('.cm-content');
       window.__writingThemeText = window.__writingThemeEditor.textContent;
@@ -58,8 +77,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     `)
     try {
       for (const [themeId, name, background, font] of [
-        [WHITE_THEME_ID, 'white', 'rgb(255, 255, 255)', 'system-ui'],
-        [NEON_THEME_ID, 'neon', 'rgb(20, 16, 31)', 'Helvetica Neue']
+        [WHITE_THEME_ID, 'white', 'rgb(255, 255, 255)', 'system-ui']
       ]) {
         await js(main, `await window.opencourse.applyTheme(${JSON.stringify(themeId)});`)
         await js(notebookWindow, `
@@ -92,7 +110,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
       assert(JSON.stringify(restored) === JSON.stringify(window.__writingDefault), 'Default notebook look changed');
       assert(document.querySelector('.cm-content') === window.__writingThemeEditor, 'Default recreated editor');
     `)
-    return 'White and Neon surfaces, typography, selection, titlebars, launcher and chat; default restored without remounting'
+    return 'White surfaces, typography, selection, titlebars, launcher and chat; default restored without remounting'
   })
   await run('reopening focuses the existing notebook and multiple notebooks can coexist', async () => {
     const before = BrowserWindow.getAllWindows().length

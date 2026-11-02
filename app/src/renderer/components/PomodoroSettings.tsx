@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { validPomodoroMinutes } from '@core/pomodoro'
 import ActionButton from './ActionButton'
-import { POMODORO_SETTINGS_CHANGED } from './Pomodoro'
 
 export default function PomodoroSettings() {
   const [study, setStudy] = useState('40')
@@ -24,14 +23,13 @@ export default function PomodoroSettings() {
     setBusy(true); setError(''); setSaved(false)
     try {
       await window.opencourse.setPomodoroSettings({ studyMinutes: Number(study), breakMinutes: Number(rest) })
-      window.dispatchEvent(new Event(POMODORO_SETTINGS_CHANGED))
       setSaved(true)
     } catch (err) { setError((err as Error).message) }
     finally { setBusy(false) }
   }
   return <section className="settings-section">
     <h2>Study and break timers</h2>
-    <p className="meta">Start a session with the tomato in the title bar. When study time ends, choose whether to start your break.</p>
+    <p className="meta">Start a session with the clock in the title bar. When study time ends, choose whether to start your break.</p>
     <form onSubmit={event => { event.preventDefault(); if (loaded && valid && !busy) void save() }}>
       <div className="pomodoro-settings-fields">
         <label>Study session <span className="meta">minutes</span><input type="number" min="1" max="180" step="1" required value={study} disabled={!loaded || busy}

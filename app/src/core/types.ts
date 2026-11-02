@@ -496,6 +496,14 @@ export type ServerResult<T> =
  * model writes into. Unlike a course, nothing here is authored up front - the
  * project accumulates whatever the coach decides to keep between sessions.
  */
+export interface CoachPrompts {
+  shared: string
+  voice: string
+  backend: string
+  firstConversation: string
+  followingConversations: string
+}
+
 export interface CoachProject {
   id: string
   name: string
@@ -506,6 +514,8 @@ export interface CoachProject {
   voice: string
   /** The coach's persisted brief, including briefs saved before the floating interface. */
   instructions: string
+  /** Snapshot taken at creation. Absent on legacy coaches, which keep their original prompts. */
+  prompts?: CoachPrompts
   /**
    * Legacy saved deletion flag. Live sessions apply the current user-wide
    * coachAllowDelete preference instead.
@@ -885,6 +895,8 @@ export interface Preferences {
   defaultChatModel?: string
   defaultChatReasoning?: ReasoningEffort
   defaultCoachModel?: string
+  defaultCoachPrompts?: CoachPrompts
+  defaultCoachVoice?: string
   defaultCoachBackendModel?: string
   defaultCoachBackendReasoning?: ReasoningEffort | null
   /** All coaches may trash files only while this user opts in. */

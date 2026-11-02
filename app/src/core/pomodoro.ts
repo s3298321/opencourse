@@ -21,6 +21,16 @@ export type PomodoroCycle =
   | { phase: 'breakReady'; breakMinutes: number }
   | { phase: 'break'; endsAt: number }
 
+export interface PomodoroState {
+  revision: number
+  cycle: PomodoroCycle
+}
+
+export interface PomodoroCommand {
+  action: 'start' | 'break' | 'stop' | 'dismiss'
+  revision: number
+}
+
 /** Deadlines keep time accurate when the window is hidden or the computer sleeps. */
 export function advancePomodoro(cycle: PomodoroCycle, now: number): PomodoroCycle {
   if (cycle.phase === 'study' && now >= cycle.endsAt) {

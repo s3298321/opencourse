@@ -2,12 +2,17 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { advancePomodoro, formatPomodoroTime, normalizePomodoroSettings } from '../src/core/pomodoro'
+import { PomodoroTimer } from '../src/main/pomodoro'
+import type { PomodoroState } from '../src/core/pomodoro'
 import { normalizePreferences } from '../src/core/preferences'
-import Pomodoro, { POMODORO_SETTINGS_CHANGED } from '../src/renderer/components/Pomodoro'
+import Pomodoro from '../src/renderer/components/Pomodoro'
 import PomodoroSettings from '../src/renderer/components/PomodoroSettings'
 import { TitleBarChrome } from '../src/renderer/components/TitleBar'
 vi.mock('../src/renderer/components/useAppUpdate', () => ({ useAppUpdate: () => null }))
 
+let service: PomodoroTimer
+let listeners: Set<(state: PomodoroState) => void>
+let settings: { studyMinutes: number; breakMinutes: number }
 let root: Root
 let container: HTMLDivElement
 beforeEach(() => {
@@ -15,7 +20,13 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-10-18T12:00:00Z'))
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  listeners = new Set()
+  settings = { studyMinutes: 40, breakMinutes: 5 }
+  service = new PomodoroTimer(() => settings, state => listeners.forEach(listener => listener(state)))
   vi.stubGlobal('opencourse', {
+    getPomodoroState: vi.fn(async () => service.get()),
+    commandPomodoro: vi.fn(async command => service.command(command)),
+    onPomodoroChanged: vi.fn(handler => { listeners.add(handler); return () => { listeners.delete(handler) } }),
     getPomodoroSettings: vi.fn(async () => ({ studyMinutes: 40, breakMinutes: 5 })),
     setPomodoroSettings: vi.fn(async value => value)
   })
@@ -66,7 +77,7 @@ describe('Pomodoro title bar', () => {
     expect(phase()).toBe('study')
     await hover(false); await hover(true)
     expect(timer()).toBe('39:55')
-    await act(async () => root.render(createElement(TitleBarChrome, { user: { ...user, id: 'second' }, route: { name: 'library' } })))
+    await act(async () => { service.reset(); root.render(createElement(TitleBarChrome, { user: { ...user, id: 'second' }, route: { name: 'library' } })) })
     expect(phase()).toBe('idle'); expect(expanded()).toBe(false)
   })
 
@@ -185,7 +196,7 @@ describe('Pomodoro title bar', () => {
   })
 
   it('offers another session if the break ends during stop confirmation', async () => {
-    vi.mocked(window.opencourse.getPomodoroSettings).mockResolvedValue({ studyMinutes: 1, breakMinutes: 1 })
+    settings = { studyMinutes: 1, breakMinutes: 1 }
     await render(); await start(); await advance(60_000); await click('.pomodoro-yes'); await advance(59_000)
     await click('.pomodoro-icon'); await advance(1_000)
     expect(phase()).toBe('ready')
@@ -196,8 +207,7 @@ describe('Pomodoro title bar', () => {
 
   it('applies changed durations to the next cycle without changing an active one', async () => {
     await render(); await start()
-    vi.mocked(window.opencourse.getPomodoroSettings).mockResolvedValue({ studyMinutes: 1, breakMinutes: 2 })
-    await act(async () => { window.dispatchEvent(new Event(POMODORO_SETTINGS_CHANGED)) })
+    settings = { studyMinutes: 1, breakMinutes: 2 }
     expect(timer()).toBe('40:00')
     await advance(40 * 60_000); await click('.pomodoro-yes')
     expect(timer()).toBe('05:00')
@@ -253,4 +263,44 @@ describe('Pomodoro preferences and deadlines', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('Disk full')
     expect(container.querySelector('[role="status"]')).toBeNull()
   })
+})
+
+
+it('synchronizes two mounted windows and reconnects after one closes', async () => {
+  await render(); await start(); await advance(5_000)
+  const other = document.body.appendChild(document.createElement('div'))
+  const otherRoot = createRoot(other)
+  const otherClick = async (selector: string) => act(async () => other.querySelector<HTMLButtonElement>(selector)!.click())
+  try {
+    await act(async () => otherRoot.render(createElement(Pomodoro)))
+    expect(other.querySelector('[role="timer"]')?.textContent).toBe('39:55')
+    await otherClick('.pomodoro-icon'); await otherClick('.pomodoro-yes')
+    expect(phase()).toBe('idle')
+    await start()
+    expect(other.querySelector('.pomodoro')?.getAttribute('data-phase')).toBe('study')
+    await advance(40 * 60_000)
+    expect(other.textContent).toContain("Time's up ! Start break ?")
+    await otherClick('.pomodoro-yes')
+    expect(phase()).toBe('break'); expect(timer()).toBe('05:00')
+    await act(async () => root.render(null))
+    expect(listeners.size).toBe(1)
+    await advance(30_000)
+    await render()
+    expect(phase()).toBe('break'); expect(timer()).toBe('04:30')
+    await click('.pomodoro-icon'); await click('.pomodoro-yes')
+    expect(other.querySelector('.pomodoro')?.getAttribute('data-phase')).toBe('idle')
+  } finally {
+    await act(async () => otherRoot.unmount())
+    other.remove()
+  }
+})
+
+it('does not overwrite a broadcast with an older initial response', async () => {
+  let resolve!: (state: PomodoroState) => void
+  vi.mocked(window.opencourse.getPomodoroState).mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  await render()
+  await act(async () => { service.command({ action: 'start', revision: 0 }) })
+  await act(async () => resolve({ revision: 0, cycle: { phase: 'idle' } }))
+  expect(phase()).toBe('study')
+  expect(timer()).toBe('40:00')
 })

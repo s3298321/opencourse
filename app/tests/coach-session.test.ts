@@ -70,7 +70,9 @@ const { createUser, deleteUser, listUsers, requireUser, switchUser } = await imp
 const { closeDb } = await import('../src/main/db')
 const { selectSessionRow, selectSessions, selectToolCalls, selectSessionSummary } = await import('../src/main/coachdb')
 const { createProject, updateProject, deleteProject } = await import('../src/main/coach')
-const { getCoachAllowDelete, setCoachAllowDelete, setDefaultCoachBackendModel, setDefaultCoachBackendReasoning } = await import('../src/main/preferences')
+const { previewCoachVoice } = await import('../src/main/coach-voice-preview')
+const { setDefaultCoachPrompts, getDefaultCoachPrompts } = await import('../src/main/preferences')
+const { getCoachAllowDelete, setCoachAllowDelete, setDefaultCoachVoice, setDefaultCoachBackendModel, setDefaultCoachBackendReasoning } = await import('../src/main/preferences')
 const { isCoachProjectBusy } = await import('../src/main/coach-activity')
 const { setKey } = await import('../src/main/coachkey')
 const { log } = await import('../src/main/log')
@@ -122,6 +124,48 @@ beforeEach(async () => {
 const start = (id = 1): ReturnType<typeof startSession> => startSession(sender(id) as any, projectId)
 
 describe('starting a session', () => {
+  it('uses a coach’s saved first and following prompts despite later default edits', async () => {
+    const prompts = { ...getDefaultCoachPrompts(), shared: 'SHARED_SNAPSHOT', voice: 'VOICE_SNAPSHOT', backend: 'BACKEND_SNAPSHOT', firstConversation: 'FIRST_SNAPSHOT', followingConversations: 'FOLLOWING_SNAPSHOT' }
+    setDefaultCoachPrompts(prompts)
+    projectId = createProject({ name: 'Custom coach' }).id
+    setDefaultCoachPrompts({ ...prompts, shared: 'CHANGED_SHARED', firstConversation: 'CHANGED_FIRST', followingConversations: 'CHANGED_FOLLOWING' })
+    const first = await start()
+    if (first.status !== 'ok') throw new Error('not started')
+    expect(first.instructions).toContain('SHARED_SNAPSHOT')
+    expect(first.instructions).toContain('VOICE_SNAPSHOT')
+    expect(first.instructions).toContain('FIRST_SNAPSHOT')
+    expect(first.instructions).not.toContain('FOLLOWING_SNAPSHOT')
+    expect(first.backendInstructions).toContain('BACKEND_SNAPSHOT')
+    expect(first.backendInstructions).toContain('FIRST_SNAPSHOT')
+    expect(first.backendInstructions).not.toContain('VOICE_SNAPSHOT')
+    endSession(first.sessionId, { status: 'ended', turns: [] })
+    const following = await start()
+    if (following.status !== 'ok') throw new Error('not started')
+    expect(following.instructions).toContain('FOLLOWING_SNAPSHOT')
+    expect(following.instructions).not.toContain('FIRST_SNAPSHOT')
+    expect(following.backendInstructions).toContain('FOLLOWING_SNAPSHOT')
+    expect(following.instructions + following.backendInstructions).not.toContain('CHANGED_')
+    expect(selectSessionRow(first.sessionId)?.instructions).toContain('FIRST_SNAPSHOT')
+  })
+  it('previews a voice without coach history, tools, microphone permission or persisted sessions', async () => {
+    micGranted = false
+    expect(await previewCoachVoice(sender(1) as any, 'brise', 'v=0 offer')).toEqual({ answerSdp: 'v=0\r\nanswer\r\n' })
+    const request = JSON.parse(calls.at(-1)!.body)
+    expect(request.session).toMatchObject({ model: 'gpt-live-1', store: false, audio: { output: { voice: 'brise' } }, delegation: { type: 'client' } })
+    expect(request.session.input[0].role).toBe('developer')
+    expect(request.session.instructions).toContain('voice preview')
+    expect(selectSessions(projectId)).toHaveLength(0)
+    expect(wantsMic()).toBe(false)
+    expect(liveSessionCount()).toBe(0)
+  })
+  it('rejects unsupported preview voices, invalid SDP and missing keys before any request', async () => {
+    await expect(previewCoachVoice(sender(1) as any, 'unknown', 'v=0 offer')).rejects.toThrow('supported coach voice')
+    await expect(previewCoachVoice(sender(1) as any, 'marin', 'bad')).rejects.toThrow('Invalid preview')
+    const { clearKey } = await import('../src/main/coachkey')
+    clearKey()
+    await expect(previewCoachVoice(sender(1) as any, 'marin', 'v=0 offer')).rejects.toThrow('API key')
+    expect(calls).toHaveLength(0)
+  })
   it('refuses without a key, before asking for the microphone', async () => {
     const { clearKey } = await import('../src/main/coachkey')
     clearKey()
@@ -443,6 +487,20 @@ describe('coach diagnostics', () => {
 
 
 describe('Live ownership and exactly-once tools', () => {
+  it('uses the shared voice for existing coaches and freezes it until the next session', async () => {
+    updateProject(projectId, { voice: 'echo' })
+    setDefaultCoachVoice('cedar')
+    const result = await start()
+    if (result.status !== 'ok') throw new Error('not started')
+    expect(result.voice).toBe('cedar')
+    setDefaultCoachVoice('shimmer')
+    await connectSession(result.sessionId, 'v=0 offer', 1)
+    expect(JSON.parse(calls.at(-1)!.body).session.audio.output.voice).toBe('cedar')
+    expect(selectSessionSummary(result.sessionId)?.metadata?.voice).toBe('cedar')
+    endSession(result.sessionId, { status: 'ended', turns: [] })
+    expect(await start()).toMatchObject({ status: 'ok', voice: 'shimmer' })
+    expect(selectSessionSummary(result.sessionId)?.metadata?.voice).toBe('cedar')
+  })
   it('uses shared reasoning over legacy overrides and freezes it in the session snapshot', async () => {
     updateProject(projectId, { backendReasoning: 'low' })
     setDefaultCoachBackendReasoning('high')

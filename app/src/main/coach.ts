@@ -12,9 +12,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { join } from 'node:path'
 import type { CoachProject, CoachProjectSummary, ReasoningEffort } from '../core/types'
 import { newProjectId } from '../core/coach/ids'
-import { DEFAULT_VOICE, migrateCoachModel, isLiveModelId, isBackendModelId, normalizeBackendReasoning } from '../core/coach/models'
-import { getDefaultCoachBackendModel, getDefaultCoachBackendReasoning, getDefaultCoachModel } from './preferences'
-import { DEFAULT_INSTRUCTIONS, normalizeInstructions, normalizeProject, normalizeProjectName } from '../core/coach/projects'
+import { migrateCoachModel, isLiveModelId, isBackendModelId, normalizeBackendReasoning } from '../core/coach/models'
+import { getDefaultCoachPrompts, getDefaultCoachBackendModel, getDefaultCoachBackendReasoning, getDefaultCoachModel, getDefaultCoachVoice } from './preferences'
+import { normalizeInstructions, normalizeProject, normalizeProjectName } from '../core/coach/projects'
 import {
   deleteProjectRow,
   insertProject,
@@ -116,7 +116,7 @@ function migrateProject(project: CoachProject): CoachProject {
   const next = model === project.model ? project : { ...project, model }
   if (next !== project) updateProjectRow(next)
   const mirror = readMirror(project.id)
-  if (mirror?.model !== model || mirror?.backendModel !== next.backendModel || mirror?.backendReasoning !== next.backendReasoning) writeMirror(next)
+  if (mirror?.model !== model || mirror?.backendModel !== next.backendModel || mirror?.backendReasoning !== next.backendReasoning || JSON.stringify(mirror?.prompts) !== JSON.stringify(next.prompts)) writeMirror(next)
   return next
 }
 
@@ -172,6 +172,8 @@ export function requireProject(id: string): CoachProject {
 
 export function createProject(draft: CoachProjectDraft, now = new Date()): CoachProject {
   const at = now.toISOString()
+  const prompts = getDefaultCoachPrompts()
+  const instructions = normalizeInstructions(draft.instructions ?? prompts.shared)
   const backendModel = checkedBackendModel(draft.backendModel ?? getDefaultCoachBackendModel())
   const project: CoachProject = {
     id: newProjectId(),
@@ -179,8 +181,9 @@ export function createProject(draft: CoachProjectDraft, now = new Date()): Coach
     model: checkedModel(typeof draft.model === 'string' && draft.model ? draft.model : getDefaultCoachModel()),
     backendModel,
     backendReasoning: draft.backendReasoning === undefined ? normalizeBackendReasoning(backendModel, getDefaultCoachBackendReasoning()) : checkedBackendReasoning(backendModel, draft.backendReasoning),
-    voice: typeof draft.voice === 'string' && draft.voice ? draft.voice : DEFAULT_VOICE,
-    instructions: normalizeInstructions(draft.instructions ?? DEFAULT_INSTRUCTIONS),
+    voice: typeof draft.voice === 'string' && draft.voice ? draft.voice : getDefaultCoachVoice(),
+    instructions,
+    prompts: { ...prompts, shared: instructions },
     allowDelete: draft.allowDelete === true,
     createdAt: at,
     updatedAt: at
@@ -202,7 +205,10 @@ export function updateProject(id: string, patch: Partial<CoachProjectDraft>, now
     backendModel,
     backendReasoning: patch.backendReasoning === undefined ? normalizeBackendReasoning(backendModel, current.backendReasoning) : checkedBackendReasoning(backendModel, patch.backendReasoning),
     ...(patch.voice !== undefined && patch.voice ? { voice: patch.voice } : {}),
-    ...(patch.instructions !== undefined ? { instructions: normalizeInstructions(patch.instructions) } : {}),
+    ...(patch.instructions !== undefined ? {
+      instructions: normalizeInstructions(patch.instructions),
+      ...(current.prompts ? { prompts: { ...current.prompts, shared: normalizeInstructions(patch.instructions) } } : {})
+    } : {}),
     ...(patch.allowDelete !== undefined ? { allowDelete: patch.allowDelete === true } : {}),
     updatedAt: now.toISOString()
   }

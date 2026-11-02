@@ -33,7 +33,13 @@ export function filterBackendModels(ids: readonly string[]): CoachModel[] {
 // Add snapshots only after verifying their Live protocol compatibility.
 export const LIVE_MODELS: readonly CoachModel[] = [{ id: DEFAULT_MODEL, label: DEFAULT_MODEL }]
 export const WEB_SEARCH_MODEL = 'gpt-5-mini'
-export const VOICES: readonly string[] = ['marin', 'cedar', 'alloy', 'echo', 'shimmer']
+/** Built-in GPT-Live voices: https://developers.openai.com/api/reference/resources/live/methods/create */
+export const VOICES: readonly string[] = [
+  'alloy', 'ash', 'ballad', 'beacon', 'bossa', 'brise', 'cedar', 'cinder',
+  'coral', 'delta', 'echo', 'flitz', 'gleam', 'harema', 'juni', 'marin',
+  'meridian', 'nira', 'noeul', 'nuri', 'quartz', 'ripple', 'sage', 'shida',
+  'shimmer', 'sillage', 'stone', 'tempo', 'verse', 'vesper', 'willow'
+]
 export const DEFAULT_VOICE = 'marin'
 
 export function isLiveModelId(id: string): boolean {

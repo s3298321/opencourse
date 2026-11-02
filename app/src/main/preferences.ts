@@ -2,7 +2,9 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { normalizePreferences } from '../core/preferences'
-import { BACKEND_MODEL, DEFAULT_MODEL, isBackendModelId, isLiveModelId, normalizeBackendReasoning } from '../core/coach/models'
+import { DEFAULT_COACH_PROMPTS, validateCoachPrompts } from '../core/coach/prompt-defaults'
+import type { CoachPrompts } from '../core/types'
+import { BACKEND_MODEL, DEFAULT_MODEL, DEFAULT_VOICE, VOICES, isBackendModelId, isLiveModelId, normalizeBackendReasoning } from '../core/coach/models'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from '../core/reading-scale'
 import type { Preferences, ReasoningEffort } from '../core/types'
 import { userPreferencesFile } from './paths'
@@ -47,6 +49,28 @@ export function writePreferences(preferences: Preferences): Preferences {
 
 export function getDefaultCoachModel(): string {
   return readPreferences().defaultCoachModel ?? DEFAULT_MODEL
+}
+
+export function getDefaultCoachPrompts(): CoachPrompts {
+  return readPreferences().defaultCoachPrompts ?? { ...DEFAULT_COACH_PROMPTS }
+}
+
+export function setDefaultCoachPrompts(value: CoachPrompts): CoachPrompts {
+  const prompts = validateCoachPrompts(value)
+  writePreferences({ ...readPreferences(), defaultCoachPrompts: prompts })
+  return prompts
+}
+
+export function getDefaultCoachVoice(): string {
+  return readPreferences().defaultCoachVoice ?? DEFAULT_VOICE
+}
+
+export function setDefaultCoachVoice(voice: string): string {
+  if (typeof voice !== 'string' || !VOICES.includes(voice)) {
+    throw new Error('Choose a supported coach voice.')
+  }
+  writePreferences({ ...readPreferences(), defaultCoachVoice: voice })
+  return getDefaultCoachVoice()
 }
 
 export function getDefaultCoachBackendModel(): string {

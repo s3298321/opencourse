@@ -19,7 +19,7 @@ import { buildLiveInstructions, buildBackendInstructions } from '../core/coach/p
 import { MAX_TOOL_CALLS_PER_SESSION, MAX_WEB_SEARCHES_PER_SESSION, toolsFor } from '../core/coach/tools'
 import type { CoachSessionSummary, CoachStartResult, TranscriptTurn } from '../core/types'
 import { requireProject } from './coach'
-import { finishSession, insertSession, saveTurns, saveFragments, updateSessionMetadata, recordToolCall, selectSessionRow, selectSessionSummary } from './coachdb'
+import { hasCoachConversations, finishSession, insertSession, saveTurns, saveFragments, updateSessionMetadata, recordToolCall, selectSessionRow, selectSessionSummary } from './coachdb'
 import { listFiles } from './coachfiles'
 import { readKey } from './coachkey'
 import { holdMic } from './mic'
@@ -28,7 +28,7 @@ import { isLiveModelId } from '../core/coach/models'
 import type { CoachTranscriptFragment, CoachSessionMetadata, CoachEndOutcome } from '../core/types'
 import { log } from './log'
 import { holdCoachProject } from './coach-activity'
-import { getCoachAllowDelete, getDefaultCoachModel, getDefaultCoachBackendModel, getDefaultCoachBackendReasoning } from './preferences'
+import { getCoachAllowDelete, getDefaultCoachModel, getDefaultCoachVoice, getDefaultCoachBackendModel, getDefaultCoachBackendReasoning } from './preferences'
 import { currentUserId, requireUser } from './users'
 import { runCoachTool, type CoachToolResult } from './coachtools'
 import type { CoachResponseDiagnostic } from '../core/types'
@@ -117,6 +117,7 @@ export async function startSession(sender: WebContents, projectId: string): Prom
   const project = {
     ...requireProject(projectId),
     model: getDefaultCoachModel(),
+    voice: getDefaultCoachVoice(),
     backendModel: getDefaultCoachBackendModel(),
     backendReasoning: getDefaultCoachBackendReasoning()
   }
@@ -149,8 +150,9 @@ export async function startSession(sender: WebContents, projectId: string): Prom
     const effectiveProject = { ...project, allowDelete: getCoachAllowDelete() }
     if (!isLiveModelId(project.model)) throw new Error('Choose a supported GPT-Live model in Settings → Coach.')
     if (sender.isDestroyed?.()) throw new Error('The window closed while connecting.')
-    const instructions = buildLiveInstructions(effectiveProject)
-    const backendInstructions = buildBackendInstructions(effectiveProject, listFiles(projectId))
+    const phase = hasCoachConversations(projectId) ? 'followingConversations' : 'firstConversation'
+    const instructions = buildLiveInstructions(effectiveProject, phase)
+    const backendInstructions = buildBackendInstructions(effectiveProject, listFiles(projectId), phase)
     const tools = toolsFor(effectiveProject)
 
     const config: LiveSessionConfig = { model: project.model, voice: project.voice, instructions, backendModel: project.backendModel, backendReasoning: project.backendReasoning, backendInstructions, tools }

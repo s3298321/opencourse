@@ -185,7 +185,7 @@ nothing from anywhere else.
 
 1. Raise `version` in `app/package.json` and the root package entries in
    `app/package-lock.json`. Run the app, server and website checks, then commit.
-2. Tag it: `git tag v0.7.0 && git push origin v0.7.0`.
+2. Tag it: `git tag v0.7.1 && git push origin v0.7.1`.
 3. `.github/workflows/release.yml` builds `OpenCourse-mac-arm64.dmg` and uploads
    it to a draft release. It is signed and notarized when the repository has
    the Apple secrets. Otherwise it is ad-hoc signed and marked unsigned, and

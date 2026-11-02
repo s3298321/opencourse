@@ -18,8 +18,8 @@ import { db, tx } from './db'
 export function insertProject(project: CoachProject): void {
   db()
     .prepare(
-      `INSERT INTO projects (id, name, model, backend_model, backend_reasoning, voice, instructions, allow_delete, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO projects (id, name, model, backend_model, backend_reasoning, voice, instructions, allow_delete, created_at, updated_at, prompts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       project.id,
@@ -31,14 +31,15 @@ export function insertProject(project: CoachProject): void {
       project.instructions,
       project.allowDelete ? 1 : 0,
       project.createdAt,
-      project.updatedAt
+      project.updatedAt,
+      project.prompts ? JSON.stringify(project.prompts) : null
     )
 }
 
 export function updateProjectRow(project: CoachProject): void {
   db()
     .prepare(
-      `UPDATE projects SET name = ?, model = ?, backend_model = ?, backend_reasoning = ?, voice = ?, instructions = ?, allow_delete = ?, updated_at = ?
+      `UPDATE projects SET name = ?, model = ?, backend_model = ?, backend_reasoning = ?, voice = ?, instructions = ?, allow_delete = ?, updated_at = ?, prompts = ?
        WHERE id = ?`
     )
     .run(
@@ -50,6 +51,7 @@ export function updateProjectRow(project: CoachProject): void {
       project.instructions,
       project.allowDelete ? 1 : 0,
       project.updatedAt,
+      project.prompts ? JSON.stringify(project.prompts) : null,
       project.id
     )
 }
@@ -57,6 +59,10 @@ export function updateProjectRow(project: CoachProject): void {
 export function selectProject(id: string): CoachProject | null {
   const row = db().prepare('SELECT * FROM projects WHERE id = ?').get(id) as Record<string, unknown> | undefined
   return row ? projectFromRow(row) : null
+}
+
+export function hasCoachConversations(projectId: string): boolean {
+  return Boolean(db().prepare('SELECT 1 FROM sessions WHERE project_id = ? LIMIT 1').get(projectId))
 }
 
 export function selectProjects(): CoachProject[] {

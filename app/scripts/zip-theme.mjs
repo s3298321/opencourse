@@ -2,7 +2,7 @@
  * Packs a theme directory into the importable archive the app expects.
  *
  *   npm run zip:theme paper-and-ink    one theme
- *   npm run zip:theme neon-afterhours  one built-in theme
+ *   npm run zip:theme white            one built-in theme
  *   npm run zip:theme                  every local and built-in theme
  *
  * Archives land in themes-zip/ (git-ignored - build output, like content-zip/).

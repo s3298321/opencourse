@@ -37,7 +37,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 27
+export const SCHEMA_VERSION = 28
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -361,6 +361,7 @@ function migrate(d: DatabaseSync): void {
     END;
   `)
   if (from < 27) addColumn(d, 'projects', 'association', 'TEXT')
+  if (from < 28) addColumn(d, 'projects', 'prompts', 'TEXT')
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 

@@ -13,28 +13,8 @@ import { BACKEND_MODEL, isBackendModelId, normalizeBackendReasoning } from './mo
 export const MAX_PROJECT_NAME = 60
 export const MAX_INSTRUCTIONS = 8000
 
-/**
- * The starting prompt for a new project. Deliberately about *coaching*, not
- * about any one subject: a coach can be for French, for a viva, for chess
- * openings. The memory protocol is the part that makes sessions accumulate,
- * so it is stated as a standing instruction rather than left to the model.
- */
-export const DEFAULT_INSTRUCTIONS = `You are a coach. Your learner will tell you what they want to work on.
-
-Teach by talking. Ask questions, listen to the answers, correct gently and keep the
-conversation going - you are not reading a lecture, you are running a practice session.
-
-You have a private workspace of files for this project. Use it to remember, across
-sessions, what you could not otherwise carry:
-
-- context.md - what this project is for, how sessions have been going, what is working
-  and what is not. Read it at the start of a session; keep it current.
-- learned.md - what the learner has demonstrably got right.
-- review.md - what to come back to next time, and why.
-
-Read what already exists before you start, so you pick up where you left off rather than
-starting over. Write as you go, not only at the end. Keep the files short and useful to
-your future self - they are notes, not a transcript.`
+export { DEFAULT_INSTRUCTIONS } from './prompt-defaults'
+import { DEFAULT_INSTRUCTIONS, normalizeCoachPrompts } from './prompt-defaults'
 
 export function normalizeProjectName(raw: unknown): string {
   const name = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ').slice(0, MAX_PROJECT_NAME) : ''
@@ -70,6 +50,7 @@ export function normalizeProject(raw: unknown): CoachProject | null {
     backendReasoning: normalizeBackendReasoning(backendModel, value['backendReasoning']),
     voice: typeof value['voice'] === 'string' && value['voice'] ? value['voice'] : '',
     instructions: normalizeInstructions(value['instructions']),
+    ...(value['prompts'] && typeof value['prompts'] === 'object' ? { prompts: normalizeCoachPrompts(value['prompts']) } : {}),
     allowDelete: value['allowDelete'] === true,
     createdAt,
     updatedAt: typeof value['updatedAt'] === 'string' ? value['updatedAt'] : createdAt
@@ -78,6 +59,8 @@ export function normalizeProject(raw: unknown): CoachProject | null {
 
 /** A sqlite row uses snake_case and 0/1; the app uses camelCase and booleans. */
 export function projectFromRow(row: Record<string, unknown>): CoachProject | null {
+  let prompts: unknown
+  try { prompts = typeof row['prompts'] === 'string' ? JSON.parse(row['prompts']) : undefined } catch { /* Legacy behavior for a damaged snapshot. */ }
   return normalizeProject({
     id: row['id'],
     name: row['name'],
@@ -86,6 +69,7 @@ export function projectFromRow(row: Record<string, unknown>): CoachProject | nul
     backendReasoning: row['backend_reasoning'],
     voice: row['voice'],
     instructions: row['instructions'],
+    prompts,
     allowDelete: row['allow_delete'] === 1 || row['allow_delete'] === true,
     createdAt: row['created_at'],
     updatedAt: row['updated_at']

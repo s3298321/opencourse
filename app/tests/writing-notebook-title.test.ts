@@ -6,6 +6,7 @@ import type { WritingNotebook, WritingNotebookPage } from '../src/core/writing-n
 import NotebookWindow from '../src/renderer/writing-notebooks/NotebookWindow'
 
 vi.mock('../src/renderer/markdown-context', () => ({ MarkdownProvider: ({ children }: { children: ReactNode }) => children }))
+vi.mock('../src/renderer/components/useAppUpdate', () => ({ useAppUpdate: () => null }))
 vi.mock('../src/renderer/components/ChatPanel', () => ({ default: () => null }))
 vi.mock('../src/renderer/writing-notebooks/MarkdownEditor', () => ({ default: (props: { onChange: (text: string) => void }) => { changeBody = props.onChange; return null } }))
 vi.mock('../src/renderer/sidechat/useChat', () => ({ useConversationPanel: () => ({}) }))
@@ -24,6 +25,7 @@ const edit = async (value: string) => act(async () => {
 const key = async (value: string) => act(async () => { title().dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true })) })
 beforeEach(async () => {
   vi.useFakeTimers(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   Element.prototype.getAnimations = () => []
   rename.mockReset(); flushed.mockReset(); deletePage.mockReset(); remove.mockReset()
   notebook = { id: 'notebook', version: 1, title: 'Fixed notebook', pages: [{ id: 'one', title: 'First page' }, { id: 'two', title: 'Second page' }], selectedPageId: 'one', textScale: 1, chatOpen: false, createdAt: '', updatedAt: '', lastAccessedAt: '' }
@@ -39,7 +41,7 @@ beforeEach(async () => {
     if (notebook.selectedPageId === pageId) notebook.selectedPageId = notebook.pages[0]!.id
     return structuredClone(notebook)
   })
-  Object.defineProperty(window, 'opencourse', { configurable: true, value: { onCoachContextRequest: (handler: typeof contextRequest) => { contextRequest = handler; return () => {} }, replyCoachContext: contextReply, writing: {
+  Object.defineProperty(window, 'opencourse', { configurable: true, value: { getPomodoroState: async () => ({ revision: 0, cycle: { phase: 'idle' } }), onPomodoroChanged: () => () => {}, onCoachContextRequest: (handler: typeof contextRequest) => { contextRequest = handler; return () => {} }, replyCoachContext: contextReply, writing: {
     get: async () => structuredClone(notebook), page: async (_id: string, pageId: string) => structuredClone(pages[pageId]),
     update: async (_id: string, patch: Partial<WritingNotebook>) => { Object.assign(notebook, patch); return structuredClone(notebook) },
     renamePage: rename, deletePage, remove, chat: {}, ready: () => {}, flushed,
@@ -56,7 +58,7 @@ it('autosaves the heading and updates the sidebar without a dialog', async () =>
   expect(rename).toHaveBeenCalledWith('notebook', 'one', 'A new title')
   expect(title().value).toBe('A new title'); expect(document.activeElement).toBe(title())
   expect(container.querySelector('[role="dialog"]')).toBeNull()
-  expect(container.querySelector('[role="status"]')!.textContent).toBe('Saved')
+  expect(container.querySelector('.writing-page-heading [role="status"]')!.textContent).toBe('Saved')
 })
 it('restores the starting title on Escape and gives empty titles a fallback on Enter', async () => {
   await act(async () => title().focus()); await edit('Temporary')
@@ -76,10 +78,10 @@ it('retains a failed title edit for retry instead of reporting it saved', async 
   rename.mockRejectedValueOnce(new Error('Disk unavailable'))
   await edit('Retry this title'); await act(async () => flushRequest('request'))
   expect(flushed).toHaveBeenCalledWith('request', false); expect(title().value).toBe('Retry this title')
-  expect(container.querySelector('[role="status"]')!.textContent).toBe('Not saved')
+  expect(container.querySelector('.writing-page-heading [role="status"]')!.textContent).toBe('Not saved')
   await act(async () => { (container.querySelector('.writing-error button') as HTMLButtonElement).click() })
   expect(pages.one!.title).toBe('Retry this title')
-  expect(container.querySelector('[role="status"]')!.textContent).toBe('Saved')
+  expect(container.querySelector('.writing-page-heading [role="status"]')!.textContent).toBe('Saved')
 })
 it('deletes the right-clicked page only after confirmation and protects the final page', async () => {
   const card = container.querySelectorAll('.writing-page-link')[1]!
@@ -139,4 +141,9 @@ it('lets the coach inspect and read unsaved open pages and follows page switches
   expect(contextReply.mock.lastCall?.[1]).toMatchObject({ entries: [{ pageId: 'two', unsaved: false }] })
   request('read_notebook_page', { notebook_id: 'notebook', page_id: 'one', offset: 0 })
   expect(contextReply.mock.lastCall?.[1]).toEqual({})
+})
+
+it('shows the shared timer beside the notebook title', () => {
+  expect(container.querySelector('.titlebar-title')?.textContent).toBe('Fixed notebook')
+  expect(container.querySelector('.titlebar .pomodoro')?.getAttribute('data-phase')).toBe('idle')
 })

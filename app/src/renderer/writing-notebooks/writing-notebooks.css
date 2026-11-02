@@ -50,7 +50,7 @@
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .dialog-backdrop.writing-dialog-backdrop { backdrop-filter: none; }
 }
-.writing-titlebar strong { font: inherit; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.titlebar > .titlebar-title { font: inherit; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sidebar.writing-sidebar { flex: 0 0 var(--writing-sidebar-width); width: var(--writing-sidebar-width); display: flex; flex-direction: column; padding: 12px 10px; min-height: 0; }
 .writing-sidebar nav { overflow: auto; flex: 1; }
 .writing-page-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -79,7 +79,8 @@
 .writing-editor .cm-editor { height: 100%; background: transparent; color: var(--fg); font-size: calc(16px * var(--reading-scale)); }
 .writing-editor .cm-scroller { overflow: auto; padding-inline: 20px; font-family: var(--font-reading, system-ui); line-height: var(--reading-line-height, 1.75); }
 .writing-editor[data-layout=thin] .cm-scroller { padding-inline: max(20px, calc((100% - var(--writing-text-width, 630px)) / 2)); }
-.writing-editor .cm-content { min-width: 0; width: 0; padding: 8px 0 80px; caret-color: var(--fg); }
+/* Let the last line scroll into the middle of the window without adding blank lines. */
+.writing-editor .cm-content { min-width: 0; width: 0; padding: 8px 0 max(80px, 50vh); caret-color: var(--fg); }
 .writing-editor .cm-gutters { background: transparent; color: var(--muted); border: 0; }
 .writing-editor .cm-lineNumbers .cm-gutterElement { padding-left: 0; padding-right: 12px; }
 /* Match a heading's line box and padding, but keep its number small on the same baseline. */

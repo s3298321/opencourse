@@ -312,7 +312,22 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .pomodoro button { font: inherit; font-size: 12px; border: 0; box-shadow: none; }
 .pomodoro .pomodoro-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; padding: 0; color: inherit; background: transparent; border-radius: 7px; }
 .pomodoro button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* Lower the compact text strip optically without moving the tomato or clipping the reveal. */
+/* A small optical offset balances the clock inside the rounded hover target. */
+.pomodoro-clock { display: inline-block; position: relative; top: 1px; flex: none; font-size: 19px; width: 1em; height: 1em; color: inherit; }
+.pomodoro-clock::before { content: ''; position: absolute; inset: 0; border: .12em solid currentColor; border-radius: 50%; }
+/* Square hand roots meet under a shared cap, keeping the center seamless at every angle. */
+.pomodoro-clock:not([data-state="paused"])::after { content: ''; position: absolute; left: 50%; top: 50%; width: .12em; height: .12em; transform: translate(-50%, -50%); border-radius: 50%; background: currentColor; }
+.pomodoro-clock-hand { position: absolute; left: 50%; width: .12em; margin-left: -.06em; background: currentColor; border-radius: .06em .06em 0 0; transform-origin: 50% 100%; }
+.pomodoro-clock-minute { top: .258em; height: .242em; transform: rotate(0deg); }
+.pomodoro-clock-hour { top: .28em; height: .22em; transform: rotate(120deg); }
+.pomodoro-clock[data-state="running"] .pomodoro-clock-minute { animation: pomodoro-minute-turn 8s linear infinite; }
+.pomodoro-clock[data-state="running"] .pomodoro-clock-hour { animation: pomodoro-hour-turn 96s linear infinite; }
+.pomodoro-clock[data-state="paused"] .pomodoro-clock-hand { top: .31em; height: .38em; border-radius: 1em; transform: none; }
+.pomodoro-clock[data-state="paused"] .pomodoro-clock-minute { left: 39%; }
+.pomodoro-clock[data-state="paused"] .pomodoro-clock-hour { left: 61%; }
+@keyframes pomodoro-minute-turn { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes pomodoro-hour-turn { from { transform: rotate(120deg); } to { transform: rotate(480deg); } }
+/* Lower the compact text strip optically without moving the clock or clipping the reveal. */
 .pomodoro-panel { position: relative; top: 2px; }
 .pomodoro-reveal { flex: none; overflow: hidden; transition: width 320ms var(--ease); }
 .pomodoro-reveal-inner { width: max-content; }
@@ -337,6 +352,7 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pomodoro-reveal { transition: none; }
+  .pomodoro-clock[data-state="running"] .pomodoro-clock-hand { animation: none; }
 }
 .titlebar .crumbs { -webkit-app-region: no-drag; display: flex; gap: 0.4rem; align-items: center; justify-content: center; }
 .titlebar .crumbs > a { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -532,6 +548,36 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 }
 .settings-key:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .settings-filter { margin: 0.6rem 0 0; font-family: inherit; }
+.settings-coach-prompt { border-top: 1px solid var(--border); }
+button.ghost.settings-coach-prompt-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  width: 100%; padding: 0.8rem 0; color: var(--fg); text-align: left;
+  font-size: 0.9rem; font-weight: 600; border-radius: 0;
+}
+.settings-coach-prompt-chevron { width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); }
+.settings-coach-prompt-chevron path {
+  fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round;
+  transform-origin: 10px 10px; transition: transform 240ms ease;
+}
+.settings-coach-prompt-chevron .chevron-left { transform: rotate(35deg); }
+.settings-coach-prompt-chevron .chevron-right { transform: rotate(-35deg); }
+.settings-coach-prompt.expanded .settings-coach-prompt-chevron path { transform: rotate(0deg); }
+.settings-coach-prompt-panel {
+  display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden;
+  transition: grid-template-rows 240ms ease, opacity 180ms ease, visibility 0s 240ms;
+}
+.settings-coach-prompt.expanded .settings-coach-prompt-panel {
+  grid-template-rows: 1fr; opacity: 1; visibility: visible;
+  transition: grid-template-rows 240ms ease, opacity 180ms ease, visibility 0s;
+}
+.settings-coach-prompt-content { min-height: 0; overflow: hidden; }
+.settings-coach-prompt-content > .actions { padding-bottom: 0.8rem; }
+.settings-coach-prompt textarea { resize: vertical; min-height: 7rem; box-sizing: border-box; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) {
+  .settings-coach-prompt-chevron path,
+  .settings-coach-prompt-panel,
+  .settings-coach-prompt.expanded .settings-coach-prompt-panel { transition: none; }
+}
 
 /* Settings → Servers (components/ServerSettings.tsx). */
 #settings-servers { scrollbar-gutter: stable; }

@@ -16,7 +16,7 @@ import { usePreviewAsk, PreviewAskOffer } from '../sidechat/usePreviewAsk'
 import type { AskOffer } from '../ask-context'
 import MarkdownEditor, { type MarkdownEditorHandle } from './MarkdownEditor'
 import { darkChromeCss } from '@core/theme/dark-chrome'
-import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
+import { TitleBarChrome } from '../components/TitleBar'
 import { useActiveTheme } from '../theme/ThemeProvider'
 const api = () => window.opencourse.writing
 function NotebookContent({ id }: { id: string }) {
@@ -136,10 +136,7 @@ function NotebookContent({ id }: { id: string }) {
   const reorder = (direction: number) => action(async () => { const ids = notebook.pages.map(p => p.id); [ids[index], ids[index + direction]] = [ids[index + direction]!, ids[index]!]; setNotebook(await api().reorder(id, ids)) })
   return <div className="app writing-window" data-default-theme={theme.id === null ? '' : undefined} style={{ '--reading-scale': notebook.textScale } as CSSProperties}>
     <style>{darkChromeCss}</style>
-    <header className="titlebar writing-titlebar" data-dark-chrome={theme.id === WHITE_THEME_ID ? '' : undefined} data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined}>
-      <strong>{notebook.title}</strong>
-      <div className="titlebar-right"><ChatToggle open={notebook.chatOpen} onClick={toggleChat} subject="notebook" /></div>
-    </header>
+    <TitleBarChrome title={notebook.title} showPomodoro actions={<ChatToggle open={notebook.chatOpen} onClick={toggleChat} subject="notebook" />} />
     <div className="body lesson-body writing-body">
       <aside className="sidebar writing-sidebar">
         {notebook.association && <p className="writing-association">{notebook.association.title}{notebook.associationAvailable === false && <span> · Source unavailable</span>}</p>}

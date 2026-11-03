@@ -19,6 +19,8 @@ process.env['OPENCOURSE_E2E_URL'] = `http://127.0.0.1:${port}`
 const server = resolve(import.meta.dirname, '..')
 
 export default defineConfig({
+  // Shared app sources must resolve dependencies from the server-only install.
+  tsconfig: resolve(server, 'tsconfig.json'),
   testDir: '.',
   timeout: 60_000,
   fullyParallel: false,

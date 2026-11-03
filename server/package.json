@@ -18,7 +18,7 @@
     "admin": "tsx src/admin.ts",
     "seed": "tsx scripts/seed.ts",
     "dev:reset": "node -e \"require('node:fs').rmSync('data', { recursive: true, force: true }); console.log('Emptied server/data. The next npm run dev seeds it again.')\"",
-    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e": "NODE_PATH=./node_modules playwright test -c e2e/playwright.config.ts",
     "smoke:ai": "tsx scripts/smoke-ai.ts"
   },
   "dependencies": {

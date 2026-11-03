@@ -137,9 +137,12 @@ test('document cards enable review, return to the originating screen, and disapp
     const dialog = page.getByRole('dialog', { name: 'Personal flashcards' })
     await expect(dialog).toBeVisible()
     await page.keyboard.press('Escape')
-    await expect(dialog).toHaveCount(0)
+    // A closed native dialog loses its role before React handles `close`.
+    // Wait for unmount before reopening so that event cannot close the new one.
+    await expect(page.locator('.personal-card-dialog')).toHaveCount(0)
     await expect(count).toBeFocused()
     await page.keyboard.press('Enter')
+    await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: 'Delete card: What does a closure retain?' }).click()
     await expect(page.getByRole('link', { name: 'Review', exact: true })).toHaveCount(0)
     await page.goto(`/learn/document/${id}`)

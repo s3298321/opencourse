@@ -259,3 +259,48 @@ it('keeps exercise code in step between the web and the desktop workspace', asyn
   expect(readExerciseFile(target).content).toBe('print("web again")\n')
   expect(openExercise(target).content).toBe('print("web again")\n')
 }, 30000)
+
+it('syncs personal cards and offline reviews privately, bootstraps missed cards and propagates deletion between local profiles',async()=>{
+  const {testServer,signUp,localCourse,publish,auth}=await import('../../server/tests/helpers')
+  const {createUser,switchUser}=await import('../src/main/users')
+  const {signIn}=await import('../src/main/servers')
+  const {syncAll,stopLearningSync}=await import('../src/main/learning')
+  const {db}=await import('../src/main/db')
+  const {insertChat}=await import('../src/main/chatdb')
+  const {createFlashcardPreview,decideFlashcardProposal,listPersonalCards,deletePersonalCard}=await import('../src/main/personal-cards')
+  const {getReviewSummary,startReviewSession,revealReviewAnswer,rateReviewCard}=await import('../src/main/review')
+  const server=await testServer({webDir:null});cleanup.push(server.close)
+  await server.app.listen({port:0,host:'127.0.0.1'})
+  const base=`http://127.0.0.1:${(server.app.server.address() as AddressInfo).port}`
+  const account=await signUp(server),fixture=localCourse()
+  await publish(server,account.token,fixture.courseId,fixture.local,'1.0.0')
+  await server.app.inject({method:'PUT',url:`/api/v1/me/learning/course/${fixture.courseId}`,headers:auth(account.token),payload:{}})
+  const firstUser=createUser('Cards device one').id
+  await signIn(base,account.email,'correct horse battery');await syncAll(true);stopLearningSync()
+  const binding=db().prepare('SELECT * FROM learning_bindings WHERE remote_id=?').get(fixture.courseId) as {local_id:string;server_id:string;account_id:string}
+  const target={kind:'course' as const,id:binding.local_id},chat=randomUUID()
+  insertChat({id:chat,courseId:target.id,model:'gpt-4.1-mini',reasoning:null,startedIn:null,at:new Date().toISOString()})
+  const proposal=JSON.parse(createFlashcardPreview('chat',chat,1,'offline',{cards:[{question:'Private concept?',answer:'Private answer'}]})).proposalId
+  decideFlashcardProposal(proposal,'save')
+  const session=startReviewSession(target,10,17)
+  revealReviewAnswer(session.id,session.card!.id,17);rateReviewCard(session.id,session.card!.id,'good',17)
+  expect(db().prepare("SELECT count(*) n FROM learning_outbox WHERE json_extract(payload,'$.field') LIKE 'personal%'").get()?.n).toBe(2)
+  await syncAll(true);stopLearningSync()
+  expect(getReviewSummary(target).practiced).toBe(1)
+  // An upgraded client may already have advanced past card changes. Force that path.
+  db().prepare('DELETE FROM personal_cards WHERE owner=?').run(`${binding.server_id}:${binding.account_id}`)
+  db().prepare('DELETE FROM personal_card_bootstrap').run()
+  await syncAll(true);stopLearningSync()
+  expect(listPersonalCards(target)).toHaveLength(1)
+  createUser('Cards device two')
+  await signIn(base,account.email,'correct horse battery');await syncAll(true);stopLearningSync()
+  const next=db().prepare('SELECT local_id FROM learning_bindings WHERE remote_id=?').get(fixture.courseId) as {local_id:string}
+  const secondTarget={kind:'course' as const,id:next.local_id},cards=listPersonalCards(secondTarget)
+  expect(cards).toHaveLength(1);expect(getReviewSummary(secondTarget).practiced).toBe(1)
+  deletePersonalCard(secondTarget,cards[0].id)
+  await syncAll(true);stopLearningSync()
+  switchUser(firstUser)
+  await syncAll(true);stopLearningSync()
+  expect(listPersonalCards(target)).toEqual([])
+  expect(getReviewSummary(target).personalCount).toBe(0)
+})

@@ -1,3 +1,7 @@
+import { db } from './db'
+import { attachCardProposals } from './personal-card-store'
+import { flashcardTools, flashcardToolNotice, createFlashcardPreview } from './personal-cards'
+import { FLASHCARD_INSTRUCTIONS } from '../core/personal-cards'
 import { readNotebookCells } from '../core/notebook/reading'
 import { getNotebook, notebookChatContext } from './notebooks'
 import { assertCourseAvailable } from './course-busy'
@@ -176,7 +180,7 @@ export function getChat(chatId: string): ChatThread | null {
     const title = findLesson(course, message.lesson.moduleId, message.lesson.lessonId)?.lesson.title
     return title ? { ...message, lessonTitle: title } : message
   })
-  return { chat: requireChat(chatId), messages }
+  return { chat: requireChat(chatId), messages: attachCardProposals(db(), 'chat', chatId, messages) }
 }
 
 /**
@@ -442,7 +446,7 @@ export async function sendChatMessage(
   const found = lesson && findLesson(course, lesson.moduleId, lesson.lessonId)
   if (!notebook && !found) return { status: 'failed', message: 'that lesson is not in this course' }
 
-  const chatTools = notebook ? NOTEBOOK_TOOLS : COURSE_TOOLS
+  const chatTools = [...(notebook ? NOTEBOOK_TOOLS : COURSE_TOOLS), ...flashcardTools('chat', chatId)]
   const notebookSnapshot = notebook ? getNotebook(course.courseId) : undefined
   const at = new Date().toISOString()
   const stored = selectMessages(chatId)
@@ -505,10 +509,10 @@ export async function sendChatMessage(
     timer.unref()
     const ask = async (search: boolean): Promise<{ text: string; aborted: boolean; citations: ChatCitation[] }> => {
       const result = await runChatAgent({
-        input: buildInput(selectMessages(chatId), `${sideChatInstructions(search)}\n\n${READING_TOOL_INSTRUCTIONS}`),
+        input: buildInput(selectMessages(chatId), `${sideChatInstructions(search)}\n\n${READING_TOOL_INSTRUCTIONS}\n${FLASHCARD_INSTRUCTIONS}\n${flashcardToolNotice('chat', chatId)}`),
         session: { mode: 'chat', chatId, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools: chatTools, webSearch: search, sourceVersion: course.revision,
           context: [{ role: 'user', content: `[${notebook ? 'notebook' : 'lesson'} context]\n\n${contextText}` }], valid, sources: localSources },
-        readOnly: () => true,
+        readOnly: name => name !== 'create_flashcards',
         cacheKey: (name, args) => JSON.stringify([course.revision, name, args]),
         signal: controller.signal, limits: READING_LIMITS,
         stream: async input => {
@@ -522,7 +526,7 @@ export async function sendChatMessage(
         ...(chat.reasoning ? { reasoning: chat.reasoning } : {}),
         input,
         tools: chatTools,
-        toolNamespace: { name: 'course', description: 'Read-only retrieval from learner-facing text in the current course.' },
+        toolNamespace: { name: 'course', description: 'Learning tools and retrieval from learner-facing text in the current course.' },
         webSearch: search,
         onSearch: (event) => { if (!finalized && valid()) push(sender, 'chat:activity', chatId, searchActivity(event)) },
         signal: controller.signal,
@@ -543,8 +547,12 @@ export async function sendChatMessage(
           citations.push(...result.citations.map(citation => ({ ...citation, start: citation.start + offset, end: citation.end + offset })))
           return result
         },
-        tool: async (name, args) => {
+        tool: async (name, args, callId) => {
           if (finalized || !valid() || controller.signal.aborted) throw new Error('Course Ask stopped.')
+          if (name === 'create_flashcards') {
+            push(sender, 'chat:activity', chatId, 'Preparing flashcard preview…')
+            return createFlashcardPreview('chat', chatId, seq, callId, args)
+          }
           push(sender, 'chat:activity', chatId, name === 'search_course' ? 'Searching the course…' : name === 'read_course_section' ? 'Reading a course section…' : 'Listing course sections…')
           try {
             if (name === 'read_notebook_cells' && notebookSnapshot) return readNotebookCells(notebookSnapshot, args, budget)

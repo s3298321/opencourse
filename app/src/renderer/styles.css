@@ -482,7 +482,29 @@ input[type=search]::placeholder { color: var(--muted); opacity: 1; }
 .settings-links a span[aria-hidden] { margin-left: auto; font-size: 0.8rem; }
 .settings-main { display: flex; flex-direction: column; min-width: 0; max-width: 680px; }
 .settings-main > h1 { margin: 0 0 1.5rem; font-size: 1.6rem; }
-.settings-category-panel { width: 100%; max-width: none; margin: 0; padding: 0 0.5rem 1rem 0; min-height: 0; }
+/* Animate an inherited property on the scroller: Chromium does not transition
+   the native scrollbar thumb's background directly. */
+@property --settings-scrollbar-visibility {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 0%;
+}
+.settings-category-panel {
+  width: 100%; max-width: none; margin: 0; padding: 0 0.5rem 1rem 0; min-height: 0;
+  --settings-scrollbar-visibility: 0%;
+  transition: --settings-scrollbar-visibility 120ms ease-out;
+}
+.settings-category-panel.is-scrolling { --settings-scrollbar-visibility: 100%; transition-duration: 80ms; }
+.settings-category-panel::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--scrollbar) var(--settings-scrollbar-visibility), transparent);
+}
+.settings-category-panel::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--scrollbar-hover) var(--settings-scrollbar-visibility), transparent);
+}
+.settings-category-panel::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .settings-category-panel { transition: none; }
+}
 .settings-category-panel[hidden] { display: none; }
 .settings-category-heading { margin: 0 0 1rem; font-size: 1.15rem; }
 .about-details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 0.65rem 1rem; font-size: 0.9rem; }

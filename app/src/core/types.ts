@@ -1,3 +1,5 @@
+import type { ReviewTarget, FlashcardProposal } from './personal-cards'
+export type { ReviewTarget } from './personal-cards'
 /** Shared types for the course format (see docs/course-format.md). */
 import type { OutputMatch, RuntimeSpec, VersionFloor } from './toolchains/types'
 import type { ThemeNote } from './theme/types'
@@ -124,6 +126,8 @@ export type LearnerFlashcard = Omit<Flashcard, 'answer'>
 export type ReviewRating = 'again' | 'hard' | 'good' | 'easy'
 export type ReviewCount = 10 | 15 | 20
 export interface ReviewSummary {
+  defaultCount: number
+  personalCount: number
   total: number
   eligible: number
   due: number
@@ -133,11 +137,15 @@ export interface ReviewSummary {
   nextDue: string | null
 }
 export interface ReviewCard extends LearnerFlashcard {
-  lessonId: string
-  lessonTitle: string
+  source: 'default' | 'personal'
+  sourceLabel?: string
+  lessonId?: string
+  lessonTitle?: string
   early: boolean
 }
 export interface ReviewSession {
+  target: ReviewTarget
+  title: string
   id: string
   courseId: string
   courseTitle: string
@@ -699,6 +707,7 @@ export interface ChatCitation {
 }
 
 export interface ChatMessage {
+  flashcardProposals?: FlashcardProposal[]
   writingNotebook?: import('./writing-notebooks/types').WritingNotebookContext
   notebook?: boolean
   seq: number

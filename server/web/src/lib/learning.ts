@@ -66,12 +66,13 @@ export function resumeIndex(course: CourseView, state: LearningState): number {
 export interface WebReviewCard extends ReviewCandidate {
   card: LearnerFlashcard
   lessonTitle: string
+  version?: number
 }
 
 /** Every flashcard in course order; a card is eligible once its lesson is completed, as in the app. */
-export function reviewCandidates(course: CourseView, state: LearningState): WebReviewCard[] {
+export function reviewCandidates(course: CourseView | null, state: LearningState): WebReviewCard[] {
   const cards: WebReviewCard[] = []
-  for (const module of course.modules) {
+  for (const module of course?.modules ?? []) {
     if (module.type === 'project') continue
     for (const lesson of module.lessons) {
       for (const card of lesson.flashcards ?? []) {
@@ -83,6 +84,9 @@ export function reviewCandidates(course: CourseView, state: LearningState): WebR
         })
       }
     }
+  }
+  for (const card of [...(state.personalCards ?? [])].filter(c => !c.deleted).sort((a,b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))) {
+    cards.push({id:card.id,card:{id:card.id,question:card.question},source:'personal',lessonTitle:'Personal card',order:cards.length,eligible:true,version:card.version,state:card.state ? deserializeCard(card.state) : undefined})
   }
   return cards
 }

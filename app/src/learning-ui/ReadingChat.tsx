@@ -1,3 +1,5 @@
+import { FlashcardPreview } from './PersonalCards'
+import type { FlashcardProposal } from '../core/personal-cards'
 import { useEffect, useLayoutEffect, useState, useRef, type ReactNode } from 'react'
 import type { ContentRef, ServerAISettings, ServerAIModels } from '../core/learning/types'
 import type { LearningClient } from './client'
@@ -264,7 +266,9 @@ function ReadingChatPanel({
               <p>Ask about this {source.kind === 'course' ? 'lesson' : 'document'}.</p>
             </div>
           )}
-          {view?.messages.map((m) => <ReadingMessage key={m.id} message={m} renderAnswer={renderAnswer} onSource={onSource} />)}
+          {view?.messages.map((m) => <div key={m.id}><ReadingMessage message={m} renderAnswer={renderAnswer} onSource={onSource} />
+            {m.flashcardProposals?.map(p => <FlashcardPreview key={p.id} proposal={p} renderText={renderAnswer} decide={(proposal,action) => client.request<FlashcardProposal>(`/learning/chats/${view.chat.id}/flashcards/${proposal}`,'POST',{action})} />)}
+          </div>)}
           {busy && !answering && <Thinking />}
 
         </div>

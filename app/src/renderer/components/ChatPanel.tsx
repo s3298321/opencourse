@@ -1,3 +1,6 @@
+import { FlashcardPreview } from '../../learning-ui/PersonalCards'
+import type { FlashcardProposal } from '@core/personal-cards'
+import { LocalFlashcardPreviews } from './PersonalCards'
 import { normalizeResearchSources } from '@core/authoring/research'
 import ActionButton from './ActionButton'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -23,6 +26,7 @@ import ChatMessageMeta from './ChatMessageMeta'
 const noSourceIcons = async (): Promise<Record<string, string | null>> => ({})
 
 interface Props {
+  flashcards?: { proposals: FlashcardProposal[]; decide: (id: string, action: 'save' | 'dismiss') => Promise<FlashcardProposal> }
   visible?: boolean
   panel: ChatPanel
   variant?: 'lesson' | 'project' | 'authoring' | 'document' | 'notebook'
@@ -292,6 +296,7 @@ function Message({ message, fresh, chatId, onSource, sourceIcons }: { message: C
 }
 
 export default function ChatPanelView({
+  flashcards,
   panel,
   variant = 'lesson',
   visible = true,
@@ -533,6 +538,7 @@ export default function ChatPanelView({
                 sourceIcons={fetchIcons ?? (variant === 'authoring' ? noSourceIcons : undefined)}
               />
             ))}
+            {flashcards ? flashcards.proposals.map(p => <FlashcardPreview key={p.id} proposal={p} decide={flashcards.decide} renderText={text => <Html className="prose" source={text} />} />) : thread && variant !== 'authoring' && <LocalFlashcardPreviews key={thread.chat.id} chatId={thread.chat.id} />}
             {panel.streaming !== null && (
               <div className={`chat-turn assistant partial${panel.streaming === '' ? ' thinking' : ''}`}>
                 {panel.streaming ? (

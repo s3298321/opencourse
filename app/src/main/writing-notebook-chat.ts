@@ -1,3 +1,7 @@
+import { db } from './db'
+import { attachCardProposals } from './personal-card-store'
+import { flashcardTools, flashcardToolNotice, createFlashcardPreview } from './personal-cards'
+import { FLASHCARD_INSTRUCTIONS } from '../core/personal-cards'
 import { type WebContents } from 'electron'
 import { newChatId } from '../core/sidechat/ids'
 import { buildInput, MAX_MESSAGE_CHARS, MAX_QUOTE_CHARS } from '../core/sidechat/thread'
@@ -48,7 +52,7 @@ export function listWritingNotebookChats(id: string): WritingNotebookChatSummary
   return selectWritingNotebookChats(id).map(chatConfig)
 }
 export function getWritingNotebookChat(id: string): WritingNotebookChatThread | null {
-  return selectWritingNotebookChat(id) ? { chat: requireChat(id), messages: selectWritingNotebookMessages(id) } : null
+  return selectWritingNotebookChat(id) ? { chat: requireChat(id), messages: attachCardProposals(db(), 'writing-notebook', id, selectWritingNotebookMessages(id)) } : null
 }
 export function createWritingNotebookChat(notebookId: string, page: string): WritingNotebookChatSummary {
   getWritingPage(notebookId, page)
@@ -95,7 +99,7 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
   const savedPage = getWritingPage(document.id, page)
   const snapshot = notebookSnapshot(document)
   const pageContext = { notebookId: document.id, pageId: page, revision: savedPage.revision, title: savedPage.title }
-  const tools = writingReadingTools(document)
+  const tools = [...writingReadingTools(document), ...flashcardTools('writing-notebook', id)]
   const controller = new AbortController(), entry: Inflight = { controller, provider: chat.provider ?? 'apiKey', notebookId: chat.notebookId }
   inflight.set(id, entry)
   const push = (channel: string, ...args: unknown[]): void => { if (!sender.isDestroyed() && currentUserId() === owner) sender.send(`writingChat:${channel}`, id, ...args) }
@@ -146,15 +150,15 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
     const modelContext = conversationModelContext(chat.provider ?? 'apiKey', chat.model)
     setImmediate(() => { void (async () => {
       try {
-        const result = await runChatAgent({ input: buildInput(selectWritingNotebookMessages(id), instructions),
+        const result = await runChatAgent({ input: buildInput(selectWritingNotebookMessages(id), `${instructions}\n${FLASHCARD_INSTRUCTIONS}\n${flashcardToolNotice('writing-notebook', id)}`),
           session: { mode: 'writing-notebook', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools, webSearch, sourceVersion: JSON.stringify(snapshot.map(p => [p.id, p.revision])),
             context: [{ role: 'user', content: `[notebook context]\n\n${selectWritingNotebookMessages(id).filter(m => m.role === 'context').at(-1)?.text ?? ''}` }], valid, sources: localSources },
-          readOnly: () => true,
+          readOnly: name => name !== 'create_flashcards',
           signal: controller.signal, limits: READING_LIMITS,
           stream: async input => {
             const begin = answered.length
             let first = true
-            const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input, tools, toolNamespace: { name: 'notebook', description: 'Read-only retrieval from notebook pages and associated material.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
+            const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input, tools, toolNamespace: { name: 'notebook', description: 'Learning tools and retrieval from notebook pages and associated material.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
               onSearch: () => push('activity', 'Searching the web…'), onDelta: chunk => {
                 if (finalized || !valid()) return
                 const delta = first && answered ? `\n\n${chunk}` : chunk; first = false
@@ -167,8 +171,12 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
             const offset = begin + (begin && result.text ? 2 : 0)
             citations.push(...result.citations.map(citation => ({ ...citation, start: citation.start + offset, end: citation.end + offset })))
             return result
-          }, tool: async (name, args) => {
+          }, tool: async (name, args, callId) => {
             if (finalized || !valid()) throw new Error('Notebook chat stopped.')
+            if (name === 'create_flashcards') {
+              push('activity', 'Preparing flashcard preview…')
+              return createFlashcardPreview('writing-notebook', id, seq, callId, args)
+            }
             push('activity', name.startsWith('search_') ? 'Searching notebook sources…' : 'Reading notebook sources…')
             try { return runWritingReadingTool(document, snapshot, name, args, budget, localSources) }
             catch (error) { return JSON.stringify({ error: (error as Error).message }) }

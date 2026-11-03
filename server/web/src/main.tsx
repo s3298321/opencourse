@@ -3,7 +3,7 @@
  * table the server also reads - each mapped to its component and loader here.
  */
 import { DocumentsCatalog, DocumentOverview, MyLearning, WebLearning } from './pages/Learning'
-import { LearningCoursePage, ReviewPage } from './pages/LearningCourse'
+import { LearningCoursePage, ReviewPage, DocumentReviewPage } from './pages/LearningCourse'
 import '@fontsource-variable/inter/wght.css'
 import '@design/tokens.css'
 import '@design/base.css'
@@ -29,6 +29,7 @@ import { resetSessionFromBoot } from './lib/session'
 const VIEWS: Record<PageKey, { Component: ComponentType; loader?: LoaderFunction }> = {
   documents: { Component: DocumentsCatalog }, document: { Component: DocumentOverview }, learning: { Component: MyLearning, loader:({request})=>{requireAccount(request);return null} }, learn: { Component: WebLearning, loader:({request})=>{requireAccount(request);return null} },
   learningCourse: { Component: LearningCoursePage, loader: ({ request }) => { requireAccount(request); return null } },
+  documentReview: { Component: DocumentReviewPage, loader: ({ request }) => { requireAccount(request); return null } },
   learningReview: { Component: ReviewPage, loader: ({ request }) => { requireAccount(request); return null } },
   catalog: { Component: CatalogPageView, loader: catalogLoader },
   course: { Component: CoursePage, loader: courseLoader },

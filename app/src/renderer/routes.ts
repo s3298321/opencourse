@@ -23,7 +23,7 @@ export type Screen =
   | { name: 'publication'; serverId: string; courseId: string }
   | { name: 'courseEditor'; courseId: string }
   | { name: 'course'; courseId: string }
-  | { name: 'review'; session: ReviewSession }
+  | { name: 'review'; session: ReviewSession; from?: Screen }
   | { name: 'lesson'; courseId: string; moduleId: string; lessonId: string }
   | { name: 'notebook'; courseId: string }
   | { name: 'project'; courseId: string; moduleId: string }
@@ -45,13 +45,13 @@ export function screenOf(route: Route): Screen {
 /** Which workspace a route belongs to, for the titlebar's switch. */
 export function sectionOf(route: Route): 'courses' | 'documents' | null {
   switch (route.name) {
+    case 'review': return route.session.target?.kind === 'document' ? 'documents' : 'courses'
     case 'library':
     case 'catalog':
     case 'catalogCourse':
     case 'publication':
     case 'courseEditor':
     case 'course':
-    case 'review':
     case 'lesson':
     case 'notebook':
     case 'project':

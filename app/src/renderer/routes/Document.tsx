@@ -1,3 +1,4 @@
+import { DocumentReviewControls } from '../components/PersonalCards'
 import { useCoachContextProvider, selectedContent } from '../coach/context'
 import { useLearningPreference } from '../learning/useLearningPreference'
 import { RemoteReading } from '../learning/RemoteReading'
@@ -225,6 +226,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
       </aside>
       <main className="document-center">
         <div className="document-toolbar">
+          <DocumentReviewControls documentId={documentId} navigate={navigate} from={route} />
           <button className="ghost" onClick={() => jump(page - 1)} disabled={page === 1} aria-label="Previous page">←</button>
           <form onSubmit={event => event.preventDefault()}><label className="sr-only" htmlFor="document-page">Page</label><input id="document-page" type="text" inputMode="numeric" autoComplete="off" value={pageInput} onChange={event => setPageInput(event.target.value)} onFocus={event => event.currentTarget.select()} onBlur={event => commitPage(event.currentTarget.value)} onKeyDown={event => {
             if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }

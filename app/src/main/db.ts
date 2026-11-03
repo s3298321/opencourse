@@ -30,6 +30,7 @@
  * unbounded SELECT.
  */
 import { DatabaseSync } from 'node:sqlite'
+import { PERSONAL_CARD_SCHEMA } from './personal-card-store'
 import { existsSync, mkdirSync, renameSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { logDbFile, userDbFile } from './paths'
@@ -37,7 +38,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 28
+export const SCHEMA_VERSION = 29
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -362,6 +363,17 @@ function migrate(d: DatabaseSync): void {
   `)
   if (from < 27) addColumn(d, 'projects', 'association', 'TEXT')
   if (from < 28) addColumn(d, 'projects', 'prompts', 'TEXT')
+  if (from < 29) {
+    d.exec(PERSONAL_CARD_SCHEMA)
+    for (const [table,scope] of [['chats','chat'],['document_chats','document'],['course_project_chats','project'],['writing_notebook_chats','writing-notebook']]) {
+      d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_delete_card_proposals AFTER DELETE ON ${table} BEGIN DELETE FROM flashcard_proposals WHERE chat_scope='${scope}' AND chat_id=old.id; END;`)
+    }
+    d.exec(`CREATE TRIGGER IF NOT EXISTS local_course_delete_personal_cards AFTER DELETE ON library_courses BEGIN DELETE FROM personal_cards WHERE owner='' AND kind='course' AND content_id=old.id; END;
+      CREATE TRIGGER IF NOT EXISTS local_document_delete_personal_cards AFTER DELETE ON documents BEGIN DELETE FROM personal_cards WHERE owner='' AND kind='document' AND content_id=old.id; END;`)
+
+    d.exec('CREATE TABLE IF NOT EXISTS personal_card_inbox (server_id TEXT, account_id TEXT, id TEXT, payload TEXT NOT NULL, PRIMARY KEY(server_id,account_id,id))')
+    d.exec('CREATE TABLE IF NOT EXISTS personal_card_bootstrap (server_id TEXT, account_id TEXT, kind TEXT, content_id TEXT, PRIMARY KEY(server_id,account_id,kind,content_id))')
+  }
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 

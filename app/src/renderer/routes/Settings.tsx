@@ -55,6 +55,29 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
   // Main says which site and catalog: the public ones, or a dev run's local twins.
   const [links, setLinks] = useState<AppLinks>(PUBLIC_LINKS)
   useEffect(() => { void window.opencourse.getAppLinks?.().then(setLinks).catch(() => undefined) }, [])
+  const main = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const element = main.current!
+    const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
+    const onScroll = (event: Event): void => {
+      const panel = event.target
+      if (!(panel instanceof HTMLElement) || panel.parentElement !== element) return
+      clearTimeout(timers.get(panel))
+      panel.classList.add('is-scrolling')
+      timers.set(panel, setTimeout(() => {
+        panel.classList.remove('is-scrolling')
+        timers.delete(panel)
+      }, 180))
+    }
+    element.addEventListener('scroll', onScroll, { capture: true, passive: true })
+    return () => {
+      element.removeEventListener('scroll', onScroll, true)
+      timers.forEach((timer, panel) => {
+        clearTimeout(timer)
+        panel.classList.remove('is-scrolling')
+      })
+    }
+  }, [])
 
   const content = (category: SettingsSection): JSX.Element => {
     switch (category) {
@@ -77,7 +100,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
           aria-current={section === category.id ? 'page' : undefined} aria-controls={`settings-${category.id}`} onClick={() => select(category.id)}>{category.label}</button>)}
         <div className="settings-links">{websiteLinks(links).map(link => <a key={link.href} href={link.href}>{link.label}<span aria-hidden="true">↗</span><span className="sr-only"> (opens in your browser)</span></a>)}</div>
       </nav>
-      <div className="content settings-main">
+      <div ref={main} className="content settings-main">
         <h1>Settings</h1>
         {CATEGORIES.filter(category => visited.has(category.id)).map(category => <section key={category.id}
           id={`settings-${category.id}`} className="settings settings-category-panel scroll" hidden={section !== category.id} aria-label={category.label}>

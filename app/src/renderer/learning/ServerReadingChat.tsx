@@ -1,3 +1,4 @@
+import type { FlashcardProposal } from '@core/personal-cards'
 import { useEffect, useState } from 'react'
 import { normalizeCitations } from '@core/sidechat/citations'
 import type { ChatMessage, ChatQuote } from '@core/types'
@@ -15,6 +16,7 @@ const serverManaged = async () => {}
 /** Adapt the server wire format to the same transcript used for local chats. */
 export function serverMessage(message: LearningMessage, seq: number, source: ContentRef, localId: string): ChatMessage {
   return {
+    flashcardProposals: message.flashcardProposals,
     seq, role: message.role, text: message.text, at: message.at,
     status: message.status === 'error' ? 'failed' : message.status === 'cancelled' || message.status === 'interrupted' ? 'stopped' : 'complete',
     quote: message.quote ? { text: message.quote, from: source.kind === 'course' ? 'lesson' : 'document' } : undefined,
@@ -99,6 +101,7 @@ export function ServerReadingChat({ client, source, draftKey, localId, visible =
   }
   return <ScreenActivityProvider value={screenActive}><ChatPanel
     {...props} visible={visible} variant={source.kind === 'course' ? 'lesson' : 'document'} panel={panel}
+    flashcards={{proposals: (reading.view?.messages ?? []).flatMap(m => m.flashcardProposals ?? []), decide: (id,action) => client.request<FlashcardProposal>(`/learning/chats/${reading.active}/flashcards/${id}`,'POST',{action})}}
     composer={{ text: reading.text, setText: reading.setText }} sourceIcons={noSourceIcons}
   /></ScreenActivityProvider>
 }

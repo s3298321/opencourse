@@ -722,3 +722,86 @@ describe('read-only coach content access', () => {
     expect((await call('POST', path, { name: 'search_document', args: { query: 'needle', cursor: 0 } }, reader.token)).statusCode).toBe(404)
   })
 })
+
+describe('private personal flashcards', () => {
+  it('creates privately, reviews immediately, and isolates accounts and public content', async () => {
+    const s=await enrolled(), personal=randomUUID(), question='PERSONAL closure?', answer='PERSONAL lexical scope'
+    const create=operation(s,`personalCard:${personal}`,{question,answer})
+    await push(create);await push(create)
+    const list=(await call('GET',`/me/learning/course/${id}/personal-cards`)).json()
+    expect(list.cards).toHaveLength(1);expect(list.cards[0].answer).toBeUndefined()
+    expect((await call('GET',`/me/learning/course/${id}/personal-cards?download=1`)).json().cards[0].answer).toBe(answer)
+    expect((await call('POST',`/learn/course/${id}/1.0.0/cards/${personal}/reveal`,{})).json().answer).toBe(answer)
+    const rate=await call('POST',`/learn/course/${id}/1.0.0/cards/${personal}/rate`,{rating:'good',requestId:'personal-rate',expectedVersion:0})
+    expect(rate.statusCode,rate.body).toBe(200)
+    expect(rate.json().personalCards[0].state.reps).toBe(1)
+    expect((await call('POST',`/learn/course/${id}/1.0.0/cards/${personal}/rate`,{rating:'good',requestId:'personal-rate',expectedVersion:0})).statusCode).toBe(200)
+    expect((await call('POST',`/learn/course/${id}/1.0.0/cards/${personal}/rate`,{rating:'good',requestId:'different',expectedVersion:0})).statusCode).toBe(400)
+    const other=await signUp(server)
+    await call('PUT',`/me/learning/course/${id}`,{},other.token)
+    expect((await call('GET',`/me/learning/course/${id}/personal-cards`,undefined,other.token)).json().cards).toEqual([])
+    expect((await call('POST',`/learn/course/${id}/1.0.0/cards/${personal}/reveal`,{},other.token)).statusCode).toBe(404)
+    expect((await call('GET',`/courses/${id}`)).body).not.toContain('PERSONAL')
+    expect(server.ctx.db.prepare('SELECT 1 FROM elements WHERE uid=?').get(personal)).toBeUndefined()
+    expect((await call('GET','/sync')).json().changes.filter((c:{type:string})=>c.type==='personalCard')).toHaveLength(1)
+  })
+  it('replays offline review order and never resurrects deleted cards',async()=>{
+    const s=await enrolled(),personal=randomUUID(),create=operation(s,`personalCard:${personal}`,{question:'Q?',answer:'A'},100)
+    await push(create)
+    const early=operation(s,`personalReview:${personal}`,{rating:'good'},100000),late=operation(s,`personalReview:${personal}`,{rating:'easy'},200000)
+    await push(late,early);await push(late)
+    expect((await current()).personalCards?.[0].state?.reps).toBe(2)
+    await push(operation(s,`personalReview:${personal}`,null,150000))
+    expect((await current()).personalCards?.[0].state?.reps).toBe(1)
+    await call('DELETE',`/me/learning/course/${id}/personal-cards/${personal}`)
+    await push({...create,idempotencyKey:randomUUID()},operation(s,`personalReview:${personal}`,{rating:'good'}))
+    expect((await current()).personalCards).toEqual([])
+    expect((await call('POST',`/learn/course/${id}/1.0.0/cards/${personal}/reveal`,{})).json().error.message).toContain('Start another review session')
+    expect((await call('GET',`/me/learning/course/${id}/personal-cards?download=1`)).json().cards[0]).toMatchObject({deleted:true,question:'',answer:''})
+    expect(server.ctx.db.prepare('SELECT count(*) n FROM personal_card_reviews WHERE card_id=?').get(personal)?.n).toBe(0)
+    expect(server.ctx.db.prepare('SELECT count(*) n FROM personal_card_states WHERE card_id=?').get(personal)?.n).toBe(0)
+  })
+  it('keeps personal content through resets and leaving/rejoining learning',async()=>{
+    let s=await enrolled();const personal=randomUUID()
+    await push(operation(s,`personalCard:${personal}`,{question:'Q?',answer:'A'}),operation(s,`personalReview:${personal}`,{rating:'good'}))
+    await push(operation(s,'reset',null));s=await current()
+    expect(s.personalCards?.[0].question).toBe('Q?');expect(s.personalCards?.[0].state).toBeFalsy()
+    await push(operation(s,`personalReview:${personal}`,{rating:'good'}))
+    expect((await current()).personalCards?.[0].state?.reps).toBe(1)
+    await call('DELETE',`/me/learning/course/${id}`);await enrolled()
+    expect((await current()).personalCards?.[0].state?.reps).toBe(1)
+  })
+  it('keeps document cards and scheduling when the PDF changes',async()=>{
+    const doc=randomUUID(),personal=randomUUID()
+    expect((await publishPdf(doc)).statusCode).toBe(201)
+    const s=(await call('PUT',`/me/learning/document/${doc}`,{})).json() as LearningState
+    const op=(field:string,value:unknown):LearningOperation=>({...operation(s,field,value),kind:'document',id:doc})
+    await push(op(`personalCard:${personal}`,{question:'Document concept?',answer:'A definition.'}),op(`personalReview:${personal}`,{rating:'good'}))
+    expect((await publishPdf(doc,'1.0.1',pdf('Completely changed PDF'))).statusCode).toBe(201)
+    const next=(await call('PUT',`/me/learning/document/${doc}`,{version:'1.0.1'})).json() as LearningState
+    expect(next.personalCards?.[0]).toMatchObject({id:personal,state:{reps:1}})
+    expect((await call('POST',`/learn/document/${doc}/1.0.1/cards/${personal}/reveal`,{})).json().answer).toBe('A definition.')
+  })
+  it('creates a chat preview and approves it once without publishing cards',async()=>{
+    await enrolled();await call('PUT','/me/ai',{key:'sk-test'})
+    const chat=(await call('POST','/learning/chats',{kind:'course',id,version:'1.0.0'})).json().chat.id
+    let calls=0
+    server.ctx.aiFetch=async(_url,init)=>{
+      const body=JSON.parse(String(init?.body))
+      if(body.instructions===TITLE_INSTRUCTIONS) return new Response(stream(''))
+      expect(body.tools.some((t:{name:string})=>t.name==='create_flashcards')).toBe(true)
+      const output=++calls===1 ? [{type:'function_call',name:'create_flashcards',call_id:'make-cards',arguments:JSON.stringify({cards:[{question:'Define closure',answer:'Lexical environment'}]})}] : [{type:'message',role:'assistant',content:[{type:'output_text',text:'Please review and save the preview.'}]}]
+      return new Response(`data: ${JSON.stringify({type:'response.completed',response:{output}})}\n\n`)
+    }
+    await call('POST',`/learning/chats/${chat}/messages`,{text:'Make a flashcard',requestId:'make-personal'})
+    await vi.waitFor(async()=>expect((await call('GET',`/learning/chats/${chat}`)).json().messages.at(-1).status).toBe('complete'))
+    const preview=(await call('GET',`/learning/chats/${chat}`)).json().messages.at(-1).flashcardProposals[0]
+    expect(preview.status).toBe('pending');expect((await current()).personalCards).toEqual([])
+    const path=`/learning/chats/${chat}/flashcards/${preview.id}`
+    expect((await call('POST',path,{action:'save'})).json().status).toBe('saved')
+    expect((await call('POST',path,{action:'save'})).json().status).toBe('saved')
+    expect((await current()).personalCards).toHaveLength(1)
+    await call('DELETE',`/learning/chats/${chat}`)
+    expect((await current()).personalCards).toHaveLength(1)
+  })
+})

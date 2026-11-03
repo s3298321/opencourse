@@ -6,6 +6,23 @@ Research is available during creation and editing. Current stable versions are t
 
 Lessons use explanatory prose, concrete examples and purposeful practice. Research citations and consulted URLs are retained in the authoring conversation, not added to lesson content or exports, except image credits: original source/author/license attribution belongs beside the image and persists in the course archive. Consulted URLs indicate retrieval, not proof that every page supports a claim. Course schema validation is not an assessment of pedagogical quality or evidence that code was executed.
 
+## Python examples and notebooks
+
+New Python courses, including courses that teach through Python, enable a course
+notebook by default unless the user explicitly requests prose only. Runnable Python
+examples use `python-cell` lesson blocks with adjacent Markdown explanations and
+expected results. Markdown fences remain appropriate for non-runnable fragments,
+pseudocode, terminal commands, other languages and unsupported runtime examples.
+Assessed exercises retain their tests and solutions. Existing courses adopt these
+defaults within the requested editing scope, without unrelated conversions.
+
+Lesson cells are self-contained because each run starts a fresh process; notebook
+cells share variables. The prompt describes the standard-library-only initial
+environment, explicit package installation and unsupported execution features.
+Authoring tools already support both cell blocks and the notebook declaration;
+any lesson cell also automatically enables notebook access. These are authoring
+instructions, not schema requirements or a guarantee of model compliance.
+
 ## Prompt design references
 
 The prompt is original project text informed by these references, reviewed 2026-10-15:

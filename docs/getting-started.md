@@ -60,7 +60,20 @@ Next Lesson** (⌘]). Your place and progress are saved as you go.
 
 - **Quizzes** check your understanding and explain every answer, right or wrong.
 - **Flashcards** come back for review just before you would forget them. Review
-  what is due from the course's page.
+  what is due from the course's page. You can also ask a course, exercise, project,
+  notebook, or document chat to prepare **personal flashcards** about concepts you
+  discussed. Check the question-and-answer preview, then choose **Save all** or
+  **Dismiss**. Saved cards enter review immediately, using the same schedule as
+  course cards. Course pages show separate default and personal counts; click the
+  personal count to list questions and delete cards. Documents show Review only
+  after you save personal cards, on their overview and in the reader.
+
+  Coding notebooks and projects save cards to their course. Writing notebooks
+  save to their linked course or document; unlinked and Coach-only notebooks
+  cannot create cards. Personal cards never appear in the course editor or in
+  exported or published courses. Local content keeps them in your local profile;
+  server-linked content syncs cards, deletions, and review progress privately to
+  your account on supporting servers. Document cards survive PDF updates.
 - **Visualizations** are small interactive pages inside a lesson. Some open full screen.
 - **Find in Course…** (⌘F) searches every lesson.
 

@@ -193,6 +193,10 @@ advances desktop schema 26 to 27, preserving existing Coach memory and history.
 The new nullable compatibility column does not associate coaches with content.
 App 0.7.1 advances desktop schema 27 to 28, adding saved prompt settings for
 new coaches. Existing coaches retain their instructions and behavior.
+Server 0.3.1 advances server schema 5 to 6, and app 0.7.2 advances desktop
+schema 28 to 29. Both add private personal flashcards and pending chat previews;
+the desktop also adds synchronization bookkeeping. Existing authored cards and
+review history are preserved.
 
 For installations upgrading from before server 0.2.0 / app 0.5.0, the earlier
 learning migration advances server schema 2 to 5 and desktop schema 22 to 24

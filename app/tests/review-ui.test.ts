@@ -15,9 +15,9 @@ vi.mock('../src/renderer/markdown-context', async () => {
 let root: Root, container: HTMLDivElement
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); container = document.createElement('div'); document.body.append(container); root = createRoot(container) })
 afterEach(async () => { await act(async () => root.unmount()); document.body.replaceChildren(); vi.unstubAllGlobals() })
-const initial = (): ReviewSession => ({ id: 'session', courseId: 'course', courseTitle: 'Course', total: 2, reviewed: 0,
-  ratings: { again: 0, hard: 0, good: 0, easy: 0 }, card: { id: 'one', question: '**First question?**', lessonId: 'lesson', lessonTitle: 'Lesson', early: false, image: { src: 'opencourse://course/card.png', alt: 'Diagram' } },
-  summary: { total: 2, eligible: 2, due: 0, new: 2, practiced: 0, estimatedRecall: null, nextDue: null } })
+const initial = (): ReviewSession => ({ id: 'session', target: {kind: 'course', id: 'course'}, title: 'Course', courseId: 'course', courseTitle: 'Course', total: 2, reviewed: 0,
+  ratings: { again: 0, hard: 0, good: 0, easy: 0 }, card: { source: 'default', id: 'one', question: '**First question?**', lessonId: 'lesson', lessonTitle: 'Lesson', early: false, image: { src: 'opencourse://course/card.png', alt: 'Diagram' } },
+  summary: { defaultCount: 1, personalCount: 0, total: 2, eligible: 2, due: 0, new: 2, practiced: 0, estimatedRecall: null, nextDue: null } })
 function api() {
   const intervals = { again: '2026-10-06T10:01:00Z', hard: '2026-10-06T10:06:00Z', good: '2026-10-06T10:10:00Z', easy: '2026-10-10T10:00:00Z' }
   const result = { revealReviewAnswer: vi.fn(async () => ({ answer: '**Private answer**', intervals })), rateReviewCard: vi.fn(async (): Promise<ReviewSession> => ({ ...initial(), reviewed: 2, card: null, ratings: { again: 0, hard: 0, good: 2, easy: 0 }, summary: { ...initial().summary, new: 0, practiced: 2, nextDue: intervals.good } })), endReviewSession: vi.fn(async () => {}) }

@@ -1,3 +1,4 @@
+import { LocalPersonalCardManager } from '../components/PersonalCards'
 import ActionButton from '../components/ActionButton'
 import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
@@ -168,6 +169,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
                   </select>
                 </div>
                 {review && <>
+                  <span>{review.defaultCount} default · <LocalPersonalCardManager target={{kind: 'course', id: courseId}} count={review.personalCount} /></span>
                   <strong className={`course-review-summary${review.total === 0 ? ' no-flashcards' : ''}`} role="status">{reviewRecommendation(review)}</strong>
                   {!!review.eligible && <span className="meta course-review-counts">{review.due} due · {review.new} new · {review.practiced}/{review.eligible} practiced{review.estimatedRecall !== null ? ` · ${Math.round(review.estimatedRecall * 100)}% estimated recall` : ''}{review.eligible < review.total ? ` · ${review.total - review.eligible} locked` : ''}</span>}
                 </>}

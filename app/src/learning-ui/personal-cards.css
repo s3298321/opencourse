@@ -1,0 +1,19 @@
+.personal-card-preview { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 12px 0; overflow-wrap: anywhere; }
+.personal-card-preview ol { padding-left: 24px; }
+.personal-card-preview li { margin: 14px 0; }
+.personal-card-question { font-weight: 600; }
+.personal-card-actions { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.personal-card-actions h2 { margin: 0; }
+.personal-card-count { border: 0; padding: 2px 4px; background: transparent; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+.personal-card-dialog { width: min(580px, 90vw); max-height: 75vh; overflow: auto; background: var(--surface, var(--bg, white)); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+.personal-card-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.personal-card-dialog ul { list-style: none; padding: 0; }
+.personal-card-dialog li { display: flex; gap: 16px; align-items: start; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.personal-card-dialog li span { white-space: pre-wrap; overflow-wrap: anywhere; }
+.personal-card-dialog li button { flex-shrink: 0; }
+.personal-card-preview button, .personal-card-dialog button { cursor: pointer; font: inherit; color: var(--text); background: var(--surface, var(--bg, white)); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.personal-card-preview button:hover, .personal-card-dialog button:hover { filter: brightness(1.2); }
+.personal-card-preview button:disabled, .personal-card-dialog button:disabled { opacity: .6; cursor: wait; }
+.personal-card-dialog button { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; }
+.personal-card-preview button:focus-visible, .personal-card-dialog button:focus-visible, .personal-card-count:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.document-review-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

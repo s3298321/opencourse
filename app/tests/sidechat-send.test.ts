@@ -1,3 +1,4 @@
+import { FLASHCARD_TOOL } from '../src/core/personal-cards'
 import { installCourseFixture } from './helpers/course'
 /**
  * Asking a question and getting an answer, with OpenAI replaced by a stream we
@@ -816,7 +817,7 @@ describe('web search', () => {
     const chat = createChat(courseId, L1)
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
     await settle()
-    expect(sentBody()['tools']).toEqual(COURSE_TOOLS)
+    expect(sentBody()['tools']).toEqual([...COURSE_TOOLS, FLASHCARD_TOOL])
     expect(instructions()).toContain('You cannot search the web.')
   })
 
@@ -826,7 +827,7 @@ describe('web search', () => {
     const chat = createChat(courseId, L1)
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
     await settle()
-    expect(sentBody()['tools']).toEqual([...COURSE_TOOLS, { type: 'web_search' }])
+    expect(sentBody()['tools']).toEqual([...COURSE_TOOLS, FLASHCARD_TOOL, { type: 'web_search' }])
     expect(instructions()).toContain('You can search the web')
     expect(sentBody()['store']).toBe(false)
     expect(sentBody()['max_output_tokens']).toBe(12000)
@@ -838,7 +839,7 @@ describe('web search', () => {
     const chat = setChatModel(createChat(courseId, L1).id, 'gpt-4.1-nano')
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
     await settle()
-    expect(sentBody()['tools']).toEqual(COURSE_TOOLS)
+    expect(sentBody()['tools']).toEqual([...COURSE_TOOLS, FLASHCARD_TOOL])
     expect(instructions()).toContain('You cannot search the web.')
   })
 
@@ -964,8 +965,8 @@ describe('web search', () => {
     await settle()
     const sent = answerCalls().map((c) => JSON.parse(c.body) as Record<string, unknown>)
     expect(sent).toHaveLength(2)
-    expect(sent[0]!['tools']).toEqual([...COURSE_TOOLS, { type: 'web_search' }])
-    expect(sent[1]!['tools']).toEqual(COURSE_TOOLS)
+    expect(sent[0]!['tools']).toEqual([...COURSE_TOOLS, FLASHCARD_TOOL, { type: 'web_search' }])
+    expect(sent[1]!['tools']).toEqual([...COURSE_TOOLS, FLASHCARD_TOOL])
     expect(pushed.some((p) => p.channel === 'chat:error')).toBe(false)
     expect(selectMessages(chat.id).at(-1)!.text).toBe('Answered anyway.')
   })

@@ -1,3 +1,4 @@
+import { WebDocumentReviewControls } from '../components/PersonalCards'
 import { useCallback, useEffect, useLayoutEffect, useState, useRef, type RefObject } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { ContentKind, LearningState, PublishedDocument } from '@core/learning/types'
@@ -336,6 +337,7 @@ export function DocumentOverview() {
               title={item.title}
               description={`Published by ${item.publisher}`}
             />
+            <WebDocumentReviewControls id={item.id} from="overview" />
             <Html className="oc-prose" html={renderMarkdown(item.description)} />
             {item.sections.length > 0 && (
               <section className="document-contents">
@@ -548,6 +550,7 @@ export function WebLearning() {
   }
   return (
     <div className="oc-wrap page learning-page" data-course-reader={Boolean(course)} data-document-reader={Boolean(document)}>
+      {kind === 'document' && id && <WebDocumentReviewControls id={id} />}
       <span className="oc-visually-hidden" role="status" aria-label="Progress saving status">
         {saving ? 'Saving progress…' : saved ? 'Progress saved' : ''}
       </span>

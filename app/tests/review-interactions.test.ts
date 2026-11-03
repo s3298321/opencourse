@@ -7,10 +7,10 @@ import Review from '../src/renderer/routes/Review'
 // These checks exercise review navigation and focus, independent of markdown parsing.
 vi.mock('../src/renderer/components/Html', () => ({ default: ({ source }: { source: string }) => createElement('div', null, source) }))
 const session: ReviewSession = {
-  id: 'session', courseId: 'course', courseTitle: 'Memory practice', total: 2, reviewed: 0,
+  id: 'session', target: {kind: 'course', id: 'course'}, title: 'Course', courseId: 'course', courseTitle: 'Memory practice', total: 2, reviewed: 0,
   ratings: { again: 0, hard: 0, good: 0, easy: 0 },
-  card: { id: 'first', question: 'First question', lessonId: 'lesson', lessonTitle: 'Lesson one', early: false },
-  summary: { total: 2, eligible: 2, due: 0, new: 2, practiced: 0, estimatedRecall: null, nextDue: null }
+  card: { source: 'default', id: 'first', question: 'First question', lessonId: 'lesson', lessonTitle: 'Lesson one', early: false },
+  summary: { defaultCount: 1, personalCount: 0, total: 2, eligible: 2, due: 0, new: 2, practiced: 0, estimatedRecall: null, nextDue: null }
 }
 const answer: ReviewAnswer = { answer: 'The answer', intervals: { again: '2030-01-01', hard: '2030-01-02', good: '2030-01-03', easy: '2030-01-04' } }
 let root: Root, container: HTMLDivElement

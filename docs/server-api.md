@@ -178,7 +178,7 @@ every listing and search.
 ## Identity and capability negotiation
 
 `GET /server` additionally returns immutable `id` and `capabilities`, including
-`learning-sync-v1`, `documents-v1` and `server-chat-v1`. Missing capabilities
+`learning-sync-v1`, `documents-v1`, `server-chat-v1` and `personal-flashcards-v1`. Missing capabilities
 retain the previous catalog/download behavior; clients must not assume the
 new routes exist. `PUT /me/username { username }` changes the display/login name
 without changing the account ID, enrollment or progress.
@@ -240,8 +240,8 @@ No progress, credentials or local conversations belong in a publication.
 | `GET /learn/document/:id/:version/search?q=` | Bounded matching excerpts and indexing status |
 | `GET /learn/course/:id/:version/assets/*` | Restricted version-scoped assets; isolated HTML sandbox |
 | `POST /learn/course/:id/:version/quiz/:quiz { submitted, requestId }` | Grade, record a deduplicated attempt, reveal explanation |
-| `POST /learn/course/:id/:version/cards/:card/reveal` | Reveal after the lesson is marked read |
-| `POST /learn/course/:id/:version/cards/:card/rate { rating, requestId }` | Record review and replay shared FSRS scheduling |
+| `POST /learn/:kind/:id/:version/cards/:card/reveal { expectedVersion? }` | Reveal an owned personal card, or an authored course card after lesson completion |
+| `POST /learn/:kind/:id/:version/cards/:card/rate { rating, requestId, expectedVersion? }` | Record review and replay shared FSRS scheduling; reject stale personal-card versions |
 
 `kind` is `course` or `document`. Acquisition counts are analytics, not
 enrollment. Ordinary unpublishing removes discovery/new enrollment while
@@ -354,3 +354,38 @@ question and included in the model's context. Assistant messages retain web
 citation positions (`start`, `end`) and local reading destinations. While running,
 `activity` carries a tool label and its running state; SSE `activity` events tell
 clients to refresh it, alongside `delta` and `done` events.
+
+
+### Personal flashcards
+
+`personal-flashcards-v1` adds private, account/content-scoped cards without changing
+published content. `LearningState.personalCards` carries live questions and review
+states, with answers omitted. Personal cards are immediately eligible; course
+cards retain their lesson-completion requirement. PDF replacements preserve
+personal cards and schedules. Explicit progress resets preserve questions and
+answers but clear scheduling. Unenrollment retains both.
+
+| Endpoint | Result |
+| --- | --- |
+| `GET /me/learning/:kind/:id/personal-cards?after=&download=1` | `{ cards, nextCursor }`, at most 100 UUID-ordered snapshots including tombstones. Omit `download=1` to exclude answers. |
+| `DELETE /me/learning/:kind/:id/personal-cards/:card` | Delete an owned card and its active review history; retain a permanent tombstone. |
+| `POST /learning/chats/:id/flashcards/:proposal { action: "save" | "dismiss" }` | Atomically resolve an owned preview batch; repeated approvals return the same result. |
+
+`create_flashcards` accepts `{ cards: [{ question, answer }] }`: 1–20 cards,
+questions up to 2,000 characters and answers up to 8,000, all nonblank. It derives
+the destination from the authenticated conversation and returns a pending proposal,
+never saved cards. Chat messages include structured `flashcardProposals` with
+pending/saved/dismissed status. Saving does not require another model request.
+
+Desktop sync accepts `personalCard:<uuid>` (a question/answer object to create,
+`null` to delete) and `personalReview:<uuid>` (a rating object, or `null` to reset).
+Card content is independent of progress epochs; review operations use the current
+epoch. Both require a current enrollment generation. Creation precedes dependent
+reviews. Ratings replay in action-time/idempotency-key order. Deleted UUIDs cannot
+be reused, and delayed operations never resurrect them.
+
+The change feed adds `type: "personalCard"`, keyed by card UUID, containing the
+current card, scheduling state, or tombstone. It is visible only to the owning
+account. Clients must bootstrap snapshots when first enabling this capability,
+even if their cursor already passed earlier card changes. Unsupported servers
+must not receive these operations. Markdown text is never remapped as an element ID.

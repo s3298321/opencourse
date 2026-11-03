@@ -1,3 +1,5 @@
+import { personalCardRoutes } from './personal-cards'
+import { personalCard } from '../../../app/src/main/personal-card-store'
 import { readLearningContent } from './reading'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { extname } from 'node:path'
@@ -5,7 +7,6 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { ContentKind, ContentRef, LearningOperation } from '@core/learning/types'
 import { grade } from '@core/grading'
-import { scheduleCard, serializeCard, deserializeCard, type StoredCard } from '@core/review'
 import type { ReviewRating } from '@core/types'
 import type { Ctx } from '../context'
 import { requireAccount } from '../auth/routes'
@@ -40,6 +41,7 @@ const mime: Record<string, string> = {
   '.woff2': 'font/woff2'
 }
 export function registerLearningRoutes(app: FastifyInstance, ctx: Ctx): void {
+  personalCardRoutes(app,ctx)
   const d = ctx.db
   const coverOf = (ref: ContentRef) => {
     const row = d
@@ -260,55 +262,44 @@ export function registerLearningRoutes(app: FastifyInstance, ctx: Ctx): void {
     ])
     return { ...result, explanation: quiz.explanation }
   })
-  app.post('/api/v1/learn/course/:id/:version/cards/:card/reveal', async (req) => {
-    const ref = reference({ ...(req.params as object), kind: 'course' }),
-      account = requireAccount(req).id,
-      course = await readCourse(ctx, account, ref)
-    const card = course.modules
-      .flatMap((m) => (m.type === 'project' ? [] : m.lessons.flatMap((l) => l.flashcards ?? [])))
-      .find((c) => c.id === (req.params as { card: string }).card)
-    if (!card) throw notFound()
-    const lesson = course.modules
-      .flatMap((m) => (m.type === 'project' ? [] : m.lessons))
-      .find((l) => l.flashcards?.some((c) => c.id === card.id))!
-    if (state(ctx, account, 'course', ref.id).fields[`lesson:${lesson.slug}`]?.value !== true)
-      throw badRequest('lesson_incomplete', 'Mark this lesson read to unlock its flashcards.')
-    return { answer: card.answer }
+  app.post('/api/v1/learn/:kind/:id/:version/cards/:card/reveal', async req => {
+    const ref=reference(req.params), account=requireAccount(req).id
+    contentRecord(ctx,account,ref)
+    const id=(req.params as {card:string}).card, own=personalCard(ctx.db,account,ref,id)
+    if (own?.deleted) throw badRequest('card_deleted','This card was deleted. Start another review session.')
+    if (own && !own.deleted) {
+      const expected=(req.body as {expectedVersion?:number})?.expectedVersion
+      if (expected !== undefined && expected !== own.version) throw badRequest('card_changed','This card was reviewed in another window. Start another session.')
+      return {answer:own.answer}
+    }
+    if (ref.kind !== 'course') throw notFound()
+    const course=await readCourse(ctx,account,ref)
+    for (const module of course.modules) if (module.type !== 'project') for (const lesson of module.lessons) {
+      const card=lesson.flashcards?.find(c => c.id===id)
+      if (!card) continue
+      if (state(ctx,account,ref.kind,ref.id).fields[`lesson:${lesson.slug}`]?.value !== true) throw badRequest('lesson_incomplete','Mark this lesson read to unlock its flashcards.')
+      return {answer:card.answer}
+    }
+    throw notFound()
   })
-  app.post('/api/v1/learn/course/:id/:version/cards/:card/rate', async (req) => {
-    const ref = reference({ ...(req.params as object), kind: 'course' }),
-      account = requireAccount(req).id
-    const course = await readCourse(ctx, account, ref)
-    const { card } = req.params as { card: string },
-      body = req.body as { rating: ReviewRating; requestId: string }
-    if (
-      !course.modules.some(
-        (m) => m.type !== 'project' && m.lessons.some((l) => l.flashcards?.some((c) => c.id === card))
-      )
-    )
-      throw notFound()
-    if (!['again', 'hard', 'good', 'easy'].includes(body?.rating))
-      throw badRequest('invalid_rating', 'Choose a review rating.')
-    const lesson = course.modules
-      .flatMap((m) => (m.type === 'project' ? [] : m.lessons))
-      .find((l) => l.flashcards?.some((c) => c.id === card))!
-    if (state(ctx, account, 'course', ref.id).fields[`lesson:${lesson.slug}`]?.value !== true)
-      throw badRequest('lesson_incomplete', 'Mark this lesson read to unlock its flashcards.')
-    const s = state(ctx, account, 'course', ref.id),
-      previous = s.fields[`review:${card}`]?.value as { card: StoredCard } | undefined,
-      at = Date.now()
-    const next = scheduleCard(previous ? deserializeCard(previous.card) : undefined, body.rating, new Date(at))
-    push(ctx, account, [
-      {
-        ...ref,
-        generation: s.enrollment.generation,
-        epoch: s.epoch,
-        idempotencyKey: body.requestId ?? randomUUID(),
-        at,
-        field: `review:${card}`,
-        value: { card: serializeCard(next.card), rating: body.rating }
-      }
-    ])
-    return state(ctx, account, 'course', ref.id)
+  app.post('/api/v1/learn/:kind/:id/:version/cards/:card/rate', async req => {
+    const ref=reference(req.params), account=requireAccount(req).id
+    contentRecord(ctx,account,ref)
+    const id=(req.params as {card:string}).card, own=personalCard(ctx.db,account,ref,id)
+    if (own?.deleted) throw badRequest('card_deleted','This card was deleted. Start another review session.')
+    const body=req.body as {rating:ReviewRating;requestId?:string;expectedVersion?:number}
+    if (!['again','hard','good','easy'].includes(body?.rating)) throw badRequest('invalid_rating','Choose a review rating.')
+    if (own && !own.deleted && body.expectedVersion !== undefined && body.expectedVersion !== own.version && !ctx.db.prepare('SELECT 1 FROM learning_events WHERE account_id=? AND operation=?').get(account,body.requestId ?? '')) throw badRequest('card_changed','This card was reviewed in another window. Start another session.')
+    const s=state(ctx,account,ref.kind,ref.id)
+    if (!own || own.deleted) {
+      if (ref.kind !== 'course') throw notFound()
+      const course=await readCourse(ctx,account,ref)
+      const lesson=course.modules.flatMap(m => m.type === 'project' ? [] : m.lessons).find(l => l.flashcards?.some(c => c.id===id))
+      if (!lesson) throw notFound()
+      if (s.fields[`lesson:${lesson.slug}`]?.value !== true) throw badRequest('lesson_incomplete','Mark this lesson read to unlock its flashcards.')
+    }
+    const result=push(ctx,account,[{...ref,generation:s.enrollment.generation,epoch:s.epoch,idempotencyKey:body.requestId ?? randomUUID(),at:Date.now(),field:`${own && !own.deleted ? 'personalReview' : 'review'}:${id}`,value:{rating:body.rating}}])
+    if (result.rejected.length) throw badRequest('review_failed','This card changed. Refresh and start another session.')
+    return state(ctx,account,ref.kind,ref.id)
   })
 }

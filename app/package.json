@@ -1,7 +1,7 @@
 {
   "name": "opencourse",
-  "version": "0.7.1",
-  "description": "OpenCourse — courses on any subject, on the desktop, with runnable exercises",
+  "version": "0.7.2",
+  "description": "OpenCourse \u2014 courses on any subject, on the desktop, with runnable exercises",
   "main": "./out/main/index.js",
   "author": "OpenCourse",
   "license": "MIT",
@@ -29,6 +29,7 @@
     "dmg": "npm run build && electron-builder --mac",
     "shots": "npm run prepare:python && npm run build:resources && electron-vite build && ELECTRON_OVERRIDE_DIST_PATH=\"$(node scripts/electron-dist.mjs)\" OPENCOURSE_SHOTS=${OPENCOURSE_SHOTS:-/tmp/opencourse-shots} electron .",
     "build:icons": "node scripts/build-icons.mjs",
+    "smoke:personal-flashcards": "OPENCOURSE_PERSONAL_CARD_SMOKE=1 npm run smoke:flashcards",
     "smoke:flashcards": "npm run build && ELECTRON_OVERRIDE_DIST_PATH=\"$(node scripts/electron-dist.mjs)\" OPENCOURSE_FLASHCARD_SMOKE=${OPENCOURSE_FLASHCARD_SMOKE:-/tmp/opencourse-flashcards} electron .",
     "prepare:python": "node scripts/prepare-python.mjs"
   },

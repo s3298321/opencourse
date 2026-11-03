@@ -8,6 +8,7 @@
  */
 export type PageKey =
   | 'catalog' | 'course' | 'documents' | 'document' | 'learning' | 'learningCourse' | 'learningReview' | 'learn'
+  | 'documentReview'
   | 'signin' | 'signup' | 'forgot'
   | 'myCourses' | 'myCourse' | 'myDocument' | 'settings'
   | 'admin' | 'adminAccounts' | 'adminCourses' | 'adminAudit'
@@ -29,6 +30,7 @@ export const PAGES: readonly Page[] = [
   { key: 'learning', path: '/learning', title: 'My learning', index: false, access: 'account' },
   { key: 'learningCourse', path: '/learning/courses/:id', title: 'Course', index: false, access: 'account' },
   { key: 'learningReview', path: '/learning/courses/:id/review', title: 'Flashcard review', index: false, access: 'account' },
+  { key: 'documentReview', path: '/learning/documents/:id/review', title: 'Flashcard review', index: false, access: 'account' },
   { key: 'learn', path: '/learn/:kind/:id', title: 'Learn', index: false, access: 'account' },
   { key: 'catalog', path: '/', title: '', index: true, access: 'anyone' },
   { key: 'course', path: '/courses/:id', title: 'Course', index: true, access: 'anyone' },

@@ -1,3 +1,4 @@
+import { WebPersonalCardManager } from '../components/PersonalCards'
 /**
  * A course in My learning: the app's course overview (CourseDetail) and its
  * flashcard review session (Review), over the synced learning state. Lessons
@@ -46,7 +47,8 @@ export function LearningCoursePage() {
     const refresh = () => void load()
     const timer = setInterval(refresh, 60000)
     window.addEventListener('focus', refresh)
-    return () => { clearInterval(timer); window.removeEventListener('focus', refresh) }
+    window.addEventListener('personal-cards-changed',refresh)
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); window.removeEventListener('personal-cards-changed',refresh) }
   }, [load])
 
   if (!data) {
@@ -114,6 +116,7 @@ export function LearningCoursePage() {
               {COUNTS.map((n) => <option key={n} value={n}>{n} cards</option>)}
             </select>
           </div>
+          <span>{review.defaultCount} default · <WebPersonalCardManager target={{kind:'course',id}} count={review.personalCount} /></span>
           <strong className={`learning-review-summary${review.total === 0 ? ' no-flashcards' : ''}`} role="status">{reviewRecommendation(review)}</strong>
           {review.eligible > 0 && (
             <span className="learning-course-meta learning-review-counts">
@@ -185,10 +188,14 @@ interface Session {
  * reveal and rating is the server's, so the answer never reaches the page
  * before it is asked for and a rating is the same FSRS step on every device.
  */
-export function ReviewPage() {
+export function DocumentReviewPage() { return <ReviewPage kind="document" /> }
+
+export function ReviewPage({kind='course'}:{kind?:'course'|'document'}) {
   const { id = '' } = useParams()
   const [params] = useSearchParams()
   const navigate = useNavigate()
+  const back = kind === 'document' ? (params.get('from') === 'overview' ? `/documents/${enc(id)}` : `/learn/document/${enc(id)}`) : `/learning/courses/${enc(id)}`
+  const backLabel = kind === 'document' ? 'Back to document' : 'Back to course'
   const count = (COUNTS as number[]).includes(Number(params.get('cards'))) ? Number(params.get('cards')) : 10
   const [session, setSession] = useState<Session | null>(null)
   const [answer, setAnswer] = useState<string | null>(null)
@@ -200,22 +207,23 @@ export function ReviewPage() {
 
   useEffect(() => {
     let alive = true
-    void loadEnrolledCourse(id).then(({ course, state }: { course: CourseView; state: LearningState }) => {
+    const load = kind === 'course' ? loadEnrolledCourse(id) : call<{items:LearningState[]}>('GET','/me/learning').then(r => { const state=r.items.find(s => s.enrollment.kind==='document' && s.enrollment.id===id && s.enrollment.active); if(!state) throw new Error('Add this document to My learning first.'); return {course:null,state} })
+    void load.then(({ course, state }) => {
       if (!alive) return
       const all = reviewCandidates(course, state), queue = reviewQueue(all, count, new Date())
       if (!queue.length) {
-        setStartError('Complete a lesson with flashcards to unlock review.')
+        setStartError(kind === 'document' ? 'Ask the document chat to create personal flashcards first.' : 'Complete a lesson or create personal flashcards to unlock review.')
         return
       }
-      setSession({ version: state.enrollment.version, title: course.title, cards: queue.map((cardId) => all.find((c) => c.id === cardId)!),
+      setSession({ version: state.enrollment.version, title: course?.title ?? state.enrollment.title, cards: queue.map((cardId) => all.find((c) => c.id === cardId)!),
         index: 0, ratings: { again: 0, hard: 0, good: 0, easy: 0 } })
     }).catch((e: Error) => { if (alive) setStartError(e.message) })
     return () => { alive = false }
-  }, [id, count])
+  }, [id, count, kind])
 
   const card = session?.cards[session.index] ?? null
-  const base = session ? `/learn/course/${enc(id)}/${enc(session.version)}/cards` : ''
-  const exit = () => { if (!working.current) navigate(`/learning/courses/${enc(id)}`) }
+  const base = session ? `/learn/${kind}/${enc(id)}/${enc(session.version)}/cards` : ''
+  const exit = () => { if (!working.current) navigate(back) }
 
   useEffect(() => {
     if (busy || !session) return
@@ -227,7 +235,7 @@ export function ReviewPage() {
   const reveal = async () => {
     if (working.current || !card || answer !== null) return
     working.current = true; setBusy(true); setError('')
-    try { setAnswer((await call<{ answer: string }>('POST', `${base}/${enc(card.id)}/reveal`, {})).answer) }
+    try { setAnswer((await call<{ answer: string }>('POST', `${base}/${enc(card.id)}/reveal`, {expectedVersion:card.version})).answer) }
     catch (e) { setError((e as Error).message) }
     finally { working.current = false; setBusy(false) }
   }
@@ -238,7 +246,7 @@ export function ReviewPage() {
     let requestId = receipts.current.get(card.id)
     if (!requestId) { requestId = crypto.randomUUID(); receipts.current.set(card.id, requestId) }
     try {
-      await call('POST', `${base}/${enc(card.id)}/rate`, { rating, requestId })
+      await call('POST', `${base}/${enc(card.id)}/rate`, { rating, requestId, expectedVersion:card.version })
       setSession((s) => s && { ...s, index: s.index + 1, ratings: { ...s.ratings, [rating]: s.ratings[rating] + 1 } })
       setAnswer(null)
     } catch (e) { setError((e as Error).message) }
@@ -259,7 +267,7 @@ export function ReviewPage() {
   if (!session) {
     return (
       <div className="oc-wrap page review-page">
-        <Link className="back-link" to={`/learning/courses/${enc(id)}`}><ArrowLeft aria-hidden /> Back to course</Link>
+        <Link className="back-link" to={back}><ArrowLeft aria-hidden /> {backLabel}</Link>
         {startError ? <p className="form-error" role="alert">{startError}</p> : <div className="oc-skeleton review-card-skeleton" role="status" aria-label="Starting review" />}
       </div>
     )
@@ -274,7 +282,7 @@ export function ReviewPage() {
           <div><span className="review-label">Flashcard review</span><strong>{session.title}</strong></div>
         </div>
         <button className="oc-btn secondary sm" disabled={busy} onClick={exit}>
-          {card ? <><X aria-hidden /> End review</> : <><ArrowLeft aria-hidden /> Back to course</>}
+          {card ? <><X aria-hidden /> End review</> : <><ArrowLeft aria-hidden /> {backLabel}</>}
         </button>
       </header>
       <div className="review-progress">
@@ -309,7 +317,7 @@ export function ReviewPage() {
           <div className="review-result-counts">
             {RATINGS.map((rating) => <div className={`rating-${rating}`} key={rating}><strong>{session.ratings[rating]}</strong><span>{ratingLabels[rating]}</span></div>)}
           </div>
-          <button className="oc-btn" onClick={exit}><ArrowLeft aria-hidden /> Back to course</button>
+          <button className="oc-btn" onClick={exit}><ArrowLeft aria-hidden /> {backLabel}</button>
         </div>
       )}
       {card && (

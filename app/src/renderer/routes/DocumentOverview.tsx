@@ -1,3 +1,4 @@
+import { DocumentReviewControls } from '../components/PersonalCards'
 import ActionButton from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
@@ -84,6 +85,7 @@ export default function DocumentOverview({ documentId, user, navigate, route }: 
             trailingActions={<ActionButton icon={doc.origin ? 'close' : 'trash'} className={doc.origin ? 'secondary' : 'secondary danger'} disabled={removing} onClick={() => void remove()}>{doc.origin ? 'Remove from My learning' : 'Delete document'}</ActionButton>} />
           {cover && <img className="catalog-detail-cover" src={cover} alt="" />}
           <h1>{doc.title}</h1>
+          <DocumentReviewControls documentId={documentId} navigate={navigate} from={route} />
           <div className="meta">
             PDF · {doc.pages === 1 ? '1 page' : `${doc.pages} pages`} · {documentSize(doc.bytes)}
             {doc.status === 'indexing' ? ' · Building search index…' : doc.status === 'error' ? ' · Text index unavailable' : doc.searchablePages === 0 ? ' · Image-only PDF' : ''}

@@ -21,9 +21,10 @@ export async function runAuthoringMotionSmoke(win: BrowserWindow, courseId: stri
     update(manifest => {
       const block = manifest.modules[0].lessons![0].blocks[0]
       if (block.type !== 'markdown') throw new Error('Motion fixture requires markdown')
+      manifest.modules[0].lessons!.splice(1, 0, { nodeId: newDraftRef(), slug: 'temporary-motion-lesson', title: 'Temporary motion lesson', blocks: [] })
       block.content = '## A small edit\n\nThe old compiler produces code.\n\nThis paragraph stays exactly the same.\n\nA linker combines object files.'
     })
-    await win.webContents.executeJavaScript(`document.querySelector('[aria-label="Text: hello-python"]').click(); document.querySelector('.author-preview').scrollTop=0;`)
+    await win.webContents.executeJavaScript(`document.querySelector('.outline-row[aria-label="Hello, Python"]').click(); document.querySelector('.author-preview').scrollTop=0;`)
     await pause(1700)
     update(manifest => {
       const lesson = manifest.modules[0].lessons![0], block = lesson.blocks[0]
@@ -31,6 +32,9 @@ export async function runAuthoringMotionSmoke(win: BrowserWindow, courseId: stri
       block.content = block.content.replace('old compiler produces code', 'new compiler produces object files')
       lesson.blocks.splice(1, 0, { nodeId: newDraftRef(), slug: 'added-note', type: 'markdown', content: 'A new supporting example.' })
       lesson.blocks = lesson.blocks.filter(entry => entry.slug !== 'key-takeaways')
+      const lessons = manifest.modules[0].lessons!
+      lessons.splice(lessons.findIndex(entry => entry.slug === 'temporary-motion-lesson'), 1,
+        { nodeId: newDraftRef(), slug: 'added-motion-lesson', title: 'Added motion lesson', blocks: [] })
     })
     const report = await win.webContents.executeJavaScript(`(async()=>{
       for(let i=0;i<100;i++) { if(document.querySelector('.authoring-motion-word.arriving')) break; await new Promise(r=>setTimeout(r,10)); }
@@ -39,7 +43,7 @@ export async function runAuthoringMotionSmoke(win: BrowserWindow, courseId: stri
       const badges=[...document.querySelectorAll('.authoring-motion-badge')].map(el=>el.textContent);
       if(!arriving.length || !departing.length || arriving.some(word=>['paragraph','stays','exactly','same.','linker'].includes(word))) throw new Error('Motion failed to isolate changed words');
       if(!['Updated','Removed'].every(label=>badges.includes(label)) || badges.includes('Added')) throw new Error('Wrong outline change indications: '+badges);
-      const addedRow=document.querySelector('[aria-label^="Text: added-note"]')?.closest('[data-authoring-outline-id]');
+      const addedRow=document.querySelector('.outline-row[aria-label="Added motion lesson"]')?.closest('[data-authoring-outline-id]');
       if(!addedRow?.getAnimations().some(animation=>animation.effect.getKeyframes()[0].opacity==='0')) throw new Error('Added outline row does not fade in');
       const highlight=CSS.highlights.get('authoring-arriving');
       if(!highlight?.size) throw new Error('Missing incoming-word highlight');
@@ -53,6 +57,7 @@ export async function runAuthoringMotionSmoke(win: BrowserWindow, courseId: stri
     await win.webContents.executeJavaScript(`document.querySelector('[aria-label="Hello, Python"]').click(); document.querySelector('.author-preview').scrollTop=0;`)
     update(manifest => {
       const lesson = manifest.modules[0].lessons![0]
+      manifest.modules[0].lessons = manifest.modules[0].lessons!.filter(entry => entry.slug !== 'added-motion-lesson')
       lesson.blocks = lesson.blocks.filter(block => block.slug !== 'added-note')
       lesson.blocks.splice(1, 0, { nodeId: newDraftRef(), slug: 'another-note', type: 'markdown', content: '**New idea:** Compilation and linking are separate steps.' })
     })

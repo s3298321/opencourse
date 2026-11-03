@@ -297,7 +297,7 @@ export default function App(): JSX.Element {
       case 'catalogCourse': return <CatalogCourse serverId={screen.serverId} courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} />
       case 'publication': return <Publication serverId={screen.serverId} courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} ask={ask} />
       case 'course': return <CourseDetail courseId={screen.courseId} user={user} navigate={screenNavigate} route={screen} />
-      case 'review': return <Review initialSession={screen.session} navigate={screenNavigate} active={active} />
+      case 'review': return <Review from={screen.from} initialSession={screen.session} navigate={screenNavigate} active={active} />
       case 'lesson': return <LessonView courseId={screen.courseId} moduleId={screen.moduleId} lessonId={screen.lessonId}
         pythonCellsActive={section === 'courses' && navigation.reader?.courseId === screen.courseId}
         user={user} navigate={screenNavigate} navSignal={navSignal} route={screen} chatOpen={chatOpen} setChatOpen={setChatOpen}

@@ -1,3 +1,5 @@
+import { runPersonalCardSmoke } from './personal-card-smoke'
+import { stopAllNotebooks } from './notebooks'
 /** Isolated, offline verification of the real flashcard editor and review UI. */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -15,8 +17,8 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     const detail = await win.webContents.executeJavaScript(`(async () => {
       const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
       const wait = async test => { for(let i=0;i<200;i++) { const value=test(); if(value) return value; await sleep(30); } throw new Error('Timed out: '+test.toString()); };
-      const button = text => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === text);
-      const field = async (label,value) => { const input=await wait(()=>document.querySelector('[aria-label="'+label+'"]')); Object.getOwnPropertyDescriptor(input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value); input.dispatchEvent(new Event('input',{bubbles:true})); await sleep(50); };
+      const button = text => [...document.querySelectorAll('button')].find(b => b.checkVisibility() && b.textContent.trim() === text);
+      const field = async (label,value,root=document) => { const input=await wait(()=>root.querySelector('[aria-label="'+label+'"]')); Object.getOwnPropertyDescriptor(input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value); input.dispatchEvent(new Event('input',{bubbles:true})); await sleep(50); };
       ${source}
     })()`)
     results.push({ name, detail })
@@ -37,6 +39,8 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     if (imported.status !== 'ok') throw new Error(`Import failed: ${JSON.stringify(imported)}`)
     win.webContents.send('courses:changed')
     await win.webContents.executeJavaScript(`window.__FLASHCARD_COURSE = ${JSON.stringify(imported.courseId)}`)
+    if (process.env['OPENCOURSE_PERSONAL_CARD_SMOKE']) await runPersonalCardSmoke(imported.courseId, run, shot)
+    else {
     await run('answer redaction and completed-lesson unlock', `
       (await wait(()=>document.querySelector('.course-card'))).click(); await wait(()=>document.querySelector('.detail'));
       const course=await window.opencourse.getCourse(window.__FLASHCARD_COURSE), lesson=course.modules[0].lessons[0];
@@ -47,12 +51,16 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     `)
     await run('create and edit a card in the edit session', `
       button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
-      [...document.querySelectorAll('.outline-row')].find(b=>b.textContent.trim()==='hello-python').click();
-      button('+ Add card').click(); await field('Card archive ID','compile-link'); await field('Question','What joins object files into a program?'); await field('Answer','The **linker** joins object files and resolves symbols.');
+      (await wait(()=>document.querySelector('.outline-row[aria-label="Hello, Python"]'))).click();
+      (await wait(()=>button('+ Add card'))).click();
+      const card=await wait(()=>{const cards=document.querySelectorAll('.lesson-flashcards .lesson-element'); return cards.length===3 ? cards[2] : null;});
+      window.__FLASHCARD_NODE=card.dataset.elementId;
+      await field('Card archive ID','compile-link',card); await field('Question','What joins object files into a program?',card); await field('Answer','The **linker** joins object files and resolves symbols.',card);
       await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes'); await sleep(250);
       const draft=await window.opencourse.getAuthoringCourse(window.__FLASHCARD_COURSE);
       if(draft.draft.manifest.modules[0].lessons[0].flashcards.length!==3) throw new Error('Draft missing card');
-      button('Reveal answer').click(); await wait(()=>document.querySelector('.flashcard-preview .review-answer'));
+      const preview=await wait(()=>document.querySelector('[data-authoring-preview-key="'+window.__FLASHCARD_NODE+'"] .flashcard-preview'));
+      preview.querySelector('button').click(); await wait(()=>preview.querySelector('.review-answer')?.textContent.includes('linker'));
       if(document.querySelector('[aria-label="Move card to lesson"]')) throw new Error('Flashcard lesson switch is still present');
       return 'Card added and previewed without learner rating';
     `)
@@ -128,22 +136,31 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     if (rows.n !== 3) throw new Error(`Expected 3 saved ratings, got ${rows.n}`)
     await run('explicit card reset in editor', `
       button('Back to course').click(); await wait(()=>document.querySelector('.course-review-summary')?.textContent.includes('Next review'));
-      if(!button('Review').disabled) throw new Error('Review must not backfill with future cards');
+      if((await window.opencourse.getReviewSummary(window.__FLASHCARD_COURSE)).new!==0) throw new Error('Reviewed cards became new again');
+      if(button('Review').disabled) throw new Error('Scheduled cards should remain available for early review');
       button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
-      (await wait(()=>document.querySelector('[aria-label="Flashcard: compile-link"]'))).click();
-      const originalConfirm=window.confirm; window.confirm=()=>true; (await wait(()=>button('Reset review progress'))).click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.includes('Review progress reset')); window.confirm=originalConfirm;
+      const saved=await window.opencourse.getAuthoringCourse(window.__FLASHCARD_COURSE), lesson=saved.draft.manifest.modules[0].lessons[0];
+      (await wait(()=>[...document.querySelectorAll('.outline-row')].find(row=>row.getAttribute('aria-label')===lesson.title))).click();
+      const savedCard=lesson.flashcards.find(card=>card.id==='compile-link');
+      const card=await wait(()=>document.querySelector('[data-element-id="'+savedCard.nodeId+'"]'));
+      const originalConfirm=window.confirm; window.confirm=()=>true; (await wait(()=>[...card.querySelectorAll('button')].find(button=>button.textContent==='Reset review progress'))).click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.includes('Review progress reset')); window.confirm=originalConfirm;
       if((await window.opencourse.getReviewSummary(window.__FLASHCARD_COURSE)).new!==1) throw new Error('Reset failed'); return 'Card reset independently of drafts';
     `)
+    }
     writeFileSync(join(output, 'results.json'), JSON.stringify({ ok: true, results }, null, 2))
+    await stopAllNotebooks()
     closeDb()
-    if (process.env['OPENCOURSE_RUN_PROFILE']) rmSync(process.env['OPENCOURSE_RUN_PROFILE'], { recursive: true, force: true })
+    if (!win.isDestroyed()) win.destroy()
+    if (process.env['OPENCOURSE_RUN_PROFILE']) rmSync(process.env['OPENCOURSE_RUN_PROFILE'], { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     app.exit(0)
   } catch (err) {
     console.error('Flashcard smoke failed:', err)
     await shot('failure')
     writeFileSync(join(output, 'results.json'), JSON.stringify({ ok: false, error: String(err), results }, null, 2))
+    await stopAllNotebooks()
     closeDb()
-    if (process.env['OPENCOURSE_RUN_PROFILE']) rmSync(process.env['OPENCOURSE_RUN_PROFILE'], { recursive: true, force: true })
+    if (!win.isDestroyed()) win.destroy()
+    if (process.env['OPENCOURSE_RUN_PROFILE']) rmSync(process.env['OPENCOURSE_RUN_PROFILE'], { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     app.exit(1)
   }
 }

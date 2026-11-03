@@ -160,14 +160,17 @@ export default function LessonView({
   activeLesson.current = { moduleId, lessonId }
   useEffect(() => {
     let alive = true
-    const refresh = (changed = false): void => { void window.opencourse.getCourse(courseId).then((next) => {
+    const refresh = (): void => { void window.opencourse.getCourse(courseId).then((next) => {
       if (!alive) return
       setCourse(next)
-      if (changed) setOpenExerciseId(null)
       const here = activeLesson.current
-      if (!next || !findLesson(next, here.moduleId, here.lessonId)) navigate({ name: 'library' })
+      const lesson = next && findLesson(next, here.moduleId, here.lessonId)
+      // Background sync also broadcasts course changes. Keep the live editor
+      // (and its unsaved buffer) unless its exercise has actually disappeared.
+      setOpenExerciseId(current => current && lesson?.lesson.blocks.some(block => block.type === 'exercise' && block.id === current) ? current : null)
+      if (!lesson) navigate({ name: 'library' })
     }) }
-    refresh(); const off = window.opencourse.onCoursesChanged(() => refresh(true))
+    refresh(); const off = window.opencourse.onCoursesChanged(refresh)
     return () => { alive = false; off() }
   }, [courseId])
 

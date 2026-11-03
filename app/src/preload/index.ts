@@ -1,3 +1,4 @@
+import type { ReviewTarget, FlashcardProposal } from '../core/personal-cards'
 import type { NotebookAssociation, WritingNotebook, WritingNotebookHit, WritingNotebookPage, WritingNotebookSaveResult, WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
 import type { ReadingSource } from '../core/documents/types'
 import type { CoachPrompts } from '../core/types'
@@ -170,12 +171,17 @@ const api = {
   onDocumentChatError: (handler: (id: string, error: string) => void): (() => void) => subscribe('documentChat:error', handler),
   onDocumentChatTitle: (handler: (id: string, title: string) => void): (() => void) => subscribe('documentChat:title', handler),
   onDocumentChatActivity: (handler: (id: string, activity: string) => void): (() => void) => subscribe('documentChat:activity', handler),
-  getReviewSummary: (courseId: string): Promise<ReviewSummary> => ipcRenderer.invoke('review:summary', courseId),
-  startReviewSession: (courseId: string, count: ReviewCount): Promise<ReviewSession> => ipcRenderer.invoke('review:start', courseId, count),
+  listPersonalCards: (target: ReviewTarget): Promise<{ id: string; question: string }[]> => ipcRenderer.invoke('personalCards:list', target),
+  deletePersonalCard: (target: ReviewTarget, id: string): Promise<void> => ipcRenderer.invoke('personalCards:delete', target, id),
+  listFlashcardProposals: (chatId: string): Promise<FlashcardProposal[]> => ipcRenderer.invoke('personalCards:proposals', chatId),
+  decideFlashcardProposal: (id: string, action: 'save' | 'dismiss'): Promise<FlashcardProposal> => ipcRenderer.invoke('personalCards:decide', id, action),
+  onPersonalCardsChanged: (handler: (id: string) => void): (() => void) => subscribe('personalCards:changed', handler),
+  getReviewSummary: (courseId: string | ReviewTarget): Promise<ReviewSummary> => ipcRenderer.invoke('review:summary', courseId),
+  startReviewSession: (courseId: string | ReviewTarget, count: ReviewCount): Promise<ReviewSession> => ipcRenderer.invoke('review:start', courseId, count),
   revealReviewAnswer: (sessionId: string, cardId: string): Promise<ReviewAnswer> => ipcRenderer.invoke('review:reveal', sessionId, cardId),
   rateReviewCard: (sessionId: string, cardId: string, rating: ReviewRating): Promise<ReviewSession> => ipcRenderer.invoke('review:rate', sessionId, cardId, rating),
   endReviewSession: (sessionId: string): Promise<void> => ipcRenderer.invoke('review:end', sessionId),
-  resetFlashcardProgress: (courseId: string, cardId: string): Promise<void> => ipcRenderer.invoke('review:reset', courseId, cardId),
+  resetFlashcardProgress: (target: string | ReviewTarget, cardId: string): Promise<void> => ipcRenderer.invoke('review:reset', target, cardId),
   onReviewChanged: (handler: (courseId: string) => void): (() => void) => subscribe('review:changed', handler),
   // --- users ---
   getSession: (): Promise<Session> => ipcRenderer.invoke('session:get'),

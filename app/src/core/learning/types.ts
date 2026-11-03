@@ -1,3 +1,4 @@
+import type { PersonalCard, FlashcardProposal } from '../personal-cards'
 /** Shared wire contract. Local file names and secrets never belong in these values. */
 import type { ChatModel, ReasoningEffort } from '../types'
 export type ContentKind = 'course' | 'document'
@@ -29,6 +30,7 @@ export interface LearningField {
   operation: string
 }
 export interface LearningState {
+  personalCards?: Omit<PersonalCard, 'answer'>[]
   enrollment: Enrollment
   epoch: string
   fields: Record<string, LearningField>
@@ -37,7 +39,7 @@ export interface LearningState {
 }
 export interface LearningChange {
   cursor: number
-  type: 'state' | 'chat'
+  type: 'state' | 'chat' | 'personalCard'
   key: string
   value: unknown
 }
@@ -117,6 +119,7 @@ export interface LearningChat {
   running?: boolean
 }
 export interface LearningMessage {
+  flashcardProposals?: FlashcardProposal[]
   id: string
   chatId: string
   role: 'user' | 'assistant'
@@ -142,7 +145,7 @@ export interface LearningStreamEvent {
 }
 export const learningKey = (kind: ContentKind, id: string): string => `${kind}:${id}`
 export const SYNC_FIELDS =
-  /^(lesson|quiz|exercise|code|project|review|position|readPage|lastItem|preference|reset)(:[a-zA-Z0-9_.:/-]{1,200})?$/
+  /^(personalCard|personalReview|lesson|quiz|exercise|code|project|review|position|readPage|lastItem|preference|reset)(:[a-zA-Z0-9_.:/-]{1,200})?$/
 /**
  * `code:<exercise>` is the learner's own file for that exercise, so the web
  * editor and the desktop workspace open on the same text. Every other field is

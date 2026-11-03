@@ -21,7 +21,7 @@ export function deserializeCard(card: StoredCard): Card {
   if (!Number.isFinite(restored.due.getTime()) || restored.last_review && !Number.isFinite(restored.last_review.getTime()) ||
     ![State.New, State.Learning, State.Review, State.Relearning].includes(restored.state) ||
     ![restored.stability, restored.difficulty, restored.reps, restored.lapses, restored.scheduled_days, restored.elapsed_days, restored.learning_steps].every(value => Number.isFinite(value) && value >= 0)) {
-    throw new Error('This card’s review data is invalid. Reset its review progress in the course editor.')
+    throw new Error('This card’s review data is invalid. Reset its review progress and start another session.')
   }
   return restored
 }
@@ -34,7 +34,7 @@ export function recall(card: Card, now: Date): number {
 export function previewIntervals(card: Card | undefined, now: Date): Record<ReviewRating, string> {
   return Object.fromEntries(REVIEW_RATINGS.map(rating => [rating, scheduleCard(card, rating, now).card.due.toISOString()])) as Record<ReviewRating, string>
 }
-export interface ReviewCandidate { id: string; order: number; eligible: boolean; state?: Card }
+export interface ReviewCandidate { source?: 'default' | 'personal'; id: string; order: number; eligible: boolean; state?: Card }
 export function reviewQueue(cards: ReviewCandidate[], count: number, now: Date): string[] {
   const eligible = cards.filter(card => card.eligible)
   const stable = (a: ReviewCandidate, b: ReviewCandidate): number => a.id.localeCompare(b.id)
@@ -50,7 +50,7 @@ export function reviewQueue(cards: ReviewCandidate[], count: number, now: Date):
 export function summarizeReview(cards: ReviewCandidate[], now: Date): ReviewSummary {
   const eligible = cards.filter(card => card.eligible), practiced = eligible.filter(card => card.state)
   const future = practiced.map(card => card.state!.due).filter(date => date > now).sort((a, b) => a.getTime() - b.getTime())
-  return { total: cards.length, eligible: eligible.length, due: practiced.filter(card => card.state!.due <= now).length,
+  return { defaultCount: cards.filter(c => c.source !== 'personal').length, personalCount: cards.filter(c => c.source === 'personal').length, total: cards.length, eligible: eligible.length, due: practiced.filter(card => card.state!.due <= now).length,
     new: eligible.length - practiced.length, practiced: practiced.length,
     estimatedRecall: practiced.length ? practiced.reduce((sum, card) => sum + recall(card.state!, now), 0) / practiced.length : null,
     nextDue: future[0]?.toISOString() ?? null }

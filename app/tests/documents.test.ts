@@ -1,3 +1,4 @@
+import { FLASHCARD_TOOL } from '../src/core/personal-cards'
 import type { EventEmitter } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -257,7 +258,7 @@ describe('local PDF library', () => {
     const inputs: unknown[] = []
     aiMock.stream.mockImplementation(async (options: ChatStreamOptions) => {
       inputs.push(structuredClone(options.input))
-      expect(options.tools).toEqual(DOCUMENT_TOOLS)
+      expect(options.tools).toEqual([...DOCUMENT_TOOLS, FLASHCARD_TOOL])
       if (inputs.length === 1) return { text: '', aborted: false, citations: [], output: [
         { type: 'reasoning', id: 'reasoning', encrypted_content: 'opaque' },
         { type: 'function_call', name: 'search_document', call_id: 'search', arguments: JSON.stringify({ query: 'needle', cursor: 0, document_id: 'untrusted-other-document' }) }

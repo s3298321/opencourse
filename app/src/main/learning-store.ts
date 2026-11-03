@@ -72,7 +72,7 @@ export function enqueue(b: Binding, field: string, value: unknown, at = Date.now
     .prepare('SELECT clock_offset FROM learning_cursors WHERE server_id=? AND account_id=?')
     .get(b.server_id, b.account_id) as { clock_offset: number } | undefined
   const parts = field.split(':'),
-    wireField = parts.length > 1 ? `${parts[0]}:${remoteId(b, parts.slice(1).join(':'))}` : field
+    wireField = /^personal(Card|Review):/.test(field) ? field : parts.length > 1 ? `${parts[0]}:${remoteId(b, parts.slice(1).join(':'))}` : field
   if (/^(project|exercise):/.test(field) && value && typeof value === 'object') {
     const v = value as Record<string, unknown>
     value = {
@@ -80,7 +80,7 @@ export function enqueue(b: Binding, field: string, value: unknown, at = Date.now
       ...(v.completedAt ? { completedAt: v.completedAt } : {})
     }
   }
-  if (field.startsWith('review:') && value && typeof value === 'object')
+  if ((field.startsWith('review:') || field.startsWith('personalReview:')) && value && typeof value === 'object')
     value = { rating: (value as { rating: string }).rating }
   const operation: LearningOperation = {
     kind: b.kind,
@@ -92,7 +92,7 @@ export function enqueue(b: Binding, field: string, value: unknown, at = Date.now
     idempotencyKey: id,
     field: wireField,
     // Code is the learner's text: a line that happens to be an id stays as written.
-    value: field.startsWith('code:') ? value : mapValue(value, (v) => remoteId(b, v))
+    value: field.startsWith('code:') || /^personal(Card|Review):/.test(field) ? value : mapValue(value, (v) => remoteId(b, v))
   }
   db()
     .prepare('INSERT OR IGNORE INTO learning_outbox(id,server_id,account_id,payload) VALUES(?,?,?,?)')

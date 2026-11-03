@@ -7,8 +7,8 @@ import Html from '../components/Html'
 import { ratingLabels } from '../../learning-ui/review-display'
 
 const ratings: ReviewRating[] = ['again', 'hard', 'good', 'easy']
-export default function Review({ initialSession, navigate, active = true }: {
-  initialSession: ReviewSession; navigate: (route: Route) => void; active?: boolean
+export default function Review({ initialSession, navigate, from, active = true }: {
+  from?: Route; initialSession: ReviewSession; navigate: (route: Route) => void; active?: boolean
 }): JSX.Element {
   const [session, setSession] = useState(initialSession)
   const [answer, setAnswer] = useState<ReviewAnswer | null>(null)
@@ -59,7 +59,7 @@ export default function Review({ initialSession, navigate, active = true }: {
   }
   const exit = (): void => {
     if (working.current) return
-    navigate({ name: 'course', courseId: session.courseId })
+    navigate(from ?? (session.target?.kind === 'document' ? {name:'documentOverview',documentId:session.target.id} : { name: 'course', courseId: session.courseId }))
   }
   useEffect(() => {
     if (!active) return
@@ -73,8 +73,8 @@ export default function Review({ initialSession, navigate, active = true }: {
     return () => document.removeEventListener('keydown', key)
   }, [session, answer, active])
   return <section className="review-screen" aria-label="Flashcard review" aria-busy={busy}>
-    <header className="review-header"><div className="review-heading"><span className="review-emblem"><Icon name="review" /></span><div><span className="review-label">Flashcard review</span><strong>{session.courseTitle}</strong></div></div>
-      <ActionButton icon={session.card ? 'close' : 'left'} className="secondary review-exit" disabled={busy} onClick={exit}>{session.card ? 'End review' : 'Back to course'}</ActionButton>
+    <header className="review-header"><div className="review-heading"><span className="review-emblem"><Icon name="review" /></span><div><span className="review-label">Flashcard review</span><strong>{session.title}</strong></div></div>
+      <ActionButton icon={session.card ? 'close' : 'left'} className="secondary review-exit" disabled={busy} onClick={exit}>{session.card ? 'End review' : session.target?.kind === 'document' ? 'Back to document' : 'Back to course'}</ActionButton>
     </header>
     <div className="review-progress">
       <div className="review-progress-meta"><span role="status">{session.reviewed} / {session.total} reviewed</span></div>
@@ -83,7 +83,7 @@ export default function Review({ initialSession, navigate, active = true }: {
     {error && <p className="error review-error" role="alert">{error} Your saved ratings are retained.</p>}
     <div className="review-content scroll" ref={content}>
       {session.card ? <article className={`review-card${answer ? ' is-revealed' : ''}`} key={session.card.id} aria-label={`Card ${session.reviewed + 1} of ${session.total}`}>
-        <div className="review-card-meta"><span>{session.card.lessonTitle}</span><span className="review-card-number">Card {session.reviewed + 1} of {session.total}</span></div>
+        <div className="review-card-meta"><span>{session.card.sourceLabel ?? session.card.lessonTitle}</span><span className="review-card-number">Card {session.reviewed + 1} of {session.total}</span></div>
         <div className="review-question"><div className="review-question-label"><span className="review-label">Question</span>{session.card.early && <span className="review-early">Early review</span>}</div><Html className="prose" source={session.card.question} />
           {session.card.image && <img className="review-image" src={session.card.image.src} alt={session.card.image.alt ?? ''} />}
         </div>
@@ -92,7 +92,7 @@ export default function Review({ initialSession, navigate, active = true }: {
         <div className="review-complete-icon"><Icon name="check" /></div>
         <h1 ref={summaryHeading} tabIndex={-1}>Review complete</h1>
         <div className="review-result-counts">{ratings.map(rating => <div className={`rating-${rating}`} key={rating}><strong>{session.ratings[rating]}</strong><span>{ratingLabels[rating]}</span></div>)}</div>
-        <ActionButton icon="left" onClick={exit}>Back to course</ActionButton>
+        <ActionButton icon="left" onClick={exit}>{session.target.kind === 'document' ? 'Back to document' : 'Back to course'}</ActionButton>
       </div>}
     </div>
     {session.card && <footer className="review-controls">

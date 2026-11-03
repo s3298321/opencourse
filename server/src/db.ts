@@ -1,3 +1,4 @@
+import { PERSONAL_CARD_SCHEMA } from '../../app/src/main/personal-card-store'
 /**
  * The server's one database: accounts, sessions, codes, and the catalog's
  * relational half - which courses exist, who owns them, which versions were
@@ -12,7 +13,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 export const SCHEMA_V1 = `
 CREATE TABLE accounts (
@@ -205,6 +206,13 @@ function migrate(d: Db): void {
     if (from < 3) d.exec(LEARNING_SCHEMA)
     if (from < 4) d.exec(LEARNING_AI_DEFAULTS)
     if (from < 5) d.exec(LEARNING_CHAT_PRESENTATION)
+    if (from < 6) {
+      d.exec(PERSONAL_CARD_SCHEMA)
+      d.exec(`CREATE TRIGGER personal_cards_account_delete AFTER DELETE ON accounts BEGIN
+        DELETE FROM personal_cards WHERE owner=old.id;
+        DELETE FROM flashcard_proposals WHERE owner=old.id;
+      END;`)
+    }
     d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
   })
 }

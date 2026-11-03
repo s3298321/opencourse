@@ -1,3 +1,8 @@
+import type { ReviewTarget } from '../core/personal-cards'
+import { reviewTarget } from '../core/personal-cards'
+import { getDocument } from './documents'
+import { cardOwner } from './personal-cards'
+import { allCardsFor, ratePersonal, personalCard } from './personal-card-store'
 import { anyBinding, enqueue } from './learning-store'
 import { randomUUID } from 'node:crypto'
 import type { Course, Flashcard, ReviewAnswer, ReviewCount, ReviewRating, ReviewSession, ReviewSummary } from '../core/types'
@@ -12,8 +17,9 @@ import { assertCourseAvailable } from './course-busy'
 
 interface Candidate extends ReviewCandidate { card: Flashcard; lessonId: string; lessonTitle: string; version: number }
 interface ActiveSession {
-  id: string; userId: string; senderId: number; courseId: string; revision: number; queue: string[];
+  id: string; userId: string; senderId: number; courseId: string; target: ReviewTarget; revision: number | string; queue: string[];
   index: number; revealed: boolean; expectedVersion: number; ratings: Record<ReviewRating, number>;
+  versions: Map<string, number>;
   receipts: Map<string, { rating: ReviewRating; result: ReviewSession }>
 }
 const sessions = new Map<string, ActiveSession>()
@@ -23,8 +29,14 @@ function requireCourse(courseId: string): Course {
   if (!course) throw new Error('This course is no longer available.')
   return course
 }
-function candidates(course: Course): Candidate[] {
-  const completed = new Set(readProgress(course.courseId).completedLessons)
+function requireTarget(raw: string | ReviewTarget) {
+  const target = typeof raw === 'string' ? { kind: 'course' as const, id: raw } : reviewTarget(raw)
+  if (target.kind === 'course') return { ...requireCourse(target.id), target }
+  const document = getDocument(target.id)
+  return { courseId: document.id, title: document.title, revision: document.fingerprint, modules: [], target }
+}
+function candidates(course: ReturnType<typeof requireTarget>): Candidate[] {
+  const completed = new Set(course.target.kind === 'course' ? readProgress(course.courseId).completedLessons : [])
   const states = new Map((db().prepare('SELECT card_id, state, version FROM flashcard_states WHERE course_id=?').all(course.courseId) as { card_id: string; state: string; version: number }[]).map(row => [row.card_id, row]))
   const cards: Candidate[] = []
   for (const module of course.modules) if (module.type !== 'project') for (const lesson of module.lessons) {
@@ -35,42 +47,54 @@ function candidates(course: Course): Candidate[] {
         state: row ? deserializeCard(JSON.parse(row.state) as StoredCard) : undefined })
     }
   }
+  const owner = cardOwner(anyBinding(course.courseId))
+  for (const card of allCardsFor(db(), owner, course.target)) {
+    cards.push({ id: card.id, card, lessonId: '', lessonTitle: 'Personal card', source: 'personal',
+      order: cards.length, eligible: true, version: card.version, state: card.state ? deserializeCard(card.state) : undefined })
+  }
   return cards
 }
-export function getReviewSummary(courseId: string, now = new Date()): ReviewSummary {
-  return summarizeReview(candidates(requireCourse(courseId)), now)
+export function getReviewSummary(courseId: string | ReviewTarget, now = new Date()): ReviewSummary {
+  return summarizeReview(candidates(requireTarget(courseId)), now)
 }
 function sessionView(session: ActiveSession, now: Date): ReviewSession {
-  const course = requireCourse(session.courseId), cards = candidates(course)
+  const course = requireTarget(session.target), cards = candidates(course)
   const current = cards.find(card => card.id === session.queue[session.index])
-  return { id: session.id, courseId: course.courseId, courseTitle: course.title, total: session.queue.length,
+  return { id: session.id, target: session.target, title: course.title, courseId: course.courseId, courseTitle: course.title, total: session.queue.length,
     reviewed: session.index, ratings: { ...session.ratings }, summary: summarizeReview(cards, now),
     card: current ? { id: current.id, question: current.card.question, image: current.card.image,
-      lessonId: current.lessonId, lessonTitle: current.lessonTitle, early: Boolean(current.state && current.state.due > now) } : null }
+      source: current.source ?? 'default', sourceLabel: current.lessonTitle, lessonId: current.lessonId, lessonTitle: current.lessonTitle, early: Boolean(current.state && current.state.due > now) } : null }
 }
 function requireSession(id: string, senderId: number): ActiveSession {
   const session = sessions.get(id)
-  if (!session || session.userId !== requireUser() || session.senderId !== senderId) throw new Error('This review session has ended. Return to the course to start another.')
-  const course = requireCourse(session.courseId)
+  if (!session || session.userId !== requireUser() || session.senderId !== senderId) throw new Error('This review session has ended. Return to the source to start another.')
+  const course = requireTarget(session.target)
   if (course.revision !== session.revision) {
     sessions.delete(id)
-    throw new Error('The course changed during review. Return to the course to start another session.')
+    throw new Error(`The ${session.target.kind} changed during review. Return to the source to start another session.`)
+  }
+  const current = candidates(course), available = new Set(current.map(c => c.id))
+  if (session.queue.slice(session.index).some(id => !available.has(id))) { sessions.delete(id); throw new Error('A card was deleted. Start another review session; saved ratings are retained.') }
+  if (session.queue.slice(session.index).some(id => current.find(card => card.id === id)?.version !== session.versions.get(id))) {
+    sessions.delete(id)
+    throw new Error('A card was reviewed in another window. Return to the source to start another session.')
   }
   return session
 }
 function currentCard(session: ActiveSession, cardId: string): Candidate {
-  const candidate = candidates(requireCourse(session.courseId)).find(card => card.id === cardId)
+  const candidate = candidates(requireTarget(session.target)).find(card => card.id === cardId)
   if (session.queue[session.index] !== cardId || !candidate?.eligible) throw new Error('This card is no longer available in this session.')
-  if (candidate.version !== session.expectedVersion) throw new Error('This card was reviewed in another window. Return to the course to start another session.')
+  if (candidate.version !== session.expectedVersion) throw new Error('This card was reviewed in another window. Return to the source to start another session.')
   return candidate
 }
-export function startReviewSession(courseId: string, count: ReviewCount, senderId: number, now = new Date()): ReviewSession {
+export function startReviewSession(rawTarget: string | ReviewTarget, count: ReviewCount, senderId: number, now = new Date()): ReviewSession {
   if (![10, 15, 20].includes(count)) throw new Error('Choose 10, 15, or 20 cards.')
-  const course = requireCourse(courseId), cards = candidates(course), queue = reviewQueue(cards, count, now)
-  if (!queue.length) throw new Error('Complete a lesson with flashcards to unlock review.')
+  const course = requireTarget(rawTarget), courseId = course.courseId, cards = candidates(course), queue = reviewQueue(cards, count, now)
+  if (!queue.length) throw new Error(course.target.kind === 'document' ? 'Ask the document chat to create personal flashcards first.' : 'Complete a lesson or create personal flashcards to unlock review.')
   endWindowReviews(senderId)
-  const session: ActiveSession = { id: randomUUID(), userId: requireUser(), senderId, courseId, revision: course.revision, queue,
+  const session: ActiveSession = { id: randomUUID(), userId: requireUser(), senderId, courseId, target: course.target, revision: course.revision, queue,
     index: 0, revealed: false, expectedVersion: cards.find(card => card.id === queue[0])!.version,
+    versions: new Map(cards.map(card => [card.id, card.version])),
     ratings: { again: 0, hard: 0, good: 0, easy: 0 }, receipts: new Map() }
   sessions.set(session.id, session)
   return sessionView(session, now)
@@ -94,12 +118,20 @@ export function rateReviewCard(id: string, cardId: string, rating: ReviewRating,
   // Prepare the response before committing so a response read failure cannot
   // leave a durable rating behind an unadvanced in-memory session.
   const next = { ...session, index: session.index + 1, revealed: false, ratings: { ...session.ratings, [rating]: session.ratings[rating] + 1 } }
-  const nextCandidate = candidates(requireCourse(session.courseId)).find(card => card.id === session.queue[next.index])
+  const nextCandidate = candidates(requireTarget(session.target)).find(card => card.id === session.queue[next.index])
   next.expectedVersion = nextCandidate?.version ?? 0
   const view = sessionView(next, now)
-  view.summary = summarizeReview(candidates(requireCourse(session.courseId)).map(card => card.id === cardId ? { ...card, state: result.card } : card), now)
+  view.summary = summarizeReview(candidates(requireTarget(session.target)).map(card => card.id === cardId ? { ...card, state: result.card } : card), now)
   tx(d => {
     const binding = anyBinding(session.courseId)
+    if (current.source === 'personal') {
+      const owner = cardOwner(binding), saved = personalCard(d, owner, session.target, cardId)
+      if (!saved || saved.deleted || saved.version !== current.version) throw new Error('This card changed in another window.')
+      const operation = randomUUID()
+      ratePersonal(d, owner, saved, rating, now.getTime(), operation)
+      if (binding) enqueue(binding, `personalReview:${cardId}`, { rating }, now.getTime(), operation)
+      return
+    }
     if (binding) enqueue(binding, `review:${cardId}`, { card: serializeCard(result.card), rating }, now.getTime())
     const latest = d.prepare('SELECT version FROM flashcard_states WHERE card_id=?').get(cardId) as { version: number } | undefined
     if ((latest?.version ?? 0) !== current.version) throw new Error('This card changed in another window.')
@@ -124,8 +156,19 @@ export function invalidateCourseReviews(courseId: string): void {
   for (const [id, session] of sessions) if (session.courseId === courseId && session.userId === requireUser()) sessions.delete(id)
 }
 export function endAllReviews(): void { sessions.clear() }
-export function resetFlashcardProgress(courseId: string, cardId: string): void {
-  const course = requireCourse(courseId)
+export function resetFlashcardProgress(rawTarget: string | ReviewTarget, cardId: string): void {
+  const course = requireTarget(rawTarget), courseId = course.courseId
+  const binding = anyBinding(courseId), owner = cardOwner(binding)
+  const own = personalCard(db(), owner, course.target, cardId)
+  if (own && !own.deleted) {
+    tx(d => {
+      const operation = randomUUID(), at = Date.now()
+      ratePersonal(d, owner, own, null, at, operation)
+      if (binding) enqueue(binding, `personalReview:${cardId}`, null, at, operation)
+    })
+    invalidateCourseReviews(courseId)
+    return
+  }
   if (!course.modules.some(module => module.type !== 'project' && module.lessons.some(lesson => lesson.flashcards?.some(card => card.id === cardId)))) throw new Error('This saved card no longer exists.')
   tx(d => { const b=anyBinding(courseId); if(b) enqueue(b, `review:${cardId}`, null); d.prepare('DELETE FROM flashcard_states WHERE course_id=? AND card_id=?').run(courseId, cardId) })
   invalidateCourseReviews(courseId)

@@ -1,3 +1,6 @@
+import { validateFlashcards } from '@core/personal-cards'
+import { allCardsFor } from '../../../app/src/main/personal-card-store'
+import { applyPersonalOperation, resetPersonalReviews } from './personal-cards'
 import { scheduleCard, serializeCard } from '@core/review'
 import type { ReviewRating } from '@core/types'
 import { randomUUID } from 'node:crypto'
@@ -21,7 +24,7 @@ import {
   type SyncResult
 } from '@core/learning/types'
 
-export function change(ctx: Ctx, account: string, type: 'state' | 'chat', key: string, value: unknown): void {
+export function change(ctx: Ctx, account: string, type: 'state' | 'chat' | 'personalCard', key: string, value: unknown): void {
   // A state change is the whole state, so a newer one supersedes it for every
   // cursor: keep the feed at one row per item rather than one per action -
   // exercise code is saved every few seconds while someone types.
@@ -67,7 +70,7 @@ export function state(ctx: Ctx, account: string, kind: ContentKind, id: string):
     .all(account, kind, id, scope, epoch) as { field: string; value: string; at: number; operation: string }[]
   const fields: Record<string, LearningField> = Object.create(null)
   for (const row of rows) fields[row.field] = { value: JSON.parse(row.value), at: row.at, operation: row.operation }
-  return { enrollment: entry, epoch, fields }
+  return { enrollment: entry, epoch, fields, personalCards: allCardsFor(ctx.db, account, {kind,id}).map(({answer: _answer,...card}) => card) }
 }
 function progressScope(ctx: Ctx, ref: ContentRef): string {
   if (ref.kind === 'course') return ''
@@ -161,15 +164,20 @@ export function validateOperation(raw: unknown): LearningOperation {
     (!Number.isInteger(o.value) || Number(o.value) < 0 || Number(o.value) > 100000)
   )
     throw badRequest('invalid_operation', 'Invalid page.')
-  if (o.kind === 'document' && !['position', 'readPage', 'preference', 'reset'].includes(prefix))
+  if (o.kind === 'document' && !['position', 'readPage', 'preference', 'reset', 'personalCard', 'personalReview'].includes(prefix))
     throw badRequest('invalid_operation', 'Invalid document action.')
   if (
-    ['lesson', 'quiz', 'exercise', 'code', 'project', 'review'].includes(prefix) &&
+    ['lesson', 'quiz', 'exercise', 'code', 'project', 'review', 'personalCard', 'personalReview'].includes(prefix) &&
     !/^[a-f0-9-]{36}$/.test(o.field.slice(prefix.length + 1))
   )
     throw badRequest('invalid_operation', 'Invalid element identity.')
   if (prefix === 'code' && o.value !== null && (typeof o.value !== 'string' || o.value.length > MAX_EXERCISE_CODE))
     throw badRequest('invalid_operation', 'This code is too long to save.')
+  if (prefix === 'personalCard' && o.value !== null) {
+    const raw = o.value as {question?:unknown;answer?:unknown}
+    try { const [card] = validateFlashcards({cards:[{question:raw?.question,answer:raw?.answer}]}); o.value=card }
+    catch (e) { throw badRequest('invalid_card',(e as Error).message) }
+  }
   const value = o.value as Record<string, unknown> | null
   if (
     value &&
@@ -178,7 +186,7 @@ export function validateOperation(raw: unknown): LearningOperation {
   )
     throw badRequest('invalid_operation', 'Invalid action value.')
   if (
-    prefix === 'review' &&
+    (prefix === 'review' || prefix === 'personalReview') &&
     value !== null &&
     (!value || !['again', 'hard', 'good', 'easy'].includes(String(value.rating)))
   )
@@ -203,7 +211,7 @@ export function validateOperation(raw: unknown): LearningOperation {
         ...(typeof value.completedAt === 'string' ? { completedAt: value.completedAt } : {})
       }
     }
-  if (prefix === 'review' && value) return { ...o, value: { rating: value.rating } }
+  if ((prefix === 'review' || prefix === 'personalReview') && value) return { ...o, value: { rating: value.rating } }
   if (
     prefix === 'lastItem' &&
     value &&
@@ -239,7 +247,7 @@ export function push(ctx: Ctx, account: string, operations: LearningOperation[])
       }
       const entry = enrollment(ctx, account, o.kind, o.id)
       const current = entry ? state(ctx, account, o.kind, o.id) : null
-      if (!entry?.active || entry.generation !== o.generation || !current || o.epoch !== current.epoch) {
+      if (!entry?.active || entry.generation !== o.generation || !current || (!o.field.startsWith('personalCard:') && o.epoch !== current.epoch)) {
         result.rejected.push({ id: o.idempotencyKey, code: 'stale_generation' })
         continue
       }
@@ -251,6 +259,18 @@ export function push(ctx: Ctx, account: string, operations: LearningOperation[])
         .get(o.id, o.version)
       if (!validVersion) {
         result.rejected.push({ id: o.idempotencyKey, code: 'unknown_version' })
+        continue
+      }
+      if (/^personal(Card|Review):/.test(o.field)) {
+        o.at = actionTime(o.at, result.serverTime)
+        try {
+          if (!applyPersonalOperation(ctx,account,o)) { result.rejected.push({id:o.idempotencyKey,code:'unknown_card'}); continue }
+        } catch (e) {
+          if (e instanceof Error && e.message === 'This card belongs to another destination.') { result.rejected.push({id:o.idempotencyKey,code:'foreign_card'}); continue }
+          throw e
+        }
+        d.prepare('INSERT INTO learning_events(account_id,operation,payload) VALUES(?,?,?)').run(account,o.idempotencyKey,JSON.stringify({...o,value:null}))
+        result.accepted.push(o.idempotencyKey)
         continue
       }
       const [field, element] = o.field.split(':')
@@ -273,6 +293,7 @@ export function push(ctx: Ctx, account: string, operations: LearningOperation[])
       )
       const scope = progressScope(ctx, o)
       if (o.field === 'reset') {
+        resetPersonalReviews(ctx,account,{kind:o.kind,id:o.id})
         d.prepare('UPDATE enrollments SET epoch=? WHERE account_id=? AND kind=? AND content_id=?').run(
           o.idempotencyKey,
           account,

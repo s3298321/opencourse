@@ -1,3 +1,6 @@
+import { FLASHCARD_TOOL, FLASHCARD_INSTRUCTIONS, validateFlashcards } from '@core/personal-cards'
+import { proposeCards, proposalsFor, getProposal, resolveProposal, putPersonalCard } from '../../../app/src/main/personal-card-store'
+import { publishPersonalCard } from './personal-cards'
 import { keyring, sealKey, readAIKey, aiSettings, fittedReasoning, titleDefaults } from './credentials'
 export { sealKey, readAIKey } from './credentials'
 import { createHash, randomUUID } from 'node:crypto'
@@ -60,6 +63,7 @@ function chatView(ctx: Ctx, account: string, id: string): LearningChatView {
     model: r.model ? String(r.model) : undefined,
     reasoning: r.reasoning as ReasoningEffort | null,
     activity: r.activity ? JSON.parse(String(r.activity)) : null,
+    flashcardProposals: proposalsFor(ctx.db, account, 'server', id, String(r.id)),
     citations: JSON.parse(String(r.citations))
   }))
   const firstQuestion = messages.find(m => m.role === 'user')?.text
@@ -183,6 +187,7 @@ export async function responseStream(
   }
 }
 function readingActivity(name: string): string {
+  if (name === 'create_flashcards') return 'Preparing flashcard preview…'
   const labels: Record<string, string> = {
     list_course_sections: 'Reading course outline', search_course: 'Searching the course',
     read_course_section: 'Reading course section',
@@ -430,6 +435,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
     title?.controller.abort()
     await Promise.all([generation?.done, title?.done])
     tx(d, () => {
+      d.prepare("DELETE FROM flashcard_proposals WHERE owner=? AND chat_scope='server' AND chat_id=?").run(account,id)
       d.prepare('DELETE FROM learning_chats WHERE id=? AND account_id=?').run(id, account)
       // Old change-feed snapshots must not retain a deleted private transcript.
       d.prepare("DELETE FROM learning_changes WHERE account_id=? AND type='chat' AND key=?").run(account, id)
@@ -443,6 +449,20 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
     chatView(ctx, account, id)
     active.get(id)?.controller.abort()
     return { ok: true }
+  })
+  app.post('/api/v1/learning/chats/:id/flashcards/:proposal', async req => {
+    const account=requireAccount(req).id, params=req.params as {id:string;proposal:string}
+    const view=chatView(ctx,account,params.id), proposal=getProposal(d,account,params.proposal)
+    const action=(req.body as {action?:unknown})?.action
+    if (action !== 'save' && action !== 'dismiss') throw badRequest('invalid_action','Choose save or dismiss.')
+    if (!d.prepare("SELECT 1 FROM flashcard_proposals WHERE owner=? AND id=? AND chat_scope='server' AND chat_id=?").get(account,params.proposal,params.id)) throw notFound()
+    if (proposal.target.kind !== view.chat.kind || proposal.target.id !== view.chat.contentId) throw notFound()
+    if (action === 'save' && proposal.status === 'pending') contentRecord(ctx,account,{kind:view.chat.kind,id:view.chat.contentId,version:view.chat.version})
+    return tx(d,() => {
+      const result=resolveProposal(d,account,params.proposal,action,card => { putPersonalCard(d,account,card);publishPersonalCard(ctx,account,card) })
+      change(ctx,account,'chat',params.id,chatView(ctx,account,params.id))
+      return result
+    })
   })
   app.post('/api/v1/learning/chats/:id/messages', async (req) => {
     const account = requireAccount(req).id,
@@ -535,10 +555,10 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
               max_output_tokens: thinks ? 16384 : 8192,
               ...(thinks ? { include: ['reasoning.encrypted_content'] } : {}),
               ...(settings.reasoning ? { reasoning: { effort: settings.reasoning } } : {}),
-              instructions: `You are a helpful learning tutor. ${READING_TOOL_INSTRUCTIONS}`,
+              instructions: `You are a helpful learning tutor. ${READING_TOOL_INSTRUCTIONS} ${FLASHCARD_INSTRUCTIONS}`,
               input,
               tools: [
-                ...(ref.kind === 'course' ? COURSE_TOOLS : DOCUMENT_TOOLS),
+                ...(ref.kind === 'course' ? COURSE_TOOLS : DOCUMENT_TOOLS), FLASHCARD_TOOL,
                 ...(settings.webSearch && webSearchFor(settings.model, settings.reasoning)
                   ? [{ type: 'web_search' }]
                   : [])
@@ -575,7 +595,13 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
             activity(readingActivity(item.name!), true)
             const args = toolArguments(JSON.parse(item.arguments ?? '{}'))
             let result: string
-            if (course) result = runCourseReadingTool(course, item.name!, args, budget, sources)
+            if (item.name === 'create_flashcards') {
+              signal.throwIfAborted()
+              if (!d.prepare('SELECT 1 FROM sessions WHERE id=?').get(req.sessionId ?? '')) throw new Error('Session ended.')
+              const proposal=tx(d,() => proposeCards(d,account,'server',id,messageId,item.call_id!,{kind:ref.kind,id:ref.id},contentRecord(ctx,account,ref).title,validateFlashcards(args)))
+              result=JSON.stringify({proposalId:proposal.id,status:proposal.status,count:proposal.cards.length})
+              change(ctx,account,'chat',id,chatView(ctx,account,id))
+            } else if (course) result = runCourseReadingTool(course, item.name!, args, budget, sources)
             else {
               const cursor = () => nonnegativeInteger(args.cursor)
               let value: unknown

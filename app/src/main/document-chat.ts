@@ -1,3 +1,7 @@
+import { db } from './db'
+import { attachCardProposals } from './personal-card-store'
+import { flashcardTools, flashcardToolNotice, createFlashcardPreview } from './personal-cards'
+import { FLASHCARD_INSTRUCTIONS } from '../core/personal-cards'
 import { app, type WebContents } from 'electron'
 import { newChatId } from '../core/sidechat/ids'
 import { buildInput, MAX_MESSAGE_CHARS, MAX_QUOTE_CHARS } from '../core/sidechat/thread'
@@ -48,7 +52,7 @@ export function listDocumentChats(id: string): DocumentChatSummary[] {
   return selectDocumentChats(id).map(chatConfig)
 }
 export function getDocumentChat(id: string): DocumentChatThread | null {
-  return selectDocumentChat(id) ? { chat: requireChat(id), messages: selectDocumentMessages(id) } : null
+  return selectDocumentChat(id) ? { chat: requireChat(id), messages: attachCardProposals(db(), 'document', id, selectDocumentMessages(id)) } : null
 }
 export function createDocumentChat(documentId: string, page: number): DocumentChatSummary {
   const document = getDocument(documentId)
@@ -143,15 +147,16 @@ export async function sendDocumentMessage(sender: WebContents, id: string, text:
     const modelContext = conversationModelContext(chat.provider ?? 'apiKey', chat.model)
     setImmediate(() => { void (async () => {
       try {
-        const result = await runChatAgent({ input: buildInput(selectDocumentMessages(id), instructions),
-          session: { mode: 'document', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools: DOCUMENT_TOOLS, webSearch, sourceVersion: document.fingerprint,
+        const chatTools = [...DOCUMENT_TOOLS, ...flashcardTools('document', id)]
+      const result = await runChatAgent({ input: buildInput(selectDocumentMessages(id), `${instructions}\n${FLASHCARD_INSTRUCTIONS}\n${flashcardToolNotice('document', id)}`),
+          session: { mode: 'document', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools: chatTools, webSearch, sourceVersion: document.fingerprint,
             context: [{ role: 'user', content: `[document context]\n\n${selectDocumentMessages(id).filter(m => m.role === 'context').at(-1)?.text ?? ''}` }], valid, sources: localSources },
-          readOnly: () => true,
+          readOnly: name => name !== 'create_flashcards',
           signal: controller.signal, limits: READING_LIMITS,
           stream: async input => {
             const begin = answered.length
             let first = true
-            const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input, tools: DOCUMENT_TOOLS, toolNamespace: { name: 'document', description: 'Read-only retrieval from the current local PDF.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
+            const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input, tools: chatTools, toolNamespace: { name: 'document', description: 'Learning tools and retrieval from the current local PDF.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
               onSearch: () => push('activity', 'Searching the web…'), onDelta: chunk => {
                 if (finalized || !valid()) return
                 const delta = first && answered ? `\n\n${chunk}` : chunk; first = false
@@ -164,8 +169,12 @@ export async function sendDocumentMessage(sender: WebContents, id: string, text:
             const offset = begin + (begin && result.text ? 2 : 0)
             citations.push(...result.citations.map(citation => ({ ...citation, start: citation.start + offset, end: citation.end + offset })))
             return result
-          }, tool: async (name, args) => {
+          }, tool: async (name, args, callId) => {
             if (finalized || !valid()) throw new Error('Document Ask stopped.')
+            if (name === 'create_flashcards') {
+              push('activity', 'Preparing flashcard preview…')
+              return createFlashcardPreview('document', id, seq, callId, args)
+            }
             push('activity', name === 'search_document' ? 'Searching the document…' : name === 'read_document_pages' ? 'Reading document pages…' : 'Listing document sections…')
             try { return runDocumentReadingTool(document.id, name, args, budget, localSources) }
             catch (error) { return JSON.stringify({ error: (error as Error).message }) }

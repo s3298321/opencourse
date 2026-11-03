@@ -23,7 +23,7 @@ export function catalogQuery(query: Record<string, unknown>): { q?: string; tags
 export function registerCatalogRoutes(app: FastifyInstance, ctx: Ctx): void {
   const d = ctx.db
 
-  app.get('/api/v1/server', async () => ({ id: (d.prepare("SELECT value FROM server_metadata WHERE key='id'").get() as { value: string }).value, capabilities: ['learning-sync-v1', 'documents-v1', 'server-chat-v1'], opencourse: 1, api: 1, name: ctx.config.name, description: ctx.config.description, registration: ctx.config.registration, version: SERVER_VERSION }))
+  app.get('/api/v1/server', async () => ({ id: (d.prepare("SELECT value FROM server_metadata WHERE key='id'").get() as { value: string }).value, capabilities: ['learning-sync-v1', 'documents-v1', 'server-chat-v1', 'personal-flashcards-v1'], opencourse: 1, api: 1, name: ctx.config.name, description: ctx.config.description, registration: ctx.config.registration, version: SERVER_VERSION }))
 
   // For a load balancer or a container's health check: the database answers.
   app.get('/healthz', async (_request, reply) => {

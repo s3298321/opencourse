@@ -1,3 +1,5 @@
+import { receivePersonalCard, applyPersonalInbox } from './personal-card-sync'
+import { PERSONAL_CARD_CAPABILITY, type PersonalCard } from '../core/personal-cards'
 import { log } from './log'
 import { app, powerMonitor } from 'electron'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, openSync, closeSync, fsyncSync } from 'node:fs'
@@ -167,6 +169,7 @@ export async function learningRequest<T = unknown>(
           )
           .run(access.serverId, access.account.id, view.chat.id, JSON.stringify(view))
     }
+    if (method === 'POST' && /\/flashcards\//.test(path)) void syncServer(connection,true)
     return value
   } catch (error) {
     accessValid(access, owner, generation)
@@ -257,6 +260,7 @@ export async function syncServer(connection: string, force = false): Promise<voi
             throw new Error('Invalid sync response.')
           tx(() => {
             for (const item of page.changes) {
+              if (item.type === 'personalCard') receivePersonalCard(server,account,item.value)
               if (item.type === 'state') {
                 const state = checkState(item.value)
                 if (!state) throw new Error('Invalid learning state.')
@@ -284,6 +288,7 @@ export async function syncServer(connection: string, force = false): Promise<voi
           if (page.more && page.cursor === cursor) throw new Error('The server returned a stalled sync cursor.')
           more = page.more
         }
+        tx(() => applyPersonalInbox(server,account))
       }
       await pull()
       for (const b of db()
@@ -384,7 +389,7 @@ export async function syncServer(connection: string, force = false): Promise<voi
       for (;;) {
         const pending = db()
           .prepare(
-            'SELECT id,payload FROM learning_outbox WHERE server_id=? AND account_id=? AND error IS NULL LIMIT 100'
+            `SELECT id,payload FROM learning_outbox WHERE server_id=? AND account_id=? AND error IS NULL ${info.capabilities.includes(PERSONAL_CARD_CAPABILITY) ? '' : "AND json_extract(payload,'$.field') NOT LIKE 'personal%'"} ORDER BY rowid LIMIT 100`
           )
           .all(server, account) as { id: string; payload: string }[]
         if (!pending.length) break
@@ -413,6 +418,19 @@ export async function syncServer(connection: string, force = false): Promise<voi
       const bindings = db()
         .prepare('SELECT * FROM learning_bindings WHERE server_id=? AND account_id=?')
         .all(server, account) as unknown as Binding[]
+      if (info.capabilities.includes(PERSONAL_CARD_CAPABILITY)) for (const b of bindings) {
+        const entry=JSON.parse(b.state) as LearningState
+        if (!entry.enrollment.active || db().prepare('SELECT 1 FROM personal_card_bootstrap WHERE server_id=? AND account_id=? AND kind=? AND content_id=?').get(server,account,b.kind,b.remote_id)) continue
+        let after: string | null = ''
+        while (after !== null) {
+          const page: {cards:PersonalCard[];nextCursor:string|null}=await callServer(access.url,`/me/learning/${b.kind}/${b.remote_id}/personal-cards?download=1&after=${after}`,learningJSON<{cards:PersonalCard[];nextCursor:string|null}>,{token:access.token,route:'/me/learning/:kind/:id/personal-cards'})
+          accessValid(access,owner,generation)
+          if (!Array.isArray(page.cards) || page.cards.length>100 || (page.nextCursor !== null && (typeof page.nextCursor !== 'string' || page.nextCursor <= after))) throw new Error('Invalid personal card page.')
+          tx(() => { for (const card of page.cards) receivePersonalCard(server,account,card); applyPersonalInbox(server,account) })
+          after=page.nextCursor
+        }
+        db().prepare('INSERT OR IGNORE INTO personal_card_bootstrap VALUES(?,?,?,?)').run(server,account,b.kind,b.remote_id)
+      }
       let downloadError = false
       for (const b of bindings) {
         accessValid(access, owner, generation)

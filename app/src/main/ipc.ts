@@ -1,3 +1,5 @@
+import type { ReviewTarget } from '../core/personal-cards'
+import { personalCardEvents, listPersonalCards, deletePersonalCard, listFlashcardProposals, decideFlashcardProposal } from './personal-cards'
 import { registerCoachContextIpc } from './coach-context'
 import { previewCoachVoice } from './coach-voice-preview'
 import { getDefaultCoachPrompts, setDefaultCoachPrompts } from './preferences'
@@ -701,8 +703,13 @@ export function registerIpc(): void {
     return updateProgress(courseId, (p) => touchCourse(p))
   })
 
-  ipcMain.handle('review:summary', (_e, courseId: string) => getReviewSummary(courseId))
-  ipcMain.handle('review:start', (e, courseId: string, count: ReviewCount) => startReviewSession(courseId, count, e.sender.id))
+  personalCardEvents.on('changed', (id: string) => { broadcast('personalCards:changed', id); broadcast('review:changed', id) })
+  ipcMain.handle('personalCards:list', (_e, target: ReviewTarget) => listPersonalCards(target))
+  ipcMain.handle('personalCards:delete', (_e, target: ReviewTarget, id: string) => deletePersonalCard(target,id))
+  ipcMain.handle('personalCards:proposals', (_e, chatId: string) => listFlashcardProposals(chatId))
+  ipcMain.handle('personalCards:decide', (_e, id: string, action: 'save' | 'dismiss') => decideFlashcardProposal(id,action))
+  ipcMain.handle('review:summary', (_e, courseId: string | ReviewTarget) => getReviewSummary(courseId))
+  ipcMain.handle('review:start', (e, courseId: string | ReviewTarget, count: ReviewCount) => startReviewSession(courseId, count, e.sender.id))
   ipcMain.handle('review:reveal', (e, id: string, cardId: string) => revealReviewAnswer(id, cardId, e.sender.id))
   ipcMain.handle('review:rate', (e, id: string, cardId: string, rating: ReviewRating) => {
     const result = rateReviewCard(id, cardId, rating, e.sender.id)
@@ -710,9 +717,9 @@ export function registerIpc(): void {
     return result
   })
   ipcMain.handle('review:end', (e, id: string) => endReviewSession(id, e.sender.id))
-  ipcMain.handle('review:reset', (_e, courseId: string, cardId: string) => {
-    resetFlashcardProgress(courseId, cardId)
-    broadcast('review:changed', courseId)
+  ipcMain.handle('review:reset', (_e, target: string | ReviewTarget, cardId: string) => {
+    resetFlashcardProgress(target, cardId)
+    broadcast('review:changed', typeof target === 'string' ? target : target.id)
   })
 
   ipcMain.handle('progress:toggleLesson', (_e, courseId: string, moduleId: string, lessonId: string) => {

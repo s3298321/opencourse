@@ -9,7 +9,7 @@
 // One of them stopping leaves the others running on purpose: an app whose
 // server has gone away should say so and carry on, and this is where you see
 // that it does. Ctrl-C stops them all.
-import { spawn } from 'node:child_process'
+import { signalCode, startManaged } from './managed-process.mjs'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -52,20 +52,24 @@ function prefixed(name, stream, target) {
 
 for (const name of only) {
   // FORCE_COLOR keeps the children's own colours through the pipe.
-  const child = spawn('npm', ['run', 'dev'], { cwd: resolve(root, name), env: { ...process.env, FORCE_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
-  children.set(name, child)
+  // The app has its own supervisor too. Let it finish its two-second cleanup
+  // before escalating against npm and the wrapper that owns that supervisor.
+  const managed = startManaged('npm', ['run', 'dev'], { graceMs: 5000, cwd: resolve(root, name), env: { ...process.env, FORCE_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const { child } = managed
+  children.set(name, managed)
   prefixed(name, child.stdout, process.stdout)
   prefixed(name, child.stderr, process.stderr)
-  child.on('exit', (code, signal) => {
+  void managed.finished.then(code => {
     children.delete(name)
-    if (!stopping) console.log(`${name} stopped (${signal ?? `exit ${code}`}); the others keep running.`)
-    if (!children.size) process.exit(0)
+    if (!stopping) console.log(`${name} stopped (exit ${code}); the others keep running.`)
+    if (code) process.exitCode ||= code
   })
 }
 
-for (const signal of ['SIGINT', 'SIGTERM']) {
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, () => {
     stopping = true
-    for (const child of children.values()) child.kill('SIGTERM')
+    process.exitCode = signalCode(signal)
+    for (const managed of children.values()) managed.stop(process.exitCode)
   })
 }

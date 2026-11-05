@@ -40,6 +40,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build:resources
       - run: npm test
+      - run: npm run test:scripts
       - run: npm run prepare:python
       - name: Bundled Python integration
         run: npx vitest run tests/python-runtime.test.ts

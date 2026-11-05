@@ -101,7 +101,7 @@ export function ServerReadingChat({ client, source, draftKey, localId, visible =
   }
   return <ScreenActivityProvider value={screenActive}><ChatPanel
     {...props} visible={visible} variant={source.kind === 'course' ? 'lesson' : 'document'} panel={panel}
-    flashcards={{proposals: (reading.view?.messages ?? []).flatMap(m => m.flashcardProposals ?? []), decide: (id,action) => client.request<FlashcardProposal>(`/learning/chats/${reading.active}/flashcards/${id}`,'POST',{action})}}
+    flashcards={{proposals: (reading.view?.messages ?? []).flatMap(m => m.flashcardProposals ?? []), decide: (id,action,cardId) => client.request<FlashcardProposal>(`/learning/chats/${reading.active}/flashcards/${id}`,'POST',{action:`${action}-card`,cardId})}}
     composer={{ text: reading.text, setText: reading.setText }} sourceIcons={noSourceIcons}
   /></ScreenActivityProvider>
 }

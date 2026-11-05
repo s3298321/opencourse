@@ -105,14 +105,20 @@ export function proposeCards(d: DatabaseSync, owner: string, scope: string, chat
     .run(owner,id,scope,chat,turn,call,signature,target.kind,target.id,title,JSON.stringify(cards.map(c => ({ ...c,id:randomUUID() }))),association ?? null)
   return getProposal(d,owner,id)
 }
-export function resolveProposal(d: DatabaseSync, owner: string, id: string, action: 'save' | 'dismiss', created: (card: PersonalCard) => void): FlashcardProposal {
+export function resolveProposal(d: DatabaseSync, owner: string, id: string, action: 'save' | 'dismiss', created: (card: PersonalCard) => void, cardId?: string): FlashcardProposal {
   const proposal = getProposal(d,owner,id)
+  if (cardId !== undefined && (typeof cardId !== 'string' || !proposal.cards.some(card => card.id === cardId))) throw new Error('This card does not belong to the preview.')
   if (proposal.status !== 'pending') return proposal
-  if (action === 'save') for (const draft of proposal.cards) {
-    const card: PersonalCard = { ...draft,target:proposal.target,createdAt:new Date().toISOString(),deleted:false,version:0 }
-    created(card)
-  }
-  d.prepare('UPDATE flashcard_proposals SET status=? WHERE owner=? AND id=?').run(action === 'save' ? 'saved' : 'dismissed',owner,id)
+  const cards = proposal.cards.map(draft => {
+    if (draft.decision || (cardId !== undefined && draft.id !== cardId)) return draft
+    if (action === 'save') {
+      const card: PersonalCard = { id:draft.id,question:draft.question,answer:draft.answer,target:proposal.target,createdAt:new Date().toISOString(),deleted:false,version:0 }
+      created(card)
+    }
+    return { ...draft,decision:action === 'save' ? 'saved' as const : 'dismissed' as const }
+  })
+  const status = cards.some(card => !card.decision) ? 'pending' : cards.some(card => card.decision === 'saved') ? 'saved' : 'dismissed'
+  d.prepare('UPDATE flashcard_proposals SET cards=?,status=? WHERE owner=? AND id=?').run(JSON.stringify(cards),status,owner,id)
   return getProposal(d,owner,id)
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { useDialogBackdropClose } from '../../../../app/src/learning-ui/useDialogBackdropClose'
 
 /**
  * A modal on the native <dialog>: the browser traps focus, makes the page
@@ -21,6 +22,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
   const [closing, setClosing] = useState(false)
+  const backdrop = useDialogBackdropClose(onClose)
 
   useEffect(() => {
     const dialog = ref.current
@@ -58,7 +60,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
       ref={ref}
       className={`dialog${wide ? ' wide' : ''}${closing ? ' closing' : ''}${tone ? ` ${tone}` : ''}`}
       onCancel={(event) => { event.preventDefault(); onClose() }}
-      onClick={(event) => { if (event.target === ref.current) onClose() }}
+      {...backdrop}
       aria-labelledby={titleId}
     >
       {open || closing ? (onSubmit ? <form onSubmit={(event) => { event.preventDefault(); onSubmit(event) }}>{body}</form> : <div>{body}</div>) : null}

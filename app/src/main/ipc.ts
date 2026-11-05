@@ -707,7 +707,7 @@ export function registerIpc(): void {
   ipcMain.handle('personalCards:list', (_e, target: ReviewTarget) => listPersonalCards(target))
   ipcMain.handle('personalCards:delete', (_e, target: ReviewTarget, id: string) => deletePersonalCard(target,id))
   ipcMain.handle('personalCards:proposals', (_e, chatId: string) => listFlashcardProposals(chatId))
-  ipcMain.handle('personalCards:decide', (_e, id: string, action: 'save' | 'dismiss') => decideFlashcardProposal(id,action))
+  ipcMain.handle('personalCards:decide', (_e, id: string, action: 'save' | 'dismiss', cardId?: string) => decideFlashcardProposal(id,action,cardId))
   ipcMain.handle('review:summary', (_e, courseId: string | ReviewTarget) => getReviewSummary(courseId))
   ipcMain.handle('review:start', (e, courseId: string | ReviewTarget, count: ReviewCount) => startReviewSession(courseId, count, e.sender.id))
   ipcMain.handle('review:reveal', (e, id: string, cardId: string) => revealReviewAnswer(id, cardId, e.sender.id))

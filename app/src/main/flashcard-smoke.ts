@@ -39,7 +39,7 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     if (imported.status !== 'ok') throw new Error(`Import failed: ${JSON.stringify(imported)}`)
     win.webContents.send('courses:changed')
     await win.webContents.executeJavaScript(`window.__FLASHCARD_COURSE = ${JSON.stringify(imported.courseId)}`)
-    if (process.env['OPENCOURSE_PERSONAL_CARD_SMOKE']) await runPersonalCardSmoke(imported.courseId, run, shot)
+    if (process.env['OPENCOURSE_PERSONAL_CARD_SMOKE']) await runPersonalCardSmoke(imported.courseId, run, shot, win)
     else {
     await run('answer redaction and completed-lesson unlock', `
       (await wait(()=>document.querySelector('.course-card'))).click(); await wait(()=>document.querySelector('.detail'));

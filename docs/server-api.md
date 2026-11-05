@@ -370,12 +370,16 @@ answers but clear scheduling. Unenrollment retains both.
 | `GET /me/learning/:kind/:id/personal-cards?after=&download=1` | `{ cards, nextCursor }`, at most 100 UUID-ordered snapshots including tombstones. Omit `download=1` to exclude answers. |
 | `DELETE /me/learning/:kind/:id/personal-cards/:card` | Delete an owned card and its active review history; retain a permanent tombstone. |
 | `POST /learning/chats/:id/flashcards/:proposal { action: "save" | "dismiss" }` | Atomically resolve an owned preview batch; repeated approvals return the same result. |
+| `POST /learning/chats/:id/flashcards/:proposal { action: "save-card" | "dismiss-card", cardId }` | Resolve one card in an owned preview. Repeated decisions return the same result; other cards remain pending. |
 
 `create_flashcards` accepts `{ cards: [{ question, answer }] }`: 1–20 cards,
 questions up to 2,000 characters and answers up to 8,000, all nonblank. It derives
 the destination from the authenticated conversation and returns a pending proposal,
 never saved cards. Chat messages include structured `flashcardProposals` with
-pending/saved/dismissed status. Saving does not require another model request.
+pending/saved/dismissed status and an optional saved/dismissed `decision` on each
+card. A preview stays pending until every card has a decision, then becomes saved
+if any card was saved, or dismissed otherwise. Saving does not require another
+model request.
 
 Desktop sync accepts `personalCard:<uuid>` (a question/answer object to create,
 `null` to delete) and `personalReview:<uuid>` (a rating object, or `null` to reset).

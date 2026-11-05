@@ -62,8 +62,8 @@ Next Lesson** (⌘]). Your place and progress are saved as you go.
 - **Flashcards** come back for review just before you would forget them. Review
   what is due from the course's page. You can also ask a course, exercise, project,
   notebook, or document chat to prepare **personal flashcards** about concepts you
-  discussed. Check the question-and-answer preview, then choose **Save all** or
-  **Dismiss**. Saved cards enter review immediately, using the same schedule as
+  discussed. Review the question-and-answer cards one at a time, choosing **Add** or
+  **Reject**. Added cards slide right, rejected cards left, revealing the next card. Saved cards enter review immediately, using the same schedule as
   course cards. Course pages show separate default and personal counts; click the
   personal count to list questions and delete cards. Documents show Review only
   after you save personal cards, on their overview and in the reader.

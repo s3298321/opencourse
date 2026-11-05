@@ -267,7 +267,7 @@ function ReadingChatPanel({
             </div>
           )}
           {view?.messages.map((m) => <div key={m.id}><ReadingMessage message={m} renderAnswer={renderAnswer} onSource={onSource} />
-            {m.flashcardProposals?.map(p => <FlashcardPreview key={p.id} proposal={p} renderText={renderAnswer} decide={(proposal,action) => client.request<FlashcardProposal>(`/learning/chats/${view.chat.id}/flashcards/${proposal}`,'POST',{action})} />)}
+            {m.flashcardProposals?.map(p => <FlashcardPreview key={p.id} proposal={p} renderText={renderAnswer} decide={(proposal,action,cardId) => client.request<FlashcardProposal>(`/learning/chats/${view.chat.id}/flashcards/${proposal}`,'POST',{action:`${action}-card`,cardId})} />)}
           </div>)}
           {busy && !answering && <Thinking />}
 

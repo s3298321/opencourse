@@ -70,7 +70,7 @@ export function listFlashcardProposals(chatId: string) {
   }
   return []
 }
-export function decideFlashcardProposal(id: string, action: 'save' | 'dismiss') {
+export function decideFlashcardProposal(id: string, action: 'save' | 'dismiss', cardId?: string) {
   if (!['save','dismiss'].includes(action)) throw new Error('Invalid preview action.')
   requireUser()
   const proposal = getProposal(db(),'',id)
@@ -85,7 +85,7 @@ export function decideFlashcardProposal(id: string, action: 'save' | 'dismiss') 
     const b = anyBinding(card.target.id)
     putPersonalCard(d,cardOwner(b),card)
     if (b) enqueue(b,`personalCard:${card.id}`,{ question:card.question,answer:card.answer,createdAt:card.createdAt })
-  }))
+  },cardId))
   personalCardEvents.emit('changed',proposal.target.id)
   return result
 }

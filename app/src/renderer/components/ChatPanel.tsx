@@ -26,7 +26,7 @@ import ChatMessageMeta from './ChatMessageMeta'
 const noSourceIcons = async (): Promise<Record<string, string | null>> => ({})
 
 interface Props {
-  flashcards?: { proposals: FlashcardProposal[]; decide: (id: string, action: 'save' | 'dismiss') => Promise<FlashcardProposal> }
+  flashcards?: { proposals: FlashcardProposal[]; decide: (id: string, action: 'save' | 'dismiss', cardId: string) => Promise<FlashcardProposal> }
   visible?: boolean
   panel: ChatPanel
   variant?: 'lesson' | 'project' | 'authoring' | 'document' | 'notebook'

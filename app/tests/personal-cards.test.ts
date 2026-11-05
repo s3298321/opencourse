@@ -59,6 +59,24 @@ describe('personal flashcards',()=>{
     expect(listPersonalCards(target)).toEqual([])
     expect(listFlashcardProposals(chat)[1].status).toBe('pending')
   })
+  it('persists individual choices, resumes pending cards, and never saves rejected cards on retry',()=>{
+    const {chat,target}=courseChat()
+    const id=JSON.parse(createFlashcardPreview('chat',chat,1,'stack',{cards:[...args.cards,{question:'Second?',answer:'Second.'},{question:'Third?',answer:'Third.'}]})).proposalId
+    const [first,second,third]=listFlashcardProposals(chat)[0].cards
+    expect(()=>decideFlashcardProposal(id,'save','foreign-card')).toThrow('does not belong')
+    const partial=decideFlashcardProposal(id,'save',first.id)
+    expect(partial.status).toBe('pending')
+    expect(listPersonalCards(target).map(c=>c.id)).toEqual([first.id])
+    expect(decideFlashcardProposal(id,'dismiss',first.id)).toEqual(partial)
+    closeDb()
+    expect(listFlashcardProposals(chat)[0].cards[0].decision).toBe('saved')
+    decideFlashcardProposal(id,'dismiss',second.id)
+    decideFlashcardProposal(id,'save',second.id)
+    expect(listPersonalCards(target)).toHaveLength(1)
+    expect(decideFlashcardProposal(id,'save',third.id).status).toBe('saved')
+    expect(listPersonalCards(target).map(c=>c.id)).toEqual([first.id,third.id])
+    expect(listFlashcardProposals(chat)[0].cards.map(c=>c.decision)).toEqual(['saved','dismissed','saved'])
+  })
   it('unlocks personal cards immediately, hides answers and shares FSRS without unlocking authored cards',()=>{
     const {chat,target}=courseChat();decideFlashcardProposal(preview(chat),'save')
     const now=new Date('2026-11-01T10:00:00Z'),session=startReviewSession(target,10,1,now)

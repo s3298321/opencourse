@@ -39,6 +39,21 @@ Opt-in suites that need something real:
 Tests and release checks run unattended without API keys or manual review. AI
 transport and microphone behavior use deterministic test doubles.
 
+Use the npm commands above for Electron checks rather than launching `electron .`
+directly. They supervise the launched process group: completion, failure, Ctrl-C,
+SIGTERM and terminal hangup clean up its remaining processes, with forced cleanup
+after two seconds if needed. Smoke, flashcard smoke and screenshot runs have a
+ten-minute external timeout, including screenshot holds. `dev` and `preview` stay
+open for interactive work until stopped. Stop any interactive session you start
+for a check when that check is finished.
+
+For an ad hoc automated launch, use
+`node scripts/run-managed.mjs --timeout-ms 600000 -- <executable> <args...>`
+from the repository root. Cleanup only targets that launch's process group;
+it does not quit an independently running installed app. `npm run test:scripts`
+in `app/` tests cleanup on exit, interruption and timeout with real subprocesses,
+and is included in `npm run check`.
+
 Tests, smoke and shots only use committed courses: `docs/example-course` and
 `app/tests/fixtures/courses`. `content/` is gitignored authoring input, and
 only the two content gates read it.

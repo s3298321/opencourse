@@ -34,7 +34,9 @@ export default function ConfirmDialog({ request, onResult }: { request: ConfirmR
     return () => document.removeEventListener('keydown', onKey)
   }, [onResult])
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <div className="dialog-backdrop" role="presentation" onPointerDown={event => {
+      if (event.target === event.currentTarget) { event.preventDefault(); onResult(false) }
+    }}>
       <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-detail">
         <h2 id="dialog-title">{request.title}</h2>
         <p id="dialog-detail">{request.detail}</p>

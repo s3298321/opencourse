@@ -782,7 +782,7 @@ describe('private personal flashcards', () => {
     expect(next.personalCards?.[0]).toMatchObject({id:personal,state:{reps:1}})
     expect((await call('POST',`/learn/document/${doc}/1.0.1/cards/${personal}/reveal`,{})).json().answer).toBe('A definition.')
   })
-  it('creates a chat preview and approves it once without publishing cards',async()=>{
+  it('creates a chat preview and persists individual choices without publishing cards',async()=>{
     await enrolled();await call('PUT','/me/ai',{key:'sk-test'})
     const chat=(await call('POST','/learning/chats',{kind:'course',id,version:'1.0.0'})).json().chat.id
     let calls=0
@@ -790,7 +790,7 @@ describe('private personal flashcards', () => {
       const body=JSON.parse(String(init?.body))
       if(body.instructions===TITLE_INSTRUCTIONS) return new Response(stream(''))
       expect(body.tools.some((t:{name:string})=>t.name==='create_flashcards')).toBe(true)
-      const output=++calls===1 ? [{type:'function_call',name:'create_flashcards',call_id:'make-cards',arguments:JSON.stringify({cards:[{question:'Define closure',answer:'Lexical environment'}]})}] : [{type:'message',role:'assistant',content:[{type:'output_text',text:'Please review and save the preview.'}]}]
+      const output=++calls===1 ? [{type:'function_call',name:'create_flashcards',call_id:'make-cards',arguments:JSON.stringify({cards:[{question:'Define closure',answer:'Lexical environment'},{question:'Reject this?',answer:'Not needed'}]})}] : [{type:'message',role:'assistant',content:[{type:'output_text',text:'Please review and save the preview.'}]}]
       return new Response(`data: ${JSON.stringify({type:'response.completed',response:{output}})}\n\n`)
     }
     await call('POST',`/learning/chats/${chat}/messages`,{text:'Make a flashcard',requestId:'make-personal'})
@@ -798,8 +798,14 @@ describe('private personal flashcards', () => {
     const preview=(await call('GET',`/learning/chats/${chat}`)).json().messages.at(-1).flashcardProposals[0]
     expect(preview.status).toBe('pending');expect((await current()).personalCards).toEqual([])
     const path=`/learning/chats/${chat}/flashcards/${preview.id}`
-    expect((await call('POST',path,{action:'save'})).json().status).toBe('saved')
-    expect((await call('POST',path,{action:'save'})).json().status).toBe('saved')
+    expect((await call('POST',path,{action:'save-card'})).statusCode).toBe(400)
+    expect((await call('POST',path,{action:'save-card',cardId:'foreign'})).statusCode).toBe(400)
+    expect((await call('POST',path,{action:'save-card',cardId:preview.cards[0].id})).json().status).toBe('pending')
+    expect((await current()).personalCards).toHaveLength(1)
+    expect((await call('POST',path,{action:'dismiss-card',cardId:preview.cards[1].id})).json().status).toBe('saved')
+    expect((await call('POST',path,{action:'save-card',cardId:preview.cards[1].id})).json().cards[1].decision).toBe('dismissed')
+    const reopened=(await call('GET',`/learning/chats/${chat}`)).json().messages.at(-1).flashcardProposals[0]
+    expect(reopened.cards.map((card:{decision:string})=>card.decision)).toEqual(['saved','dismissed'])
     expect((await current()).personalCards).toHaveLength(1)
     await call('DELETE',`/learning/chats/${chat}`)
     expect((await current()).personalCards).toHaveLength(1)

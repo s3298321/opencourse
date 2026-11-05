@@ -1,19 +1,54 @@
 .personal-card-preview { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 12px 0; overflow-wrap: anywhere; }
-.personal-card-preview ol { padding-left: 24px; }
-.personal-card-preview li { margin: 14px 0; }
 .personal-card-question { font-weight: 600; }
 .personal-card-actions { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .personal-card-actions h2 { margin: 0; }
 .personal-card-count { border: 0; padding: 2px 4px; background: transparent; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
 .personal-card-dialog { width: min(580px, 90vw); max-height: 75vh; overflow: auto; background: var(--surface, var(--bg, white)); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
-.personal-card-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.personal-card-dialog::backdrop { background: rgb(var(--shadow-rgb, 0 0 0) / .45); backdrop-filter: blur(4px) saturate(.85); }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .personal-card-dialog::backdrop { backdrop-filter: none; }
+}
 .personal-card-dialog ul { list-style: none; padding: 0; }
-.personal-card-dialog li { display: flex; gap: 16px; align-items: start; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.personal-card-dialog li { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .personal-card-dialog li span { white-space: pre-wrap; overflow-wrap: anywhere; }
 .personal-card-dialog li button { flex-shrink: 0; }
 .personal-card-preview button, .personal-card-dialog button { cursor: pointer; font: inherit; color: var(--text); background: var(--surface, var(--bg, white)); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
 .personal-card-preview button:hover, .personal-card-dialog button:hover { filter: brightness(1.2); }
 .personal-card-preview button:disabled, .personal-card-dialog button:disabled { opacity: .6; cursor: wait; }
-.personal-card-dialog button { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; }
+.personal-card-dialog button { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; border-color: transparent; background: transparent; }
+.personal-card-dialog button:hover { filter: none; background: var(--selected, rgb(127 127 127 / .15)); }
 .personal-card-preview button:focus-visible, .personal-card-dialog button:focus-visible, .personal-card-count:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .document-review-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* One decision at a time, with the remaining cards tucked beneath the front. */
+.personal-card-preview { min-width: 0; overflow: hidden; }
+.personal-card-heading { display: flex; flex-direction: column; gap: 4px; }
+.personal-card-heading > span, .personal-card-progress { color: var(--muted); font-size: .8em; }
+.personal-card-progress { margin: 14px 0 10px; }
+.personal-card-stack { position: relative; isolation: isolate; margin: 0 4px 22px; }
+.personal-card-under, .personal-card-front {
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--card, var(--surface, var(--bg, white)));
+}
+.personal-card-under { position: absolute; inset: 0; transform: translateY(7px) scale(.97); z-index: -1; }
+.personal-card-under-back { transform: translateY(14px) scale(.94); z-index: -2; }
+.personal-card-front {
+  position: relative; padding: 18px; min-height: 180px;
+  box-shadow: 0 4px 16px rgb(var(--shadow-rgb, 0 0 0) / .12);
+  animation: personal-card-rise 240ms ease-out both;
+}
+.personal-card-question { line-height: 1.5; }
+.personal-card-answer { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); line-height: 1.6; }
+.personal-card-front .prose > :first-child { margin-top: 0; }
+.personal-card-front .prose > :last-child { margin-bottom: 0; }
+.personal-card-decisions > button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.personal-card-decisions > .personal-card-add { color: var(--accent); border-color: var(--accent); }
+.personal-card-summary { margin: 16px 0 0; color: var(--muted); }
+.personal-card-front.personal-card-leave-save { animation: personal-card-right 280ms ease-in both; }
+.personal-card-front.personal-card-leave-dismiss { animation: personal-card-left 280ms ease-in both; }
+@keyframes personal-card-rise { from { opacity: .5; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes personal-card-right { to { opacity: 0; transform: translateX(110%) rotate(9deg); } }
+@keyframes personal-card-left { to { opacity: 0; transform: translateX(-110%) rotate(-9deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .personal-card-front, .personal-card-front.personal-card-leave-save, .personal-card-front.personal-card-leave-dismiss { animation: none; }
+}

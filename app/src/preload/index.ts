@@ -174,7 +174,7 @@ const api = {
   listPersonalCards: (target: ReviewTarget): Promise<{ id: string; question: string }[]> => ipcRenderer.invoke('personalCards:list', target),
   deletePersonalCard: (target: ReviewTarget, id: string): Promise<void> => ipcRenderer.invoke('personalCards:delete', target, id),
   listFlashcardProposals: (chatId: string): Promise<FlashcardProposal[]> => ipcRenderer.invoke('personalCards:proposals', chatId),
-  decideFlashcardProposal: (id: string, action: 'save' | 'dismiss'): Promise<FlashcardProposal> => ipcRenderer.invoke('personalCards:decide', id, action),
+  decideFlashcardProposal: (id: string, action: 'save' | 'dismiss', cardId?: string): Promise<FlashcardProposal> => ipcRenderer.invoke('personalCards:decide', id, action, cardId),
   onPersonalCardsChanged: (handler: (id: string) => void): (() => void) => subscribe('personalCards:changed', handler),
   getReviewSummary: (courseId: string | ReviewTarget): Promise<ReviewSummary> => ipcRenderer.invoke('review:summary', courseId),
   startReviewSession: (courseId: string | ReviewTarget, count: ReviewCount): Promise<ReviewSession> => ipcRenderer.invoke('review:start', courseId, count),

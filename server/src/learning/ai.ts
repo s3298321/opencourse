@@ -453,13 +453,17 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.post('/api/v1/learning/chats/:id/flashcards/:proposal', async req => {
     const account=requireAccount(req).id, params=req.params as {id:string;proposal:string}
     const view=chatView(ctx,account,params.id), proposal=getProposal(d,account,params.proposal)
-    const action=(req.body as {action?:unknown})?.action
+    const {action:requestedAction,cardId}=(req.body ?? {}) as {action?:unknown;cardId?:unknown}
+    const individual = requestedAction === 'save-card' || requestedAction === 'dismiss-card'
+    const action = individual ? (requestedAction === 'save-card' ? 'save' : 'dismiss') : requestedAction
+    if (individual && typeof cardId !== 'string') throw badRequest('invalid_card','Choose a card from this preview.')
     if (action !== 'save' && action !== 'dismiss') throw badRequest('invalid_action','Choose save or dismiss.')
+    if (cardId !== undefined && (typeof cardId !== 'string' || !proposal.cards.some(card => card.id === cardId))) throw badRequest('invalid_card','Choose a card from this preview.')
     if (!d.prepare("SELECT 1 FROM flashcard_proposals WHERE owner=? AND id=? AND chat_scope='server' AND chat_id=?").get(account,params.proposal,params.id)) throw notFound()
     if (proposal.target.kind !== view.chat.kind || proposal.target.id !== view.chat.contentId) throw notFound()
     if (action === 'save' && proposal.status === 'pending') contentRecord(ctx,account,{kind:view.chat.kind,id:view.chat.contentId,version:view.chat.version})
     return tx(d,() => {
-      const result=resolveProposal(d,account,params.proposal,action,card => { putPersonalCard(d,account,card);publishPersonalCard(ctx,account,card) })
+      const result=resolveProposal(d,account,params.proposal,action,card => { putPersonalCard(d,account,card);publishPersonalCard(ctx,account,card) },cardId as string | undefined)
       change(ctx,account,'chat',params.id,chatView(ctx,account,params.id))
       return result
     })

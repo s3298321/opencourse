@@ -6,19 +6,19 @@ titlebar - and never what it does. It is a zip archive with a `theme.json` and
 the pictures and fonts that file names. Import one from **Settings →
 Appearance**; choose it there, or from **View → Theme** in the menu bar.
 
-The app ships **OpenCourse Dark** (the default) and **OpenCourse White**.
+The app ships **Bond** (the default dark theme) and **Panda** (the light theme).
 Choose one in Settings or View → Theme; built-in themes cannot be removed.
-White keeps the same typography, layout and logo, with white surfaces and
+Panda keeps the same typography, layout and logo, with warm off-white surfaces and
 pale glass.
 
 Built-in theme data lives in `app/resources/themes/`, including
 `white/theme.json`. The repository's top-level `themes/` is for local theme
-experiments. Dark is the base palette in `app/src/renderer/styles.css`; its
+experiments. Bond uses the base palette in `app/src/renderer/styles.css`; its
 portable copy in `docs/default-theme/` is checked against that stylesheet.
 Each user keeps their own choice.
 
 The default dark look is what you see when no theme is
-applied, and choosing **OpenCourse Dark (default)** goes back to it. The same look
+applied, and choosing **Bond (default)** goes back to it. The same look
 is written out as a theme in `opencourse-default-theme.zip` - start from that
 copy when you make your own.
 
@@ -142,6 +142,7 @@ derives:
 | `shadow` | the colour of every shadow (its alpha is ignored) |
 | `hover-ring` | the edge on a hovered button |
 | `sketch-background`, `sketch-brush` | writing notebook sketch canvas and ink, in both the editor and image preview |
+| `sketch-cursor-border`, `sketch-cursor-shadow` | outline and drop shadow when the notebook cursor is on a sketch |
 | `editor-active-line`, `terminal-selection` | the editor's current line, the terminal's selection |
 
 ### reducedTransparency and increasedContrast

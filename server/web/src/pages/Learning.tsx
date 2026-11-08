@@ -1,3 +1,4 @@
+import { quoteSelectionText } from '@core/quote-selection'
 import { WebDocumentReviewControls } from '../components/PersonalCards'
 import { useCallback, useEffect, useLayoutEffect, useState, useRef, type RefObject } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
@@ -756,7 +757,7 @@ function AskAboutOffer({ reader, onAsk }: { reader: RefObject<HTMLElement | null
     }
     const update = () => {
       const selection = window.getSelection()
-      const text = selection?.toString().trim() ?? ''
+      const text = quoteSelectionText(selection).trim()
       const root = reader.current
       if (!selection || !text || text.length > 8000 || selection.rangeCount === 0 || !root) return setOffer(null)
       const range = selection.getRangeAt(0)

@@ -1,0 +1,14 @@
+:is(.prose, .oc-prose, .writing-preview) table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow: auto hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  border-collapse: collapse;
+}
+
+/* The table draws the rounded perimeter. Cells draw the internal grid. */
+:is(.prose, .oc-prose, .writing-preview) tr > * + * { border-inline-start: 1px solid var(--border); }
+:is(.prose, .oc-prose, .writing-preview) tr + tr > *,
+:is(.prose, .oc-prose, .writing-preview) thead + tbody > tr:first-child > * { border-block-start: 1px solid var(--border); }

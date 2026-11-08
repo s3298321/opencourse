@@ -324,7 +324,6 @@
   opacity: 1;
   background: var(--chip-bg);
   color: var(--muted);
-  transform: scale(0.9);
 }
 .learning-chat-send:hover:not(:disabled) {
   transform: translateY(-1px);

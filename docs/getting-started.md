@@ -121,6 +121,10 @@ marks removed by that gesture. Drag the bottom-right
 handle to make room for more drawing. Click away to see the image, click it to
 edit again, or press **Escape** to continue writing below. Each sketch is a
 single Markdown image link to an SVG in the notebook’s assets folder.
+Move the cursor onto a sketch line with the arrow keys to outline the sketch.
+Press **Enter** to start a new line immediately below it.
+Tap **Shift** on its own to remove the outlined sketch. **Ctrl+Z** or **⌘Z**
+restores it.
 
 Change the shortcut and the default 450 × 300 px canvas size in **Settings ▸
 Appearance ▸ Notebook sketches**.

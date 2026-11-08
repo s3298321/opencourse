@@ -1,3 +1,4 @@
+import { quoteSelectionText } from '@core/quote-selection'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { ChatQuote } from '@core/types'
@@ -29,7 +30,7 @@ export function usePreviewAsk(enabled: boolean, selectionKey: string, highlightQ
     if (!enabled || !active) return
     const onUp = (event: MouseEvent): void => {
       if ((event.target as Element | null)?.closest?.('.ask-about')) return
-      const found = window.getSelection(), text = found?.toString().trim() ?? ''
+      const found = window.getSelection(), text = quoteSelectionText(found).trim()
       if (!found || !text || !found.rangeCount) return setSelection(null)
       const range = found.getRangeAt(0), node = range.commonAncestorContainer
       const element = node instanceof Element ? node : node.parentElement

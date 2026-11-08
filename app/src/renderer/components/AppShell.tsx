@@ -3,7 +3,6 @@ import { FloatingNotebooks } from '../writing-notebooks/NotebookLauncher'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UserProfile } from '@core/types'
-import { darkChromeCss } from '@core/theme/dark-chrome'
 import type { Route } from '../routes'
 import type { Workspace } from '../workspaces'
 import { TitleBarChrome, type TitleBarProps } from './TitleBar'
@@ -25,7 +24,6 @@ export default function AppShell({ children, route, user, navigate, switchWorksp
   // A newly loading screen has no declaration yet. Never show the old screen's actions.
   const current = declaration?.route === route ? declaration : {}
   return <ShellContext.Provider value={controls}>
-    <style>{darkChromeCss}</style>
     <div className="app">
       <TitleBarChrome {...current} route={route} user={user} navigate={navigate} switchWorkspace={switchWorkspace} />
       {children}

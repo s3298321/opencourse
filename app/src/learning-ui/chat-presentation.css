@@ -1,3 +1,14 @@
+.sidechat-scroll, .learning-messages {
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+:is(.sidechat-scroll, .learning-messages) .course-inline-formula {
+  display: inline-block;
+  max-width: 100%;
+  overflow: auto hidden;
+  vertical-align: middle;
+}
+
 .menu-trigger:where(.shared-menu) {
   display: flex; align-items: center; gap: 0.4rem;
   background: none; color: var(--accent); border: 0;
@@ -100,7 +111,15 @@
   flex-direction: column;
   max-height: 40%;
   border-bottom: 1px solid var(--border);
+}
+/* Clip only the shadow, so the frosted panel and its controls still paint normally. */
+.chat-history-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 -1px;
+  pointer-events: none;
   box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 0.2);
+  clip-path: inset(100% 0 -48px);
 }
 .chat-history-overlay::before {
   content: '';

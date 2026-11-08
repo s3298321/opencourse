@@ -59,12 +59,35 @@ test('reading chat matches app citations, activity, quotes and composer choices'
   await expect(warning).toHaveCount(0)
   messages[1].text = String.raw`Evaluate \(f(x)\) at two.`
   await expect(panel.locator('.learning-message.assistant .course-inline-formula annotation')).toHaveText('f(x)')
+  const transcript = panel.locator('.learning-messages')
+  const longWord = 'unbroken'.repeat(40)
+  const equation = 'x+'.repeat(100) + 'y'
+  messages[1].text = [
+    longWord, 'Inline $' + equation + '$.', '$$\n' + String.raw`\underbrace{\frac{(3+h)^2-9}{h}}_{\text{undefined at }h=0}` + '\n=\n' + equation + '\n$$',
+    String.raw`$$\lim_{h\to0}\frac{(3+h)^2-9}{h}=6.$$`,
+    '```js\n' + ('// ' + longWord + '\n').repeat(60) + '```',
+    ['| ' + 'Heading | '.repeat(24), '| ' + '--- | '.repeat(24), ('| ' + 'Cell | '.repeat(24) + '\n').repeat(40)].join('\n')
+  ].join('\n\n')
+  await expect(transcript.locator('table')).toBeVisible()
+  await expect(transcript.locator('table')).toHaveCSS('border-radius', '6px')
+  for (const selector of ['pre', 'table', '.course-formula', '.course-inline-formula']) {
+    expect(await transcript.locator(selector).first().evaluate(el => {
+      el.scrollLeft = el.scrollWidth
+      return el.scrollLeft > 0
+    })).toBe(true)
+  }
+  for (const block of await transcript.locator('pre, table, .course-formula, .course-inline-formula').all()) {
+    expect(await block.evaluate(el => {
+      el.scrollTop = el.scrollHeight
+      return el.scrollHeight === el.clientHeight && el.scrollTop === 0
+    })).toBe(true)
+  }
+  expect(await transcript.evaluate(el => el.scrollWidth - el.clientWidth)).toBe(0)
   messages[1] = { ...messages[1], status: 'complete', text: 'For $f(x)$, the result is\n\n$$f(2) = 4$$\n\n' + 'A function can take parameters and return a value.\n\n'.repeat(30) + 'Functions make programs easier to maintain. [Python documentation](https://docs.python.org/3/tutorial/controlflow.html)', citations: [{ title: 'Python documentation', url: 'https://docs.python.org/3/tutorial/controlflow.html' }] }
   chat.running = false
-  await expect(panel.locator('.learning-message.assistant math[display="block"] annotation')).toHaveText('f(2) = 4')
+  await expect(panel.locator('.learning-message.assistant math[display="block"] annotation')).toHaveText(['f(2) = 4'])
   await expect(panel.locator('sup.cite a')).toHaveText('1')
   await expect(panel.getByRole('navigation', { name: 'Cited sources' }).locator('li')).toHaveCount(1)
-  const transcript = panel.locator('.learning-messages')
   await transcript.evaluate(el => { el.scrollTop = el.scrollHeight - el.clientHeight - 60 })
   const readingPosition = () => transcript.evaluate(el => [el.scrollTop, el.clientHeight, el.firstElementChild!.getBoundingClientRect().top])
   const beforeHistory = await readingPosition()

@@ -1,3 +1,4 @@
+import { quoteSelectionText } from '@core/quote-selection'
 import { readNotebookCells } from '@core/notebook/reading'
 import { useCoachContextProvider, selectedContent, contextExcerpt } from '../coach/context'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type JSX, type SetStateAction } from 'react'
@@ -67,7 +68,8 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
     const select = (event: MouseEvent): void => {
       if ((event.target as Element)?.closest('.ask-about')) return
       const selection = window.getSelection()
-      if (!selection?.rangeCount || !selection.toString().trim()) { setOffer(null); return }
+      const text = quoteSelectionText(selection)
+      if (!selection?.rangeCount || !text.trim()) { setOffer(null); return }
       const range = selection.getRangeAt(0), node = range.commonAncestorContainer
       const element = node instanceof Element ? node : node.parentElement
       if (element?.closest('.cm-editor')) return
@@ -77,7 +79,7 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
       const highlight = (value: Range | null): void => {
         if (typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined') { if (value) CSS.highlights.set(QUOTE_HIGHLIGHT, new Highlight(value)); else CSS.highlights.delete(QUOTE_HIGHLIGHT) }
       }
-      setOffer({ owner, from, text: selection.toString(), x: box.left + box.width / 2, y: box.top,
+      setOffer({ owner, from, text, x: box.left + box.width / 2, y: box.top,
         ...(from === 'notebook' ? { notebook: { cellId: element?.closest('[data-cell-id]')?.getAttribute('data-cell-id') ?? undefined } } : {}),
         mark: () => highlight(saved), unmark: () => highlight(null) })
     }

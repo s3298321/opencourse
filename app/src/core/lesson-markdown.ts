@@ -1,4 +1,4 @@
-import type { MarkdownIt, StateInline } from 'markdown-it'
+import type { MarkdownIt, StateCore, StateInline, Token } from 'markdown-it'
 import { renderFormula } from './formula'
 
 function inlineFormula(state: StateInline, silent: boolean): boolean {
@@ -20,6 +20,7 @@ function inlineFormula(state: StateInline, silent: boolean): boolean {
         const token = state.push('lesson_inline_formula', '', 0)
         token.content = src.slice(start, end)
         token.markup = src.slice(pos, start)
+        token.meta = { mathStart: start }
       }
       state.pos = end + close.length
       return true
@@ -32,8 +33,43 @@ function inlineFormula(state: StateInline, silent: boolean): boolean {
   return false
 }
 
+// Markdown-it splits table cells before running inline rules. Escape bare pipes
+// in recognized math for that split; the table rule removes the added backslash.
+function protectTableMath(state: StateCore): void {
+  if (state.inlineMode || !state.env.lessonMath || !state.src.includes('|') || !state.src.includes('-')) return
+  const lines = state.src.split('\n')
+  const candidates = lines.map(line => {
+    if (!line.includes('|') || !(line.includes('$') || line.includes('\\('))) return line
+    const tokens: Token[] = []
+    state.md.inline.parse(line, state.md, state.env, tokens)
+    const pipes = new Set<number>()
+    for (const token of tokens) {
+      const start = token.meta?.mathStart
+      if (token.type !== 'lesson_inline_formula' || typeof start !== 'number') continue
+      for (const match of token.content.matchAll(/(?<!\\)\|/g)) pipes.add(start + match.index)
+    }
+    return pipes.size ? line.replace(/\|/g, (pipe, offset) => pipes.has(offset) ? '\\|' : pipe) : line
+  })
+  if (candidates.every((line, i) => line === lines[i])) return
+
+  // Only apply the escapes to rows the block parser recognizes as a table.
+  // Identical source in prose, a fenced example or indented code stays literal.
+  const blocks: Token[] = []
+  state.md.block.parse(candidates.join('\n'), state.md, { ...state.env }, blocks)
+  for (const block of blocks) {
+    if (block.type !== 'table_open' || !block.map) continue
+    const [start, end] = block.map
+    // Bars belonging only to math do not turn an underlined heading into a one-column table.
+    if (!/(?<!\\)\|/.test(candidates[start]) && !lines[start + 1].includes('|')) continue
+    for (let row = start; row < end; row++) lines[row] = candidates[row]
+  }
+  state.src = lines.join('\n')
+}
+
 export function createLessonMarkdown(md: MarkdownIt, clean: (html: string) => string): (source: string, inline?: boolean) => string {
-  md.block.ruler.before('paragraph', 'lesson_formula', (state, start, end, silent) => {
+  md.core.ruler.before('block', 'lesson_table_math', protectTableMath)
+  // A line containing only "=" can be part of an equation or a Markdown heading underline.
+  md.block.ruler.before('lheading', 'lesson_formula', (state, start, end, silent) => {
     if (!state.env?.lessonMath || state.sCount[start] - state.blkIndent >= 4) return false
     const lineText = (i: number): string => state.src.slice(state.bMarks[i] + state.tShift[i], state.eMarks[i]).trimEnd()
     const opening = lineText(start)

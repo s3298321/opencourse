@@ -1,6 +1,5 @@
 import { sendToMainWindow, notebookWindowIdentity } from './writing-notebook-windows'
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
-import { BRAND } from '../core/brand'
 import type { NavAction } from '../core/types'
 import { saveSpecBundle, saveThemeSpecBundle } from './spec'
 import { listThemes } from './themes'
@@ -43,7 +42,7 @@ function themeMenu(): MenuItemConstructorOptions {
     label: 'Theme',
     enabled: Boolean(currentUserId()),
     submenu: [
-      { label: `${BRAND.displayName} Dark (default)`, type: 'radio', checked: !anyActive, click: () => pickTheme(null) },
+      { label: 'Bond (default)', type: 'radio', checked: !anyActive, click: () => pickTheme(null) },
       ...(themes.length ? [{ type: 'separator' } as const] : []),
       ...themes.map((theme): MenuItemConstructorOptions => ({
         label: theme.name,

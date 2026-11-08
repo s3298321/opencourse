@@ -2,7 +2,7 @@
   "$schema": "urn:opencourse:theme:1.0",
   "format": 1,
   "id": "opencourse-default",
-  "name": "OpenCourse",
+  "name": "Bond",
   "version": "1.0.0",
   "author": "OpenCourse",
   "description": "The app's own look, written out as a theme: near-black surfaces, silver controls and grained glass over the window. Copy it to start your own.",
@@ -53,6 +53,8 @@
     "editor-active-line": "rgba(255, 255, 255, 0.04)",
     "sketch-background": "#252525",
     "sketch-brush": "#ffffff",
+    "sketch-cursor-border": "#929298",
+    "sketch-cursor-shadow": "rgba(0, 0, 0, 0.32)",
     "terminal-selection": "rgba(196, 196, 205, 0.18)"
   },
 

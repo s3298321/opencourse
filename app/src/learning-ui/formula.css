@@ -1,11 +1,14 @@
 .course-formula {
   display: block;
   margin-block: 1em;
-  padding: .4em .25em;
   max-width: 100%;
-  overflow-x: auto;
+  overflow: auto hidden;
   font-size: 1.2em;
 }
+/* Let the typeset expression set the height. Keep MathML ink overflow inside
+   its padded box so fractional glyph bounds cannot create a vertical scrollbar. */
+.course-formula > .katex { display: block; padding: .4em .25em; overflow-y: clip; }
+.course-formula.formula-error { padding: .4em .25em; }
 .course-inline-formula math, .course-formula math {
   font-family: "STIX Two Math", "Cambria Math", math;
 }

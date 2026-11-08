@@ -44,6 +44,20 @@ test('lesson math and highlighted code render under the production CSP, includin
   await expect(formula).toBeVisible()
   await expect(formula.locator('msub')).toHaveCount(2)
   await expect(formula.locator('annotation')).toHaveText('c_{n+1} = c_n + 1')
+  for (const [part, expected] of [['msub mrow', 'n+1'], ['semantics > mrow', 'c_{n+1} = c_n + 1']]) {
+    await formula.locator(part).first().evaluate(node => {
+      const range = node.ownerDocument.createRange()
+      range.selectNodeContents(node)
+      const selection = node.ownerDocument.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+    })
+    await page.getByRole('button', { name: 'Ask about this', exact: true }).click()
+    const chat = page.getByRole('complementary', { name: 'Reading chat' })
+    expect(await chat.locator('.sidechat-quote blockquote').textContent()).toBe(expected)
+    await chat.getByRole('button', { name: 'Remove selected passage' }).click()
+    await chat.getByRole('button', { name: 'Close chat' }).click()
+  }
   const quiz = page.locator('form.learning-card').filter({ hasText: 'If the counter shows' })
   await expect(quiz.locator('.oc-prose math annotation')).toHaveText('c_n = 3')
   await expect(quiz.locator('label math annotation')).toHaveText(['c_{n+2} = 4', 'c_{n+2} = 5'])

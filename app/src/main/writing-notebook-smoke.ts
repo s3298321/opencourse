@@ -72,22 +72,25 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     await js(notebookWindow, `const offer=await wait('.ask-about'); offer.dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); offer.dispatchEvent(new MouseEvent('mouseup',{bubbles:true})); offer.click(); await pause(450); await wait('.sidechat-quote'); assert(!document.querySelector('.writing-attached-quote'),'Quote should not highlight the source'); const host=document.querySelector('.lesson-chat-host'); assert(host.getBoundingClientRect().width>200,'Chat did not expand'); document.querySelector('.chat-chip').click(); await until(()=>host.getBoundingClientRect().width<2,'Chat did not collapse');`)
     return 'Selection attached without source highlight, reversible chat transition'
   })
-  await run('White applies to open notebooks in place and Dark restores the default look', async () => {
+  await run('Panda applies to open notebooks in place and Bond restores the default look', async () => {
     await js(notebookWindow, `
       window.__writingThemeEditor = document.querySelector('.cm-content');
       window.__writingThemeText = window.__writingThemeEditor.textContent;
       const css = selector => getComputedStyle(document.querySelector(selector));
+      window.__bondControls = ['.reading-size', '.reading-size-larger', '.writing-new-page'].map(selector => [css(selector).backgroundColor, css(selector).color, css(selector).borderColor]);
       window.__writingDefault = [css('.writing-page').backgroundColor, css('.cm-scroller').fontFamily, css('.cm-scroller').lineHeight];
     `)
     try {
       for (const [themeId, name, background, font] of [
-        [WHITE_THEME_ID, 'white', 'rgb(255, 255, 255)', 'system-ui']
+        [WHITE_THEME_ID, 'white', 'rgb(250, 248, 245)', 'system-ui']
       ]) {
         await js(main, `await window.opencourse.applyTheme(${JSON.stringify(themeId)});`)
         await js(notebookWindow, `
           const css = selector => getComputedStyle(document.querySelector(selector));
           for (let n = 0; n < 400 && (css('.writing-page').backgroundColor !== ${JSON.stringify(background)} || document.querySelector('.writing-window').hasAttribute('data-default-theme')); n++) await pause(25);
           assert(css('.writing-page').backgroundColor === ${JSON.stringify(background)}, 'Notebook surface did not follow theme');
+          const controls = ['.reading-size', '.reading-size-larger', '.writing-new-page'].map(selector => [css(selector).backgroundColor, css(selector).color, css(selector).borderColor]);
+          assert(JSON.stringify(controls) === JSON.stringify(window.__bondControls), 'Panda notebook controls differ from Bond');
           assert(css('.cm-scroller').fontFamily.includes(${JSON.stringify(font)}), 'Reading font did not follow theme');
           assert(document.querySelector('.cm-content') === window.__writingThemeEditor, 'Theme recreated editor');
           assert(window.__writingThemeEditor.textContent === window.__writingThemeText, 'Theme lost notebook text');
@@ -100,9 +103,15 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
         `)
         writeFileSync(`/tmp/opencourse-writing-${name}.png`, (await notebookWindow.webContents.capturePage()).toPNG())
         await js(notebookWindow, `document.querySelector('.chat-chip').click(); await until(()=>document.querySelector('.lesson-chat-host').getBoundingClientRect().width < 2, 'Themed chat did not collapse');`)
-        await js(main, `(await wait('.notebook-floating .writing-launcher-toggle')).click(); await pause(400); assert(getComputedStyle(document.querySelector('.writing-launcher')).backgroundColor === ${JSON.stringify(background)}, 'Launcher surface did not follow theme');`)
+        await js(main, `
+          for (const selector of ['.coach-floating', '.notebook-floating']) {
+            const launcher = await wait(selector + ':not(.expanded)');
+            assert(getComputedStyle(launcher).backgroundColor === ${JSON.stringify(background)}, selector + ' lost its Panda surface');
+          }
+          (await wait('.notebook-floating .writing-launcher-toggle')).click(); await pause(400);
+          assert(getComputedStyle(document.querySelector('.notebook-floating.expanded')).backgroundColor === ${JSON.stringify(background)}, 'Launcher surface did not follow theme');`)
         writeFileSync(`/tmp/opencourse-writing-launcher-${name}.png`, (await main.webContents.capturePage()).toPNG())
-        await js(main, `document.querySelector('.writing-launcher-close').click(); await pause(350);`)
+        await js(main, `document.querySelector('.notebook-floating .writing-launcher-close').click(); await pause(350);`)
       }
     } finally {
       await js(main, `await window.opencourse.applyTheme(null);`)
@@ -114,7 +123,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
       assert(JSON.stringify(restored) === JSON.stringify(window.__writingDefault), 'Default notebook look changed');
       assert(document.querySelector('.cm-content') === window.__writingThemeEditor, 'Default recreated editor');
     `)
-    return 'White surfaces, typography, selection, titlebars, launcher and chat; default restored without remounting'
+    return 'Warm off-white surfaces, typography, selection, titlebars, launcher and chat; default restored without remounting'
   })
   await run('reopening focuses the existing notebook and multiple notebooks can coexist', async () => {
     const before = BrowserWindow.getAllWindows().length
@@ -163,7 +172,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
       return win
     }
     let win = await open()
-    const press = (keyCode: string, modifiers: ('meta' | 'shift')[] = []) => {
+    const press = (keyCode: string, modifiers: ('meta' | 'control' | 'shift')[] = []) => {
       win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
       win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
     }
@@ -177,6 +186,26 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
       await js(win, `await wait('.sketch-drawing');`)
       press('Escape')
       await js(win, `await wait('.sketch-preview img');`)
+      press('Up')
+      const beforeDelete = await js(win, `const img=await wait('.writing-sketch-cursor .sketch-preview img');
+        assert(getComputedStyle(img.closest('.cm-content')).caretColor==='rgba(0, 0, 0, 0)','Text caret still visible');
+        const style=getComputedStyle(img.parentElement);
+        assert(style.outlineStyle==='solid' && style.boxShadow!=='none','Missing sketch cursor');
+        return img.src;`)
+      press('Shift')
+      await js(win, `await until(()=>!document.querySelector('.writing-sketch'),'Shift did not remove the sketch');`)
+      press('z', ['control'])
+      await js(win, `const img=await wait('.writing-sketch-cursor .sketch-preview img');
+        assert(img.src===${JSON.stringify(beforeDelete)},'Undo did not restore the same sketch');`)
+      press('Enter')
+      await js(win, `await until(()=>{const lines=document.querySelectorAll('.cm-content .cm-line'), sel=getSelection();
+        return lines.length===3 && lines[0].querySelector('.sketch-preview') &&
+          lines[1].contains(sel.anchorNode) && sel.isCollapsed && sel.anchorOffset===0;
+      },'Enter did not place the caret at the start of a new line below the sketch');`)
+      press('z', ['control'])
+      await js(win, `await wait('.writing-sketch-cursor .sketch-preview');`)
+      press('Down')
+      await js(win, `await until(()=>!document.querySelector('.writing-sketch-cursor'),'Sketch cursor did not move back to text');`)
       // Change the shortcut in Settings while the notebook is open.
       main.focus()
       const settingsBounds = await js(main, `document.querySelector('.titlebar .user-chip').click(); const panel=await wait('.menu-panel');
@@ -290,7 +319,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
         await js(win, `await until(()=>document.querySelectorAll('.sketch-preview img').length===2,'Click-away preview missing for '+${JSON.stringify(theme)});`)
       }
       if (getWritingPage(notebook.id, notebook.selectedPageId).revision !== page.revision) throw new Error('Theme switch changed the page revision')
-      return 'Native shortcut and mouse, scaled coordinates, resize, page and window reopen, White/custom/Dark previews'
+      return 'Native shortcut and mouse, scaled coordinates, resize, page and window reopen, Panda/custom/Bond previews'
     } finally {
       await js(main, `await window.opencourse.applyTheme(null); await window.opencourse.writing.setSketchSettings(${JSON.stringify(DEFAULT_SKETCH)});`)
       await closeWritingWindows()

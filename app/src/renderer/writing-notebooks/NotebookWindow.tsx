@@ -15,7 +15,6 @@ import { useConversationPanel, type ChatTransport } from '../sidechat/useChat'
 import { usePreviewAsk, PreviewAskOffer } from '../sidechat/usePreviewAsk'
 import type { AskOffer } from '../ask-context'
 import MarkdownEditor, { type MarkdownEditorHandle } from './MarkdownEditor'
-import { darkChromeCss } from '@core/theme/dark-chrome'
 import { TitleBarChrome } from '../components/TitleBar'
 import { useActiveTheme } from '../theme/ThemeProvider'
 const api = () => window.opencourse.writing
@@ -136,7 +135,6 @@ function NotebookContent({ id }: { id: string }) {
   const index = notebook.pages.findIndex(p => p.id === page.id)
   const reorder = (direction: number) => action(async () => { const ids = notebook.pages.map(p => p.id); [ids[index], ids[index + direction]] = [ids[index + direction]!, ids[index]!]; setNotebook(await api().reorder(id, ids)) })
   return <div className="app writing-window" data-default-theme={theme.id === null ? '' : undefined} style={{ '--reading-scale': notebook.textScale } as CSSProperties}>
-    <style>{darkChromeCss}</style>
     <TitleBarChrome title={notebook.title} showPomodoro actions={<ChatToggle open={notebook.chatOpen} onClick={toggleChat} subject="notebook" />} />
     <div className="body lesson-body writing-body">
       <aside className="sidebar writing-sidebar">

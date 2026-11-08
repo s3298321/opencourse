@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { Compartment, EditorState, RangeSet, StateEffect, StateField, type Range } from '@codemirror/state'
 import { Decoration, EditorView, GutterMarker, WidgetType, keymap, lineNumberMarkers, lineNumbers, type DecorationSet } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab, undo } from '@codemirror/commands'
 import { syntaxTree } from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import MarkdownIt from 'markdown-it'
@@ -141,7 +141,7 @@ export default forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(p
         mark: () => {}, unmark: () => {} })
     }
     const editor = new EditorView({ parent: host.current!, state: EditorState.create({ doc: props.initial, extensions: [
-      markdown({ base: markdownLanguage, completeHTMLTags: false }), history(), shortcut.of(sketchKeymap(DEFAULT_SKETCH, assets)), sketchExtensions(assets, () => callbacks.current.onSave()), keymap.of([{ key: 'Mod-s', run: () => { callbacks.current.onSave(); return true } }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+      markdown({ base: markdownLanguage, completeHTMLTags: false }), history(), shortcut.of(sketchKeymap(DEFAULT_SKETCH, assets)), sketchExtensions(assets, () => callbacks.current.onSave()), keymap.of([{ key: 'Mod-s', run: () => { callbacks.current.onSave(); return true } }, ...defaultKeymap, ...historyKeymap, { mac: 'Ctrl-z', run: undo }, indentWithTab]),
       EditorView.lineWrapping, numberGutter.current.of(props.showLineNumbers ? notebookLineNumbers : []), livePreview(notebookId), EditorView.contentAttributes.of({ 'aria-label': 'Notebook page', spellcheck: 'true' }),
       EditorView.updateListener.of(update => { if (update.docChanged) callbacks.current.onChange(update.state.doc.toString()); if (update.selectionSet && update.view.hasFocus) select(update.view) }),
       EditorView.domEventHandlers({

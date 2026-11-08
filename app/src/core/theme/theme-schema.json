@@ -189,6 +189,8 @@
         },
         "sketch-background": { "$ref": "#/$defs/color" },
         "sketch-brush": { "$ref": "#/$defs/color" },
+        "sketch-cursor-border": { "$ref": "#/$defs/color" },
+        "sketch-cursor-shadow": { "$ref": "#/$defs/color" },
         "terminal-selection": {
           "$ref": "#/$defs/color"
         }
@@ -300,6 +302,8 @@
         },
         "sketch-background": { "$ref": "#/$defs/color" },
         "sketch-brush": { "$ref": "#/$defs/color" },
+        "sketch-cursor-border": { "$ref": "#/$defs/color" },
+        "sketch-cursor-shadow": { "$ref": "#/$defs/color" },
         "terminal-selection": {
           "$ref": "#/$defs/color"
         }
@@ -411,6 +415,8 @@
         },
         "sketch-background": { "$ref": "#/$defs/color" },
         "sketch-brush": { "$ref": "#/$defs/color" },
+        "sketch-cursor-border": { "$ref": "#/$defs/color" },
+        "sketch-cursor-shadow": { "$ref": "#/$defs/color" },
         "terminal-selection": {
           "$ref": "#/$defs/color"
         }

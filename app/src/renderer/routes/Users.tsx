@@ -1,4 +1,4 @@
-import ActionButton from '../components/ActionButton'
+import ActionButton, { Icon } from '../components/ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { Session, UserProfile } from '@core/types'
@@ -123,7 +123,7 @@ export default function Users({
                   </div>
                 ) : (
                   <button className="user-card add" disabled={busy} onClick={() => setNaming(true)}>
-                    <span className="avatar blank" aria-hidden="true">+</span>
+                    <span className="avatar blank" aria-hidden="true"><Icon name="plus" className="avatar-plus" /></span>
                     <span className="user-name">Add new user</span>
                   </button>
                 ))}

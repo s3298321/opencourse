@@ -139,6 +139,65 @@ it('keeps fenced sketch examples literal and missing assets selectable', async (
   expect(view().state.doc.toString()).toBe(initial)
 })
 
+it.each([
+  ['start', '\nFollowing text'],
+  ['end', '\nFollowing text'],
+  ['start', ''],
+  ['end', '']
+])('inserts a blank line below the outlined sketch from its %s with suffix %j', async (edge, suffix) => {
+  const link = `![Sketch](assets/${crypto.randomUUID()}.sketch.svg)`
+  const initial = 'Before\n' + link + suffix
+  vi.stubGlobal('opencourse', { writing: { readSketch: async () => ({ version: 1, width: 450, height: 300, marks: [] }) } })
+  await act(async () => root.render(h(MarkdownEditor, { ...props, initial })))
+  const editor = view(), sketch = editor.state.doc.line(2)
+  const anchor = edge === 'start' ? sketch.from : sketch.to
+  await act(async () => { editor.focus(); editor.dispatch({ selection: { anchor } }) })
+  expect(container.querySelector('.writing-sketch-cursor')).toBeTruthy()
+  await act(async () => {
+    editor.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+  expect(editor.state.doc.toString()).toBe('Before\n' + link + '\n' + suffix)
+  expect(editor.state.selection.main.head).toBe(editor.state.doc.line(3).from)
+  expect(container.querySelector('.writing-sketch-cursor')).toBeNull()
+  await act(async () => { undo(editor) })
+  expect(editor.state.doc.toString()).toBe(initial)
+  expect(editor.state.selection.main.head).toBe(anchor)
+})
+
+it('tracks the sketch under the caret and erases only that occurrence on a standalone Shift tap', async () => {
+  const link = `![Sketch](assets/${crypto.randomUUID()}.sketch.svg)`
+  const initial = [link, 'Middle', link].join('\n')
+  vi.stubGlobal('opencourse', { writing: { readSketch: async () => ({ version: 1, width: 450, height: 300, marks: [] }) } })
+  await act(async () => root.render(h(MarkdownEditor, { ...props, initial })))
+  const editor = view()
+  await act(async () => editor.focus())
+  const outlined = () => container.querySelector('.writing-sketch-cursor .sketch-preview')
+  const key = (type: string, key: string, modifiers: KeyboardEventInit = {}) =>
+    editor.contentDOM.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...modifiers }))
+  const shift = () => { key('keydown', 'Shift', { shiftKey: true }); key('keyup', 'Shift') }
+  expect(outlined()).toBe(container.querySelectorAll('.sketch-preview')[0])
+  await act(async () => editor.dispatch({ selection: { anchor: initial.length } }))
+  expect(outlined()).toBe(container.querySelectorAll('.sketch-preview')[1])
+  expect(container.querySelector('.sketch-canvas')).toBeNull()
+  await act(async () => {
+    key('keydown', 'Shift', { shiftKey: true })
+    key('keydown', 'ArrowLeft', { shiftKey: true })
+    key('keyup', 'Shift')
+  })
+  expect(outlined()).toBeNull()
+  expect(editor.state.doc.toString()).toBe(initial)
+  await act(async () => editor.dispatch({ selection: { anchor: initial.length } }))
+  await act(async () => shift())
+  expect(editor.state.doc.toString()).toBe(link + '\nMiddle\n')
+  expect(outlined()).toBeNull()
+  await act(async () => { key('keydown', 'z', { ctrlKey: true }) })
+  expect(editor.state.doc.toString()).toBe(initial)
+  expect(outlined()).toBe(container.querySelectorAll('.sketch-preview')[1])
+  expect(editor.state.selection.main.head).toBe(initial.length)
+  await act(async () => { redo(editor) })
+  expect(editor.state.doc.toString()).toBe(link + '\nMiddle\n')
+})
+
 it('draws, erases, resizes and undoes individual gestures, with independent copies and retryable writes', async () => {
   const save = vi.fn().mockResolvedValue(undefined), ref = createRef<MarkdownEditorHandle>()
   vi.stubGlobal('opencourse', { writing: { saveSketch: save } })

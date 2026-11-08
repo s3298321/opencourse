@@ -166,12 +166,12 @@ export async function workspaceChecks(win: BrowserWindow): Promise<Result[]> {
     `)
   } finally { shell.openExternal = originalOpen }
   await win.webContents.executeJavaScript(`window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)})`)
-  await run('White: dark title bar with light settings content', `
+  await run('Panda: dark title bar with light settings content', `
     await sleep(150);
     const bar = getComputedStyle(document.querySelector('.titlebar'));
     assert(bar.backgroundColor === 'rgb(11, 11, 10)', 'Title bar is ' + bar.backgroundColor);
     assert(bar.getPropertyValue('--fg').trim() === '#dedee3', 'Dark foreground missing');
-    assert(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() === '#ffffff', 'Content is no longer White');
+    assert(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() === '#faf8f5', 'Panda content lost its warm off-white background');
     return 'Dark chrome, light content';
   `)
   writeFileSync(join(tmpdir(), 'opencourse-settings-about-white.png'), (await win.webContents.capturePage()).toPNG())

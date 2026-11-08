@@ -1,6 +1,7 @@
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { followTitleTooltips } from '../src/renderer/components/title-tooltips'
 import Tooltip from '../src/renderer/components/Tooltip'
 import ConnectionIcon from '../src/renderer/components/ConnectionIcon'
 
@@ -80,4 +81,29 @@ describe('connection tooltips', () => {
     expect(document.querySelector('[role=tooltip]')?.textContent).toBe('ChatGPT subscription')
     expect(container.querySelector('#key')!.hasAttribute('aria-describedby')).toBe(false)
   })
+})
+
+it('shows the current title in Panda and restores it when switching themes mid-hover', async () => {
+  vi.useFakeTimers()
+  const button = document.createElement('button')
+  button.title = 'Chat tools: Web search'
+  button.checkVisibility = () => true
+  document.body.append(button)
+  const stop = followTitleTooltips()
+  try {
+    button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }))
+    vi.advanceTimersByTime(500)
+    const tip = document.querySelector('[role=tooltip]')
+    expect(tip?.textContent).toBe('Chat tools: Web search')
+    expect(button.title).toBe('')
+    button.title = 'Chat tools: none enabled'
+    await Promise.resolve()
+    expect(tip?.textContent).toBe('Chat tools: none enabled')
+    expect(button.getAttribute('aria-description')).toBe(tip?.textContent)
+  } finally {
+    stop()
+  }
+  expect(button.title).toBe('Chat tools: none enabled')
+  expect(button.hasAttribute('aria-description')).toBe(false)
+  expect(document.querySelector('[role=tooltip]')).toBeNull()
 })

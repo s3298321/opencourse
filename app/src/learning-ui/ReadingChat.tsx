@@ -363,6 +363,7 @@ function ReadingChatPanel({
               </button>
             ) : (
               <button
+                type="submit"
                 className="learning-chat-send"
                 aria-label="Send"
                 title="Send message"

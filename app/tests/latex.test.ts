@@ -56,6 +56,30 @@ Literal ` + '`\\(x\\)`' + '\n\n```tex\n\\[y\\]\n```'
     expect([...doc.querySelectorAll('code')].map(node => node.textContent?.trim())).toEqual(['\\(x\\)', '\\[y\\]'])
   })
 
+  it('keeps absolute-value bars inside math in table cells', () => {
+    const values = ['0.1', '0.001', '0.000001']
+    const rows = values.map(v => `| Within $${v}$ of $6$ | Choose any $h$ with $0<|h|<${v}$ |`)
+    const doc = dom(render(['| Your requested accuracy | My guarantee |', '|---|---|', ...rows].join('\n')))
+    expect([...doc.querySelectorAll('tbody tr')].map(row => row.children.length)).toEqual([2, 2, 2])
+    expect([...doc.querySelectorAll('td:last-child annotation')].map(el => el.textContent))
+      .toEqual(values.flatMap(v => ['h', `0<|h|<${v}`]))
+  })
+
+  it('protects pipes in math headers and nested tables while preserving Markdown escapes and literal examples', () => {
+    const source = String.raw`> | \(|x|\) | Meaning |
+> | --- | --- |
+> | **$|y|$** | a\|b |
+> | $\|z\|$ | ` + '`$p$`' + ' |\n\n' + '```md\n| $|x|$ | Meaning |\n| --- | --- |\n```'
+    const doc = dom(render(source))
+    expect(doc.querySelector('blockquote th annotation')?.textContent).toBe('|x|')
+    expect([...doc.querySelectorAll('td annotation')].map(el => el.textContent)).toEqual(['|y|', '|z|'])
+    expect(doc.querySelector('td:nth-child(2)')?.textContent).toBe('a|b')
+    expect(doc.querySelector('td code')?.textContent).toBe('$p$')
+    expect(doc.querySelector('pre code')?.textContent).toContain('| $|x|$ | Meaning |')
+    const heading = dom(render('Magnitude $|x|$\n---'))
+    expect(heading.querySelector('h2 annotation')?.textContent).toBe('|x|')
+  })
+
   it('can resume at a new inline opener in partial text and preserves image label notation', () => {
     const doc = dom(render(String.raw`Partial \(unfinished; next \(x^2\).
 
@@ -103,6 +127,15 @@ Literal ` + '`\\(x\\)`' + '\n\n```tex\n\\[y\\]\n```'
     const doc = dom(render('$$unfinished\n\nNext line\n$$1+2$$'))
     expect(doc.querySelector('p')?.textContent).toBe('$$unfinished')
     expect(doc.querySelectorAll('math')).toHaveLength(1)
+  })
+
+  it('keeps a standalone equals sign inside display math and preserves Markdown headings outside it', () => {
+    const tex = String.raw`\underbrace{\frac{(3+h)^2-9}{h}}_{\text{undefined at }h=0}
+=
+\underbrace{6+h}_{\text{defined at }h=0}`
+    const doc = dom(render(['The limit', '===', '', '$$', tex, '$$'].join('\n')))
+    expect([...doc.querySelectorAll('h1')].map(el => el.textContent)).toEqual(['The limit'])
+    expect(doc.querySelector('math[display="block"] annotation')?.textContent).toBe(tex)
   })
 })
 

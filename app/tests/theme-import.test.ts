@@ -215,22 +215,22 @@ describe('applying and removing', () => {
 })
 
 
-describe('built-in White theme', () => {
+describe('built-in Panda theme', () => {
   it('ships for every user while dark stays the initial default', () => {
     expect(getActiveTheme()).toEqual({ id: null })
     expect(activeThemeNative()).toBeNull()
-    expect(listThemes()).toMatchObject([{ id: WHITE_THEME_ID, builtin: true, active: false, appearance: 'light' }])
+    expect(listThemes()).toMatchObject([{ id: WHITE_THEME_ID, name: 'Panda', builtin: true, active: false, appearance: 'light' }])
     createUser('Grace')
     expect(listThemes().find(t => t.id === WHITE_THEME_ID)).toMatchObject({ builtin: true, active: false })
     expect(getActiveTheme()).toEqual({ id: null })
   })
 
-  it('persists White per user, preserves the logo, and returns to dark', () => {
+  it('persists Panda per user, preserves the logo, and returns to dark', () => {
     const ada = listUsers()[0]!.id
     const active = applyTheme(WHITE_THEME_ID)
     expect(active).toMatchObject({ id: WHITE_THEME_ID, appearance: 'light', logo: null, faces: [] })
     expect(readPreferences().theme).toBe(WHITE_THEME_ID)
-    expect(activeThemeNative()).toEqual({ appearance: 'light', vibrancy: true, background: '#f7f7f9' })
+    expect(activeThemeNative()).toEqual({ appearance: 'light', vibrancy: true, background: '#f6f4f0' })
     expect(listThemes()[0].active).toBe(true)
     createUser('Grace')
     expect(getActiveTheme()).toEqual({ id: null })

@@ -612,7 +612,7 @@ export async function runShots(win: BrowserWindow): Promise<void> {
     { target: 'logs', photo: true },
     // Theme Settings is on the settings page, so go back there for it.
     { target: 'logs-to-settings', photo: false },
-    // Built-in White over settings, the library, a lesson and the live editor.
+    // Built-in Panda over settings, the library, a lesson and the live editor.
     ...['white-apply', 'white-library', 'white-lesson', 'white-workbench'].map((target) => ({ target, photo: true })),
     { target: 'white-off', photo: false },
     { target: 'logs-to-settings', photo: false },
@@ -702,21 +702,21 @@ export async function runShots(win: BrowserWindow): Promise<void> {
           await window.opencourse.applyTheme(null);
           await wait('rgb(29, 29, 33)');
           await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)});
-          await wait('rgb(247, 247, 249)');
+          await wait('rgb(246, 244, 240)');
           if (!editor.isConnected || !terminal.isConnected || editor.querySelector('.cm-content').textContent !== text)
-            throw new Error('Switching White changed editor or terminal state');
+            throw new Error('Switching Panda changed editor or terminal state');
         })()`)
-        if (nativeTheme.themeSource !== 'light') throw new Error('White did not set native light appearance')
+        if (nativeTheme.themeSource !== 'light') throw new Error('Panda did not set native light appearance')
         await new Promise<void>((resolve) => { win.webContents.once('did-finish-load', () => resolve()); win.reload() })
         await win.webContents.executeJavaScript(`(async () => {
           for (let n = 0; n < 200 && !document.querySelector('.library'); n++)
             await new Promise(resolve => setTimeout(resolve, 25));
-          if (document.documentElement.dataset.appearance !== 'light' || getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() !== '#ffffff')
-            throw new Error('White did not survive reload');
+          if (document.documentElement.dataset.appearance !== 'light' || getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() !== '#faf8f5')
+            throw new Error('Panda did not survive reload');
           if (document.querySelector('.titlebar .brand img')?.src !== ${JSON.stringify(defaultMark)})
-            throw new Error('White changed the logo');
+            throw new Error('Panda changed the logo');
         })()`)
-        console.log('White verified: native appearance, persistent preference, unchanged logo, live editor and terminal')
+        console.log('Panda verified: native appearance, persistent preference, unchanged logo, live editor and terminal')
       }
     }
     tidy()

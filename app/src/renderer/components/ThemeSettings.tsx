@@ -1,7 +1,7 @@
 import ActionButton from './ActionButton'
 /**
  * Settings → Appearance: the default dark look, built-in options, then imports.
- * Built-in looks cannot be removed. Dark is the stylesheet without overrides.
+ * Built-in looks cannot be removed. Bond uses the stylesheet without overrides.
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { JSX } from 'react'
@@ -145,11 +145,11 @@ export default function ThemeSection(): JSX.Element {
       <h2>Appearance</h2>
       <p className="meta">
         Choose a theme included with {BRAND.displayName}, or import your own.
-        Dark is the default. Imported themes belong to your user on this Mac.
+        Bond is the default dark theme. Imported themes belong to your user on this Mac.
       </p>
       <div className="theme-grid">
         <ThemeCard
-          name={`${BRAND.displayName} Dark`}
+          name="Bond"
           detail="Built-in · Default"
           active={noneActive}
           swatch={DEFAULT_SWATCH}

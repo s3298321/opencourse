@@ -1,3 +1,4 @@
+import { quoteSelectionText } from '@core/quote-selection'
 import { DocumentReviewControls } from '../components/PersonalCards'
 import { useCoachContextProvider, selectedContent } from '../coach/context'
 import { useLearningPreference } from '../learning/useLearningPreference'
@@ -173,7 +174,8 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
     window.addEventListener('keydown', key)
     const selected = (): void => {
       const selection = window.getSelection()
-      if (!selection?.rangeCount || !selection.toString().trim()) { setOffer(null); return }
+      const text = quoteSelectionText(selection)
+      if (!selection?.rangeCount || !text.trim()) { setOffer(null); return }
       const range = selection.getRangeAt(0), element = (node: Node): Element | null => node instanceof Element ? node : node.parentElement
       const start = element(range.startContainer)?.closest('[data-ask]'), end = element(range.endContainer)?.closest('[data-ask]')
       if (!start || start !== end || !host.current?.contains(start)) { setOffer(null); return }
@@ -181,7 +183,7 @@ export default function DocumentReader({ documentId, user, route, navigate, navS
       if (from !== 'document' && from !== 'answer') { setOffer(null); return }
       const bounds = range.getBoundingClientRect()
       if (!bounds.width && !bounds.height) return
-      setOffer({ text: selection.toString().trim().slice(0, MAX_QUOTE_CHARS), page: from === 'document' ? Number(start.getAttribute('data-page')) : undefined, from, range: range.cloneRange(), x: bounds.left + bounds.width / 2, y: Math.max(bounds.top, reader.current?.getBoundingClientRect().top ?? 40) })
+      setOffer({ text: text.trim().slice(0, MAX_QUOTE_CHARS), page: from === 'document' ? Number(start.getAttribute('data-page')) : undefined, from, range: range.cloneRange(), x: bounds.left + bounds.width / 2, y: Math.max(bounds.top, reader.current?.getBoundingClientRect().top ?? 40) })
     }
     const mouseup = (event: MouseEvent): void => { if (!(event.target as Element)?.closest('.ask-about')) selected() }
     const keyup = (event: KeyboardEvent): void => { if (event.shiftKey) selected() }

@@ -88,7 +88,7 @@ code, kbd, pre, samp { font-family: var(--font-mono); }
 .oc-btn:disabled, .oc-btn[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
 .oc-btn svg { width: 1.05em; height: 1.05em; flex: none; }
 .oc-btn.secondary { --btn-bg: var(--chip-bg); --btn-fg: var(--fg); border-color: var(--border); }
-.oc-btn.secondary:hover:not(:disabled) { border-color: var(--line-strong); background: var(--raised); box-shadow: none; }
+.oc-btn.secondary:hover:not(:disabled) { border-color: var(--line-strong); background: var(--card); box-shadow: none; }
 .oc-btn.ghost { --btn-bg: transparent; --btn-fg: var(--fg); font-weight: 500; }
 .oc-btn.ghost:hover:not(:disabled) { background: var(--sheen); box-shadow: none; }
 .oc-btn.danger { --btn-bg: var(--err-bg); --btn-fg: var(--err); border-color: var(--err-border); }

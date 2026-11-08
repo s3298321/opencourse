@@ -60,7 +60,7 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
   color: var(--fg); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
   transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
 }
-.user-chip:hover, .user-chip[aria-expanded='true'] { border-color: var(--line-strong); background: var(--raised); }
+.user-chip:hover, .user-chip[aria-expanded='true'] { border-color: var(--line-strong); background: var(--card); }
 .user-chip-caret { width: 14px; height: 14px; color: var(--muted); transition: transform var(--dur) var(--ease); }
 .user-chip[aria-expanded='true'] .user-chip-caret { transform: rotate(180deg); }
 .avatar {

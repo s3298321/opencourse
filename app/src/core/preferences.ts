@@ -9,6 +9,7 @@ import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
 import { isBuiltinThemeId } from './theme/builtin-ids'
+import { sketchSettings } from './writing-notebooks/sketch'
 import { normalizePomodoroSettings } from './pomodoro'
 import { normalizeCoachPrompts } from './coach/prompt-defaults'
 
@@ -51,6 +52,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   const readingScale = normalizeReadingScale(values['readingScale'])
   const kept: Preferences = {
     ...(values.defaultCoachPrompts && typeof values.defaultCoachPrompts === 'object' ? { defaultCoachPrompts: normalizeCoachPrompts(values.defaultCoachPrompts) } : {}),
+    ...(values.notebookSketch && typeof values.notebookSketch === 'object' ? { notebookSketch: sketchSettings(values.notebookSketch) } : {}),
     ...(values.pomodoro && typeof values.pomodoro === 'object' ? { pomodoro: normalizePomodoroSettings(values.pomodoro) } : {}),
     ...(chatModels ? { chatModels } : {}),
     ...(preferred ? { defaultChatModel: preferred } : {}),

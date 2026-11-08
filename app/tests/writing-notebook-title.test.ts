@@ -1,6 +1,7 @@
 import type { CoachContextRequest } from '../src/core/coach/context'
 import { act, createElement as h, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { EditorView } from '@codemirror/view'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { WritingNotebook, WritingNotebookPage } from '../src/core/writing-notebooks/types'
 import NotebookWindow from '../src/renderer/writing-notebooks/NotebookWindow'
@@ -8,16 +9,20 @@ import NotebookWindow from '../src/renderer/writing-notebooks/NotebookWindow'
 vi.mock('../src/renderer/markdown-context', () => ({ MarkdownProvider: ({ children }: { children: ReactNode }) => children }))
 vi.mock('../src/renderer/components/useAppUpdate', () => ({ useAppUpdate: () => null }))
 vi.mock('../src/renderer/components/ChatPanel', () => ({ default: () => null }))
-vi.mock('../src/renderer/writing-notebooks/MarkdownEditor', () => ({ default: (props: { onChange: (text: string) => void }) => { changeBody = props.onChange; return null } }))
 vi.mock('../src/renderer/sidechat/useChat', () => ({ useConversationPanel: () => ({}) }))
 vi.mock('../src/renderer/sidechat/usePreviewAsk', () => ({ usePreviewAsk: () => ({ clearQuote, selection: null }), PreviewAskOffer: () => null }))
 const { clearQuote } = vi.hoisted(() => ({ clearQuote: () => {} }))
-let changeBody: (text: string) => void, contextRequest: (request: CoachContextRequest) => void
+let contextRequest: (request: CoachContextRequest) => void
 const contextReply = vi.fn()
 let root: Root, container: HTMLDivElement, notebook: WritingNotebook
 let pages: Record<string, WritingNotebookPage>, flushRequest: (request: string) => void
 const rename = vi.fn(), flushed = vi.fn(), deletePage = vi.fn(), remove = vi.fn()
 const title = () => container.querySelector<HTMLInputElement>('[aria-label="Page title"]')!
+const bodyEditor = () => EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!
+const changeBody = (text: string) => {
+  const editor = bodyEditor()
+  editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } })
+}
 const edit = async (value: string) => act(async () => {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(title(), value)
   title().dispatchEvent(new Event('input', { bubbles: true }))
@@ -26,10 +31,13 @@ const key = async (value: string) => act(async () => { title().dispatchEvent(new
 beforeEach(async () => {
   vi.useFakeTimers(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
   Element.prototype.getAnimations = () => []
   rename.mockReset(); flushed.mockReset(); deletePage.mockReset(); remove.mockReset()
   notebook = { id: 'notebook', version: 1, title: 'Fixed notebook', pages: [{ id: 'one', title: 'First page' }, { id: 'two', title: 'Second page' }], selectedPageId: 'one', textScale: 1, chatOpen: false, createdAt: '', updatedAt: '', lastAccessedAt: '' }
   pages = Object.fromEntries(notebook.pages.map(page => [page.id, { ...page, markdown: 'Body', revision: 0, updatedAt: '' }]))
+  pages.two!.markdown = ''
   rename.mockImplementation(async (_id: string, pageId: string, name: string) => {
     notebook.pages.find(page => page.id === pageId)!.title = name
     pages[pageId]!.title = name
@@ -59,6 +67,21 @@ it('autosaves the heading and updates the sidebar without a dialog', async () =>
   expect(title().value).toBe('A new title'); expect(document.activeElement).toBe(title())
   expect(container.querySelector('[role="dialog"]')).toBeNull()
   expect(container.querySelector('.writing-page-heading [role="status"]')!.textContent).toBe('Saved')
+})
+it.each(['one', 'two'])('moves the caret from inside the title to the start of page %s on Enter', async pageId => {
+  if (pageId === 'two') await act(async () => { container.querySelectorAll<HTMLButtonElement>('.writing-page-link')[1]!.click() })
+  const editor = bodyEditor(), markdown = pages[pageId]!.markdown
+  await act(async () => {
+    editor.dispatch({ selection: { anchor: markdown.length } })
+    title().focus()
+  })
+  await edit('New page title')
+  title().setSelectionRange(3, 3)
+  await key('Enter')
+  expect(pages[pageId]!.title).toBe('New page title')
+  expect(document.activeElement).toBe(editor.contentDOM)
+  expect(editor.state.selection.main).toMatchObject({ anchor: 0, head: 0 })
+  expect(editor.state.doc.toString()).toBe(markdown)
 })
 it('restores the starting title on Escape and gives empty titles a fallback on Enter', async () => {
   await act(async () => title().focus()); await edit('Temporary')

@@ -70,6 +70,8 @@ export function derivePalette(theme: Pick<Theme, 'appearance' | 'palette'>): Rec
     shadow: BLACK,
     'hover-ring': withAlpha(fg, 0.12),
     'editor-active-line': appearance === 'dark' ? withAlpha(WHITE, 0.04) : withAlpha(BLACK, 0.04),
+    'sketch-background': toward(0.09),
+    'sketch-brush': fg,
     'terminal-selection': withAlpha(accent, 0.18)
   }
   // Every token, always: a compiled theme is complete, so nothing it leaves out

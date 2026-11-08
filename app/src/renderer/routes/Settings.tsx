@@ -9,6 +9,7 @@ import TitleBar from '../components/TitleBar'
 import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
 import ThemeSection from '../components/ThemeSettings'
+import NotebookSketchSettings from '../components/NotebookSketchSettings'
 import PomodoroSettings from '../components/PomodoroSettings'
 import CoachVoicePicker from '../components/CoachVoicePicker'
 import CoachPromptSettings from '../components/CoachPromptSettings'
@@ -82,7 +83,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
   const content = (category: SettingsSection): JSX.Element => {
     switch (category) {
       case 'profile': return user ? <><NameSection user={user} onSession={onSession} /><DangerSection user={user} onSessionChanged={onSessionChanged} /></> : <p className="meta">Choose a user to edit their profile.</p>
-      case 'appearance': return <><ThemeSection />{user ? <><NotebookButtonSection /><CoachButtonSection /></> : <p className="meta">Choose a user to configure the notebooks button.</p>}</>
+      case 'appearance': return <><ThemeSection />{user ? <><NotebookButtonSection /><NotebookSketchSettings /><CoachButtonSection /></> : <p className="meta">Choose a user to configure the notebooks button.</p>}</>
       case 'pomodoro': return user ? <PomodoroSettings /> : <p className="meta">Choose a user to configure Pomodoro.</p>
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
       case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><PlanDefaultSection /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>

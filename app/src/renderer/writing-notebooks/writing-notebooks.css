@@ -171,3 +171,28 @@
 .coach-conversation-transcript .turn { line-height: 1.55; }
 .coach-conversation-transcript .turn.user { color: var(--muted); }
 .coach-conversation-transcript .turn.partial { opacity: .6; }
+
+.writing-sketch { display: inline-block; width: 100%; vertical-align: top; line-height: 1; }
+.sketch-preview, .sketch-canvas {
+  position: relative; display: block; padding: 0; border: 0; border-radius: 6px; overflow: hidden;
+  max-width: 100%; background: var(--sketch-background); color: var(--sketch-brush); user-select: none;
+}
+.sketch-preview { cursor: pointer; }
+.sketch-preview img, .sketch-drawing { display: block; width: 100%; height: 100%; }
+.sketch-drawing { touch-action: none; cursor: crosshair; }
+.sketch-canvas:focus { outline: none; }
+.sketch-canvas:focus-visible, .sketch-preview:focus-visible { outline: 1px solid var(--muted); outline-offset: -1px; }
+.sketch-tools {
+  position: absolute; left: 5px; top: 5px; display: flex; align-items: center; overflow-x: auto; max-width: calc(100% - 10px);
+  gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg);
+}
+.sketch-tools button, .sketch-tools select, .sketch-resize {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; min-width: 0; min-height: 0;
+  padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; cursor: pointer;
+}
+.sketch-tools > * { flex: none; }
+.sketch-tools button[aria-pressed=true], .sketch-tools button:hover { background: var(--chip-bg); }
+.writing-sketch .sketch-canvas .sketch-tools select { display: block; width: auto; appearance: none; background-image: none; padding: 0 3px; font: 11px system-ui; color-scheme: inherit; }
+.sketch-tools button:disabled { opacity: .35; }
+.sketch-resize { position: absolute; bottom: 0; right: 0; cursor: nwse-resize; touch-action: none; }
+.sketch-error { color: var(--err); font-size: .85em; }

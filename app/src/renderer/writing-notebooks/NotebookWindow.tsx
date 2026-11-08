@@ -57,6 +57,7 @@ function NotebookContent({ id }: { id: string }) {
           setNotebook(notebook => notebook ? { ...notebook, pages: notebook.pages.map(page => page.id === snapshot.id ? { ...page, title: current.current?.id === snapshot.id ? current.current.title.trim() || 'Untitled page' : title } : page) } : notebook)
         }
         if (snapshot.markdown === saved.current) continue
+        await editor.current?.flushSketches(snapshot.markdown)
         const result = await api().save(id, snapshot.id, snapshot.revision, snapshot.markdown)
         if (!result.ok) { conflictRef.current = true; setConflict(result.page); throw new Error('This page changed elsewhere. Choose which version to keep.') }
         if (current.current?.id === snapshot.id) { current.current.revision = result.page.revision; saved.current = snapshot.markdown }
@@ -153,7 +154,7 @@ function NotebookContent({ id }: { id: string }) {
           onBlur={() => { changeTitle(current.current?.title.trim() || 'Untitled page'); void flush().catch(() => {}) }}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
+            if (event.key === 'Enter') { event.preventDefault(); editor.current?.focusAtStart() }
             if (event.key === 'Escape') { event.preventDefault(); changeTitle(titleBeforeEdit.current); event.currentTarget.blur() }
           }}
         /></h1><span className="meta" role="status">{status}</span><Menu label="•••" ariaLabel="Notebook options" heading="Notebook options" panelClassName="writing-options-menu" items={[

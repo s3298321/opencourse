@@ -2,6 +2,7 @@ import type { ChatRecoveryEvent } from '../core/chat-network'
 import type { ChatTools, ChatToolScope } from '../core/chat-tools'
 import type { PlanAction, QuestionProgress, QuestionStep } from '../core/authoring/planning'
 import type { ReviewTarget, FlashcardProposal } from '../core/personal-cards'
+import type { Sketch, SketchSettings, SketchColors } from '../core/writing-notebooks/sketch'
 import type { NotebookAssociation, WritingNotebook, WritingNotebookHit, WritingNotebookPage, WritingNotebookSaveResult, WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
 import type { ReadingSource } from '../core/documents/types'
 import type { CoachPrompts } from '../core/types'
@@ -90,6 +91,12 @@ export type { NavAction }
 
 const api = {
   writing: {
+    readSketch: (id: string, asset: string): Promise<Sketch> => ipcRenderer.invoke('writing:readSketch', id, asset),
+    saveSketch: (id: string, asset: string, model: Sketch, colors: SketchColors): Promise<void> => ipcRenderer.invoke('writing:saveSketch', id, asset, model, colors),
+    sketchSettings: (): Promise<SketchSettings> => ipcRenderer.invoke('writing:sketchSettings'),
+    recordSketchShortcut: (recording: boolean): void => ipcRenderer.send('writing:recordSketchShortcut', recording),
+    setSketchSettings: (value: SketchSettings): Promise<void> => ipcRenderer.invoke('writing:setSketchSettings', value),
+    onSketchSettings: (fn: (value: SketchSettings) => void) => subscribe('writing:sketchSettingsChanged', fn),
     mainReady: (): void => ipcRenderer.send('writing:mainReady'),
     ready: (): void => ipcRenderer.send('writing:ready'),
     list: (): Promise<WritingNotebook[]> => ipcRenderer.invoke('writing:list'),

@@ -187,6 +187,8 @@
         "editor-active-line": {
           "$ref": "#/$defs/color"
         },
+        "sketch-background": { "$ref": "#/$defs/color" },
+        "sketch-brush": { "$ref": "#/$defs/color" },
         "terminal-selection": {
           "$ref": "#/$defs/color"
         }
@@ -296,6 +298,8 @@
         "editor-active-line": {
           "$ref": "#/$defs/color"
         },
+        "sketch-background": { "$ref": "#/$defs/color" },
+        "sketch-brush": { "$ref": "#/$defs/color" },
         "terminal-selection": {
           "$ref": "#/$defs/color"
         }
@@ -405,6 +409,8 @@
         "editor-active-line": {
           "$ref": "#/$defs/color"
         },
+        "sketch-background": { "$ref": "#/$defs/color" },
+        "sketch-brush": { "$ref": "#/$defs/color" },
         "terminal-selection": {
           "$ref": "#/$defs/color"
         }

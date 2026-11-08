@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { INHERITING_PROPERTIES, THEME_PROPERTIES } from '@core/theme/tokens'
 import { STYLES, stylesheetBlocks } from './helpers/theme-css'
 
-const css = readFileSync(STYLES, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const notebookStyles = join(__dirname, '..', 'src', 'renderer', 'writing-notebooks', 'writing-notebooks.css')
+const css = [STYLES, notebookStyles].map(path => readFileSync(path, 'utf8')).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')
 const workbench = readFileSync(join(__dirname, '..', 'src', 'renderer', 'workbench', 'theme.ts'), 'utf8')
 
 describe('theme properties', () => {

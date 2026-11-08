@@ -948,6 +948,7 @@ export interface Preferences {
    * only a literal false hides it.
    */
   floatingNotebookButton?: boolean
+  notebookSketch?: import('./writing-notebooks/sketch').SketchSettings
   floatingCoachButton?: boolean
 }
 

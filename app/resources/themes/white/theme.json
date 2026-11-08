@@ -49,6 +49,8 @@
     "shadow": "#35353c",
     "hover-ring": "rgba(53, 53, 60, 0.12)",
     "editor-active-line": "rgba(53, 53, 60, 0.04)",
+    "sketch-background": "#eeeeee",
+    "sketch-brush": "#242428",
     "terminal-selection": "rgba(53, 53, 60, 0.16)"
   },
   "reducedTransparency": {

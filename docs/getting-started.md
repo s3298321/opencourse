@@ -113,6 +113,18 @@ rename and reorder pages from the sidebar. Highlight text and choose **Ask
 about this** to chat about it. The conversation continues across pages, can
 read other pages and linked material, and never edits your notebook.
 
+Press **⌘E** on a notebook page to insert a sketch. An empty line becomes the
+sketch line. On a line with text, the sketch appears below it. Draw freehand or
+choose a rectangle, circle, or arrow from the toolbar. With the eraser, drag
+a trace across the marks you want to remove and release. Undo restores all
+marks removed by that gesture. Drag the bottom-right
+handle to make room for more drawing. Click away to see the image, click it to
+edit again, or press **Escape** to continue writing below. Each sketch is a
+single Markdown image link to an SVG in the notebook’s assets folder.
+
+Change the shortcut and the default 450 × 300 px canvas size in **Settings ▸
+Appearance ▸ Notebook sketches**.
+
 Personal notebooks belong to the selected local user and do not sync to a
 server. They are separate from **Python notebooks**, which run code in a
 course's Python environment. Hide the floating notebook button in **Settings

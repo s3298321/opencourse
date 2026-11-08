@@ -141,6 +141,7 @@ derives:
 | `overlay` | the dimming behind dialogs |
 | `shadow` | the colour of every shadow (its alpha is ignored) |
 | `hover-ring` | the edge on a hovered button |
+| `sketch-background`, `sketch-brush` | writing notebook sketch canvas and ink, in both the editor and image preview |
 | `editor-active-line`, `terminal-selection` | the editor's current line, the terminal's selection |
 
 ### reducedTransparency and increasedContrast

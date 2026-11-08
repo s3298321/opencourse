@@ -10,8 +10,9 @@ import ScreenPlaceholder from '../components/ScreenPlaceholder'
 import type { CourseProgress, CourseView, ReviewCount, ReviewSummary, UserProfile } from '@core/types'
 import { reviewRecommendation } from '../../learning-ui/review-display'
 import { itemRoute, type Route, type Screen } from '../routes'
-import Html from '../components/Html'
+import CoursePrerequisites from '../components/CoursePrerequisites'
 import CourseDescription from '../components/CourseDescription'
+import OverviewTags from '../components/OverviewTags'
 import CompletionMark from '../components/CompletionMark'
 import CourseServerPanel from '../components/CourseServerPanel'
 import { useScreenActive } from '../screen-activity'
@@ -59,7 +60,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
   const leave = async (): Promise<void> => {
     if (!course || deleteBusy) return
     const origin = course.origin?.serverName ?? 'the server'
-    if (!window.confirm(`Remove “${course.title}” from My learning on ${origin}? Every device and the server’s website stop listing it, and its download is removed from this device. Your progress and chats are kept.`)) return
+    if (!window.confirm(`Remove “${course.title}” from my courses on ${origin}? Every device and the server’s website stop listing it, and its download is removed from this device. Your progress and chats are kept.`)) return
     setDeleteBusy(true)
     setNote(null)
     try {
@@ -121,7 +122,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
               <ActionButton icon="edit" className="secondary" onClick={() => navigate({ name: 'courseEditor', courseId })}>Edit course</ActionButton>
               <ActionButton icon="download" className="secondary" onClick={() => { void window.opencourse.exportCourse(courseId).then(({ saved }) => { if (saved) setNote(`Saved to ${saved}`) }).catch((err) => setNote(err.message)) }}>Export ZIP</ActionButton>
             </>} trailingActions={course.origin?.serverId ?
-              <ActionButton icon="close" className="secondary" disabled={deleteBusy} onClick={() => void leave()}>Remove from My learning</ActionButton> :
+              <ActionButton icon="close" className="secondary" disabled={deleteBusy} onClick={() => void leave()}>Remove from my courses</ActionButton> :
               <ActionButton icon="trash" className="danger course-delete" data-builtin-theme={theme.id === null || theme.id === WHITE_THEME_ID ? '' : undefined} disabled={deleteBusy} onClick={() => void deleteCourse()}>Delete course</ActionButton>
             } />
             <h1>{course.title}</h1>
@@ -133,6 +134,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
               {/* Only courses that actually carry exercises name a language. */}
               {runtimeLabel(course) ? ` · ${runtimeLabel(course)}` : ''}
             </div>
+            <OverviewTags tags={course.tags} />
 
             {course.description && (
               <CourseDescription key={courseId} source={course.description} />
@@ -176,16 +178,7 @@ export default function CourseDetail({ courseId, user, navigate, route }: Props)
               </div>
             </div>
 
-            {course.prerequisites && course.prerequisites.length > 0 && (
-              <div className="panel">
-                <h2>Before you start</h2>
-                <ul>
-                  {course.prerequisites.map((item, i) => (
-                    <Html as="li" key={i} inline source={item} />
-                  ))}
-                </ul>
-              </div>
-            )}
+            <CoursePrerequisites items={course.prerequisites} />
 
             <div className="panel">
               <h2>Contents</h2>

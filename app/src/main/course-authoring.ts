@@ -118,6 +118,19 @@ export function isEditSessionDirty(courseId: string): boolean {
   return session ? isSessionDirty(session) : false
 }
 
+// Discarding a never-saved course deletes all its chats, even when its manifest
+// is pristine. Opening an empty chat tab does not give the user anything to lose.
+export function hasDiscardableCourseChat(courseId: string): boolean {
+  if (!editSession(requireUser(), courseId)?.isNew) return false
+  return !!db().prepare(`SELECT 1 FROM authoring_chats c JOIN authoring_messages m ON m.chat_id=c.id
+    WHERE c.course_id=? AND m.role='user' LIMIT 1`).get(courseId)
+}
+
+export function windowWouldDiscardCourseChat(holder: number): boolean {
+  const owner = currentUserId()
+  return sessionsHeldBy(holder).some(s => s.userId === owner && s.holders.size === 1 && hasDiscardableCourseChat(s.courseId))
+}
+
 export function dirtyHolders(): Set<number> {
   const userId = currentUserId()
   const held = new Set<number>()

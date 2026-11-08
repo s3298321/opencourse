@@ -33,6 +33,10 @@ export interface MarkdownBlock extends BlockNode {
   type: 'markdown'
   content: string
 }
+export interface LatexBlock extends BlockNode {
+  type: 'latex'
+  content: string
+}
 export interface PythonCellBlock extends BlockNode {
   type: 'python-cell'
   content: string
@@ -109,6 +113,7 @@ export interface ExerciseBlock extends BlockNode {
 
 export type Block =
   | MarkdownBlock
+  | LatexBlock
   | PythonCellBlock
   | ImageBlock
   | VideoBlock
@@ -707,6 +712,7 @@ export interface ChatCitation {
 }
 
 export interface ChatMessage {
+  planning?: import('./authoring/planning').PlanningMessage
   flashcardProposals?: FlashcardProposal[]
   writingNotebook?: import('./writing-notebooks/types').WritingNotebookContext
   notebook?: boolean
@@ -806,6 +812,8 @@ export interface TitleGenerationSettings {
 }
 
 export interface ChatSummary {
+  tools?: import('./chat-tools').ChatTools
+  planning?: import('./authoring/planning').PlanningState
   startedInNotebook?: boolean
   historyLabel?: string
   /** The connection this conversation uses: its own choice, or Settings' default. */
@@ -877,6 +885,7 @@ export interface ChatModelSettings {
 
 /** What the side chat's pickers are filled from. */
 export interface ChatPickerModels {
+  planDefault?: boolean
   provider?: AIProvider
   /** Settings' connection for the feature, which a conversation follows unless it is pinned to another. */
   defaultProvider?: AIProvider
@@ -918,6 +927,7 @@ export interface Preferences {
   webSearch?: boolean
   /** Course authoring search is enabled unless explicitly disabled. */
   authoringWebSearch?: boolean
+  authoringPlan?: boolean
   /**
    * The applied theme: an installed UUID or a reserved built-in id.
    * Absent means no theme - the app's own look, which is not itself a theme.

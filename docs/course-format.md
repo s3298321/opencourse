@@ -1,10 +1,10 @@
-# OpenCourse course archive format — v1.8
+# OpenCourse course archive format — v1.9
 
 This document is the source of truth for course authors. A OpenCourse course is a
 self-contained directory holding a `course.json` manifest plus its assets,
 distributed as a `.zip` of that directory. The desktop app ships no courses at
 all: you import an archive, or add a course from an OpenCourse server you have
-connected to, and the app validates it against the v1.8 JSON Schema and renders
+connected to, and the app validates it against the v1.9 JSON Schema and renders
 it directly.
 
 **A course can be about anything.** Nothing in the format is specific to
@@ -17,6 +17,8 @@ Python exercise for computing a Gini coefficient is a first-class course.
 You can get this document, the JSON Schema and a working example course out of
 the app itself — **Library ▸ Get the course format…**. The example imports
 as-is, so it doubles as a starting template.
+
+**Version 1.9 adds LaTeX formula blocks.** The app also typesets inline `$…$` and standalone `$$…$$` equations in lesson Markdown from earlier course versions.
 
 **What changed in v1.8:** Image blocks support optional structured `attribution`, displayed beneath the image and retained in exports. Versions 1.0–1.7 remain importable.
 
@@ -115,12 +117,12 @@ and the import is refused as a whole — a course is never half-installed.
 
 | Field             | Type                | Required | Description |
 | ----------------- | ------------------- | -------- | ----------- |
-| `schema_version`  | string              | yes      | `"1.0"` to `"1.8"`. The app writes `"1.8"`. |
+| `schema_version`  | string              | yes      | `"1.0"` to `"1.9"`. The app writes `"1.9"`. |
 | `slug`            | string (kebab-case) | yes      | Portable kebab-case name. Every import creates a separate library course, even when slugs match. |
 | `title`           | string              | yes      | Course title shown in the catalog. |
 | `version`         | string              | from 1.5 | The course's own version: three numbers, `MAJOR.MINOR.PATCH`, such as `1.2.0`. No pre-release tags. A new course starts at `0.1.0`. |
 | `uid`             | string (UUID v4)    | no       | Server identity of the course. Written by the app when it publishes; ignored on import. |
-| `description`     | string              | no       | Markdown (rendered on the detail page). |
+| `description`     | string              | no       | Markdown with inline and display LaTeX, shown in the editor preview and course overview. |
 | `author`          | string              | no       | Free-form. |
 | `difficulty`      | enum                | no       | `beginner` \| `intermediate` \| `advanced` (default: `beginner`). |
 | `estimated_hours` | integer             | no       | Hint to learners. Keep it consistent with the sum of `estimated_minutes`. |
@@ -128,7 +130,7 @@ and the import is refused as a whole — a course is never half-installed.
 | `notebook`        | object              | no       | Enables a Python notebook; optional `cells` array of `{ content }` starter cells. Requires 1.7. |
 | `runtime`         | Runtime             | no       | Default runtime for every exercise in the course. Omit it entirely for a course with no exercises. |
 | `python_version`  | string              | no       | The v1.1 spelling of `runtime.version`. Still honoured; prefer `runtime`. |
-| `prerequisites`   | string[]            | no       | What a learner should already know or have installed. |
+| `prerequisites`   | string[]            | no       | What a learner should already know or have installed. Each entry supports inline math such as `$x^2$` or a display equation in `$$…$$`. |
 | `tags`            | string[]            | no       | Used for search/filter. |
 | `cover_image`     | string              | no       | Asset path, e.g. `assets/cover.png`. |
 | `modules`         | Module[]            | yes      | At least one module. |
@@ -162,10 +164,10 @@ course sequence, with its own workspace and conversations.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `definition` | markdown string | yes | Brief and goal, 1–20,000 characters. |
+| `definition` | markdown string | yes | Brief and goal, 1–20,000 characters. Write `$…$` within a sentence or `$$…$$` on its own line for a display equation. |
 | `requirements` | Requirement[] | yes | 1–50 `{ id, description }` objects; IDs unique within this array, descriptions at most 2,000 characters. |
 | `deliverables` | Deliverable[] | yes | 1–30 concrete outputs, each assessed against its criteria. |
-| `objectives` | string[] | no | 1–30 learning goals, each at most 1,000 characters. |
+| `objectives` | string[] | no | 1–30 learning goals, each at most 1,000 characters. Use `$…$` for inline math or `$$…$$` on its own line for a display equation. |
 | `estimated_minutes` | integer | no | 1–10,000. |
 | `starter_files` | `{ path, content }`[] | no | Up to 100 UTF-8 files seeded on the first open only. |
 
@@ -174,6 +176,8 @@ a markdown `description` (up to 2,000 characters), and 1–30 `acceptance_criter
 strings (each up to 1,000 characters). Optional `paths` lists 1–30 suggested relative
 filenames. Paths guide review; alternate implementations in the project folder
 can still be discussed. Requirement IDs are also stable kebab-case strings.
+
+Requirement descriptions, deliverable descriptions, and acceptance criteria support inline and display LaTeX. Deliverable titles can also include inline math such as `$T$`. Suggested file paths are displayed literally.
 
 Starter paths follow the exercise `extra_files` path contract: ordinary ASCII path
 segments beginning with a letter or digit, no absolute paths, `..`, dotfiles or
@@ -233,7 +237,7 @@ from every other user's.
 | ------------------- | ---------- | -------- |
 | `slug`              | kebab-case | yes |
 | `title`             | string     | yes |
-| `objectives`        | string[]   | no — rendered as "By the end of this lesson you can…" |
+| `objectives`        | string[]   | no — one bullet per entry under "By the end of this lesson you can…". Use `$f(x)$` in a sentence or `$$…$$` as a whole entry for a display equation. |
 | `estimated_minutes` | integer    | no — shown in the sidebar and summed for the course |
 | `blocks`            | Block[]    | yes |
 
@@ -251,9 +255,9 @@ New blocks start as Markdown with a name such as `markdown` or `markdown-2`;
 change **Block slug** to give the block a meaningful name. Renaming a slug does
 not change its UUID, progress, chat attachments or learner workspace.
 
-The schema requires `slug` on all seven block types, including imported courses.
+The schema requires `slug` on all block types, including imported courses.
 Missing, invalid or duplicate names fail validation. The app does not add slugs to
-existing courses; add them to `course.json` before importing. Exported format 1.8
+existing courses; add them to `course.json` before importing. Exported format 1.9
 ZIPs preserve the authored block slugs.
 
 #### `markdown`
@@ -269,6 +273,18 @@ grammar for: `python`, `c`, `cpp`, `javascript`, `typescript`, `bash`, `json`,
 `yml`, `ll`, …).
 Anything else renders as plain monospace, which is a perfectly good outcome —
 don't reach for a fence language just to get colour.
+
+Use single dollar signs for math within a sentence, for example `The output is $f(x)$ at input $x$.` Keep the delimiters on the same line and next to the expression. Use `\$` for a literal dollar sign, or use a code span to show LaTeX source.
+
+#### `latex`
+
+```json
+{ "type": "latex", "slug": "slope", "content": "\\text{slope} = \\frac{f(b)-f(a)}{b-a}, \\quad b \\ne a" }
+```
+
+In the editor, drag **LaTeX formula** from **Elements** into the lesson and enter the equation in **LaTeX source**. Type a single backslash for a command in the editor. JSON strings require two backslashes, as shown above. The preview and lesson reader typeset the equation offline using KaTeX and MathML.
+
+Formula blocks accept bare math or a formula wrapped in `$$…$$` or `\[…\]`. Existing lesson Markdown also supports standalone `$$…$$` equations on one or several lines. Code examples retain their literal delimiters.
 
 #### `image`
 ```json
@@ -327,6 +343,8 @@ course's host.
 #### `quiz`
 The `id` is an **author-assigned portable string**. In-app editing preserves quiz history through a separate local UUID. Importing a ZIP always creates fresh learner state.
 
+Quiz questions, answer choices, and explanations support inline LaTeX such as `$f(x)$`. For a display equation, put `$$…$$` on its own line in a question or explanation, or use it as the entire choice. The explanation appears after the learner checks an answer.
+
 Single-choice:
 ```json
 {
@@ -366,6 +384,8 @@ Short-answer text (case-insensitive exact match against any accepted string):
 A prompt, a starter file the learner edits, an optional reference solution, and
 something the app can check the answer against. Exercises are the one part of
 the format that needs a runtime, and any course may use them.
+
+Exercise prompts, hints, **How to verify** instructions, and assistant chat replies support inline math with `$…$` or `\(…\)`. Use `$$…$$` or `\[…\]` on a separate line for display math. Code spans and fenced code show the literal source.
 
 There are two ways to say what "correct" means, and an exercise picks exactly
 one:
@@ -432,7 +452,7 @@ require internet access. Runtime updates arrive through app updates.
 | `match` | no | `exact` (byte for byte) \| `trimmed` (default: ignores trailing whitespace and trailing blank lines) \| `lines` (also ignores leading indentation). |
 | `packages` | no | The v1.1 spelling of `runtime.packages`. |
 | `verification_instructions` | yes | What the learner should see when it works. |
-| `hints` | no | Rendered in a collapsed `<details>`. |
+| `hints` | no | A list of Markdown hints shown when the learner opens **Hints**. |
 
 ##### Files, environments, and checks
 
@@ -518,7 +538,7 @@ Relative paths remain intact under `assets/viz/`. Replacement uploads receive ne
 immutable paths. Shared attachments stay until no saved or draft content uses them;
 imported supporting files are retained conservatively.
 
-**Export ZIP…** (on the course page) exports the last saved version in format 1.8, with `course.json` at
+**Export ZIP…** (on the course page) exports the last saved version in format 1.9, with `course.json` at
 the archive root and package assets included. Local IDs/documents, drafts, chats,
 progress, workspaces, environments and recovery data are excluded. Reimporting the
 export starts a new course with fresh identities and learner state.
@@ -531,13 +551,13 @@ before a course is exposed.
 
 ### OpenCourse identifiers
 
-The display name is OpenCourse. The current archive format version is 1.8;
+The display name is OpenCourse. The current archive format version is 1.9;
 course assets use `opencourse://`, and the visualization bridge uses
 `/__opencourse/viz-bridge.js` and `opencourse-viz`/`opencourse-app` messages.
 These are the only supported app identifiers; there are no old-brand aliases.
 Course manifests with ordinary relative asset paths remain importable.
 
-The published schema identity is `urn:opencourse:course:1.8`; this is an
+The published schema identity is `urn:opencourse:course:1.9`; this is an
 identifier, not a hosted schema URL. The bundled example uses the course slug
 `opencourse-example`. Keep unrelated course, module, lesson, quiz and exercise IDs
 stable when editing a course.
@@ -590,7 +610,7 @@ cards. Cards are supported from version 1.4; project modules have no cards.
 ```
 
 `id`, `question` and `answer` are required nonblank strings. The archive ID must
-be unique within the lesson. Questions and answers support sanitized Markdown.
+be unique within the lesson. Questions and answers support sanitized Markdown, including inline math such as `$f(x)$` and display equations written as `$$…$$` on their own line. Both sides use the same notation in the editor preview and during review.
 `image` is optional; its `src` uses the same course-relative attachment rules
 as image blocks, and `alt` is optional. Keep images in this dedicated field so
 the app can validate, upload and export their attachments.

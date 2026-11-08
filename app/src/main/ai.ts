@@ -1,3 +1,4 @@
+import { InterruptedConnection, isNetworkInterruption, withNetworkRetries } from './network-retry'
 import { anyBinding } from './learning-store'
 import { createHash } from 'node:crypto'
 import { normalizeModelContext } from '../core/ai-context'
@@ -105,7 +106,7 @@ export async function getAIModelSettings(scope: AIScope, provider?: AIProvider, 
   }
   const settings = all[scope]
   return { scope, provider: chosen, selectedProvider: settings.provider, profile: profileFor(scope, chosen).profile,
-    ...catalog, connection: connectionStatus(chosen), webSearch: scope === 'authoring' ? readPreferences().authoringWebSearch !== false : scope === 'chat' && readPreferences().webSearch === true }
+    ...catalog, connection: connectionStatus(chosen), webSearch: scope === 'authoring' ? readPreferences().authoringWebSearch !== false : readPreferences().webSearch === true }
 }
 export function setAIProvider(scope: AIScope, provider: AIProvider): void {
   checkScope(scope); checkProvider(provider)
@@ -216,6 +217,7 @@ async function resolveAIRequest<T extends Conversation>(scope: AIScope, original
   if (readPreferences().ai || snapshot.provider === 'chatgpt') {
     const catalog = await modelCatalog(snapshot.provider)
     if (currentUserId() !== owner || epoch !== revision) throw new Error('AI settings changed. Try sending again.')
+    if (!catalog.models.length && catalog.error && isNetworkInterruption(new Error(catalog.error))) throw new InterruptedConnection(catalog.error)
     const offered = permittedModels(catalog.models, snapshot.profile)
     if (!offered.length) throw new Error('No models are allowed. Select a model in Settings.')
     snapshot.profile.defaultModel ??= offered[0].id
@@ -230,11 +232,15 @@ async function resolveAIRequest<T extends Conversation>(scope: AIScope, original
   if (currentUserId() !== owner || epoch !== revision) throw new Error('The AI connection changed. Try sending again.')
   return { chat, key }
 }
-export async function prepareAIRequest<T extends Conversation>(scope: AIScope, original: T, signal?: AbortSignal): Promise<{ chat: T & { provider: AIProvider }; key: string }> {
+export async function prepareAIRequest<T extends Conversation>(scope: AIScope, original: T, signal?: AbortSignal, onRetry?: (attempt: number | null) => void): Promise<{ chat: T & { provider: AIProvider }; key: string }> {
   const source = original as T & { courseId?: string; documentId?: string; startedInNotebook?: boolean }
   if (scope === 'chat' && !source.startedInNotebook && anyBinding(source.documentId ?? source.courseId ?? '')) throw new Error('Use the server reading chat for this content. Configure its AI connection in Server settings.')
   signal?.throwIfAborted()
-  const request = resolveAIRequest(scope, original)
+  const owner = requireUser(), epoch = revision
+  const request = onRetry && signal ? withNetworkRetries(() => {
+    if (currentUserId() !== owner || epoch !== revision) throw new Error('AI settings changed. Try sending again.')
+    return resolveAIRequest(scope, original)
+  }, signal, onRetry) : resolveAIRequest(scope, original)
   if (!signal) return request
   let abort!: () => void
   try {
@@ -252,7 +258,7 @@ export async function aiPickerModels(scope: AIScope, provider?: AIProvider) {
   const settings = await getAIModelSettings(scope, provider)
   if (provider === undefined && settings.selectedProvider !== settings.provider) throw new Error('The AI connection changed. Reopen the model picker.')
   return { models: permittedModels(settings.models, settings.profile), source: settings.source, defaults: profileDefaults(settings.profile),
-    error: settings.error, provider: settings.provider, defaultProvider: settings.selectedProvider, connection: settings.connection, webSearch: settings.webSearch }
+    error: settings.error, provider: settings.provider, defaultProvider: settings.selectedProvider, connection: settings.connection, webSearch: settings.webSearch, ...(scope === 'authoring' ? { planDefault: readPreferences().authoringPlan !== false } : {}) }
 }
 export function smokeCatalogs(): void {
   if (!process.env['OPENCOURSE_SMOKE'] && !process.env['OPENCOURSE_SHOTS']) throw new Error('Smoke catalogs are unavailable.')

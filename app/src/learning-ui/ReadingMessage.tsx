@@ -1,3 +1,4 @@
+import { ToolActivityIcon } from './ToolActivityIcon'
 import { useMemo, type CSSProperties, type ReactNode } from 'react'
 import type { LearningMessage } from '../core/learning/types'
 import { citeAnswer, normalizeCitations, shortTitle } from '../core/sidechat/citations'
@@ -14,7 +15,8 @@ export function Thinking() {
   return <span className="chat-typing" role="status" aria-label="Thinking"><i /><i /><i /></span>
 }
 
-export function ReadingMessage({ message, renderAnswer, onSource }: {
+export function ReadingMessage({ message, renderAnswer, onSource, hideActivity }: {
+  hideActivity?: boolean
   message: LearningMessage
   renderAnswer?: (text: string) => ReactNode
   onSource?: (source: ReadingCitation) => void
@@ -33,8 +35,8 @@ export function ReadingMessage({ message, renderAnswer, onSource }: {
         : message.text ? renderAnswer?.(cited.markdown) ?? cited.markdown : running ? <Thinking /> : null}
     </div>
     {message.role === 'assistant' && <>
-      {message.activity && running && <div className={`project-tool-activity${message.activity.running ? ' running' : ''}`} role="status">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      {!hideActivity && message.activity && running && <div className={`project-tool-activity${message.activity.running ? ' running' : ''}`} role="status">
+        <ToolActivityIcon />
         <span>{message.activity.label}</span>
       </div>}
       {!!local.length && <details className="chat-sources chat-consulted-sources" data-ask="none">

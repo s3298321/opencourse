@@ -203,7 +203,7 @@ export function ConnectionSettings({
                   checked={settings.webSearch}
                   onChange={(e) => setSettings({ ...settings, webSearch: e.target.checked })}
                 />
-                Allow web search
+                Enable web search in new chats
               </label>
               {settings.webSearch && !webSearchFor(settings.model, settings.reasoning) && (
                 <p className="meta">This model cannot search the web at this reasoning level, so it answers without searching.</p>

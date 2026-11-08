@@ -2221,6 +2221,17 @@ async function projectChecks(win: BrowserWindow): Promise<Result[]> {
     document.querySelector('.project-row').click();
     for (let n=0; n<100 && !document.querySelector('.project-directory'); n++) await sleep(50);
     if (!/Build a course outline/.test(document.querySelector('.project-brief h1')?.textContent)) throw new Error('Project brief missing');
+    const definition = document.querySelector('.project-brief .project-definition');
+    if (definition?.querySelector('.course-inline-formula annotation')?.textContent !== 'T' ||
+        !definition.querySelector('math[display="block"] mfrac')) throw new Error('Project definition equations did not render');
+    const objectiveMath = [...document.querySelectorAll('.project-brief .objectives li math annotation')].map(el => el.textContent);
+    if (objectiveMath.join('|') !== 'T|t_1 + t_2 + t_3 = T') throw new Error('Project objective equations did not render');
+    const outline = document.querySelector('.project-deliverables .panel');
+    if (document.querySelector('.project-requirements math annotation')?.textContent !== 't_i' ||
+        outline?.querySelector('h3 math annotation')?.textContent !== 'T' ||
+        outline?.querySelector('.prose p .course-inline-formula annotation')?.textContent !== 'T' ||
+        outline?.querySelector('li math[display="block"] annotation')?.textContent !== 't_1 + t_2 + t_3 = T' ||
+        outline?.querySelector('.project-paths code')?.textContent !== 'OUTLINE.md') throw new Error('Project requirements or deliverables did not render');
     if (!/Design rationale/.test(document.querySelector('.project-deliverables')?.textContent)) throw new Error('Deliverables missing');
     if (!/Project assistant/.test(document.querySelector('.sidechat-head')?.textContent)) throw new Error('Project chat missing');
     return 'Requirements, deliverables and shared chat rendered';
@@ -2692,7 +2703,11 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         throw new Error('Test user picker did not load');
       })()`)
       await win.webContents.executeJavaScript(FIXTURE_API)
-      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { project: projectChecks, coach: floatingCoachChecks, writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { planning: async win => {
+        const restore = mockSmokeModels()
+        try { const { planningSmoke } = await import('./planning-smoke'); return await planningSmoke(win, () => connectSmokeAPI(win)) }
+        finally { restore() }
+      }, project: projectChecks, coach: floatingCoachChecks, writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
       const unknown = only.filter((name) => !suites[name])
       if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
       const results: Result[] = []

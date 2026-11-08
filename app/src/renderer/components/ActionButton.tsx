@@ -31,6 +31,7 @@ const icons = {
   book: <><path d="M4 19V5a2 2 0 0 1 2-2h14v18H6a2 2 0 0 1 0-4h14M8 7h8M8 11h6" /></>,
   review: <><rect x="7" y="7" width="14" height="14" rx="2" /><path d="M17 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2m4-3 2 2 4-4" /></>,
   left: <path d="M20 12H4m6-6-6 6 6 6" />,
+  chevronRight: <path d="m9 5 7 7-7 7" />,
   right: <path d="M4 12h16m-6-6 6 6-6 6" />,
   terminal: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 8 4 4-4 4m6 0h4" /></>,
   selectAll: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="m7 12 3 3 7-7" /></>,

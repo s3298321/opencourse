@@ -21,10 +21,11 @@ vi.mock('../src/main/pty', () => ({ disposePtysInDirectory: () => {} }))
 vi.mock('../src/main/chattitles', () => ({ cancelChatTitles: () => {}, generateChatTitle: mocked.title }))
 vi.mock('../src/main/image-import', () => ({ downloadImage: mocked.download, validateImage: mocked.image }))
 vi.mock('../src/main/openai', () => ({ streamChat: mocked.stream }))
+const { writePreferences } = await import('../src/main/preferences')
 const { createUser, switchUser } = await import('../src/main/users')
 const { closeDb, db, SCHEMA_VERSION } = await import('../src/main/db')
 const { createCourse, getAuthoringCourse, saveDraft, saveCourse, discardCourseDraft, exportCourseZipPath, uploadCourseAttachmentPath } = await import('../src/main/course-authoring')
-const { beginAuthoringTurn, authoringRunState } = await import('../src/main/authoring-state')
+const { authoringEvents, beginAuthoringTurn, authoringRunState } = await import('../src/main/authoring-state')
 const { runAuthoringTool } = await import('../src/main/authoring-tools')
 const { cancelAllAuthoringChats, cancelAuthoringChat, createAuthoringChat, getAuthoringChat, listAuthoringChats, sendAuthoringMessage } = await import('../src/main/authoring-chat')
 const { packageDirectory } = await import('../src/main/course-store')
@@ -36,6 +37,8 @@ const { appendAuthoringMessage, updateAuthoringChat } = await import('../src/mai
 let sender: EventEmitter & { id: number; isDestroyed: () => boolean; send: ReturnType<typeof vi.fn> }
 beforeEach(() => {
   cancelAllAuthoringChats(); closeDb(); dataDir = join(root, `data-${++serial}`); createUser('Author')
+  // These legacy editing tests exercise direct authoring; planner coverage opts in below.
+  writePreferences({ authoringPlan: false })
   sender = Object.assign(new EventEmitter(), { id: 42, isDestroyed: () => false, send: vi.fn() })
   mocked.download.mockReset().mockResolvedValue(Buffer.from('image bytes')); mocked.image.mockReset().mockReturnValue('png')
   mocked.stream.mockReset(); mocked.title.mockReset().mockResolvedValue(undefined)
@@ -84,7 +87,7 @@ describe('authoring draft tools and permanent identities', () => {
     expect(await saveCourse(courseId, 0, draft.draftVersion)).toMatchObject({ status: 'ok' })
     closeDb()
     const reopened = getAuthoringCourse(courseId).document.manifest!
-    expect(portableManifest(reopened)).toEqual({ ...course, schema_version: '1.8', version: '0.1.0' })
+    expect(portableManifest(reopened)).toEqual({ ...course, schema_version: '1.9', version: '0.1.0' })
     expect(reopened.modules[0].lessons![0].blocks.map(block => block.type)).toEqual(['markdown', 'quiz', 'exercise', 'image', 'video', 'visualization'])
     expect(courseNodes(reopened).every(node => UUID.test(node.id))).toBe(true)
   })
@@ -110,7 +113,7 @@ describe('authoring draft tools and permanent identities', () => {
     expect(reimported.status).toBe('ok')
     if (reimported.status === 'ok') {
       const reopened = getAuthoringCourse(reimported.courseId)
-      expect(reopened.document.manifest?.schema_version).toBe('1.8')
+      expect(reopened.document.manifest?.schema_version).toBe('1.9')
       expect(reopened.document.manifest?.modules[0].lessons![0].blocks.filter(b => b.type === 'image')).toEqual([expect.objectContaining({ attribution }), expect.objectContaining({ attribution })])
       expect(reopened.document.attachments[0]).toMatchObject({ attribution })
       expect(readFileSync(join(packageDirectory(reimported.courseId), imported.result.entry), 'utf8')).toBe('image bytes')
@@ -147,7 +150,7 @@ describe('authoring draft tools and permanent identities', () => {
     expect(getAuthoringChat(chat.id).messages[0].authoring?.target).toEqual({ kind: 'lesson', ref: saved.nodeRefMap![ref] })
     const after = getAuthoringCourse(courseId)
     expect(courseNodes(after.document.manifest).every(n => UUID.test(n.id))).toBe(true)
-    expect(portableManifest(after.document.manifest!)).toEqual({ ...manifest(), schema_version: '1.8', version: '0.1.0' })
+    expect(portableManifest(after.document.manifest!)).toEqual({ ...manifest(), schema_version: '1.9', version: '0.1.0' })
     await tool(courseId, 'set_course', { course: { ...authoringManifest(after.draft.manifest), title: 'Renamed' } })
     await saveCourse(courseId, 1, getAuthoringCourse(courseId).draft.draftVersion)
     expect(courseNodes(getAuthoringCourse(courseId).document.manifest).map(n => n.id)).toEqual(courseNodes(after.document.manifest).map(n => n.id))
@@ -265,7 +268,14 @@ describe('authoring conversation context and lifecycle', () => {
     const { courseId } = fixture(), chat = createAuthoringChat(courseId)
     mocked.stream.mockImplementationOnce(async () => ({ text: '', aborted: false, output: [{ type: 'function_call', call_id: 'create', name: 'set_course', arguments: JSON.stringify({ course: manifest() }) }] }))
       .mockImplementationOnce(async (options: ChatStreamOptions) => { options.onDelta('Created the draft'); throw new Error('Provider request failed') })
-    await sendAuthoringMessage(sender as never, chat.id, 'Create a course', { kind: 'overview' }, 0, 0); await settle()
+    const changes = vi.fn()
+    authoringEvents.on('run', changes)
+    try {
+      await sendAuthoringMessage(sender as never, chat.id, 'Create a course', { kind: 'overview' }, 0, 0); await settle()
+    } finally { authoringEvents.off('run', changes) }
+    expect(changes.mock.calls.map(([, state]) => state)).toEqual([
+      { chatId: chat.id, editing: false }, { chatId: chat.id, editing: true }, { chatId: null, editing: false }
+    ])
     const draft = getAuthoringCourse(courseId).draft
     expect(portableManifest(draft.manifest)).toEqual(manifest())
     expect(authoringRunState(courseId).chatId).toBeNull()
@@ -297,6 +307,7 @@ describe('authoring conversation context and lifecycle', () => {
       .mockImplementationOnce(async (options: ChatStreamOptions) => { options.onDelta('Partial response'); await new Promise<void>(r => { resume = r }); return { text: 'Partial response', aborted: false, output: [{ type: 'function_call', call_id: 'late', name: 'update_element', arguments: '{"fields":{"title":"Late edit"}}' }] } })
     await sendAuthoringMessage(sender as never, chat.id, 'Improve this', { kind: 'overview' }, 0, snapshot.draft.draftVersion)
     await vi.waitFor(() => expect(getAuthoringCourse(courseId).draft.manifest.title).toBe('AI revised'))
+    expect(authoringRunState(courseId)).toEqual({ chatId: chat.id, editing: true })
     expect(await sendAuthoringMessage(sender as never, another.id, 'Also edit', { kind: 'overview' }, 0, snapshot.draft.draftVersion)).toEqual({ status: 'busy' })
     expect(() => saveDraft(courseId, snapshot.draft.manifest, 0, snapshot.draft.draftVersion)).toThrow('assistant')
     await expect(saveCourse(courseId, 0, snapshot.draft.draftVersion)).rejects.toThrow('assistant')
@@ -576,11 +587,137 @@ describe('authoring web research', () => {
     mocked.stream.mockImplementation(async (options: ChatStreamOptions) => { options.onDelta('Done'); return { text: 'Done', aborted: false, output: [] } })
     await send(chat.id)
     const before = db().prepare("SELECT contract FROM text_chat_state WHERE mode='authoring'").get()
-    setAuthoringWebSearch(false); sender.send.mockClear()
+    setAuthoringWebSearch(false)
+    expect(getAuthoringChat(chat.id).chat.tools?.webSearch).toBe(true)
+    const { configureAuthoringTools } = await import('../src/main/authoring-chat')
+    configureAuthoringTools(chat.id, { webSearch: false, plan: false }); sender.send.mockClear()
     await send(chat.id)
     const options = mocked.stream.mock.calls.at(-1)![0] as ChatStreamOptions
     expect(options.webSearch).toBe(false)
     expect(JSON.stringify(options.input)).toContain('Web search is unavailable for this turn')
     expect(db().prepare("SELECT contract FROM text_chat_state WHERE mode='authoring'").get()).not.toEqual(before)
   })
+})
+
+describe('saved planning documents', () => {
+  it('recovers the printed copy, invalidates stale approvals and cleans the working files on deletion', async () => {
+    const { planDirectory, planningState, readPlan, runPlanTool } = await import('../src/main/authoring-plan')
+    const { configureAuthoringTools, rejectAuthoringPlan, deleteAuthoringChat } = await import('../src/main/authoring-chat')
+    writePreferences({ authoringPlan: true })
+    const { courseId } = fixture(), c = createAuthoringChat(courseId)
+    const args = (name: string, input: unknown) => JSON.parse(runPlanTool(c.id, name, input, {courseId,target:{kind:'overview'},courseRevision:0,draftVersion:0,sourceHash:'draft'}, () => {}))
+    expect(args('create_plan',{text:'One\nTwo\nTwo'})).toMatchObject({revision:1})
+    expect(args('patch_plan',{revision:1,edits:[{oldText:'One',newText:'Three'},{oldText:'Two',newText:'Ambiguous'}]})).toMatchObject({ok:false})
+    expect(readPlan(c.id)).toBe('One\nTwo\nTwo')
+    expect(args('patch_plan',{revision:0,edits:[]})).toMatchObject({ok:false})
+    const present = async () => {
+      sender.send.mockClear()
+      mocked.stream.mockResolvedValueOnce({ text:'', aborted:false, output:[{type:'function_call', name:'present_plan',call_id:crypto.randomUUID(),arguments:JSON.stringify({revision:planningState(c.id).revision})}] })
+      await sendAuthoringMessage(sender as never,c.id,'Print the plan',{kind:'overview'},0,getAuthoringCourse(courseId).draft.draftVersion); await settle()
+      return planningState(c.id).published!
+    }
+    const first = await present()
+    const dir = planDirectory(c.id)
+    rmSync(join(dir,`${first.revision}-${first.hash}.md`))
+    expect(await sendAuthoringMessage(sender as never,c.id,'Accept',{kind:'overview'},0,0,undefined,{kind:'accept',decisionId:first.decisionId})).toMatchObject({status:'failed'})
+    expect(planningState(c.id).status).toBe('discussing')
+    expect(readPlan(c.id)).toBe(first.text)
+    const second = await present()
+    const state = getAuthoringCourse(courseId)
+    saveDraft(courseId,{...state.draft.manifest,title:'Another edit'},0,state.draft.draftVersion)
+    expect(await sendAuthoringMessage(sender as never,c.id,'Accept',{kind:'overview'},0,0,undefined,{kind:'accept',decisionId:second.decisionId})).toMatchObject({status:'failed'})
+    const third = await present(), requests = mocked.stream.mock.calls.length
+    rejectAuthoringPlan(c.id,third.decisionId)
+    expect(mocked.stream).toHaveBeenCalledTimes(requests)
+    expect(getAuthoringChat(c.id).chat).toMatchObject({tools:{plan:false},planning:{status:'rejected'}})
+    configureAuthoringTools(c.id,{webSearch:true,plan:true})
+    expect(planningState(c.id).status).toBe('discussing')
+    deleteAuthoringChat(c.id)
+    expect(existsSync(dir)).toBe(false)
+  })
+  it.each(['editor exit','window close','startup cleanup'])('discards a never-saved course, chats and plan files on %s', async path => {
+    const { openEditSession, releaseEditSessions, forgetEditSessions } = await import('../src/main/course-authoring')
+    const { courseDirectory, ensureCourseStorage } = await import('../src/main/course-store')
+    const { planDirectory } = await import('../src/main/authoring-plan')
+    writePreferences({ authoringPlan: true })
+    const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+    openEditSession(courseId, 42)
+    mocked.stream.mockResolvedValueOnce({ text: '', aborted: false, output: [
+      { type: 'function_call', name: 'create_plan', call_id: 'draft', arguments: JSON.stringify({text:'# Pottery'}) },
+      { type: 'function_call', name: 'present_plan', call_id: 'print', arguments: '{"revision":1}' }
+    ] })
+    const changes = vi.fn()
+    authoringEvents.on('run', changes)
+    try {
+      await sendAuthoringMessage(sender as never,chat.id,'Teach me ceramics',{kind:'overview'},0,0); await settle()
+    } finally { authoringEvents.off('run', changes) }
+    expect(changes.mock.calls.map(([, state]) => state.editing)).toEqual([false, false])
+    expect(getAuthoringChat(chat.id).chat.planning?.status).toBe('ready')
+    const files = planDirectory(chat.id)
+    expect(existsSync(files)).toBe(true)
+
+    if (path === 'editor exit') expect(discardCourseDraft(courseId,{force:true})).toEqual({removed:true})
+    if (path === 'window close') releaseEditSessions(42)
+    if (path === 'startup cleanup') { forgetEditSessions(); closeDb(); ensureCourseStorage() }
+
+    expect(existsSync(files)).toBe(false)
+    expect(existsSync(courseDirectory(courseId))).toBe(false)
+    expect(db().prepare('SELECT id FROM library_courses WHERE id=?').get(courseId)).toBeUndefined()
+    expect(db().prepare('SELECT id FROM authoring_chats WHERE course_id=?').get(courseId)).toBeUndefined()
+    expect(db().prepare('SELECT seq FROM authoring_messages WHERE chat_id=?').get(chat.id)).toBeUndefined()
+    expect(db().prepare('SELECT chat_id FROM authoring_plans WHERE chat_id=?').get(chat.id)).toBeUndefined()
+  })
+  it('keeps the planning interview on a saved course after discarding draft edits', async () => {
+    const { forgetEditSessions, openEditSession } = await import('../src/main/course-authoring')
+    writePreferences({ authoringPlan:true })
+    const { courseId } = installCourseFixture(manifest()), c = createAuthoringChat(courseId)
+    const { document, draft } = getAuthoringCourse(courseId)
+    openEditSession(courseId, 42)
+    const ask = (id: string) => mocked.stream.mockResolvedValueOnce({text:'',aborted:false,output:[{type:'function_call',call_id:id,name:'ask_questions',arguments:JSON.stringify({questions:[{id,kind:'text',prompt:'What would help you most?'}]})}]})
+    ask('first')
+    await sendAuthoringMessage(sender as never,c.id,'Teach me ceramics',{kind:'overview'},document.revision,draft.draftVersion); await settle()
+    const batch = getAuthoringChat(c.id).chat.planning!.questions!
+    saveDraft(courseId, {...draft.manifest,title:'Unsaved title'}, document.revision,draft.draftVersion)
+    expect(discardCourseDraft(courseId,{force:true})).toEqual({removed:false})
+    forgetEditSessions(); closeDb()
+    expect(getAuthoringCourse(courseId).draft.manifest.title).toBe(draft.manifest.title)
+    expect(openEditSession(courseId,42).draft.dirty).toBe(false)
+    expect(getAuthoringChat(c.id).chat.planning?.questions).toEqual(batch)
+    sender.send.mockClear(); ask('second')
+    await sendAuthoringMessage(sender as never,c.id,'', {kind:'overview'},document.revision,draft.draftVersion,undefined,{kind:'answer',response:{batchId:batch.id,skip:true,answers:[]}}); await settle()
+    expect(getAuthoringChat(c.id).messages.find(m=>m.planning?.answers?.skip)?.text).toContain('assumptions')
+    sender.send.mockClear(); mocked.stream.mockRejectedValueOnce(new Error('Interrupted interview'))
+    await sendAuthoringMessage(sender as never,c.id,'Focus on hand building',{kind:'overview'},document.revision,draft.draftVersion); await settle()
+    expect(getAuthoringChat(c.id).chat.planning).toMatchObject({status:'discussing'})
+    expect(getAuthoringChat(c.id).chat.planning?.questions).toBeUndefined()
+  })
+})
+
+it('resumes a question batch between steps, preserves individual skips and rejects stale answers', async () => {
+  const { advanceAuthoringQuestion } = await import('../src/main/authoring-chat')
+  const { answerText, planningState } = await import('../src/main/authoring-plan')
+  writePreferences({ authoringPlan: true })
+  const { courseId } = fixture(), chat = createAuthoringChat(courseId)
+  const questions = ['goal','experience','time'].map(id => ({id, kind: 'text', prompt: id}))
+  mocked.stream.mockResolvedValueOnce({text:'',aborted:false,output:[{type:'function_call',name:'ask_questions',call_id:'interview',arguments:JSON.stringify({questions})}]})
+  await sendAuthoringMessage(sender as never, chat.id, 'Teach me drawing', {kind:'overview'}, 0, 0); await settle()
+  const batchId = planningState(chat.id).questions!.id
+  const goal = {id:'goal',text:'Portraits'}
+  const skipped = {id:'experience',skipped:true as const}
+  advanceAuthoringQuestion(chat.id,{batchId,revision:0,answer:goal})
+  closeDb()
+  expect(getAuthoringChat(chat.id).chat.planning?.questions?.progress).toEqual({revision:1,answers:[goal]})
+  expect(() => advanceAuthoringQuestion(chat.id,{batchId,revision:0,answer:skipped})).toThrow('another window')
+  const progress = advanceAuthoringQuestion(chat.id,{batchId,revision:1,answer:skipped})
+  expect(mocked.stream).toHaveBeenCalledTimes(1)
+  const final = {batchId,answers:[...progress.answers,{id:'time',text:'One hour'}]}
+  expect(answerText(planningState(chat.id),final,2)).toContain('experience\nSkipped.')
+  const invalid = {batchId,answers:[goal,{...skipped,text:'Should not be included'},{id:'time',text:'One hour'}]}
+  expect(() => answerText(planningState(chat.id),invalid,2)).toThrow()
+  sender.send.mockClear()
+  mocked.stream.mockResolvedValueOnce({text:'Updated.',aborted:false,output:[]})
+  await sendAuthoringMessage(sender as never, chat.id, 'Also include lighting', {kind:'overview'}, 0, 0); await settle()
+  const transcript = getAuthoringChat(chat.id).messages
+  expect(transcript.find(m => m.planning?.answers)?.planning?.answers).toEqual({batchId,answers:[goal,skipped]})
+  expect(JSON.stringify(mocked.stream.mock.calls.at(-1)?.[0].input)).toContain('Portraits')
 })

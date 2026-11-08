@@ -3,7 +3,9 @@ import { DEFAULT_COURSE_VERSION } from './catalog/semver'
 import type { CourseOrigin } from './catalog/origin'
 
 /** The format version the app writes. Every save and export upgrades to it. */
-export const CURRENT_SCHEMA_VERSION = '1.8'
+export const CURRENT_SCHEMA_VERSION = '1.9'
+
+export const DISCARD_COURSE_CHAT_DETAIL = 'This course has never been saved. Leaving will delete its chat history and any course plan.'
 
 export interface Attachment {
   id: string
@@ -35,6 +37,7 @@ export interface CourseDraft {
   /** Something differs from the saved course: an edit, or an upload not yet saved. */
   dirty?: boolean
 }
+export interface AuthoringRunState { chatId: string | null; editing: boolean }
 export interface AuthoringCourse { document: CourseDocument; draft: CourseDraft }
 export interface CourseNode { id: string; parentId: string | null; kind: string; label: string }
 export interface SavePreview { errors: string[]; deleted: CourseNode[]; messages: number; workspaces: number }

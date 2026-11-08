@@ -6,6 +6,7 @@ import type { PublishedDocument } from '@core/learning/types'
 import type { UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import CourseDescription from '../components/CourseDescription'
+import OverviewTags from '../components/OverviewTags'
 import { documentSize, readers, useDocumentCover } from '../learning/DocumentCatalog'
 import type { Route, Screen } from '../routes'
 
@@ -63,7 +64,7 @@ export default function CatalogDocument({ serverId, documentId, user, navigate, 
             <span className="meta">{readers(document.downloads)} · published by {document.publisher}{document.ownedByYou ? ' (you)' : ''}{document.updatedAt ? ` · updated ${document.updatedAt.slice(0, 10)}` : ''}</span>
             {!document.listed && <span className="update-badge muted">Unpublished</span>}
           </div>
-          {document.tags.length > 0 && <div className="course-card-tags">{document.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>}
+          <OverviewTags tags={document.tags} />
 
           <div className="actions catalog-detail-actions">
             {local

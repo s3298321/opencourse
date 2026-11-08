@@ -4,7 +4,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ServerReadingChat, serverMessage } from '../src/renderer/learning/ServerReadingChat'
 import type { LearningChatView, LearningMessage } from '../src/core/learning/types'
 
-vi.mock('../src/renderer/components/Html', () => ({ default: ({ source }: { source: string }) => createElement('div', null, source) }))
+vi.mock('../src/renderer/markdown-context', async () => {
+  const { createRenderer } = await import('@core/markdown')
+  const renderer = await createRenderer()
+  return { useMarkdown: () => renderer }
+})
 let root: Root | undefined
 afterEach(async () => {
   if (root) await act(async () => root!.unmount())
@@ -28,7 +32,7 @@ async function fixture(configured = true) {
     if (path.endsWith('/messages') && method === 'POST') {
       view.messages = [
         { id: 'q', chatId: view.chat.id, role: 'user', text: body.text, status: 'complete', at: view.chat.createdAt, citations: [] },
-        { id: 'a', chatId: view.chat.id, role: 'assistant', text: '**Server answer**', status: 'running', at: view.chat.createdAt, citations: [] }
+        { id: 'a', chatId: view.chat.id, role: 'assistant', text: String.raw`**Server answer**: \(f(x)\)`, status: 'running', at: view.chat.createdAt, citations: [] }
       ]
       view.chat.messages = 2
       view.chat.running = true
@@ -51,7 +55,7 @@ async function fixture(configured = true) {
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
   }
-  return { el, input, type, request, onClose, onAddKey, onQuoteUsed }
+  return { el, view, input, type, request, onClose, onAddKey, onQuoteUsed }
 }
 
 it('uses the local chat UI while sending and stopping exclusively through the server', async () => {
@@ -68,11 +72,28 @@ it('uses the local chat UI while sending and stopping exclusively through the se
     text: 'Explain this', quote: 'Selected passage', requestId: expect.any(String)
   })
   expect(f.onQuoteUsed).toHaveBeenCalledOnce()
+  expect(f.el.querySelector('.partial math annotation')?.textContent).toBe('f(x)')
   expect(f.el.querySelector('.partial')?.textContent).toContain('Server answer')
   await act(async () => f.el.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!.click())
   expect(f.request).toHaveBeenCalledWith('/learning/chats/server-chat/cancel', 'POST', {})
   await act(async () => f.el.querySelector<HTMLButtonElement>('.sidechat-close')!.click())
   expect(f.onClose).toHaveBeenCalledOnce()
+})
+
+it('shows and clears the shared retry warning for a running server reply on desktop', async () => {
+  const f = await fixture()
+  await f.type('Explain this')
+  await act(async () => f.el.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click())
+  const message = f.view.messages[1]
+  message.retryAttempt = 3
+  const warning = () => f.el.querySelector('.chat-network-warning')?.textContent
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 900)) })
+  expect(warning()).toBe('Connection interrupted. Reconnecting (retry 3 of 5)…')
+  expect(f.el.querySelector('.partial')?.textContent).toContain('Server answer')
+  delete message.retryAttempt
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 900)) })
+  expect(warning()).toBeUndefined()
+  expect(f.request.mock.calls.filter(([path]) => path.endsWith('/messages'))).toHaveLength(1)
 })
 
 it('blocks sending without the server connection and opens server settings from the shared controls', async () => {

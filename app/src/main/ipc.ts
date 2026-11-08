@@ -1,3 +1,13 @@
+import { ServerError } from './serverclient'
+import { isNetworkInterruption } from '../core/network-retry'
+import type { ChatTools, ChatToolScope } from '../core/chat-tools'
+import type { PlanAction, QuestionStep } from '../core/authoring/planning'
+import { configureChatTools } from './chat'
+import { configureProjectTools } from './projectchat'
+import { configureDocumentTools } from './document-chat'
+import { configureNotebookTools } from './writing-notebook-chat'
+import { advanceAuthoringQuestion, configureAuthoringTools, rejectAuthoringPlan } from './authoring-chat'
+import { readPreferences as toolPreferences, writePreferences as writeToolPreferences } from './preferences'
 import type { ReviewTarget } from '../core/personal-cards'
 import { personalCardEvents, listPersonalCards, deletePersonalCard, listFlashcardProposals, decideFlashcardProposal } from './personal-cards'
 import { registerCoachContextIpc } from './coach-context'
@@ -24,7 +34,7 @@ import { assertCourseAvailable } from './course-busy'
 import { findLesson } from '../core/manifest'
 import { makeAssetResolver } from './assets'
 import { packageDirectory, readDocument } from './course-store'
-import { createCourse, discardCourseDraft, dirtyHolders, exportCourseZip, forgetEditSessions, getAuthoringCourse, isEditSessionDirty, openEditSession, previewCourseSave, releaseEditSessions, saveCourse, saveDraft, uploadCourseAttachment, isCourseCommitting } from './course-authoring'
+import { createCourse, discardCourseDraft, dirtyHolders, exportCourseZip, forgetEditSessions, getAuthoringCourse, hasDiscardableCourseChat, windowWouldDiscardCourseChat, isEditSessionDirty, openEditSession, previewCourseSave, releaseEditSessions, saveCourse, saveDraft, uploadCourseAttachment, isCourseCommitting } from './course-authoring'
 import { setEditorActive } from './menu'
 import { catalogCover, catalogOverview, catalogTags, searchCatalog, type CatalogQuery } from './catalog'
 import { addFromServer, applyCourseUpdate, cancelCourseUpdate, courseUpdates, forgetStagedUpdates, previewCourseUpdate } from './server-courses'
@@ -287,6 +297,14 @@ export function registerIpc(): void {
   ipcMain.handle('learning:status', () => syncStatuses())
   ipcMain.handle('learning:sync', async (_e, id?: string) => { if (id) await syncServer(id,true); else await syncAll(true); return syncStatuses() })
   ipcMain.handle('learning:request', (_e, id: string, path: string, method: 'GET'|'POST'|'PUT'|'DELETE', body?: unknown) => learningRequest(id,path,method,body))
+  ipcMain.handle('learning:chatRequest', async (_e, id: string, path: string, method: 'GET'|'POST'|'PUT'|'DELETE', body?: unknown) => {
+    try { return { value: await learningRequest(id, path, method, body) } }
+    catch (error) {
+      if (isNetworkInterruption(error) || error instanceof ServerError && [0, 502, 503, 504].includes(error.status))
+        return { connectionError: (error as Error).message }
+      throw error
+    }
+  })
   ipcMain.handle('learning:binding', (_e, localId: string) => { const b = anyBinding(localId); if (!b) return null; return { draftKey:`${requireUser()}:${b.local_id}`, connectionId:b.connection_id, source:{kind:b.kind,id:b.remote_id,version:b.version}, connected:Boolean(bindingFor(localId)) } })
   ipcMain.handle('learning:enroll', (_e, id: string, kind: 'course'|'document', contentId: string, version?: string) => enrollFromDesktop(id,kind,contentId,version))
   ipcMain.handle('documents:publication', (_e, id: string) => publication(id))
@@ -314,6 +332,7 @@ export function registerIpc(): void {
   updateEvents.on('changed', () => broadcast('appUpdate:changed', appUpdateInfo()))
   authoringEvents.on('draft', (...args) => { broadcast('authoring:draftChanged', ...args); syncDocumentEdited() })
   coachActivity.on('changed', () => broadcast('coach:changed'))
+  authoringEvents.on('chat', id => broadcast('chat:toolsChanged', id))
   authoringEvents.on('run', (...args) => broadcast('authoring:runState', ...args))
   subscriptionEvents.on('changed', notifyAIConnectionChanged)
   subscriptionEvents.on('stop', () => { cancelAllChats('chatgpt'); cancelAllProjectChats('chatgpt'); cancelAllAuthoringChats('chatgpt'); cancelAllDocumentChats('chatgpt'); cancelAllWritingNotebookChats('chatgpt') })
@@ -445,6 +464,20 @@ export function registerIpc(): void {
 
   ipcMain.handle('authoring:runState', (_e, courseId: string) => { readDocument(courseId); return authoringRunState(courseId) })
   ipcMain.handle('authoring:stop', (_e, courseId: string) => { readDocument(courseId); cancelCourseAuthoring(courseId) })
+  ipcMain.handle('chat:setTools', (_e, scope: ChatToolScope, id: string, options: ChatTools) => {
+    const setter = { chat: configureChatTools, document: configureDocumentTools, project: configureProjectTools, 'writing-notebook': configureNotebookTools, authoring: configureAuthoringTools }
+    if (!Object.hasOwn(setter, scope)) throw new Error('Invalid chat scope.')
+    const result = setter[scope](id, options)
+    if (scope !== 'authoring') broadcast('chat:toolsChanged', id)
+    return result
+  })
+  ipcMain.handle('authoringChat:advanceQuestion', (_e, id: string, step: QuestionStep) => advanceAuthoringQuestion(id, step))
+  ipcMain.handle('authoringChat:rejectPlan', (_e, id: string, decision: string) => rejectAuthoringPlan(id, decision))
+  ipcMain.handle('authoringChat:planDefault', () => toolPreferences().authoringPlan !== false)
+  ipcMain.handle('authoringChat:setPlanDefault', (_e, on: boolean) => {
+    if (typeof on !== 'boolean') throw new Error('Invalid Plan default.')
+    writeToolPreferences({ ...toolPreferences(), authoringPlan: on }); notifyAIChanged(); return on
+  })
   ipcMain.handle('authoringChat:list', (_e, courseId: string) => listAuthoringChats(courseId))
   ipcMain.handle('authoringChat:get', (_e, id: string) => getAuthoringChat(id))
   ipcMain.handle('authoringChat:create', (_e, courseId: string) => createAuthoringChat(courseId))
@@ -454,12 +487,17 @@ export function registerIpc(): void {
   ipcMain.handle('authoringChat:reasoning', (_e, id: string, reasoning: ReasoningEffort | null) => setAuthoringChatReasoning(id, reasoning))
   // A connection for this conversation alone; null follows Settings again.
   ipcMain.handle('authoringChat:provider', (_e, id: string, provider: AIProvider | null) => setAuthoringChatProvider(id, provider === 'apiKey' || provider === 'chatgpt' ? provider : null))
-  ipcMain.handle('authoringChat:send', (e, id: string, text: string, target: AuthoringTarget, revision: number, draftVersion: number, quote?: ChatQuote) => sendAuthoringMessage(e.sender, id, text, target, revision, draftVersion, quote))
+  ipcMain.handle('authoringChat:send', (e, id: string, text: string, target: AuthoringTarget, revision: number, draftVersion: number, quote?: ChatQuote, action?: PlanAction) => sendAuthoringMessage(e.sender, id, text, target, revision, draftVersion, quote, action))
   // A new course is invisible to the library until its first save, so creating
   // one changes nothing anybody else is showing.
   ipcMain.handle('authoring:create', (e) => { const result = createCourse(); return openEditSession(result.document.courseId, holdEditor(e.sender)) })
   ipcMain.handle('authoring:asset', (_e, courseId: string, path: string) => { readDocument(courseId); return makeAssetResolver(packageDirectory(courseId), courseId)(path) })
   ipcMain.handle('authoring:get', (e, courseId: string) => openEditSession(courseId, holdEditor(e.sender)))
+  ipcMain.handle('authoring:exitState', (_e, courseId: string) => ({
+    dirty: isEditSessionDirty(courseId), losesChat: hasDiscardableCourseChat(courseId), running: authoringRunState(courseId).chatId !== null
+  }))
+  // beforeunload must decide synchronously whether Electron should ask before closing.
+  ipcMain.on('authoring:windowChatLoss', event => { event.returnValue = windowWouldDiscardCourseChat(event.sender.id) })
   ipcMain.handle('authoring:dirty', (_e, courseId: string) => isEditSessionDirty(courseId))
   ipcMain.handle('menu:editorActive', (_e, active: boolean) => setEditorActive(active === true))
   ipcMain.handle('authoring:draft', (e, courseId: string, manifest: CourseManifest, revision: number, draftVersion: number) => { const result = saveDraft(courseId, manifest, revision, draftVersion); if (!('status' in result)) for (const win of BrowserWindow.getAllWindows()) if (win.webContents.id !== e.sender.id) send(win.webContents, 'authoring:draftChanged', courseId, getAuthoringCourse(courseId)); syncDocumentEdited(); return result })

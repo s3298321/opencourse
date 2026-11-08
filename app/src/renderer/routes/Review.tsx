@@ -84,10 +84,10 @@ export default function Review({ initialSession, navigate, from, active = true }
     <div className="review-content scroll" ref={content}>
       {session.card ? <article className={`review-card${answer ? ' is-revealed' : ''}`} key={session.card.id} aria-label={`Card ${session.reviewed + 1} of ${session.total}`}>
         <div className="review-card-meta"><span>{session.card.sourceLabel ?? session.card.lessonTitle}</span><span className="review-card-number">Card {session.reviewed + 1} of {session.total}</span></div>
-        <div className="review-question"><div className="review-question-label"><span className="review-label">Question</span>{session.card.early && <span className="review-early">Early review</span>}</div><Html className="prose" source={session.card.question} />
+        <div className="review-question"><div className="review-question-label"><span className="review-label">Question</span>{session.card.early && <span className="review-early">Early review</span>}</div><Html className="prose" lesson source={session.card.question} />
           {session.card.image && <img className="review-image" src={session.card.image.src} alt={session.card.image.alt ?? ''} />}
         </div>
-        {answer && <div className="review-answer"><h2 className="review-label" ref={answerHeading} tabIndex={-1}>Answer</h2><Html className="prose" source={answer.answer} /></div>}
+        {answer && <div className="review-answer"><h2 className="review-label" ref={answerHeading} tabIndex={-1}>Answer</h2><Html className="prose" lesson source={answer.answer} /></div>}
       </article> : <div className="review-complete">
         <div className="review-complete-icon"><Icon name="check" /></div>
         <h1 ref={summaryHeading} tabIndex={-1}>Review complete</h1>

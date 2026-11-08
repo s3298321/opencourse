@@ -1,3 +1,5 @@
+import { DISCARD_COURSE_CHAT_DETAIL } from '../core/course-document'
+import { windowWouldDiscardCourseChat } from './course-authoring'
 import { configureNotebookWindows, registerMainWindow, closeWritingWindows, focusMainWindow } from './writing-notebook-windows'
 import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron'
 import { mkdtempSync } from 'node:fs'
@@ -138,13 +140,14 @@ function createWindow(notebookId?: string): BrowserWindow {
   // have nobody to answer, so they always discard.
   win.webContents.on('will-prevent-unload', (event) => {
     if (isolatedRun) { event.preventDefault(); return }
+    const losesChat = windowWouldDiscardCourseChat(win.webContents.id)
     const choice = dialog.showMessageBoxSync(win, {
       type: 'warning',
-      buttons: ['Discard changes', 'Keep editing'],
+      buttons: [losesChat ? 'Discard and leave' : 'Discard changes', 'Keep editing'],
       defaultId: 1,
       cancelId: 1,
-      message: 'Discard unsaved changes?',
-      detail: 'Your latest edits have not been saved. Discarding them keeps the last saved version.'
+      message: losesChat ? 'Discard this unsaved course?' : 'Discard unsaved changes?',
+      detail: losesChat ? DISCARD_COURSE_CHAT_DETAIL : 'Your latest edits have not been saved. Discarding them keeps the last saved version.'
     })
     if (choice === 0) event.preventDefault()
     // Kept editing: if this quit was an update's restart, it is not one any

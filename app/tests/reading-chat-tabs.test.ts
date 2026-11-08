@@ -142,6 +142,46 @@ it('creates only on first send and retries a dropped acknowledgment in the same 
   expect(f.stored.get('created')!.messages).toHaveLength(1)
   expect(f.panel().text).toBe('')
 })
+it('shows a transient warning and resends the same message ID after a lost acknowledgment', async () => {
+  const f = await fixture()
+  const ordinary = f.send.getMockImplementation()!
+  f.send.mockImplementationOnce(async (...args) => {
+    await ordinary(...args)
+    throw new TypeError('Failed to fetch')
+  })
+  await act(async () => f.panel().setText('Explain once'))
+  let sending!: Promise<boolean>
+  await act(async () => { sending = f.panel().send() })
+  expect(f.panel().retryAttempt).toBe(1)
+  expect(f.panel().error).toBe('')
+  await act(async () => { expect(await sending).toBe(true) })
+  expect(f.panel().retryAttempt).toBeUndefined()
+  expect(f.send.mock.calls[1]).toEqual(f.send.mock.calls[0])
+  expect(f.stored.get('one')!.messages.filter(message => message.text === 'Explain once')).toHaveLength(1)
+})
+it('keeps a cached partial answer visible while reconnecting and catches up without another send', async () => {
+  const f = await fixture()
+  const offline = conversation('two')
+  offline.chat.running = true
+  offline.offline = true
+  offline.messages.push({ id: 'answer', chatId: 'two', role: 'assistant', text: 'Partial', status: 'running', at: 'now', citations: [] })
+  f.get.mockResolvedValueOnce(offline)
+  const completed = structuredClone(offline)
+  delete completed.offline
+  completed.chat.running = false
+  Object.assign(completed.messages[1], { status: 'complete', text: 'Recovered' })
+  f.stored.set('two', completed)
+  await act(async () => f.panel().open('two'))
+  expect(f.panel().retryAttempt).toBe(1)
+  expect(f.panel().view?.messages.at(-1)?.text).toBe('Partial')
+  await act(async () => f.panel().open('one'))
+  expect(f.panel().retryAttempt).toBeUndefined()
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)) })
+  await act(async () => f.panel().open('two'))
+  expect(f.panel().retryAttempt).toBeUndefined()
+  expect(f.panel().view?.messages.at(-1)?.text).toBe('Recovered')
+  expect(f.send).not.toHaveBeenCalled()
+})
 it('does not let a delayed history load replace the selected tab', async () => {
   const f = await fixture()
   let resolve!: (value: LearningChatView) => void

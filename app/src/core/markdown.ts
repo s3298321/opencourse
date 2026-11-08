@@ -4,6 +4,7 @@
  * for Shiki (dual light/dark themes via CSS variables) and bleach for DOMPurify.
  */
 import MarkdownIt from 'markdown-it'
+import { createLessonMarkdown } from './lesson-markdown'
 import DOMPurify from 'dompurify'
 import { loadCodeHighlighter, resolveCodeLanguage } from './code-highlighter'
 import { CITE_MARK } from './sidechat/citations'
@@ -22,9 +23,9 @@ export const ALLOWED_URI_REGEXP = new RegExp(`^(?:https?|mailto|${ASSET_SCHEMES.
 
 export interface MarkdownRenderer {
   /** Block-level render: paragraphs, headings, code fences, tables. */
-  render(source: string): string
+  render(source: string, lesson?: boolean): string
   /** Inline-only render, for one-liners like a quiz question or option. */
-  renderInline(source: string): string
+  renderInline(source: string, lesson?: boolean): string
 }
 
 /**
@@ -63,9 +64,10 @@ export async function createRenderer(): Promise<MarkdownRenderer> {
       ALLOWED_URI_REGEXP
     })
 
+  const lessonMarkdown = createLessonMarkdown(md, html => clean(markCitations(html)))
   return {
-    render: (source: string) => clean(markCitations(md.render(source ?? ''))),
-    renderInline: (source: string) => clean(md.renderInline(source ?? ''))
+    render: (source, lesson) => lesson ? lessonMarkdown(source) : clean(markCitations(md.render(source ?? ''))),
+    renderInline: (source, lesson) => lesson ? lessonMarkdown(source, true) : clean(md.renderInline(source ?? ''))
   }
 }
 
@@ -88,9 +90,4 @@ function markCitations(html: string): string {
     .replaceAll(CITE_MARK, '')
 }
 
-/** Plain-text escape for the small strings we render outside markdown. */
-export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string
-  )
-}
+export { escapeHtml } from './html'

@@ -42,6 +42,7 @@ const profile = (model: string, reasoning: 'high' | 'low' | null = null) => ({ e
 beforeEach(() => {
   chat.cancelAllChats(); project.cancelAllProjectChats(); authoringChats.cancelAllAuthoringChats(); closeDb()
   dataDir = join(root, String(++counter)); owner = createUser('Learner').id
+  writePreferences({ authoringPlan: false })
   const course = installCourseFixture(projectCourse())
   Object.assign(target, { courseId: course.courseId, moduleId: course.modules[1].slug })
   Object.assign(lesson, { moduleId: course.modules[0].slug, lessonId: course.modules[0].lessons![0].slug })
@@ -73,7 +74,7 @@ describe('independent main-process AI routing', () => {
     expect(sender.send).toHaveBeenCalledWith('authoringChat:error', c.id, expect.stringContaining('Completed draft changes are preserved'))
     const draft = authoring.getAuthoringCourse(courseId).draft
     expect(draft).toMatchObject({ draftVersion: 1, manifest: { title: 'Completed edit' } })
-    expect(authoringRunState(courseId)).toEqual({ chatId: null })
+    expect(authoringRunState(courseId)).toEqual({ chatId: null, editing: false })
     expect(mock.stream).toHaveBeenCalledTimes(2)
     for (const channel of ['authoringChat:error', 'authoringChat:done']) {
       sender.send.mockClear()
@@ -89,36 +90,32 @@ describe('independent main-process AI routing', () => {
     }
     expect(mock.stream).toHaveBeenCalledTimes(4)
   })
-  it('keeps completed authoring edits after a QUIC failure and allows a follow-up without replaying the tool', async () => {
-    const { log } = await import('../src/main/log')
-    const { authoringRunState } = await import('../src/main/authoring-state')
-    const records: { message: string; data?: Record<string, unknown> }[] = []
-    log.addSink({ name: 'quic-test', minLevel: 'error', write: record => records.push(record) })
-    try {
-      const courseId = authoring.createCourse().document.courseId
-      const c = authoringChats.createAuthoringChat(courseId)
-      mock.stream.mockResolvedValueOnce({ text: '', aborted: false, output: [{ type: 'function_call', call_id: 'edit-title', name: 'update_element', arguments: JSON.stringify({ fields: { title: 'Completed edit' } }) }] })
-        .mockImplementationOnce(async (options: ChatStreamOptions) => {
-          options.onDelta('I updated the title.')
-          throw new Error('net::ERR_QUIC_PROTOCOL_ERROR')
-        })
-      await expect(authoringChats.sendAuthoringMessage(sender as never, c.id, 'Update the title', { kind: 'overview' }, 0, 0)).resolves.toMatchObject({ status: 'ok' })
-      await settled('authoringChat:error')
-      expect(sender.send).toHaveBeenCalledWith('authoringChat:error', c.id, expect.stringContaining('save your changes before closing or restarting'))
-      const draft = authoring.getAuthoringCourse(courseId)
-      expect(draft.draft).toMatchObject({ dirty: true, draftVersion: 1, manifest: { title: 'Completed edit' } })
-      expect(draft.document.manifest).toBeNull()
-      expect(authoringRunState(courseId)).toEqual({ chatId: null })
-      expect(authoringChats.getAuthoringChat(c.id).messages.at(-1)).toMatchObject({ role: 'assistant', text: 'I updated the title.', status: 'failed' })
-      expect(records.find(record => record.message === 'Authoring turn failed')?.data).toMatchObject({ message: 'net::ERR_QUIC_PROTOCOL_ERROR', toolCalls: 1 })
-      expect(mock.stream).toHaveBeenCalledTimes(2)
-      sender.send.mockClear()
-      await expect(authoringChats.sendAuthoringMessage(sender as never, c.id, 'Continue from the current draft', { kind: 'overview' }, 0, 1)).resolves.toMatchObject({ status: 'ok' })
-      await settled('authoringChat:done')
-      expect(mock.stream).toHaveBeenCalledTimes(3)
-      expect(authoring.getAuthoringCourse(courseId).draft).toEqual(draft.draft)
-    } finally { log.removeSink('quic-test') }
+  it('automatically reconnects mid-answer without replaying completed course edits', async () => {
+    const courseId = authoring.createCourse().document.courseId
+    const c = authoringChats.createAuthoringChat(courseId)
+    mock.stream.mockResolvedValueOnce({ text: '', aborted: false, output: [{ type: 'function_call', call_id: 'edit-title', name: 'update_element', arguments: JSON.stringify({ fields: { title: 'Completed edit' } }) }] })
+      .mockImplementationOnce(async (options: ChatStreamOptions) => {
+        options.onDelta('Interrupted partial text')
+        throw new Error('net::ERR_NETWORK_CHANGED')
+      })
+      .mockImplementationOnce(async (options: ChatStreamOptions) => {
+        options.onConnected?.()
+        options.onDelta('The title is updated.')
+        return { text: 'The title is updated.', aborted: false, citations: [], output: [] }
+      })
+    await expect(authoringChats.sendAuthoringMessage(sender as never, c.id, 'Update the title', { kind: 'overview' }, 0, 0)).resolves.toMatchObject({ status: 'ok' })
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('authoringChat:done', c.id), { timeout: 3000 })
+    expect(mock.stream).toHaveBeenCalledTimes(3)
+    expect(mock.stream.mock.calls[2][0].input).toEqual(mock.stream.mock.calls[1][0].input)
+    expect(sender.send).toHaveBeenCalledWith('chat:recovery', c.id, { kind:'retry', attempt:1 })
+    expect(sender.send).toHaveBeenCalledWith('chat:recovery', c.id, { kind:'retry', attempt:null })
+    expect(sender.send).toHaveBeenCalledWith('chat:recovery', c.id, { kind:'replace', text:'' })
+    const thread = authoringChats.getAuthoringChat(c.id)
+    expect(thread.messages.filter(m => m.role === 'user')).toHaveLength(1)
+    expect(thread.messages.at(-1)).toMatchObject({ text:'The title is updated.', status:'complete' })
+    expect(authoring.getAuthoringCourse(courseId).draft).toMatchObject({ dirty:true, draftVersion:1, manifest:{title:'Completed edit'} })
   })
+
   it('loads validated context metadata from the on-disk catalog when offline', async () => {
     const directory = join(dataDir, 'users', owner, 'connections', 'models')
     mkdirSync(directory, { recursive: true })
@@ -628,4 +625,81 @@ it.each(['apiKey', 'chatgpt'] as const)('offers no %s models before connecting o
   expect(await ai.getAIModelSettings('chat', provider)).toMatchObject({ models: [], connection: { ready: false } })
   expect(await ai.getTitleGenerationSettings(provider)).toMatchObject({ models: [], connection: { ready: false } })
   expect(await ai.aiPickerModels('chat', provider)).toMatchObject({ models: [], connection: { ready: false } })
+})
+
+describe('course planning with both connections', () => {
+  it.each(['apiKey', 'chatgpt'] as const)('interviews, revises the file, and implements only the accepted snapshot with %s', async provider => {
+    writePreferences({ authoringPlan: true })
+    await ai.getAIModelSettings('authoring', provider)
+    await ai.setAIProfile('authoring', provider, profile(provider === 'apiKey' ? 'gpt-5.1' : 'gpt-5.3-codex'))
+    const courseId = target.courseId
+    const course = authoring.getAuthoringCourse(courseId)
+    const original = { kind: 'lesson' as const, ref: course.draft.manifest.modules[0].lessons![0].nodeId! }
+    const c = authoringChats.createAuthoringChat(courseId)
+    expect(c.tools).toEqual({ webSearch: true, plan: true })
+    authoringChats.setAuthoringChatProvider(c.id, provider)
+    const get = () => authoringChats.getAuthoringChat(c.id)
+    const fn = (name: string, args: unknown) => ({ type: 'function_call', name, call_id: crypto.randomUUID(), arguments: JSON.stringify(args) })
+    const round = (...calls: ReturnType<typeof fn>[]) => mock.stream.mockResolvedValueOnce({ text: '', aborted: false, output: calls })
+    const send = async (text: string, action?: import('../src/core/authoring/planning').PlanAction, first = false) => {
+      sender.send.mockClear()
+      const draft = authoring.getAuthoringCourse(courseId).draft
+      const result = await authoringChats.sendAuthoringMessage(sender as never, c.id, text, first ? original : { kind: 'overview' }, draft.baseRevision, draft.draftVersion, undefined, action)
+      expect(result, JSON.stringify(result)).toMatchObject({ status: 'ok' })
+      await settled('authoringChat:done')
+    }
+    round(fn('set_course', {}), fn('write_asset_bundle', {}), fn('ask_questions', { questions: [
+      { id: 'goal', kind: 'text', prompt: 'What do you want to build?' },
+      { id: 'level', kind: 'single', prompt: 'Which best describes your experience?', options: [{id:'new',label:'New'},{id:'casual',label:'Some practice'}] },
+      { id: 'practice', kind: 'multiple', allowCustom: true, prompt: 'How do you like to practice?', options: [{id:'project',label:'Project'},{id:'quiz',label:'Quiz'}] }
+    ] }), fn('update_element', { fields: { title: 'Should not be written' } }))
+    await send('Teach me this subject', undefined, true)
+    expect(mock.stream).toHaveBeenCalledTimes(1)
+    expect(mock.stream.mock.calls[0][0].provider).toBe(provider)
+    expect(mock.stream.mock.calls[0][0].tools.map((t: {name:string}) => t.name)).not.toContain('set_course')
+    expect(authoring.getAuthoringCourse(courseId).draft).toEqual(course.draft)
+    const batch = get().chat.planning!.questions!
+    closeDb()
+    expect(get().chat.planning?.questions).toEqual(batch)
+    const plan = '# Course plan\n\nBuild a compiler.\n\nPractice: one project.\n\nPacing: three weeks.'
+    round(fn('create_plan', { text: plan }), fn('present_plan', { revision: 1 }))
+    await send('Answers', { kind: 'answer', response: { batchId: batch.id, answers: [
+      { id:'goal',text:'Build a compiler' }, { id:'level',selected:['casual'] }, { id:'practice',selected:['project'],text:'Code review' }
+    ] } })
+    const first = get().chat.planning!.published!
+    expect(first).toMatchObject({ revision: 1, text: plan, target: original })
+    expect(get().messages.find(m => m.planning?.answers)?.text).toContain('Project; Code review')
+    expect(await authoringChats.sendAuthoringMessage(sender as never, c.id, 'Again', original, course.draft.baseRevision, 0, undefined,
+      { kind:'answer', response:{batchId:batch.id,skip:true,answers:[]} })).toMatchObject({ status:'failed' })
+    round(fn('patch_plan',{ revision:1, edits:[{oldText:'three weeks',newText:'six weeks'}] }), fn('present_plan',{revision:2}))
+    await send('Give me six weeks')
+    const revised = get().chat.planning!.published!
+    expect(revised.text).toBe(plan.replace('three weeks', 'six weeks'))
+    expect(get().messages.find(m => m.planning?.plan?.revision === 1)?.planning?.plan?.text).toBe(plan)
+    expect(await authoringChats.sendAuthoringMessage(sender as never,c.id,'Accept',original,course.draft.baseRevision,0,undefined,{kind:'accept',decisionId:first.decisionId})).toMatchObject({status:'failed'})
+    round(fn('update_element', {fields:{title:'Compiler workshop'}}))
+    const before = mock.stream.mock.calls.length
+    await send('Accept', {kind:'accept', decisionId:revised.decisionId})
+    expect(get().chat).toMatchObject({ tools:{plan:false}, planning:{status:'accepted'} })
+    expect(JSON.stringify(mock.stream.mock.calls[before][0].input)).toContain('six weeks')
+    expect(authoring.getAuthoringCourse(courseId).draft.manifest.title).toBe('Compiler workshop')
+    expect(await authoringChats.sendAuthoringMessage(sender as never,c.id,'Duplicate',original,course.draft.baseRevision,0,undefined,{kind:'accept',decisionId:revised.decisionId})).toMatchObject({status:'failed'})
+  })
+})
+
+it('uses the project’s saved web choice and stores the cited pages with its answer', async () => {
+  writePreferences({ webSearch:false })
+  const a = project.createProjectChat(target), b = project.createProjectChat(target)
+  project.configureProjectTools(a.id, {webSearch:true})
+  const cite = { title:'Reference',url:'https://example.org/reference',start:0,end:6 }
+  mock.stream.mockImplementation(async (options: ChatStreamOptions) => {
+    expect(options.webSearch).toBe(true); options.onDelta('Source')
+    return { text:'Source',aborted:false,citations:[cite],output:[] }
+  })
+  expect(await project.sendProjectMessage(sender as never,a.id,'Find a reference')).toMatchObject({status:'ok'})
+  await settled('projectChat:done')
+  closeDb()
+  expect(project.getProjectChat(a.id).messages.at(-1)?.citations).toEqual([cite])
+  expect(project.getProjectChat(b.id).chat.tools).toEqual({webSearch:false})
+  expect(readPreferences().webSearch).not.toBe(true)
 })

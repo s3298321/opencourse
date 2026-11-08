@@ -63,17 +63,38 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       const state=await wait(()=>document.querySelector('.author-save-state'));
       if(state.textContent!=='Not saved yet') throw new Error('A new course does not say it is unsaved: '+state.textContent);
       for (const label of ['Discard draft','Save & export ZIP…','Save course']) if (button(label)) throw new Error('Old editor action remains: '+label);
-      if (!button('Save')) throw new Error('Save is missing');
+      const save = button('Save'), modes = find('.author-mode');
+      const saveBox = save.getBoundingClientRect(), modesBox = modes.getBoundingClientRect();
+      if (saveBox.height !== 28) throw new Error('Save should keep its compact 28px height');
+      const headerBox = find('.author-header').getBoundingClientRect();
+      if (Math.abs(modesBox.left + modesBox.right - headerBox.left - headerBox.right) > 1) throw new Error('Editing mode should be centered in the header');
+      if (modesBox.right > saveBox.left) throw new Error('Editing mode should be to the left of Save');
+      for (const control of [modes, ...modes.querySelectorAll('button')]) {
+        const box = control.getBoundingClientRect();
+        if (box.top !== saveBox.top || box.bottom !== saveBox.bottom) throw new Error('Editing mode and Save must have the same top and bottom edges');
+      }
+      const before = find('.author-layout').getBoundingClientRect().top;
+      save.click();
+      const notice = await wait(()=>find('.author-errors'));
+      if (!notice.textContent.includes('Course validation') || find('.author-layout').getBoundingClientRect().top !== before) throw new Error('Validation moved the workspace');
+      find('[aria-label="Dismiss notice"]').click(); await wait(()=>!find('.author-notice'));
+
       await field('Course title','Editor smoke course'); await field('Course slug','editor-smoke');
+      await field('Description','Allow $T$ minutes.\\n\\n$$t = T/3$$');
+      await field('Prerequisites (one per line)','Understand $x^2$.\\n$$a+b=T$$');
+      await wait(()=>document.querySelector('.author-preview .course-description-markdown .course-inline-formula annotation')?.textContent === 'T');
+      await wait(()=>document.querySelector('.author-preview .course-description-markdown math[display="block"] annotation')?.textContent === 't = T/3');
+      await wait(()=>document.querySelector('.author-preview .course-prerequisites li msup'));
+      await wait(()=>document.querySelector('.author-preview .course-prerequisites math[display="block"] annotation')?.textContent === 'a+b=T');
       button('Add module').click(); await field('Module title','First module');
       [...document.querySelectorAll('.outline-add')].find(b=>b.textContent.includes('Add lesson')).click(); await field('Lesson title','First lesson');
       button('Elements').click();
       const transfer = new DataTransfer();
       document.querySelector('[aria-label="Drag Text"]').dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer})); await sleep(30);
-      document.querySelector('.lesson-drop-zone.append').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer})); await sleep(30); await field('Block slug','lesson-text'); await field('Markdown content','## Authored in the app\\n\\nStable identities survive edits.');
+      document.querySelector('.lesson-drop-zone.append').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer})); await sleep(30); await field('Block slug','lesson-text'); await field('Markdown content','## Authored in the app\\n\\nStable identities survive edits. Evaluate $f(x)$ at $x = 2$.');
       await wait(()=>document.querySelector('.lesson-element [aria-label="Block slug"]')?.value==='lesson-text');
       button('Outline').click();
-      await wait(()=>document.querySelector('.author-preview').textContent.includes('Stable identities'));
+      await wait(()=>document.querySelector('.author-preview p .course-inline-formula annotation')?.textContent === 'f(x)');
       await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
       await sleep(300);
       if((await window.opencourse.listCourses()).some(c=>c.title==='Editor smoke course')) throw new Error('An unsaved course reached the library');
@@ -171,7 +192,10 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
         document.querySelector('.dialog-confirm').click(); await wait(()=>find('.library'));
         if((await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Leaving did not stop the turn');
         const card=await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>visible(c) && c.textContent.includes('Editor smoke course')));card.click();
-        (await wait(()=>button('Edit course'))).click(); await wait(()=>document.querySelector('.course-editor'));
+        await wait(()=>document.querySelector('.detail .course-description-markdown math[display="block"] annotation')?.textContent === 't = T/3');
+      await wait(()=>document.querySelector('.detail .course-prerequisites li msup'));
+      await wait(()=>document.querySelector('.detail .course-prerequisites math[display="block"] annotation')?.textContent === 'a+b=T');
+      (await wait(()=>button('Edit course'))).click(); await wait(()=>document.querySelector('.course-editor'));
         return 'Clean running turn confirms; Cancel and parking preserve it; confirmed departure stops it';
       `)
       if (!stoppedCleanTurn || authoringRunState(courseId).chatId !== null) throw new Error('Clean authoring lease survived confirmed departure')
@@ -205,6 +229,19 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       if(document.querySelector('.outline-row[aria-label="Text: lesson-text"]')) throw new Error('Blocks remain in outline');
       return 'Stacked editor and full lesson preview side by side';
     `)
+    await run('editor: author a LaTeX block and preview its stacked fraction', `
+      button('Elements').click();
+      const transfer = new DataTransfer();
+      (await wait(()=>find('[aria-label="Drag LaTeX formula"]'))).dispatchEvent(new DragEvent('dragstart', {bubbles:true, dataTransfer:transfer}));
+      await sleep(30);
+      (await wait(()=>find('.lesson-drop-zone.append'))).dispatchEvent(new DragEvent('drop', {bubbles:true, cancelable:true, dataTransfer:transfer}));
+      await field('LaTeX source', ${JSON.stringify(String.raw`m = \frac{f(b)-f(a)}{b-a},\quad b \ne a`)});
+      await wait(()=>document.querySelector('.author-preview mfrac')?.textContent.includes('f(b)'));
+      button('Save').click();
+      await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved');
+      button('Outline').click();
+      return 'Edited formula previewed and saved';
+    `)
     const image = await win.webContents.capturePage()
     writeFileSync(join(tmpdir(), 'opencourse-course-editor.png'), image.toPNG())
     await run('editor: learn, edit, rename and preserve progress', `
@@ -212,6 +249,10 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>document.querySelector('.detail'));
       document.querySelector('.lesson-row').click(); await wait(()=>document.querySelector('.lesson-head'));
       if(!document.querySelector('.lesson-head').parentElement.textContent.includes('Stable identities')) throw new Error('Saved content not readable');
+      await wait(()=>document.querySelector('.lesson-inner p .course-inline-formula annotation')?.textContent === 'f(x)');
+      const fraction = await wait(()=>document.querySelector('.lesson-inner mfrac'));
+      const [numerator, denominator] = fraction.children;
+      if(numerator.getBoundingClientRect().bottom > denominator.getBoundingClientRect().top) throw new Error('Saved fraction is not stacked');
       button('Mark lesson completed').click(); await wait(()=>button('Lesson completed'));
       const before=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID); window.__EDITOR_SMOKE_LESSON=before.document.manifest.modules[0].lessons[0].nodeId;
       // A lesson's back link is its course overview, and the overview's is All courses.
@@ -219,7 +260,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       await wait(()=>find('.library'));
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       [...document.querySelectorAll('.outline-row')].find(b=>b.textContent.includes('First lesson')).click(); await field('Lesson title','Renamed lesson'); await field('Lesson slug','renamed-lesson');
-      button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved'));
+      button('Save').click(); await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved');
       const after=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID);
       if(after.document.manifest.modules[0].lessons[0].nodeId!==window.__EDITOR_SMOKE_LESSON) throw new Error('Lesson identity changed');
       if(!(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID)).completedLessons.includes(window.__EDITOR_SMOKE_LESSON)) throw new Error('Completion lost');
@@ -249,9 +290,9 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       if (!edited.ok) throw new Error(edited.error)
       const lessonRef = authored.draft.manifest.modules[0].lessons![0].nodeId
       for (const [name, args] of [
-        ['update_element', { ref: lessonRef, fields: { estimated_minutes: 5, objectives: ['Understand the authored lesson'] } }],
-        ['add_element', { parent_ref: lessonRef, element: { type: 'quiz', slug: 'preview-quiz', id: 'preview-quiz', kind: 'single', question: 'What is **two plus two**?', options: [{ id: 'three', text: 'Three', correct: false }, { id: 'four', text: 'Four', correct: true }], explanation: 'Two plus two is **four**.' } }],
-        ['add_element', { parent_ref: lessonRef, element: { type: 'exercise', slug: 'preview-exercise', id: 'preview-exercise', title: 'Preview exercise', prompt: 'Write a **small program**.', verification_instructions: 'Read its output.', starter_code: 'print(1)', extra_files: [{ path: 'data.txt', content: 'original support' }], solution: 'print(2)' } }]
+        ['update_element', { ref: lessonRef, fields: { estimated_minutes: 5, objectives: ['Evaluate $f(x)$ at a given input.', 'Check this example:\n\n$$f(2) = 4$$'] } }],
+        ['add_element', { parent_ref: lessonRef, element: { type: 'quiz', slug: 'preview-quiz', id: 'preview-quiz', kind: 'single', question: 'What is $2 + 2$?', options: [{ id: 'three', text: '$3$', correct: false }, { id: 'four', text: '$$4$$', correct: true }], explanation: 'Two plus two is **four**. Start at $2$ and add two more.\n\n$$2 + 2 = 4$$' } }],
+        ['add_element', { parent_ref: lessonRef, element: { type: 'exercise', slug: 'preview-exercise', id: 'preview-exercise', title: 'Preview exercise', prompt: 'Write a **small program** to compute $2 + 2$.', hints: ['Try the sum on paper.\n\n$$2 + 2 = 4$$'], verification_instructions: 'Read the output $s$ and compare it with\n\n$$s = 4$$', starter_code: 'print(1)', extra_files: [{ path: 'data.txt', content: 'original support' }], solution: 'print(2)' } }]
       ] as const) {
         const result = JSON.parse(await runAuthoringTool(courseId, name, args, lease.token, new AbortController().signal))
         if (!result.ok) throw new Error(result.error)
@@ -272,13 +313,19 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
     } finally { lease.release() }
     await run('editor: complete lesson and quiz previews match learning without writing progress', `
       await wait(()=>document.querySelector('.author-preview .lesson-head') && document.querySelector('.author-preview .exercise .author-preset-files'));
-      if(!document.querySelector('.author-preview .objectives').textContent.includes('Understand the authored lesson') || !document.querySelector('.author-preview .quiz input') || !document.querySelector('.author-preview .exercise .author-preset-files')) throw new Error('Full lesson preview is missing lesson content');
+      await wait(()=>document.querySelector('.author-preview .objectives li .course-inline-formula annotation')?.textContent === 'f(x)');
+      await wait(()=>document.querySelector('.author-preview .objectives li math[display="block"] annotation')?.textContent === 'f(2) = 4');
+      if(!document.querySelector('.author-preview .quiz input') || !document.querySelector('.author-preview .exercise .author-preset-files')) throw new Error('Full lesson preview is missing lesson content');
       const progress=JSON.stringify(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID));
       document.querySelector('.outline-row[aria-label="Renamed lesson"]').click();
       await wait(()=>document.querySelector('.outline-row.selected')?.getAttribute('aria-label')==='Renamed lesson');
       if(document.querySelector('.author-preview .feedback') || document.querySelector('.author-preview').textContent.includes('Two plus two is')) throw new Error('Quiz preview reveals answers before checking');
-      document.querySelectorAll('.author-preview .quiz input')[1].click(); await sleep(30);
+      await wait(()=>document.querySelector('.author-preview .quiz .question annotation')?.textContent === '2 + 2');
+      await wait(()=>document.querySelector('.author-preview .quiz label math[display="block"] annotation')?.textContent === '4');
+      document.querySelector('.author-preview .quiz label math[display="block"]').dispatchEvent(new MouseEvent('click', {bubbles:true})); await sleep(30);
       button('Check answer').click(); await wait(()=>document.querySelector('.author-preview .feedback.ok'));
+      await wait(()=>document.querySelector('.author-preview .explanation .course-inline-formula annotation')?.textContent === '2');
+      await wait(()=>document.querySelector('.author-preview .explanation math[display="block"] annotation')?.textContent === '2 + 2 = 4');
       if(JSON.stringify(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID))!==progress) throw new Error('Preview quiz changed learner progress');
       return 'Full lesson header, objectives and block components; interactive quiz with local grading';
     `)
@@ -286,6 +333,12 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
     await run('editor: exercise preset files are viewable and editable in the draft', `
       document.querySelector('.outline-row[aria-label="Renamed lesson"]').click();
       await wait(()=>document.querySelector('.author-preview .author-preset-files'));
+      await wait(()=>document.querySelector('.author-preview .exercise .prompt annotation')?.textContent === '2 + 2');
+      await wait(()=>document.querySelector('.author-preview .exercise .verify .course-inline-formula annotation')?.textContent === 's');
+      await wait(()=>document.querySelector('.author-preview .exercise .verify math[display="block"] annotation')?.textContent === 's = 4');
+      const hints = [...document.querySelectorAll('.author-preview .exercise details')].find(el=>el.querySelector('summary')?.textContent.startsWith('Hints'));
+      hints.querySelector('summary').click();
+      await wait(()=>hints.open && hints.querySelector('math[display="block"] annotation')?.textContent === '2 + 2 = 4');
       if([...document.querySelectorAll('.author-preview button')].some(b=>b.textContent==='Open editor')) throw new Error('Preview offers the learner workbench');
       const progress=JSON.stringify(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID));
       button('data.txt').click();
@@ -365,9 +418,36 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       document.querySelector('.outline-row[aria-label="Renamed lesson"]').click();
       const input=await wait(()=>document.querySelector('[aria-label="Markdown content"]'));
       if(!input.value.includes('Generated changes') || input.closest('fieldset').disabled) throw new Error('AI changes are not editable');
-      button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved'));
+      button('Save').click(); await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved');
       if(!(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID)).completedLessons.includes(window.__EDITOR_SMOKE_LESSON)) throw new Error('AI edit lost learner progress');
       return 'Shared AI/manual draft saves without regenerating existing identities';
+    `)
+    await run('editor: take the saved quiz by selecting a rendered formula', `
+      document.querySelector('.crumbs a').click(); await wait(()=>find('.library'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click();
+      (await wait(()=>find('.lesson-row'))).click();
+      await wait(()=>document.querySelector('.lesson-inner .quiz .question annotation')?.textContent === '2 + 2');
+      await wait(()=>document.querySelector('.lesson-inner .objectives li .course-inline-formula annotation')?.textContent === 'f(x)');
+      await wait(()=>document.querySelector('.lesson-inner .objectives li math[display="block"] annotation')?.textContent === 'f(2) = 4');
+      const choice = await wait(()=>find('.lesson-inner .quiz label math[display="block"]'));
+      choice.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+      await wait(()=>choice.closest('label').querySelector('input').checked);
+      button('Check answer').click(); await wait(()=>find('.lesson-inner .quiz .feedback.ok'));
+      await wait(()=>document.querySelector('.lesson-inner .explanation .course-inline-formula annotation')?.textContent === '2');
+      await wait(()=>document.querySelector('.lesson-inner .explanation math[display="block"] annotation')?.textContent === '2 + 2 = 4');
+      return 'Saved quiz grades the selected formula and typesets the explanation';
+    `)
+    await run('exercise: open a saved prompt and reveal its formula hint beside the editor', `
+      button('Open editor').click();
+      const brief = await wait(()=>find('.workbench-brief'));
+      await wait(()=>brief.querySelector('.prompt annotation')?.textContent === '2 + 2');
+      await wait(()=>brief.querySelector('.verify .course-inline-formula annotation')?.textContent === 's');
+      await wait(()=>brief.querySelector('.verify math[display="block"] annotation')?.textContent === 's = 4');
+      const hints = [...brief.querySelectorAll('details')].find(el=>el.querySelector('summary')?.textContent.startsWith('Hints'));
+      if(hints.open) throw new Error('Hints opened before the learner requested them');
+      hints.querySelector('summary').click();
+      await wait(()=>hints.open && hints.querySelector('math[display="block"] annotation')?.textContent === '2 + 2 = 4');
+      return 'Exercise prompt and revealed hint are typeset in the working brief';
     `)
     const archive = join(staging, 'course.zip')
     await exportCourseZipPath(courseId, archive)

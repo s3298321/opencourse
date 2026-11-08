@@ -4,6 +4,7 @@
  * runs after it anyway, and the page's CSP runs no inline script whatever gets
  * through. Links leave the site without a referrer or an opener.
  */
+import { createLessonMarkdown } from '@core/lesson-markdown'
 import { CITE_MARK } from '@core/sidechat/citations'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
@@ -44,7 +45,9 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 
 const clean = (html: string): string => DOMPurify.sanitize(html, { ADD_ATTR: ['target'], FORBID_TAGS: ['style', 'form', 'input'] })
 
-export const renderMarkdown = (text: string): string => clean(md.render(text).replace(new RegExp(`${CITE_MARK}(<a\\b[^>]*>\\d{1,3}</a>)`, 'g'), '<sup class="cite">$1</sup>').replaceAll(CITE_MARK, ''))
+const cleanMarkdown = (html: string): string => clean(html.replace(new RegExp(`${CITE_MARK}(<a\\b[^>]*>\\d{1,3}</a>)`, 'g'), '<sup class="cite">$1</sup>').replaceAll(CITE_MARK, ''))
+export const renderMarkdown = (text: string): string => cleanMarkdown(md.render(text))
+export const renderLessonText = createLessonMarkdown(md, cleanMarkdown)
 export const renderInline = (text: string): string => clean(md.renderInline(text))
 
 /** Markdown down to its words, for a card's summary. */

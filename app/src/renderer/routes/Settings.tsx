@@ -85,7 +85,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
       case 'appearance': return <><ThemeSection />{user ? <><NotebookButtonSection /><CoachButtonSection /></> : <p className="meta">Choose a user to configure the notebooks button.</p>}</>
       case 'pomodoro': return user ? <PomodoroSettings /> : <p className="meta">Choose a user to configure Pomodoro.</p>
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
-      case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
+      case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><PlanDefaultSection /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
       case 'coach': return <><CoachDefaultsSection keyVersion={keyVersion} active={section === 'coach'} /><CoachPromptSettings /></>
       case 'servers': return <ServerSettings />
       case 'updates': return <UpdatesSection focus={section === 'updates'} />
@@ -483,7 +483,7 @@ export function WebSearchSection({ authoring = false }: { authoring?: boolean })
       </label>
       <p className="meta">
         {authoring ? 'Enabled by default. The assistant checks official documentation when teaching version-sensitive technology. Sources and verification notes stay in the authoring chat. ' : 'The model decides when a question needs it—a release date, a current version, or documentation the course or document does not quote. '}
-        Searches use this feature’s selected connection when supported. API-key searches add API charges; subscription searches use eligible plan usage.
+        This default applies to new chats. Searches use this feature’s selected connection when supported. API-key searches add API charges; subscription searches use eligible plan usage.
       </p>
       {error && <p className="import-note error">{error}</p>}
     </section>
@@ -723,4 +723,16 @@ function DangerSection({
       {error && <p className="import-note error">{error}</p>}
     </section>
   )
+}
+
+function PlanDefaultSection(): JSX.Element {
+  const [on, setOn] = useState<boolean | null>(null), [error, setError] = useState('')
+  useEffect(() => { void window.opencourse.getAuthoringPlanDefault().then(setOn).catch(e => setError(e.message)) }, [])
+  return <section className="settings-section"><h2>Course planning</h2>
+    <label className="settings-check"><input type="checkbox" checked={on === true} disabled={on === null} onChange={e => {
+      void window.opencourse.setAuthoringPlanDefault(e.target.checked).then(setOn).catch(e => setError(e.message))
+    }} />Plan new course chats</label>
+    <p className="meta">Ask about the learner and propose a course plan before creating content. You can change this in each chat.</p>
+    {error && <p className="import-note error">{error}</p>}
+  </section>
 }

@@ -231,6 +231,19 @@ export function registerLearningRoutes(app: FastifyInstance, ctx: Ctx): void {
       )
       .send(createReadStream(path))
   })
+  app.get('/api/v1/learn/course/:id/:version/exercises/:exercise/hints', async (req) => {
+    const ref = reference({ ...(req.params as object), kind: 'course' })
+    const course = await readCourse(ctx, requireAccount(req).id, ref)
+    const id = (req.params as { exercise: string }).exercise
+    for (const module of course.modules) {
+      if (module.type === 'project') continue
+      for (const lesson of module.lessons) {
+        const block = lesson.blocks.find(b => b.type === 'exercise' && b.id === id)
+        if (block?.type === 'exercise') return { hints: block.hints ?? [] }
+      }
+    }
+    throw notFound()
+  })
   app.post('/api/v1/learn/course/:id/:version/quiz/:quiz', async (req) => {
     const ref = reference({ ...(req.params as object), kind: 'course' }),
       account = requireAccount(req).id,

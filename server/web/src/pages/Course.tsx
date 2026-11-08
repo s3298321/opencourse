@@ -7,7 +7,7 @@ import { api, call, coverUrl } from '../lib/api'
 import { takeBootData } from '../lib/boot'
 import { useAccount } from '../lib/session'
 import { capitalize, compact, date, hours, plural } from '../lib/format'
-import { renderInline, renderMarkdown } from '../lib/markdown'
+import { renderLessonText } from '../lib/markdown'
 import { Cover } from '../components/Cover'
 import { Html } from '../components/Html'
 import { Stat, useTitle } from '../components/Bits'
@@ -108,14 +108,14 @@ export function CoursePage() {
           {course.description && (
             <section className="course-section oc-reveal">
               <h2>About this course</h2>
-              <Html className="oc-prose" html={renderMarkdown(course.description)} />
+              <Html className="oc-prose" html={renderLessonText(course.description)} />
             </section>
           )}
           {course.prerequisites.length > 0 && (
             <section className="course-section oc-reveal">
               <h2>Before you start</h2>
               <ul className="prereqs">
-                {course.prerequisites.map((p, i) => <li key={i}><span className="oc-sparkle" aria-hidden="true" /><Html as="span" html={renderInline(p)} /></li>)}
+                {course.prerequisites.map((p, i) => <li key={i}><span className="oc-sparkle" aria-hidden="true" /><Html className="prereq-text" html={renderLessonText(p, !p.includes('\n'))} /></li>)}
               </ul>
             </section>
           )}

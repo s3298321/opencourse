@@ -1,0 +1,19 @@
+.course-formula {
+  display: block;
+  margin-block: 1em;
+  padding: .4em .25em;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 1.2em;
+}
+.course-inline-formula math, .course-formula math {
+  font-family: "STIX Two Math", "Cambria Math", math;
+}
+.course-formula math {
+  display: block math;
+  width: max-content;
+  margin-inline: auto;
+}
+.formula-error { font-size: 1em; }
+.course-formula.formula-error code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.quiz-choice-text { min-width: 0; }

@@ -55,12 +55,15 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
       (await wait(()=>button('+ Add card'))).click();
       const card=await wait(()=>{const cards=document.querySelectorAll('.lesson-flashcards .lesson-element'); return cards.length===3 ? cards[2] : null;});
       window.__FLASHCARD_NODE=card.dataset.elementId;
-      await field('Card archive ID','compile-link',card); await field('Question','What joins object files into a program?',card); await field('Answer','The **linker** joins object files and resolves symbols.',card);
+      await field('Card archive ID','counter-increment',card); await field('Question','If the counter shows $c_n = 3$, what does the next click do?',card); await field('Answer','It **adds one**.\\n\\n$$c_{n+1} = 3 + 1 = 4$$',card);
       await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes'); await sleep(250);
       const draft=await window.opencourse.getAuthoringCourse(window.__FLASHCARD_COURSE);
       if(draft.draft.manifest.modules[0].lessons[0].flashcards.length!==3) throw new Error('Draft missing card');
       const preview=await wait(()=>document.querySelector('[data-authoring-preview-key="'+window.__FLASHCARD_NODE+'"] .flashcard-preview'));
-      preview.querySelector('button').click(); await wait(()=>preview.querySelector('.review-answer')?.textContent.includes('linker'));
+      await wait(()=>preview.querySelector('.course-inline-formula annotation')?.textContent === 'c_n = 3');
+      if(preview.querySelector('.review-answer')) throw new Error('Answer revealed too early in preview');
+      preview.querySelector('button').click();
+      await wait(()=>preview.querySelector('.review-answer math[display="block"] annotation')?.textContent === 'c_{n+1} = 3 + 1 = 4');
       if(document.querySelector('[aria-label="Move card to lesson"]')) throw new Error('Flashcard lesson switch is still present');
       return 'Card added and previewed without learner rating';
     `)
@@ -81,7 +84,7 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     `)
     await run('publish and start selected review size', `
       const originalConfirm=window.confirm; window.confirm=()=>true;
-      button('Save').click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.startsWith('Saved')); window.confirm=originalConfirm;
+      button('Save').click(); await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved'); window.confirm=originalConfirm;
       document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.library'));
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(card=>card.textContent.includes('The OpenCourse example course')))).click(); await wait(()=>document.querySelector('.detail'));
       const select=document.querySelector('[aria-label="Number of flashcards"]'); if(select.value!=='10') throw new Error('Wrong default'); select.value='20'; select.dispatchEvent(new Event('change',{bubbles:true}));
@@ -122,9 +125,11 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
     await shot('answer-narrow-ratings')
     win.setSize(1240, 860)
     await run('finish and preserve lesson progress', `
-      document.dispatchEvent(new KeyboardEvent('keydown',{key:'3',bubbles:true})); await wait(()=>document.querySelector('.review-question').textContent.includes('joins object files'));
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'3',bubbles:true})); await wait(()=>document.querySelector('.review-question .course-inline-formula annotation')?.textContent === 'c_n = 3');
+      if(document.querySelector('.review-answer')) throw new Error('A new card must hide its answer');
       if(document.querySelector('.review-content').scrollTop!==0) throw new Error('Next question retained the previous scroll position');
       document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); await wait(()=>document.querySelector('.review-answer'));
+      await wait(()=>document.querySelector('.review-answer math[display="block"] annotation')?.textContent === 'c_{n+1} = 3 + 1 = 4');
       document.dispatchEvent(new KeyboardEvent('keydown',{key:'4',bubbles:true})); await wait(()=>document.querySelector('.review-complete'));
       const progress=await window.opencourse.getProgress(window.__FLASHCARD_COURSE);
       if(JSON.stringify(progress)!==JSON.stringify(window.__FLASHCARD_PROGRESS)) throw new Error('Review changed lesson progress');
@@ -141,9 +146,9 @@ export async function runFlashcardSmoke(win: BrowserWindow): Promise<void> {
       button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
       const saved=await window.opencourse.getAuthoringCourse(window.__FLASHCARD_COURSE), lesson=saved.draft.manifest.modules[0].lessons[0];
       (await wait(()=>[...document.querySelectorAll('.outline-row')].find(row=>row.getAttribute('aria-label')===lesson.title))).click();
-      const savedCard=lesson.flashcards.find(card=>card.id==='compile-link');
+      const savedCard=lesson.flashcards.find(card=>card.id==='counter-increment');
       const card=await wait(()=>document.querySelector('[data-element-id="'+savedCard.nodeId+'"]'));
-      const originalConfirm=window.confirm; window.confirm=()=>true; (await wait(()=>[...card.querySelectorAll('button')].find(button=>button.textContent==='Reset review progress'))).click(); await wait(()=>document.querySelector('.author-header p[role="status"]').textContent.includes('Review progress reset')); window.confirm=originalConfirm;
+      const originalConfirm=window.confirm; window.confirm=()=>true; (await wait(()=>[...card.querySelectorAll('button')].find(button=>button.textContent==='Reset review progress'))).click(); await wait(()=>document.querySelector('.author-notice p[role="status"]')?.textContent.includes('Review progress reset')); window.confirm=originalConfirm;
       if((await window.opencourse.getReviewSummary(window.__FLASHCARD_COURSE)).new!==1) throw new Error('Reset failed'); return 'Card reset independently of drafts';
     `)
     }

@@ -522,13 +522,16 @@ describe('when it goes wrong', () => {
     expect(selectMessages(chat.id).at(-1)).toMatchObject({ text: 'Partial answer', status: 'failed' })
     expect(answerCalls()).toHaveLength(1)
   })
-  it('marks a disconnected lesson reply as failed and retains its partial text', async () => {
+  it('recovers a disconnected lesson reply in the same message', async () => {
     const chat = createChat(courseId, L1)
     stream = { frames: [textFrame('Partial answer')], incomplete: true }
     await sendChatMessage(asSender(), chat.id, 'q', undefined, L1)
-    await settle()
-    expect(pushed.filter(event => event.channel !== 'chat:title').at(-1)?.channel).toBe('chat:error')
-    expect(selectMessages(chat.id).at(-1)).toMatchObject({ text: 'Partial answer', status: 'failed' })
+    await vi.waitFor(() => expect(pushed).toContainEqual({ channel:'chat:recovery', chatId:chat.id, payload:{ kind:'retry', attempt:1 } }))
+    stream = { frames: [textFrame('Recovered answer')] }
+    await vi.waitFor(() => expect(pushed.some(e => e.channel === 'chat:done')).toBe(true), {timeout:3000})
+    expect(pushed).toContainEqual({ channel:'chat:recovery', chatId:chat.id, payload:{ kind:'retry', attempt:null } })
+    expect(selectMessages(chat.id).at(-1)).toMatchObject({ text:'Recovered answer', status:'complete' })
+    expect(selectMessages(chat.id).filter(m => m.role === 'user')).toHaveLength(1)
   })
 
   it('keeps what arrived when the learner stops the answer partway', async () => {

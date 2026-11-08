@@ -11,5 +11,5 @@ export function useDocumentChat(documentId: string, page: number, visible: boole
       setModel: api.setDocumentChatModel, setReasoning: api.setDocumentChatReasoning, setProvider: api.setDocumentChatProvider,
       onDelta: api.onDocumentChatDelta, onDone: api.onDocumentChatDone, onError: api.onDocumentChatError, onTitle: api.onDocumentChatTitle, onActivity: api.onDocumentChatActivity }
   }, [documentId])
-  return useConversationPanel(transport, 'chat', visible, storageKey)
+  return useConversationPanel(transport, 'chat', visible, storageKey, 'document')
 }

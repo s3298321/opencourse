@@ -108,10 +108,10 @@ export async function runAuthoringTool(courseId: string, name: string, raw: unkn
           if (args.collection === 'flashcards') {
             if (!Array.isArray(parent.blocks)) throw new Error('Flashcards require a lesson parent.')
             siblings = (parent.flashcards ??= []) as unknown[]
-            Object.assign(authored, currentFormat(authored))
           } else siblings = Array.isArray(parent.lessons) ? parent.lessons : Array.isArray(parent.blocks) ? parent.blocks : []
           if (!Array.isArray(parent.lessons) && !Array.isArray(parent.blocks)) throw new Error('Elements can be added only under lesson modules or lessons.')
         }
+        Object.assign(authored, currentFormat(authored))
         siblings.splice(index(args.index, siblings.length), 0, element)
         next = parseAuthoringManifest(authored, previous); break
       }

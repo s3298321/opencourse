@@ -138,7 +138,7 @@ An archive is accepted when all of these hold:
 
 - It passes the app's archive policy: no paths escaping the archive, no
   symlinks, only allowed file types, at most 200 MB packed and 1 GB unpacked.
-- Its `course.json` is valid against the course schema at `schema_version` `"1.8"`.
+- Its `course.json` is valid against the course schema at `schema_version` `"1.9"`.
 - Every element, and the course itself, carries a lowercase UUID v4 `uid`. No
   uid appears twice, and the course's `uid` equals `:id`.
 - `version` is higher than every version ever published for this course.
@@ -240,6 +240,7 @@ No progress, credentials or local conversations belong in a publication.
 | `GET /learn/document/:id/:version/search?q=` | Bounded matching excerpts and indexing status |
 | `GET /learn/course/:id/:version/assets/*` | Restricted version-scoped assets; isolated HTML sandbox |
 | `POST /learn/course/:id/:version/quiz/:quiz { submitted, requestId }` | Grade, record a deduplicated attempt, reveal explanation |
+| `GET /learn/course/:id/:version/exercises/:exercise/hints` | Fetch authored hints for an exercise in the enrolled course version when the learner opens Hints |
 | `POST /learn/:kind/:id/:version/cards/:card/reveal { expectedVersion? }` | Reveal an owned personal card, or an authored course card after lesson completion |
 | `POST /learn/:kind/:id/:version/cards/:card/rate { rating, requestId, expectedVersion? }` | Record review and replay shared FSRS scheduling; reject stale personal-card versions |
 

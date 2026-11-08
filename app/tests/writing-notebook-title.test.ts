@@ -117,13 +117,19 @@ it('offers default layout settings beside Saved and saves changes to the noteboo
   await act(async () => options.click())
   const numbers = document.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]')!
   expect(numbers.getAttribute('aria-checked')).toBe('false')
-  const layouts = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
-  expect(layouts.map(item => [item.textContent, item.getAttribute('aria-checked')])).toEqual([['Wide text', 'true'], ['Thin text', 'false']])
+  const toggles = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]')]
+  expect(toggles().map(item => [item.textContent, item.getAttribute('aria-checked')])).toEqual([['Line numbersOff', 'false'], ['Wide textOn', 'true']])
+  expect(document.querySelector('[role="menu"]')!.textContent).not.toContain('Thin text')
   await act(async () => numbers.click())
   expect(notebook.showLineNumbers).toBe(true)
   await act(async () => options.click())
-  await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent === 'Thin text')!.click() })
+  await act(async () => toggles()[1]!.click())
   expect(notebook.textLayout).toBe('thin')
+  await act(async () => options.click())
+  expect(toggles()[1]!.textContent).toBe('Wide textOff')
+  expect(toggles()[1]!.getAttribute('aria-checked')).toBe('false')
+  await act(async () => toggles()[1]!.click())
+  expect(notebook.textLayout).toBe('wide')
 })
 
 it('lets the coach inspect and read unsaved open pages and follows page switches', async () => {

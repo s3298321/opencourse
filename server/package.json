@@ -1,6 +1,6 @@
 {
   "name": "opencourse-server",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "OpenCourse server: hosts and versions courses, authenticates accounts, serves the catalog's web app",
   "type": "module",
@@ -26,6 +26,7 @@
     "@fastify/static": "^10.1.5",
     "ajv": "^8.20.0",
     "fastify": "^5.6.0",
+    "katex": "^0.19.1",
     "markdown-it": "^15.0.1",
     "nodemailer": "^10.0.15",
     "pdfjs-dist": "^6.4.299",

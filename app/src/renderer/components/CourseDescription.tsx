@@ -27,7 +27,7 @@ export default function CourseDescription({ source }: { source: string }): JSX.E
   return <div className={`course-description${collapsed ? ' is-collapsed' : ''}`}>
     <div id={id} className="course-description-preview prose" onFocusCapture={() => setExpanded(true)}>
       <div ref={content} className="course-description-content">
-        <Html className="course-description-markdown" source={source} />
+        <Html className="course-description-markdown" lesson source={source} />
       </div>
     </div>
     {overflowing && <button

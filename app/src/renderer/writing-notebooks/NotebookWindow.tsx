@@ -102,7 +102,7 @@ function NotebookContent({ id }: { id: string }) {
       send: async (chatId, text, quoted) => { const pageId = current.current!.id; await flush(); return chat.send(chatId, text, quoted, pageId) } }
   }, [id, flush])
   const storageKey = `writing:${id}`
-  const panel = useConversationPanel(transport, 'chat', notebook?.chatOpen ?? false, storageKey)
+  const panel = useConversationPanel(transport, 'chat', notebook?.chatOpen ?? false, storageKey, 'writing-notebook')
   const answerAsk = usePreviewAsk(true, page?.id ?? '', false)
   useEffect(() => { if (!quote) answerAsk.clearQuote() }, [quote, answerAsk.clearQuote])
   const update = useCallback(async (patch: Parameters<ReturnType<typeof api>['update']>[1]) => { const next = await api().update(id, patch); setNotebook(next) }, [id])
@@ -158,8 +158,7 @@ function NotebookContent({ id }: { id: string }) {
           }}
         /></h1><span className="meta" role="status">{status}</span><Menu label="•••" ariaLabel="Notebook options" heading="Notebook options" panelClassName="writing-options-menu" items={[
           { id: 'line-numbers', label: 'Line numbers', checked: notebook.showLineNumbers ?? false, checkType: 'checkbox', hint: notebook.showLineNumbers ? 'On' : 'Off', onSelect: () => { void update({ showLineNumbers: !notebook.showLineNumbers }).catch(e => setError(e.message)) } },
-          { id: 'wide', label: 'Wide text', checked: notebook.textLayout !== 'thin', onSelect: () => { void update({ textLayout: 'wide' }).catch(e => setError(e.message)) } },
-          { id: 'thin', label: 'Thin text', checked: notebook.textLayout === 'thin', onSelect: () => { void update({ textLayout: 'thin' }).catch(e => setError(e.message)) } },
+          { id: 'wide', label: 'Wide text', checked: notebook.textLayout !== 'thin', checkType: 'checkbox', hint: notebook.textLayout !== 'thin' ? 'On' : 'Off', onSelect: () => { void update({ textLayout: notebook.textLayout !== 'thin' ? 'thin' : 'wide' }).catch(e => setError(e.message)) } },
           ...(index > 0 ? [{ id: 'up', label: 'Move up', onSelect: () => reorder(-1) }] : []),
           ...(index < notebook.pages.length - 1 ? [{ id: 'down', label: 'Move down', onSelect: () => reorder(1) }] : []),
           ...(notebook.pages.length > 1 ? [{ id: 'delete', label: 'Delete page', danger: true, onSelect: () => deletePage(page.id, page.title) }] : [])

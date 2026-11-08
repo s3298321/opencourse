@@ -1,5 +1,5 @@
 import type { Block, CourseManifest, Flashcard, Lesson, Module } from './types'
-import { duplicateElement } from './course-document'
+import { currentFormat, duplicateElement } from './course-document'
 import { availableBlockSlug } from './block-slugs'
 
 export type OutlineElement = Module | Lesson | Block | Flashcard
@@ -73,6 +73,7 @@ export function newBlock(type: Block['type'], uuid: () => string, siblings: read
   const suffix = nodeId.replace(/[^a-z0-9]/gi, '').slice(-12)
   const slug = availableBlockSlug(type, siblings.map((block) => block.slug))
   switch (type) {
+    case 'latex': return { nodeId, slug, type, content: String.raw`m = \frac{\Delta y}{\Delta x}` }
     case 'python-cell': return { nodeId, slug, type, content: '' }
     case 'markdown': return { nodeId, slug, type, content: '' }
     case 'image': return { nodeId, slug, type, src: '', alt: '' }
@@ -89,7 +90,7 @@ export function insertLessonBlock(manifest: CourseManifest, lessonId: string, ty
   if (!location || !('blocks' in location.element) || !Number.isInteger(index) || index < 0 || index > location.element.blocks.length) return { manifest }
   const block = newBlock(type, uuid, location.element.blocks)
   const copy = editElement(manifest, lessonId, { blocks: [...location.element.blocks.slice(0, index), block, ...location.element.blocks.slice(index)] })
-  return { manifest: copy, id: block.nodeId }
+  return { manifest: type === 'latex' ? currentFormat(copy) : copy, id: block.nodeId }
 }
 
 /** The boundary is measured before removal, so dropping beside oneself is a no-op. */

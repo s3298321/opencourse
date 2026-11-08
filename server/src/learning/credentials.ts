@@ -90,6 +90,8 @@ export function aiSettings(ctx: Pick<Ctx, 'db' | 'config'>, account: string): Se
     hint: row?.hint ?? null,
     model,
     reasoning: fittedReasoning(model, row?.reasoning),
+    perChatTools: true,
+    idempotentChatCreation: true,
     webSearch: Boolean(row?.web_search),
     title: row?.title_model
       ? { model: row.title_model, reasoning: fittedReasoning(row.title_model, row.title_reasoning) }

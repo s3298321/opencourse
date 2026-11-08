@@ -1,6 +1,11 @@
 # Course authoring: research and teaching quality
 
-Course authoring offers hosted web search by default, independently of learner chat. Settings → AI → Course authoring web search disables it. The model chooses when to use search; the prompt requires official documentation checks before adding or substantively changing version-sensitive technology instructions. The selected connection handles requests. Unsupported models continue without search with an author-facing notice.
+Course authoring offers hosted web search by default, independently of learner chat. Settings → AI → Course authoring web search sets the default for new chats. The tools icon beside the connection picker changes web search for just the current chat. The model chooses when to use search; the prompt requires official documentation checks before adding or substantively changing version-sensitive technology instructions. The selected connection handles requests. Unsupported models continue without search with an author-facing notice.
+
+New creator chats also start in **Plan** mode unless disabled in Settings. The assistant interviews the learner in small batches, can inspect the course and research, and cannot edit course content or assets. The card shows one question at a time. Next and Skip save your progress, Back lets you revise earlier answers, and the final step sends the batch. You can also reply in the composer. The plan is a private, temporary Markdown document belonging to the chat. Revisions patch that document; printing it adds a snapshot with **Accept plan** and **Reject plan**. Sending another message withdraws the decision buttons until the plan is printed again.
+
+Accept starts normal authoring with that exact plan. Reject leaves Plan mode without creating content. Either choice affects only this chat. **Save course** remains a separate action. If a new course has chat history, leaving before its first save asks whether to discard the conversation, even if the course itself is untouched. Confirming discards its draft, chats, and temporary plan files. For a saved course, discarding edits restores the last saved version and its chats remain available. Working plan files are never exported.
+
 
 Research is available during creation and editing. Current stable versions are the default for new courses, subject to runtime compatibility. Existing or explicitly pinned versions are preserved. Missing documentation is disclosed in the authoring chat rather than represented as verified. Transport failures preserve edits and require normal recovery; only an initial, specific unsupported-search rejection can retry without search.
 
@@ -65,5 +70,5 @@ image-search options retries once with ordinary text research. Other failures, o
 after output or tool execution, do not replay edits. Disabling authoring search disables
 image search too. The assistant can still use existing course assets and generated SVG/HTML.
 
-Format 1.8 clients and servers must be released together: servers retain the existing rule
+Format 1.9 clients and servers must be released together: servers retain the existing rule
 that new publications use the current archive format, while legacy archives remain importable.

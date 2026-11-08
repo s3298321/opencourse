@@ -36,7 +36,7 @@ describe('theme properties', () => {
 
   it('are the only custom properties a region rule paints with', () => {
     // Every background declaration on a themed region goes through a token.
-    for (const selector of ['.titlebar', '.sidebar', '.sidechat', '.content-glass', '.menu-panel, .search-panel']) {
+    for (const selector of ['.titlebar', '.sidebar', '.sidechat', '.content-glass', '.menu-panel, .search-panel, .author-notice', '.menu-panel, .tooltip', '.search-panel, .author-notice']) {
       const rule = new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)
       expect(rule, selector).not.toBeNull()
       const backgrounds = rule![1]!.split(';').filter((part) => /^\s*background(?:-color|-image)?\s*:/.test(part))

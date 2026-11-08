@@ -8,6 +8,7 @@ import { normalizeChatTitle, titleWordCount, TITLE_INSTRUCTIONS } from '../core/
 import { scrubSecrets } from '../core/coach/key'
 import { db } from './db'
 import { streamChat } from './openai'
+import { withNetworkRetries } from './network-retry'
 import { currentUserId } from './users'
 import { aiEvents, prepareTitleRequest } from './ai'
 import { log } from './log'
@@ -66,7 +67,7 @@ export async function generateChatTitle(options: {
     }
     const config = await prepareTitleRequest({ provider, model: options.model, reasoning: null, key: options.key, reasoningEfforts: options.reasoningEfforts }, controller.signal)
     task.provider = config.provider
-    const result = await streamChat({
+    const result = await withNetworkRetries(() => streamChat({
       diagnostics: { mode: scope, chatId, kind: 'title' },
       key: config.key, provider: config.provider, model: config.model, ...(config.reasoning !== null ? { reasoning: config.reasoning } : {}),
       input: [
@@ -74,7 +75,7 @@ export async function generateChatTitle(options: {
         { role: 'user', content: JSON.stringify({ prompt: prompt.text.slice(0, 4_000) }) }
       ],
       signal: controller.signal, onDelta: () => {}
-    })
+    }), controller.signal, () => {})
     if (result.aborted || controller.signal.aborted) return cancelled(config.model)
     const title = normalizeChatTitle(result.text)
     if (!title) {

@@ -133,6 +133,7 @@ describe('local course identities and drafts', () => {
     const content = identifyManifest(manifest(), randomUUID)
     content.cover_image = image.attachment.entry
     content.modules[0].lessons![0].blocks.push(
+      { type: 'latex', slug: 'slope', nodeId: randomUUID(), content: String.raw`m = \frac{\Delta y}{\Delta x}` },
       { type: 'image', slug: 'picture', nodeId: randomUUID(), src: image.attachment.entry, alt: 'Picture', caption: 'Caption' },
       { type: 'video', slug: 'video', nodeId: randomUUID(), src: movie.attachment.entry, poster: image.attachment.entry, caption: 'Video' },
       { type: 'visualization', slug: 'interactive', nodeId: randomUUID(), src: viz.attachment.entry, title: 'Interactive', height: 400 }
@@ -143,8 +144,8 @@ describe('local course identities and drafts', () => {
     if ('status' in saved) throw new Error('Conflict')
     expect(await saveCourse(id, 0, saved.draftVersion)).toMatchObject({ status: 'ok' })
     const reopened = getAuthoringCourse(id)
-    expect(reopened.document.manifest!.modules[0].lessons![0].blocks.map((b) => b.type)).toEqual(['markdown', 'quiz', 'exercise', 'image', 'video', 'visualization'])
-    expect(portableManifest(reopened.document.manifest!)).toEqual({ ...portableManifest(content), schema_version: '1.8', version: '0.1.0' })
+    expect(reopened.document.manifest!.modules[0].lessons![0].blocks.map((b) => b.type)).toEqual(['markdown', 'quiz', 'exercise', 'latex', 'image', 'video', 'visualization'])
+    expect(portableManifest(reopened.document.manifest!)).toEqual({ ...portableManifest(content), schema_version: '1.9', version: '0.1.0' })
     expect(getCourse(id)?.modules[0].lessons![0].blocks[2]).toMatchObject({ id: exercise.nodeId, nodeId: exercise.nodeId })
     const edited = draft(id, (m) => ({ ...m, author: 'Updated author' }))
     expect(await saveCourse(id, 1, edited.draftVersion)).toMatchObject({ status: 'ok', revision: 2 })
@@ -307,7 +308,7 @@ describe('attachments and portable export', () => {
     const archive = join(root, `card-export-${serial}.zip`), destination = join(root, `card-extract-${serial}`)
     await exportCourseZipPath(id, archive); mkdirSync(destination); await extractArchive(archive, destination)
     const exported = JSON.parse(readFileSync(join(destination, 'course.json'), 'utf8'))
-    expect(exported).toMatchObject({ schema_version: '1.8', version: '0.1.0' })
+    expect(exported).toMatchObject({ schema_version: '1.9', version: '0.1.0' })
     expect(exported.modules[0].lessons[0].flashcards[0]).toEqual({ id: 'card', question: 'Question?', answer: '**Answer**', image: { src: upload.attachment.entry, alt: 'Card image' } })
     expect(existsSync(join(destination, upload.attachment.entry))).toBe(true)
     const imported = await importCourseZip(archive)

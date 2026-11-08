@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ConnectionSettings } from '../../learning-ui/ConnectionSettings'
 import { desktopLearningClient } from './client'
 import ActionButton from '../components/ActionButton'
+import SettingsDisclosure from '../components/SettingsDisclosure'
 export function ServerLearningSettings({ server, username }: { server: string; username: string }) {
   const [status, setStatus] = useState(''),
     [error, setError] = useState('')
@@ -50,10 +51,9 @@ export function ServerLearningSettings({ server, username }: { server: string; u
         </ActionButton>
       </div>
       {error && <p className="server-sync-error" role="alert">{error}</p>}
-      <details className="server-learning-details">
-        <summary>Server account and AI settings</summary>
+      <SettingsDisclosure className="server-learning-details" title="Server account and AI settings">
         <ConnectionSettings client={desktopLearningClient(server)} username={username} />
-      </details>
+      </SettingsDisclosure>
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { ReadingChat } from '../../../../app/src/learning-ui/ReadingChat'
 import { ChatIcon } from '../../../../app/src/learning-ui/ChatIcon'
 import { learningClient } from '../lib/learning'
 import { Html } from './Html'
-import { renderMarkdown } from '../lib/markdown'
+import { renderLessonText } from '../lib/markdown'
 
 export function ReadingChatDock({
   open,
@@ -131,7 +131,7 @@ export function ReadingChatDock({
             visible={open}
             onClose={close}
             settingsLink={<Link to="/settings">Open Settings</Link>}
-            renderAnswer={(text) => <Html className="oc-prose" html={renderMarkdown(text)} />}
+            renderAnswer={(text) => <Html className="oc-prose" html={renderLessonText(text)} />}
           />
         )}
       </div>

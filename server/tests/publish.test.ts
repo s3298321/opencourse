@@ -11,7 +11,7 @@ afterEach(async () => { await server.close() })
 const get = (url: string, token?: string) => server.app.inject({ method: 'GET', url, headers: token ? auth(token) : {} })
 
 describe('publishing versions', () => {
-  it('publishes format 1.8 Python cells and notebook templates through shared validation', async () => {
+  it('publishes format 1.9 Python cells and notebook templates through shared validation', async () => {
     const author = await signUp(server, 'notebook-author')
     const { courseId, local } = localCourse()
     local.notebook = { cells: [{ content: 'print("starter")' }] }
@@ -103,7 +103,7 @@ describe('publishing versions', () => {
     const valid = publishedManifest(local, courseId)
 
     const old = { ...valid, schema_version: '1.4' }
-    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.8')
+    expect((await send(archive(server.dir, old))).json().error.errors[0]).toContain('publish in format 1.9')
     const unsupported = structuredClone(valid)
     unsupported.runtime = { language: 'c' }
     const rejected = await send(archive(server.dir, unsupported))

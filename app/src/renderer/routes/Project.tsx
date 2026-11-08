@@ -6,7 +6,7 @@ import type { CourseItemRef, CourseProgress, CourseView, ProjectWorkspace, UserP
 import { itemRoute, type Route, type Screen } from '../routes'
 import { useChatPanel } from '../sidechat/useChat'
 import ChatPanel from '../components/ChatPanel'
-import Html from '../components/Html'
+import ProjectBrief from '../components/ProjectBrief'
 import Sidebar from '../components/Sidebar'
 import TitleBar from '../components/TitleBar'
 import Menu from '../components/Menu'
@@ -84,14 +84,7 @@ export default function Project({ courseId, moduleId, user, navigate, route, act
           {!module ? <p>{error ? 'The project could not be opened.' : 'Loading project…'}</p> : <>
             <div className="meta">Course project{module.project.estimated_minutes ? ` · about ${module.project.estimated_minutes} minutes` : ''}</div>
             <h1>{module.title}</h1>
-            {!!module.project.objectives?.length && <div className="objectives"><h2>What you will practice</h2><ul>{module.project.objectives.map((o, i) => <li key={i}>{o}</li>)}</ul></div>}
-            <Html className="prose" source={module.project.definition} />
-            <section className="project-requirements"><h2>Requirements</h2><ol>{module.project.requirements.map((r) => <li key={r.id}><Html className="prose" source={r.description} /></li>)}</ol></section>
-            <section className="project-deliverables"><h2>Deliverables</h2>{module.project.deliverables.map((d) => <div className="panel" key={d.id}>
-              <h3>{d.title}</h3><Html className="prose" source={d.description} />
-              {!!d.paths?.length && <div className="project-paths">{d.paths.map((p) => <code key={p}>{p}</code>)}</div>}
-              <ul>{d.acceptance_criteria.map((criterion, i) => <li key={i}><Html className="prose" source={criterion} /></li>)}</ul>
-            </div>)}</section>
+            <ProjectBrief project={module.project} />
             <section className="project-location panel"><h2>Your workspace</h2>
               {workspace ? <>
                 <code className="project-directory">{workspace.directory}</code>

@@ -49,9 +49,9 @@ export default function TitleGenerationSection({ version }: { version: number })
   return <section className="settings-section settings-title-generation">
     <h2>Chat titles</h2>
     <p className="meta">Generate a short title after the first reply in lesson and project chats.</p>
-    <div className="settings-row"><span>Connection type</span><Tooltip label={connectionLabel}>
+    <div className="settings-row"><span>Default connection type</span><Tooltip label={connectionLabel}>
       <Menu className="settings-title-provider settings-connection-picker" align="left" disabled={busy || !settings}
-        ariaLabel={`Title generation connection: ${connectionLabel}`}
+        ariaLabel={`Default connection type for chat titles: ${connectionLabel}`}
         label={config ? <ConnectionLabel provider={config.provider} /> : 'Chat settings'}
         items={[
           { id: 'conversation', label: 'Use chat settings', checked: !config, onSelect: () => save(null) },

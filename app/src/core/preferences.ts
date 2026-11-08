@@ -65,6 +65,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     ...(values.defaultCoachBackendReasoning !== undefined ? { defaultCoachBackendReasoning: normalizeBackendReasoning(typeof values.defaultCoachBackendModel === 'string' ? values.defaultCoachBackendModel : BACKEND_MODEL, values.defaultCoachBackendReasoning) } : {}),
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
+    ...(typeof values.authoringPlan === 'boolean' ? { authoringPlan: values.authoringPlan } : {}),
     ...(typeof values.authoringWebSearch === 'boolean' ? { authoringWebSearch: values.authoringWebSearch } : {}),
     ...(values['coachAllowDelete'] === true ? { coachAllowDelete: true } : {}),
     ...(typeof theme === 'string' && (UUID.test(theme) || isBuiltinThemeId(theme)) ? { theme } : {}),

@@ -1,10 +1,13 @@
+import { networkRetryWarning } from '../core/chat-network'
+import ActiveChatTools from './ActiveChatTools'
+import ChatToolsMenu from './ChatToolsMenu'
 import { FlashcardPreview } from './PersonalCards'
 import type { FlashcardProposal } from '../core/personal-cards'
 import { useEffect, useLayoutEffect, useState, useRef, type ReactNode } from 'react'
 import type { ContentRef, ServerAISettings, ServerAIModels } from '../core/learning/types'
 import type { LearningClient } from './client'
 import './learning.css'
-import { REASONING_LABELS, reasoningEffortsFor } from '../core/sidechat/models'
+import { REASONING_LABELS, reasoningEffortsFor, webSearchFor } from '../core/sidechat/models'
 import Menu from './Menu'
 import ConnectionIcon from './ConnectionIcon'
 import { ReadingMessage, Thinking, type ReadingCitation } from './ReadingMessage'
@@ -36,10 +39,10 @@ function ReadingChatPanel({
   onQuoteUsed?: () => void
 }) {
   const storageKey = `opencourse:reading-draft:${draftKey ?? `${source.kind}:${source.id}`}`
-  const panel = useReadingTabs(client, source, storageKey)
+  const [settings, setSettings] = useState<ServerAISettings | null>(null)
+  const panel = useReadingTabs(client, source, storageKey, settings?.perChatTools ? settings.webSearch : undefined, settings?.idempotentChatCreation)
   const { chats, view, text, setText, error, setError, busy, answering } = panel
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [settings, setSettings] = useState<ServerAISettings | null>(null)
   const [catalog, setCatalog] = useState<ServerAIModels | null>(null)
   const configured = settings ? settings.configured && settings.enabled : null
   const modelChoices = (catalog?.models ?? []).filter(m => settings?.enabledModels == null || settings.enabledModels.includes(m.id))
@@ -48,6 +51,8 @@ function ReadingChatPanel({
   const chosen = saved && (settings?.enabledModels == null || settings.enabledModels.includes(saved.model)) ? saved : settings
   const model = chosen?.model ?? ''
   const reasoning = chosen?.reasoning ?? null
+  const chatTools = panel.tools ?? { webSearch: settings?.webSearch ?? false }
+  const supportsWeb = !!model && webSearchFor(model, reasoning)
   const efforts = reasoningEffortsFor(model)
   const modelEnabled = !!model && (settings?.enabledModels == null || settings.enabledModels.includes(model))
   useEffect(() => {
@@ -88,7 +93,7 @@ function ReadingChatPanel({
   useEffect(() => {
     if (visible && following.current && transcript.current)
       transcript.current.scrollTop = transcript.current.scrollHeight
-  }, [view, visible])
+  }, [view, visible, panel.retryAttempt])
   useEffect(() => {
     let alive = true
     const refresh = () =>
@@ -212,33 +217,35 @@ function ReadingChatPanel({
       </div>
       <div className="learning-chat-transcript">
         {historyOpen && (
-          <div className="learning-chat-history" id="reading-chat-history" aria-label="Conversation history">
-            {chats.length === 0 && <p className="learning-chat-history-empty">No conversations yet.</p>}
-            {chats.map((chat) => (
-              <div className="learning-chat-history-row" key={chat.id}>
-                <button type="button" className="learning-chat-history-open" onClick={() => select(chat.id)}>
-                  <span>{chat.title || 'A new chat'}</span>
-                  <small>
-                    Conversation
-                    {chat.messages !== undefined ? ` · ${chat.messages} message${chat.messages === 1 ? '' : 's'}` : ''}
-                    {' · '}
-                    {new Date(chat.lastMessageAt ?? chat.createdAt).toLocaleString()}
-                  </small>
-                </button>
-                <button
-                  type="button"
-                  className="learning-chat-tab-close"
-                  aria-label={`Delete chat: ${chat.title || 'A new chat'}`}
-                  title="Delete this chat for good"
-                  disabled={panel.sending}
-                  onClick={() => {
-                    if (window.confirm('Delete this chat? This cannot be undone.')) void panel.remove(chat.id)
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+          <div className="learning-chat-history chat-history-overlay" id="reading-chat-history" aria-label="Conversation history">
+            <div className="chat-history-list">
+              {chats.length === 0 && <p className="learning-chat-history-empty">No conversations yet.</p>}
+              {chats.map((chat) => (
+                <div className="learning-chat-history-row" key={chat.id}>
+                  <button type="button" className="learning-chat-history-open" onClick={() => select(chat.id)}>
+                    <span>{chat.title || 'A new chat'}</span>
+                    <small>
+                      Conversation
+                      {chat.messages !== undefined ? ` · ${chat.messages} message${chat.messages === 1 ? '' : 's'}` : ''}
+                      {' · '}
+                      {new Date(chat.lastMessageAt ?? chat.createdAt).toLocaleString()}
+                    </small>
+                  </button>
+                  <button
+                    type="button"
+                    className="learning-chat-tab-close"
+                    aria-label={`Delete chat: ${chat.title || 'A new chat'}`}
+                    title="Delete this chat for good"
+                    disabled={panel.sending}
+                    onClick={() => {
+                      if (window.confirm('Delete this chat? This cannot be undone.')) void panel.remove(chat.id)
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {configured === false && (
@@ -266,10 +273,11 @@ function ReadingChatPanel({
               <p>Ask about this {source.kind === 'course' ? 'lesson' : 'document'}.</p>
             </div>
           )}
-          {view?.messages.map((m) => <div key={m.id}><ReadingMessage message={m} renderAnswer={renderAnswer} onSource={onSource} />
+          {view?.messages.map((m) => <div key={m.id}><ReadingMessage hideActivity={!!panel.retryAttempt} message={m} renderAnswer={renderAnswer} onSource={onSource} />
             {m.flashcardProposals?.map(p => <FlashcardPreview key={p.id} proposal={p} renderText={renderAnswer} decide={(proposal,action,cardId) => client.request<FlashcardProposal>(`/learning/chats/${view.chat.id}/flashcards/${proposal}`,'POST',{action:`${action}-card`,cardId})} />)}
           </div>)}
           {busy && !answering && <Thinking />}
+          {panel.retryAttempt && <div className="chat-network-warning" role="status">{networkRetryWarning(panel.retryAttempt)}</div>}
 
         </div>
       </div>
@@ -321,6 +329,7 @@ function ReadingChatPanel({
           />
           <div className="learning-chat-actions">
             <span className="learning-chat-connection" role="img" aria-label="OpenAI API key" title="OpenAI API key · managed in Settings"><ConnectionIcon provider="apiKey" /></span>
+            <ChatToolsMenu tools={chatTools} change={panel.setTools} supportsWeb={supportsWeb} busy={busy || answering || panel.loading} active={visible} resetKey={panel.active} />
             {configured && modelEnabled && <>
               <Menu className="learning-chat-picker learning-chat-model" panelClassName="learning-chat-menu" screenActive={visible} resetKey={panel.active}
                 label={<span className="learning-chat-picker-label">{model}</span>} ariaLabel="Model for this chat" title="Which model answers" align="left" side="above" disabled={busy || answering}
@@ -335,6 +344,7 @@ function ReadingChatPanel({
                   ...efforts.map(effort => ({ id: effort, label: REASONING_LABELS[effort], checked: effort === reasoning, onSelect: () => panel.setSelection({ model, reasoning: effort }) }))]} />}
             </>}
             {configured && !modelEnabled && <span className="learning-chat-picker-label">Enable a model in Settings</span>}
+            <ActiveChatTools tools={chatTools} supportsWeb={supportsWeb} />
             {answering ? (
               <button
                 type="button"

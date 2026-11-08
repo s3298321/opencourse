@@ -1,3 +1,8 @@
+import { webSearchFor } from '../core/sidechat/models'
+import { normalizeCitations } from '../core/sidechat/citations'
+import type { ChatCitation } from '../core/types'
+import { getChatTools, initializeChatTools, storeChatTools } from './chat-tools'
+import type { ChatTools } from '../core/chat-tools'
 import { attachCardProposals } from './personal-card-store'
 import { flashcardTools, flashcardToolNotice, createFlashcardPreview } from './personal-cards'
 import { FLASHCARD_INSTRUCTIONS } from '../core/personal-cards'
@@ -14,7 +19,7 @@ import { requireCourseProject, projectScope } from './courseprojects'
 import { assertProjectPath, runProjectFileTool } from './projectfiles'
 import { readKey } from './coachkey'
 import { scrubSecrets } from '../core/coach/key'
-import { streamChat } from './openai'
+import { chatRetryNotice, streamChatRound } from './resilient-chat'
 import { db } from './db'
 import { requireUser } from './users'
 import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
@@ -52,6 +57,7 @@ function requireChat(id: string): ProjectChatSummary {
   return chatConfig(chat)
 }
 function chatConfig(chat: ProjectChatSummary): ProjectChatSummary {
+  chat = { ...chat, tools: getChatTools('project', chat.id) }
   const snapshot = inflight.get(chat.id)?.chat
   return snapshot ? { ...chat, model: snapshot.model, reasoning: snapshot.reasoning, provider: snapshot.provider } : conversationConfig('project', chat)
 }
@@ -62,6 +68,7 @@ export function createProjectChat(target: ProjectTarget): ProjectChatSummary {
   const at = new Date().toISOString()
   const chat = { id: newChatId(), ...target, ...newAIConversation('project'), createdAt: at, updatedAt: at }
   insertProjectChat(chat)
+  initializeChatTools('project', chat.id)
   return requireChat(chat.id)
 }
 export function deleteProjectChat(id: string): void { requireChat(id); cancelProjectChat(id); deleteProjectChatRow(id) }
@@ -100,7 +107,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
   preparing.set(id, { controller: preparation, provider: chat.provider ?? 'apiKey' })
   const unbindPreparation = whenSenderGone(sender, stopPreparation)
   const logger = log.child('project', { userId: owner, data: { chatId: id, courseId: chat.courseId, moduleId: chat.moduleId } })
-  try { ({ chat, key } = await prepareAIRequest('project', chat, preparation.signal)) }
+  try { ({ chat, key } = await prepareAIRequest('project', chat, preparation.signal, chatRetryNotice(sender, id))) }
   catch (error) {
     if (preparation.signal.aborted) return { status: 'failed', message: 'Message stopped before sending.' }
     logger.warn('The connection was not ready for a question', { provider: chat.provider ?? 'apiKey', message: (error as Error).message })
@@ -132,7 +139,9 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
   const quoted = typeof quote?.text === 'string' ? quote.text.trim().slice(0, MAX_QUOTE_CHARS) : ''
   const seq = appendProjectMessage(id, { role: 'user', text: asked, ...(quoted ? { quote: { text: quoted, from: 'answer' as const } } : {}), at }, database)
   const promptContext = context.length <= 12000 ? context : context.slice(0, 12000) + '\n[Requirements continue. Use read_project_requirements from offset 12000 to read remaining criteria.]'
-  const input: ResponseInput[] = [{ role: 'system', content: `${PROJECT_INSTRUCTIONS}\n${FLASHCARD_INSTRUCTIONS}\n${flashcardToolNotice('project', id)}` }, { role: 'user', content: `[current project context]\n\n${promptContext}` }]
+  const webSearch = chat.tools?.webSearch === true && webSearchFor(chat.model, chat.reasoning)
+  const citations: ChatCitation[] = []
+  const input: ResponseInput[] = [{ role: 'system', content: `${PROJECT_INSTRUCTIONS}\n${webSearch ? 'Web research is available. Distinguish external sources from evidence in project files.' : 'Web search is unavailable.'}\n${FLASHCARD_INSTRUCTIONS}\n${flashcardToolNotice('project', id)}` }, { role: 'user', content: `[current project context]\n\n${promptContext}` }]
   const history = selectProjectMessages(id, database).filter((m) => m.role !== 'context')
   let available = 120000 - PROJECT_INSTRUCTIONS.length - promptContext.length
   const kept: ResponseInput[] = []
@@ -158,7 +167,7 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
     unbindLost()
     let assistantSeq = -1
     const valid = currentUserId() === owner && getCourse(chat.courseId)?.revision === revision && !!selectProjectChat(id, database)
-    if (answered && valid) assistantSeq = appendProjectMessage(id, { role: 'assistant', text: answered, status,
+    if (answered && valid) assistantSeq = appendProjectMessage(id, { role: 'assistant', text: answered, status, citations: normalizeCitations(citations),
       generation: { model: chat.model, reasoning: chat.reasoning, provider: chat.provider ?? 'apiKey' }, at: new Date().toISOString() }, database)
     if (review && status === 'complete' && assistantSeq >= 0 && requireUser() === owner) {
       updateProgress(chat.courseId, (p) => ({ ...p, projects: { ...p.projects, [chat.moduleId]: { ...p.projects[chat.moduleId], reviewedFingerprint: fingerprint, lastReview: { chatId: id, seq: assistantSeq, at: new Date().toISOString(), fingerprint } } } }))
@@ -188,19 +197,27 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
       const chatTools = [...PROJECT_TOOLS, ...flashcardTools('project', id)]
       const result = await runChatAgent({
         input, signal: controller.signal,
-        session: { mode: 'project', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools: chatTools, volatileTools: true, sourceVersion: fingerprint,
+        session: { mode: 'project', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider ?? 'apiKey', key, tools: chatTools, webSearch, volatileTools: true, sourceVersion: fingerprint,
           context: [{ role: 'user', content: `[current project context]\n\n${promptContext}` }],
           valid: () => !finalized && getCourse(chat.courseId)?.revision === revision },
         readOnly: name => name !== 'create_flashcards',
-        stream: (items) => {
+        stream: async (items) => {
+          const begin = answered.length
+          const offset = answered.length ? answered.length + 2 : 0
           let firstDelta = true
-          return streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input: items, tools: chatTools, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal, onDelta: (chunk) => {
+          const result = await streamChatRound(sender, id, () => {
+            answered = answered.slice(0, begin)
+            firstDelta = true
+            return answered
+          }, { webSearch, onSearch: event => push('projectChat:activity', event.state === 'running' ? 'Searching the web…' : 'Finished web research'), key, provider: chat.provider, model: chat.model, modelContext, input: items, tools: chatTools, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal, onDelta: (chunk) => {
             if (finalized) return
             const separated = firstDelta && answered ? `\n\n${chunk}` : chunk
             firstDelta = false
             answered += separated
             push('projectChat:delta', separated)
           } })
+          for (const c of result.citations ?? []) citations.push({ ...c, start: c.start < 0 ? -1 : c.start + offset, end: c.end < 0 ? -1 : c.end + offset })
+          return result
         },
         tool: async (name, args, callId) => {
           if (finalized || controller.signal.aborted || requireUser() !== owner) throw new Error('Project review stopped.')
@@ -227,4 +244,10 @@ export async function sendProjectMessage(sender: WebContents, id: string, text: 
     } catch (err) { if (!finalized) finish(controller.signal.aborted ? 'stopped' : 'failed', controller.signal.aborted ? undefined : (err as Error).message) }
   })() })
   return { status: 'ok', seq }
+}
+
+export function configureProjectTools(id: string, options: ChatTools): ChatTools {
+  if (inflight.has(id) || preparing.has(id)) throw new Error('Wait for the current response before changing tools.')
+  requireChat(id)
+  return storeChatTools('project', id, options)
 }

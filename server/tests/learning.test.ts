@@ -198,6 +198,19 @@ describe('learning synchronization', () => {
       else expect(r.statusCode).toBe(400)
     }
   })
+  it('reveals only the requested exercise hints to enrolled learners', async () => {
+    await enrolled()
+    const base = `/learn/course/${id}/1.0.0`
+    const payload = await call('GET', base)
+    const exercise = payload.json().course.modules[0].lessons[0].blocks.find((b: { type: string }) => b.type === 'exercise')
+    expect(exercise.verification_instructions).toBe('Run it')
+    expect(exercise.hintCount).toBe(1)
+    expect(exercise.hints).toBeUndefined()
+    const path = `${base}/exercises/${exercise.id}/hints`
+    expect((await call('GET', path)).json()).toEqual({ hints: ['SECRET-HINT'] })
+    expect((await call('GET', `${base}/exercises/${lesson}/hints`)).statusCode).toBe(404)
+    expect((await call('GET', path, undefined, (await signUp(server)).token)).statusCode).toBe(404)
+  })
   it('excludes answer keys and private project provenance from learner responses and sync', async () => {
     const s = await enrolled()
     const payload = await call('GET', `/learn/course/${id}/1.0.0`)
@@ -339,6 +352,23 @@ describe('server-owned AI', () => {
     expect(answer.activity.running).toBe(false)
     expect(answer.citations).toEqual([{ title: 'Reference', url: 'https://example.com', start: 0, end: 10 }])
   })
+  it('isolates chat tools from account defaults, other chats and other accounts', async () => {
+    const first = await chat()
+    await call('PUT', '/me/ai', { webSearch: true })
+    const second = (await call('POST', '/learning/chats', { kind:'course',id,version:'1.0.0' })).json().chat
+    expect(second.tools.webSearch).toBe(true)
+    expect((await call('GET', '/learning/chats/'+first)).json().chat.tools.webSearch).toBe(false)
+    expect((await call('PUT', '/learning/chats/'+second.id+'/tools', {webSearch:false})).json().chat.tools.webSearch).toBe(false)
+    expect((await call('GET','/me/ai')).json().webSearch).toBe(true)
+    expect((await call('PUT', '/learning/chats/'+second.id+'/tools', {webSearch:true,plan:true})).statusCode).toBe(400)
+    const other = await signUp(server)
+    expect((await call('PUT', '/learning/chats/'+second.id+'/tools', {webSearch:true}, other.token)).statusCode).toBe(404)
+    const sent: any[] = []
+    server.ctx.aiFetch = async (_url, init) => { sent.push(JSON.parse(String(init?.body))); return new Response(stream('Answer')) }
+    await call('POST', '/learning/chats/'+second.id+'/messages', {text:'Hello',requestId:'per-chat-tools'})
+    await vi.waitFor(async () => expect((await call('GET','/learning/chats/'+second.id)).json().messages.at(-1).status).toBe('complete'))
+    expect(sent.find(body => body.tools)?.tools).not.toContainEqual({type:'web_search'})
+  })
   it('encrypts credentials with account binding and rotates envelopes', async () => {
     await call('PUT', '/me/ai', { key: secret })
     const stored = server.ctx.db.prepare('SELECT * FROM learning_ai').get()!
@@ -417,13 +447,13 @@ describe('server-owned AI', () => {
     expect((await call('PUT', '/me/ai', { title: null })).json().title).toBeNull()
   })
   it('answers with the chat defaults and names the conversation with the title defaults', async () => {
-    const chatId = await chat()
     await call('PUT', '/me/ai', {
       model: 'gpt-5.1',
       reasoning: 'high',
       webSearch: true,
       title: { model: 'gpt-5-mini', reasoning: 'low' }
     })
+    const chatId = await chat()
     const bodies: Record<string, unknown>[] = []
     server.ctx.aiFetch = async (_url, init) => {
       const body = JSON.parse(String(init?.body))
@@ -521,6 +551,67 @@ describe('AI recovery and tool boundaries', () => {
     await call('PUT', '/me/ai', { key: 'sk-test' })
     return (await call('POST', '/learning/chats', { kind: 'course', id, version: '1.0.0' })).json().chat.id as string
   }
+  it('retries an interrupted round with the same tool receipt and replaces only its partial text', async () => {
+    const chat = await setup(), requests: string[] = []
+    server.ctx.aiFetch = async (_url, init) => {
+      const body = String(init?.body)
+      if (JSON.parse(body).instructions === TITLE_INSTRUCTIONS) return new Response(stream(''))
+      requests.push(body)
+      const delta = (text: string) => `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: text })}\n\n`
+      if (requests.length === 1) {
+        const tool = { type: 'function_call', call_id: 'outline', name: 'list_course_sections', arguments: JSON.stringify({ cursor: 0 }) }
+        return new Response(delta('Earlier. ') + `data: ${JSON.stringify({ type: 'response.completed', response: { output: [tool] } })}\n\n`)
+      }
+      if (requests.length === 2) return new Response(delta('Partial'))
+      return new Response(stream('Recovered.'))
+    }
+    const path = `/learning/chats/${chat}`
+    await call('POST', path + '/messages', { text: 'Read the course', requestId: 'recover' })
+    await vi.waitFor(async () => expect((await call('GET', path)).json().messages.at(-1))
+      .toMatchObject({ text: 'Earlier. Partial', status: 'running', retryAttempt: 1 }))
+    await vi.waitFor(async () => expect((await call('GET', path)).json().messages.at(-1))
+      .toMatchObject({ text: 'Earlier. Recovered.', status: 'complete' }), { timeout: 3000 })
+    expect(requests).toHaveLength(3)
+    expect(requests[1]).toBe(requests[2])
+    expect(JSON.parse(requests[1]).input.at(-1)).toMatchObject({ type: 'function_call_output', call_id: 'outline' })
+    const view = (await call('GET', path)).json()
+    expect(view.messages).toHaveLength(2)
+    expect(view.messages[1].retryAttempt).toBeUndefined()
+    const replay = (await call('GET', path + '/events')).body
+    expect(replay).toContain('"type":"replace"')
+    expect(replay).toContain('"attempt":null')
+  })
+  it('reports an outage only after five retries, and Stop interrupts the backoff', async () => {
+    const chat = await setup(), path = `/learning/chats/${chat}`
+    const offline = vi.fn(async (): Promise<Response> => { throw new TypeError('fetch failed', { cause: new Error('ECONNRESET') }) })
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+    server.ctx.aiFetch = offline
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await call('POST', path + '/messages', { text: 'Explain', requestId: 'offline' })
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        await vi.waitFor(async () => expect((await call('GET', path)).json().messages.at(-1))
+          .toMatchObject({ status: 'running', retryAttempt: attempt }))
+        await vi.advanceTimersByTimeAsync(1000 * 2 ** (attempt - 1))
+      }
+      expect(offline).toHaveBeenCalledTimes(6)
+      expect((await call('GET', path)).json().messages.at(-1)).toMatchObject({ status: 'error', text: expect.stringContaining('after 5 retries') })
+      await call('POST', path + '/messages', { text: 'Again', requestId: 'stop-offline' })
+      await vi.waitFor(async () => expect((await call('GET', path)).json().messages.at(-1).retryAttempt).toBe(1))
+      await call('POST', path + '/cancel', {})
+      await vi.advanceTimersByTimeAsync(2000)
+      expect((await call('GET', path)).json().messages.at(-1).status).toBe('cancelled')
+      expect(offline).toHaveBeenCalledTimes(7)
+    } finally { vi.useRealTimers() }
+  })
+  it('deduplicates chat creation after a lost acknowledgment', async () => {
+    await enrolled()
+    const body = { kind: 'course', id, version: '1.0.0', requestId: randomUUID() }
+    const first = await call('POST', '/learning/chats', body)
+    expect(first.statusCode).toBe(200)
+    expect((await call('POST', '/learning/chats', body)).json()).toEqual(first.json())
+    expect((await call('GET', '/learning/chats?kind=course&id=' + id)).json().chats).toHaveLength(1)
+  })
   it('filters answers in tool results, preserves citations and scopes tools to the conversation', async () => {
     const chat = await setup(),
       requests: Record<string, unknown>[] = []
@@ -606,6 +697,7 @@ describe('AI recovery and tool boundaries', () => {
       id,
       version: '1.0.0',
       importId: 'legacy:one',
+      tools: {webSearch: true},
       title: 'Previous reading',
       messages: [
         { role: 'user', text: 'Explain this', at: '2026-01-01T00:00:00Z' },
@@ -614,6 +706,7 @@ describe('AI recovery and tool boundaries', () => {
     }
     const first = await call('POST', '/learning/chats/import', body),
       second = await call('POST', '/learning/chats/import', body)
+    expect(first.json().chat.tools).toEqual({webSearch:true})
     expect(first.statusCode, first.body).toBe(200)
     expect(second.json().chat.id).toBe(first.json().chat.id)
     expect(second.json().messages).toHaveLength(2)

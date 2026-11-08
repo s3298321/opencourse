@@ -12,6 +12,7 @@
  *    route, status, time - never an email, a code, a password or a token;
  *  - a download is streamed to a file under a byte cap.
  */
+import { isNetworkInterruption } from '../core/network-retry'
 import { app, net } from 'electron'
 import { EventEmitter } from 'node:events'
 import { createWriteStream, readFileSync } from 'node:fs'
@@ -125,7 +126,10 @@ export async function callServer<T>(base: string, path: string, parse: (raw: unk
     return empty
   }
   let raw: unknown
-  try { raw = JSON.parse((await readCapped(response, JSON_LIMIT)).toString('utf8')) } catch { throw new ServerError(response.status, 'bad_response', 'The server sent an answer the app does not understand.') }
+  try { raw = JSON.parse((await readCapped(response, JSON_LIMIT)).toString('utf8')) } catch (error) {
+    if (isNetworkInterruption(error) || error instanceof Error && error.name === 'TimeoutError') throw new ServerError(0, 'unreachable', 'The connection to the server was interrupted.')
+    throw new ServerError(response.status, 'bad_response', 'The server sent an answer the app does not understand.')
+  }
   const parsed = parse(raw)
   if (parsed === null) throw new ServerError(response.status, 'bad_response', 'The server sent an answer the app does not understand.')
   return parsed

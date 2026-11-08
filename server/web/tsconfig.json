@@ -28,6 +28,8 @@
       "shiki/core": ["../node_modules/shiki/dist/core.d.mts"],
       "shiki/engine/javascript": ["../node_modules/shiki/dist/engine-javascript.d.mts"],
       "shiki/*": ["../node_modules/shiki/dist/*"],
+      "katex": ["../node_modules/katex"],
+      "markdown-it": ["../node_modules/markdown-it"],
       "pdfjs-dist": ["../node_modules/pdfjs-dist"],
       "react": ["../node_modules/@types/react"],
       "react/*": ["../node_modules/@types/react/*"],

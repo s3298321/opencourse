@@ -1,12 +1,12 @@
 import { act, createElement, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BlockPreview, FlashcardPreview, LessonPreview } from '../src/renderer/routes/CourseEditorPreview'
+import { BlockPreview, CourseOverviewPreview, FlashcardPreview, LessonPreview, ProjectPreview } from '../src/renderer/routes/CourseEditorPreview'
 import type { Block, CourseManifest, ExerciseBlock, QuizBlock } from '../src/core/types'
 
 vi.mock('../src/renderer/markdown-context', async () => {
-  const { default: MarkdownIt } = await import('markdown-it')
-  const md = new MarkdownIt()
+  const { createRenderer } = await import('@core/markdown')
+  const md = await createRenderer()
   return { useMarkdown: () => md }
 })
 vi.mock('../src/renderer/workbench/CodeEditor', () => ({ default: ({ value, readOnly, ariaLabel, onChange }: { value: string; readOnly: boolean; ariaLabel: string; onChange: (content: string) => void }) => createElement('textarea', { value, readOnly, 'aria-label': ariaLabel, onChange: (e: { target: { value: string } }) => onChange(e.target.value) }) }))
@@ -31,6 +31,73 @@ const quiz: QuizBlock = { type: 'quiz', nodeId: 'quiz', slug: 'check', id: 'q', 
 const exercise: ExerciseBlock = { type: 'exercise', nodeId: 'exercise', slug: 'practice', id: 'e', title: 'Practice', prompt: 'Write **code**.', verification_instructions: 'Run the tests.', starter_code: 'print(1)', extra_files: [{ nodeId: 'support', path: 'data.txt', content: 'original data' }], tests: 'assert True', solution: 'print(2)', hints: ['Use `print`.'] }
 
 describe('course authoring previews', () => {
+  it('updates overview math and keeps prerequisites in separate list items', async () => {
+    const preview = (description: string, prerequisites: string[]) => act(async () => root!.render(createElement(CourseOverviewPreview, {
+      courseId: 'draft', manifest: { schema_version: '1.9', slug: 'budget', title: 'Budget', modules: [], description, prerequisites }
+    })))
+    await preview('Plan for $T$ minutes.\n\n$$t = \\frac{T}{3}$$', ['Read $x^2$ and `$x$`.', 'Check the total:\n\n$$a+b=T$$'])
+    const description = container.querySelector('.course-description-markdown')!
+    expect(description.querySelector('.course-inline-formula annotation')?.textContent).toBe('T')
+    expect(description.querySelector('math[display="block"] mfrac')).toBeTruthy()
+    const items = container.querySelectorAll('.course-prerequisites li')
+    expect(items).toHaveLength(2)
+    expect(items[0].querySelector('msup')).toBeTruthy()
+    expect(items[0].querySelector('code')?.textContent).toBe('$x$')
+    expect(items[1].querySelector('math[display="block"] annotation')?.textContent).toBe('a+b=T')
+    await preview('Allow $2T$ minutes.', [])
+    expect(description.querySelector('annotation')?.textContent).toBe('2T')
+    expect(container.querySelector('.course-prerequisites')).toBeNull()
+  })
+
+  it('typesets the project definition as it is edited and preserves literal code', async () => {
+    const preview = (definition: string) => act(async () => root!.render(createElement(ProjectPreview, {
+      project: { definition, requirements: [], deliverables: [] }
+    })))
+    await preview('Budget $T$ minutes. Keep `$x$` as code.\n\n$$t = \\frac{T}{3}$$')
+    const definition = container.querySelector('.project-definition')!
+    expect(definition.querySelector('.course-inline-formula annotation')?.textContent).toBe('T')
+    expect(definition.querySelector('math[display="block"] mfrac')).toBeTruthy()
+    expect(definition.querySelector('code')?.textContent).toBe('$x$')
+    await preview('Use $2T$ minutes.')
+    expect(definition.querySelectorAll('annotation')).toHaveLength(1)
+    expect(definition.querySelector('annotation')?.textContent).toBe('2T')
+  })
+
+  it('updates project objectives with inline and display math in the draft preview', async () => {
+    const project = { definition: 'Project brief', requirements: [], deliverables: [] }
+    const preview = (objectives: string[]) => act(async () => root!.render(createElement(ProjectPreview, { project: { ...project, objectives } })))
+    await preview(['Plan for $T$ minutes.', 'Check the total:\n\n$$a + b = T$$'])
+    const items = container.querySelectorAll('.objectives li')
+    expect(items).toHaveLength(2)
+    expect(items[0].querySelector('.course-inline-formula annotation')?.textContent).toBe('T')
+    expect(items[1].querySelector('math[display="block"] annotation')?.textContent).toBe('a + b = T')
+    await preview(['Revise the budget to $2T$.'])
+    expect(container.querySelector('.objectives annotation')?.textContent).toBe('2T')
+    await preview([])
+    expect(container.querySelector('.objectives')).toBeNull()
+  })
+
+  it('renders math in project requirements, deliverable titles, descriptions and acceptance criteria', async () => {
+    const project = {
+      definition: 'Budget the project.',
+      requirements: [{ id: 'budget', description: 'Allocate $T$ minutes.' }],
+      deliverables: [{ id: 'plan', title: 'Plan for $T$', description: 'Check the total:\n\n$$a + b = T$$',
+        paths: ['notes/$T$.md'], acceptance_criteria: ['Check $a$ and $b$.', 'Keep `$T$` literal.'] }]
+    }
+    const preview = () => act(async () => root!.render(createElement(ProjectPreview, { project })))
+    await preview()
+    const annotations = (selector: string) => [...container.querySelectorAll(selector + ' annotation')].map(el => el.textContent)
+    expect(annotations('.project-requirements')).toEqual(['T'])
+    expect(annotations('.project-deliverables h3')).toEqual(['T'])
+    expect(annotations('.project-deliverables math[display="block"]')).toEqual(['a + b = T'])
+    expect(annotations('.project-deliverables li')).toEqual(['a', 'b'])
+    expect(container.querySelector('.project-deliverables li code')?.textContent).toBe('$T$')
+    expect(container.querySelector('.project-paths code')?.textContent).toBe('notes/$T$.md')
+    project.deliverables[0].acceptance_criteria = ['Check $2T$.']
+    await preview()
+    expect(annotations('.project-deliverables li')).toEqual(['2T'])
+  })
+
   it('reveals flashcard answers locally and hides them again after content edits', async () => {
     const card = { id: 'card', question: '**Question?**', answer: 'Hidden answer', image: { src: 'diagram.svg', alt: 'Diagram' } }
     await act(async () => root!.render(createElement(FlashcardPreview, { courseId: 'draft', card })))
@@ -75,7 +142,7 @@ describe('course authoring previews', () => {
     expect(learner.submitQuiz).not.toHaveBeenCalled()
   })
   it('renders a complete lesson using the lesson header and each block component, with draft media URLs', async () => {
-    const lesson = { nodeId: 'lesson', slug: 'learn', title: 'Learn', estimated_minutes: 8, objectives: ['Understand this'], blocks: [
+    const lesson = { nodeId: 'lesson', slug: 'learn', title: 'Learn', estimated_minutes: 8, objectives: ['Understand this', 'Evaluate $f(x)$.', 'Check the result:\n\n$$f(2) = 4$$'], blocks: [
       { nodeId: 'text', slug: 'notes', type: 'markdown', content: '## Key takeaways\n\n**Notes**' } as Block,
       { nodeId: 'image', slug: 'image', type: 'image', src: 'image.png', alt: 'Example', caption: 'Image caption' } as Block,
       { nodeId: 'video', slug: 'video', type: 'video', src: 'movie.mp4', poster: 'poster.png', caption: 'Video caption' } as Block,
@@ -84,7 +151,11 @@ describe('course authoring previews', () => {
     const manifest: CourseManifest = { schema_version: '1.3', slug: 'draft', title: 'Draft', modules: [{ nodeId: 'module', slug: 'module', title: 'Module', lessons: [lesson] }] }
     await act(async () => root!.render(createElement(LessonPreview, { lesson, manifest, courseId: 'draft' })))
     expect(container.querySelector('.lesson-head')?.textContent).toContain('Lesson 1 of 1 · 8 minutesLearn')
-    expect(container.querySelector('.objectives li')?.textContent).toBe('Understand this')
+    const objectives = container.querySelectorAll('.objectives li')
+    expect(objectives).toHaveLength(3)
+    expect(objectives[0].textContent?.trim()).toBe('Understand this')
+    expect(objectives[1].querySelector('.course-inline-formula annotation')?.textContent).toBe('f(x)')
+    expect(objectives[2].querySelector('math[display="block"] annotation')?.textContent).toBe('f(2) = 4')
     expect(container.querySelector('.block.prose.takeaways strong')?.textContent).toBe('Notes')
     expect(container.querySelector('img')?.src).toBe('opencourse://draft/draft/image.png')
     expect(container.querySelector('img')?.alt).toBe('Example')

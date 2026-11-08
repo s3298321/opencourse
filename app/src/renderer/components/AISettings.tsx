@@ -106,9 +106,9 @@ export function AIModelsSection({ scope, version }: { scope: AIScope; version: n
   return <section className={`settings-section settings-ai-${scope}`}>
     <h2>{title}</h2>
     <p className="meta">Settings for {purpose}. Defaults apply to new conversations and connection switches.</p>
-    <div className="settings-row"><span>Connection type</span><Tooltip label={PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}>
+    <div className="settings-row"><span>Default connection type</span><Tooltip label={PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}>
       <Menu className={`settings-ai-provider-${scope} settings-connection-picker`} align="left" disabled={busy || !settings}
-        ariaLabel={`${title} connection: ${PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}`}
+        ariaLabel={`Default connection type for ${title}: ${PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}`}
         label={<ConnectionLabel provider={settings?.selectedProvider ?? 'apiKey'} />}
         items={(['apiKey', 'chatgpt'] as const).map(value => ({ id: value, label: PROVIDER_LABELS[value], icon: <ConnectionIcon provider={value} />,
           checked: settings?.selectedProvider === value, onSelect: () => void selected(value) }))} />

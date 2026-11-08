@@ -1,3 +1,4 @@
+import { InterruptedConnection, isNetworkInterruption } from './network-retry'
 import { imageResultsFromOutput, researchSourcesFromOutput, type ResearchSnapshot } from '../core/authoring/research'
 import { setTimeout as retryDelay } from 'node:timers/promises'
 import { responseUsage } from '../core/text-chat/usage'
@@ -534,6 +535,8 @@ export interface ChatStreamOptions {
   onResearch?: (snapshot: ResearchSnapshot) => void
   /** Absent: the request says nothing, and the model thinks as long as it does by default. */
   reasoning?: ReasoningEffort
+  /** The provider accepted the request and opened the response stream. */
+  onConnected?: () => void
   /** Called with each chunk of text as it arrives. */
   onDelta: (text: string) => void
   /** The caller's own cancel - a learner pressing Stop, or a closing window. */
@@ -605,22 +608,18 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
     let response: Response | undefined
     for (let retry = 0; retry <= 2; retry++) {
       attempts++
-      try {
-        response = await net.fetch(`${BASE}/responses`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${options.key}`,
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream'
-      },
-      body: JSON.stringify(responseRequest(options.provider ?? 'apiKey', options)),
-      signal: controller.signal
-    })
-        if (![408, 500, 502, 503, 504].includes(response.status) || retry === 2) break
-        await response.body?.cancel()
-      } catch (error) {
-        if (controller.signal.aborted || retry === 2) throw error
-      }
+      response = await net.fetch(`${BASE}/responses`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${options.key}`,
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream'
+        },
+        body: JSON.stringify(responseRequest(options.provider ?? 'apiKey', options)),
+        signal: controller.signal
+      })
+      if (![408, 500, 502, 503, 504].includes(response.status) || retry === 2) break
+      await response.body?.cancel()
       await retryDelay(retry === 0 ? 250 : 750, undefined, { signal: controller.signal })
     }
     if (!response) throw new OpenAIError(0, 'OpenAI returned no response')
@@ -639,12 +638,13 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
     }
     if (!response.body) throw new OpenAIError(0, 'OpenAI returned no stream to read')
 
+    options.onConnected?.()
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     let failure: StreamFailure | null = null
 
-    for (;;) {
+    while (!completed && !failure) {
       const { done, value } = await reader.read()
       if (done) break
       touch()
@@ -727,10 +727,11 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
       }
     }
 
+    void reader.cancel().catch(() => {})
     if (failure) throw new OpenAIError(0, failure.message)
     if (!completed) {
       logger.warn('OpenAI disconnected before completing an answer', { ...about, ms: Date.now() - started, chars: text.length })
-      throw new OpenAIError(0, 'OpenAI disconnected before completing the response.')
+      throw new InterruptedConnection('OpenAI disconnected before completing the response.')
     }
     requestStatus = 'complete'
     logger.debug('Answer streamed', { ...about, ms: Date.now() - started, chars: text.length, citations: partCitations.size })
@@ -748,9 +749,11 @@ export async function streamChat(options: ChatStreamOptions): Promise<{
       // A stopped answer keeps the citations for the text it kept.
       if (options.signal?.aborted) return { text, aborted: true, citations: citations().filter((c) => c.end <= text.length) }
       logger.warn('OpenAI went silent and the answer was cut off', { ...about, ms: Date.now() - started, chars: text.length, beforeFirstWord: !text })
+      if (net.isOnline?.() === false) throw new InterruptedConnection('The network is offline.')
       throw new OpenAIError(0, 'OpenAI stopped answering partway through')
     }
-    if (err instanceof OpenAIError) throw err
+    if (err instanceof OpenAIError || err instanceof InterruptedConnection) throw err
+    if (isNetworkInterruption(err)) throw new InterruptedConnection(scrubSecrets((err as Error).message))
     const error = new OpenAIError(0, scrubSecrets((err as Error).message || 'could not reach OpenAI'))
     logger.error('The answer stream broke', { ...about, message: error.message, ms: Date.now() - started })
     throw error

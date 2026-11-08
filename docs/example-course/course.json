@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.8",
+  "schema_version": "1.9",
   "slug": "opencourse-example",
   "title": "The OpenCourse example course",
   "version": "0.1.0",
-  "description": "A minimal course that exercises every block type. Import it, open Edit course, and use it as a template for your own courses.",
+  "description": "A minimal course that exercises every block type. Import it, open Edit course, and use it as a template for your own courses. The project divides a budget of $T$ minutes across three lessons. An equal split gives each lesson\n\n$$t = \\frac{T}{3}$$",
   "author": "OpenCourse team",
   "difficulty": "beginner",
   "estimated_hours": 1,
@@ -14,6 +14,7 @@
   },
   "prerequisites": [
     "A Python 3.11+ interpreter on your PATH.",
+    "Read $T$ as the total time available.",
     "The Xcode Command Line Tools, for the two C exercises - run `xcode-select --install`."
   ],
   "tags": [
@@ -32,13 +33,19 @@
           "estimated_minutes": 15,
           "objectives": [
             "Run a Python program from the terminal.",
-            "Recognise every block type a OpenCourse lesson can contain."
+            "Recognise every block type an OpenCourse lesson can contain.",
+            "Predict the counter value $c_{n+1}$ after one more click."
           ],
           "blocks": [
             {
               "type": "markdown",
-              "content": "# Hello, Python\n\nWelcome. Python is a **high-level, interpreted** programming language. This course will teach you the fundamentals.\n\n- Readable syntax\n- Dynamic typing\n- Large standard library",
+              "content": "# Hello, Python\n\nWelcome. Python is a **high-level, interpreted** programming language. This course will teach you the fundamentals.\n\n- Readable syntax\n- Dynamic typing\n- Large standard library\n\nThe counter below records one click at a time. If $c_n$ is its value after $n$ clicks, the next click adds one.",
               "slug": "hello-python"
+            },
+            {
+              "type": "latex",
+              "slug": "counter-increment",
+              "content": "c_{n+1} = c_n + 1"
             },
             {
               "type": "image",
@@ -95,6 +102,26 @@
               ],
               "explanation": "`print(*objects)` writes to `sys.stdout`.",
               "slug": "q-hello-2"
+            },
+            {
+              "type": "quiz",
+              "id": "q-counter",
+              "kind": "single",
+              "slug": "counter-after-two-clicks",
+              "question": "If the counter shows $c_n = 3$, what will it show two clicks later?",
+              "options": [
+                {
+                  "id": "one-click",
+                  "text": "$c_{n+2} = 4$",
+                  "correct": false
+                },
+                {
+                  "id": "two-clicks",
+                  "text": "$c_{n+2} = 5$",
+                  "correct": true
+                }
+              ],
+              "explanation": "Starting at $c_n = 3$, each of the next two clicks adds one.\n\n$$c_{n+2} = 3 + 1 + 1 = 5$$"
             },
             {
               "type": "exercise",
@@ -250,7 +277,7 @@
               "type": "exercise",
               "id": "ex-python-triple-1",
               "title": "A function, checked by a test file",
-              "prompt": "Implement triple(n), returning three times n.",
+              "prompt": "Implement `triple(n)` to return $3n$ for any integer $n$.",
               "runtime": {
                 "language": "python"
               },
@@ -263,9 +290,9 @@
               "starter_code": "def triple(n):\n    return n\n",
               "solution": "def triple(n):\n    return n * 3\n",
               "tests": "import exercise\n\ndef test_triple():\n    for n in (0, 1, -2, 100):\n        assert exercise.triple(n) == n * 3\n",
-              "verification_instructions": "All four assertions hold.",
+              "verification_instructions": "Run the tests. For input $n = 2$, check that the result matches\n\n$$3 \\times 2 = 6$$",
               "hints": [
-                "Multiply n by 3."
+                "Multiplying by three gives the same result as adding the input three times.\n\n$$3n = n + n + n$$"
               ],
               "slug": "ex-python-triple-1"
             }
@@ -278,10 +305,11 @@
       "slug": "build-a-course-project",
       "title": "Build a course outline",
       "project": {
-        "definition": "Create a short outline for a course on a subject you know. Apply the lesson structure you have explored in this example course. Work in your project folder using your preferred editor, then ask the project assistant for feedback.",
+        "definition": "Create a short outline for a course on a subject you know. Choose a total teaching time $T$. An equal split gives each of your three lessons this many minutes:\n\n$$t = \\frac{T}{3}$$\n\nAdjust the split to fit the activities. Work in your project folder using your preferred editor, then ask the project assistant for feedback.",
         "objectives": [
           "Turn learning objectives into a concrete deliverable.",
-          "Explain how a course structure helps learners practice."
+          "Explain how a course structure helps learners practice.",
+          "Allocate a total of $T$ minutes across three lessons so their durations satisfy $t_1 + t_2 + t_3 = T$."
         ],
         "estimated_minutes": 45,
         "requirements": [
@@ -291,21 +319,22 @@
           },
           {
             "id": "lesson-sequence",
-            "description": "Propose three lessons ordered so each builds on the preceding material."
+            "description": "Propose three lessons ordered so each builds on the preceding material. Assign each lesson a duration $t_i$."
           }
         ],
         "deliverables": [
           {
             "id": "outline",
-            "title": "Course outline",
-            "description": "Write the audience, learning objectives, and lesson sequence in OUTLINE.md.",
+            "title": "Course outline for $T$ minutes",
+            "description": "Write the audience, learning objectives, and lesson sequence in `OUTLINE.md`. Give the total time budget $T$.",
             "paths": [
               "OUTLINE.md"
             ],
             "acceptance_criteria": [
               "The audience and prerequisites are explicit.",
               "Each learning objective has a corresponding lesson or practice activity.",
-              "The three lessons form a coherent progression."
+              "The three lessons form a coherent progression.",
+              "The lesson durations add up to the budget:\n\n$$t_1 + t_2 + t_3 = T$$"
             ]
           },
           {

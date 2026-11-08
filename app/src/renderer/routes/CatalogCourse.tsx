@@ -5,8 +5,9 @@ import type { JSX } from 'react'
 import type { CourseOverview } from '@core/catalog/api'
 import type { UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
-import Html from '../components/Html'
+import CoursePrerequisites from '../components/CoursePrerequisites'
 import CourseDescription from '../components/CourseDescription'
+import OverviewTags from '../components/OverviewTags'
 import { useCatalogCover } from '../components/Catalog'
 import type { Route, Screen } from '../routes'
 
@@ -71,7 +72,7 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
             <span className="meta">{course.downloads === 1 ? '1 download' : `${course.downloads} downloads`} · published by {course.publisher}{course.ownedByYou ? ' (you)' : ''} · updated {course.updatedAt.slice(0, 10)}</span>
             {!course.listed && <span className="update-badge muted">Unpublished</span>}
           </div>
-          {course.tags.length > 0 && <div className="course-card-tags">{course.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>}
+          <OverviewTags tags={course.tags} />
 
           <div className="actions catalog-detail-actions">
             {inLibrary
@@ -84,12 +85,7 @@ export default function CatalogCourse({ serverId, courseId, user, navigate, rout
 
           {course.description && <CourseDescription key={`${serverId}:${courseId}`} source={course.description} />}
 
-          {course.prerequisites.length > 0 && (
-            <div className="panel">
-              <h2>Before you start</h2>
-              <ul>{course.prerequisites.map((item, i) => <Html as="li" key={i} inline source={item} />)}</ul>
-            </div>
-          )}
+          <CoursePrerequisites items={course.prerequisites} />
 
           <div className="panel">
             <h2>Contents</h2>

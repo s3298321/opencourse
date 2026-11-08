@@ -139,8 +139,10 @@ export function learnerCourse(course: Course): CourseView {
         if (block.type === 'exercise') {
           delete block.solution
           delete block.expected_output
+          if (block.hints?.length) Object.assign(block, { hintCount: block.hints.length })
           delete block.hints
-          delete (block as Partial<typeof block>).verification_instructions
+          delete block.tests
+          delete block.test_command
         }
       }
     }

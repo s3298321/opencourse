@@ -30,14 +30,14 @@ async function mount(label: string) {
 describe('connection tooltips', () => {
   it('shows the connection and account on hover in a portal outside clipped containers, and hides on leave', async () => {
     vi.useFakeTimers()
-    const trigger = await mount('ChatGPT subscription (Personal workspace)')
+    const trigger = await mount('Subscription (Personal workspace)')
     expect(document.querySelector('[role=tooltip]')).toBeNull()
     await act(async () => {
       trigger.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }))
       vi.advanceTimersByTime(150)
     })
     const tooltip = document.querySelector<HTMLElement>('[role=tooltip]')!
-    expect(tooltip.textContent).toBe('ChatGPT subscription (Personal workspace)')
+    expect(tooltip.textContent).toBe('Subscription (Personal workspace)')
     expect(tooltip.parentElement).toBe(document.body)
     expect(tooltip.style.visibility).toBe('visible')
     expect(trigger.getAttribute('aria-describedby')).toBe(tooltip.id)
@@ -47,9 +47,9 @@ describe('connection tooltips', () => {
   })
 
   it('shows immediately on keyboard focus and dismisses with Escape, scrolling, and blur', async () => {
-    const trigger = await mount('OpenAI API key')
+    const trigger = await mount('API Key')
     await act(async () => trigger.focus())
-    expect(document.querySelector('[role=tooltip]')?.textContent).toBe('OpenAI API key')
+    expect(document.querySelector('[role=tooltip]')?.textContent).toBe('API Key')
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(document.querySelector('[role=tooltip]')).toBeNull()
     await act(async () => { trigger.blur(); trigger.focus() })
@@ -68,17 +68,17 @@ describe('connection tooltips', () => {
     document.body.append(container)
     root = createRoot(container)
     await act(async () => root!.render(createElement('div', null,
-      createElement(Tooltip, { label: 'OpenAI API key', children: createElement('button', { id: 'key' }, 'Key') }),
-      createElement(Tooltip, { label: 'ChatGPT subscription', children: createElement('span', { id: 'subscription', tabIndex: 0 }, 'OpenAI') })
+      createElement(Tooltip, { label: 'API Key', children: createElement('button', { id: 'key' }, 'Key') }),
+      createElement(Tooltip, { label: 'Subscription', children: createElement('span', { id: 'subscription', tabIndex: 0 }, 'OpenAI') })
     )))
     await act(async () => container.querySelector<HTMLElement>('#key')!.focus())
-    expect(document.querySelector('[role=tooltip]')?.textContent).toBe('OpenAI API key')
+    expect(document.querySelector('[role=tooltip]')?.textContent).toBe('API Key')
     await act(async () => {
       container.querySelector('#subscription')!.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }))
       vi.advanceTimersByTime(150)
     })
     expect(document.querySelectorAll('[role=tooltip]')).toHaveLength(1)
-    expect(document.querySelector('[role=tooltip]')?.textContent).toBe('ChatGPT subscription')
+    expect(document.querySelector('[role=tooltip]')?.textContent).toBe('Subscription')
     expect(container.querySelector('#key')!.hasAttribute('aria-describedby')).toBe(false)
   })
 })

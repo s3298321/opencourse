@@ -1,3 +1,4 @@
+import { DEFAULT_TRANSCRIPTION, isTranscriptionConfig } from '@core/transcription'
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import type { ServerAIDefaults, ServerAISettings } from '@core/learning/types'
 import { isReasoningEffort, reasoningEffortsFor } from '@core/sidechat/models'
@@ -69,10 +70,11 @@ export function titleDefaults(settings: Pick<ServerAISettings, 'model' | 'title'
 export function aiSettings(ctx: Pick<Ctx, 'db' | 'config'>, account: string): ServerAISettings {
   const row = ctx.db
     .prepare(
-      'SELECT hint,model,reasoning,enabled_models,web_search,title_model,title_reasoning,secret IS NOT NULL AS configured FROM learning_ai WHERE account_id=?'
+      'SELECT transcription_model,hint,model,reasoning,enabled_models,web_search,title_model,title_reasoning,secret IS NOT NULL AS configured FROM learning_ai WHERE account_id=?'
     )
     .get(account) as
     | {
+        transcription_model: string
         hint: string | null
         model: string
         reasoning: string | null
@@ -84,7 +86,10 @@ export function aiSettings(ctx: Pick<Ctx, 'db' | 'config'>, account: string): Se
       }
     | undefined
   const model = row?.model ?? DEFAULT_SERVER_MODEL
+  const transcription = { model: row?.transcription_model }
   return {
+    // Older desktop clients use this constant to recognize dictation support.
+    transcription: { model: isTranscriptionConfig(transcription) ? transcription.model : DEFAULT_TRANSCRIPTION.model, connection: 'apiKey' },
     enabledModels: row?.enabled_models ? JSON.parse(row.enabled_models) : null,
     configured: Boolean(row?.configured),
     hint: row?.hint ?? null,

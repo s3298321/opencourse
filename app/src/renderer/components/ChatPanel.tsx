@@ -1,3 +1,6 @@
+import { useComposerDraft } from '../sidechat/useComposerDraft'
+import { useDesktopDictation, type ServerDictation } from '../sidechat/useDesktopDictation'
+import { useDictation, DictationButton } from '../../learning-ui/useDictation'
 import { networkRetryWarning } from '@core/chat-network'
 import { ToolActivityIcon } from '../../learning-ui/ToolActivityIcon'
 import ActiveChatTools from '../../learning-ui/ActiveChatTools'
@@ -10,7 +13,7 @@ import { normalizeResearchSources } from '@core/authoring/research'
 import ActionButton from './ActionButton'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
-import type { ChatMessage, ChatQuote, QuoteSource, ReasoningEffort } from '@core/types'
+import type { ChatMessage, ChatQuote, QuoteSource } from '@core/types'
 import type { ReadingSource } from '@core/documents/types'
 import { modelReasoning } from '@core/ai'
 import { OPENAI_OVERLOADED, isOpenAIOverload } from '@core/ai-errors'
@@ -31,6 +34,7 @@ import ChatMessageMeta from './ChatMessageMeta'
 const noSourceIcons = async (): Promise<Record<string, string | null>> => ({})
 
 interface Props {
+  serverDictation?: ServerDictation
   flashcards?: { proposals: FlashcardProposal[]; decide: (id: string, action: 'save' | 'dismiss', cardId: string) => Promise<FlashcardProposal> }
   visible?: boolean
   panel: ChatPanel
@@ -57,9 +61,6 @@ const COUNT_FROM = MAX_MESSAGE_CHARS * 0.8
 
 /** What an attached passage is called, by where it was highlighted. */
 const QUOTE_LABEL: Record<QuoteSource, string> = { lesson: 'From the lesson', answer: 'From an answer', preview: 'From the preview', document: 'From the document', notebook: 'From the Python notebook', 'writing-notebook': 'From the notebook page' }
-
-/** Only the ends of the scale need saying; the middle explains itself. */
-const REASONING_HINTS: Partial<Record<ReasoningEffort, string>> = { none: 'fastest', xhigh: 'slowest' }
 
 /** A chat with nothing said in it yet has no title, so say where it started. */
 function tabLabel(title: string, fallback: string): string {
@@ -284,6 +285,7 @@ export default function ChatPanelView({
   onClose,
   onAddKey,
   storageKey,
+  serverDictation,
   composer,
   onSource,
   sourceIcons: fetchIcons,
@@ -295,10 +297,9 @@ export default function ChatPanelView({
   const [width, setWidth] = useState(() =>
     Math.max(MIN_WIDTH, Math.min(420, window.innerWidth - MIN_CONTENT - 268))
   )
-  const [localDraft, setLocalDraft] = useState(() => { try { return storageKey ? localStorage.getItem(`${storageKey}:composer`) ?? '' : '' } catch { return '' } })
+  const [localDraft, setLocalDraft] = useComposerDraft(panel.activeId, composer ? undefined : storageKey)
   const draft = composer?.text ?? localDraft
   const setDraft = composer?.setText ?? setLocalDraft
-  useEffect(() => { if (storageKey) { try { localStorage.setItem(`${storageKey}:composer`, draft) } catch { /* Optional. */ } } }, [storageKey, draft])
   const [historyOpen, setHistoryOpen] = useState(false)
   const submitting = useRef(false)
 
@@ -307,6 +308,9 @@ export default function ChatPanelView({
   useAutoGrow(field, twin, draft, textScale)
 
   const answering = panel.activeId !== null && panel.busy.has(panel.activeId)
+  const dictation = useDesktopDictation(screenActive, serverDictation)
+  const canDictate = dictation.available && screenActive && !!panel.activeId && !answering && !panel.loading && !panel.sendBlocked
+  const voice = useDictation(dictation.transport, canDictate, panel.activeId, MAX_MESSAGE_CHARS, setDraft, field)
   const overloaded = !!panel.error && isOpenAIOverload(panel.error)
   const [retrying, setRetrying] = useState(false)
   const retry = async (): Promise<void> => {
@@ -396,7 +400,7 @@ export default function ChatPanelView({
 
   const submit = useCallback(async (): Promise<void> => {
     const text = draft.trim()
-    if (!text || answering || panel.sendBlocked || submitting.current) return
+    if (!text || voice.locked() || answering || panel.sendBlocked || submitting.current) return
     const attached = quote ?? undefined
     submitting.current = true
     if (!composer) setLocalDraft('')
@@ -406,11 +410,11 @@ export default function ChatPanelView({
       } else if (!composer) setLocalDraft(current => current || text)
     } catch { if (!composer) setLocalDraft(current => current || text) }
     finally { submitting.current = false }
-  }, [draft, answering, quote, onQuoteUsed, panel, composer])
+  }, [draft, answering, quote, onQuoteUsed, panel, composer, voice])
 
   return (
-    <aside className={`sidechat${variant === 'authoring' ? ' authoring-chat' : ''}`} style={{ width, flex: '0 1 auto' }}>
-      <div className="sidechat-grip" onPointerDown={startWidthDrag} role="separator" aria-orientation="vertical" />
+    <aside className={`sidechat${variant === 'authoring' ? ' authoring-chat' : ''}`} style={variant === 'authoring' ? undefined : { width, flex: '0 1 auto' }}>
+      {variant !== 'authoring' && <div className="sidechat-grip" onPointerDown={startWidthDrag} role="separator" aria-orientation="vertical" />}
 
       <div className="sidechat-head">
         <strong>{variant === 'notebook' ? 'Ask about this notebook' : variant === 'document' ? 'Ask about this document' : variant === 'authoring' ? 'Course assistant' : variant === 'project' ? 'Project assistant' : 'Ask about this lesson'}</strong>
@@ -563,10 +567,11 @@ export default function ChatPanelView({
       </div>
 
       <div className="sidechat-composer">
+        {voice.notice && <div className="meta" role="status">{voice.notice}</div>}
         {/* The whole box is the field to a pointer - a press on its padding or
             its footer lands in the text - except for the controls inside it. */}
         <div
-          className="sidechat-box"
+          className="sidechat-box" data-dictation={voice.phase} data-speaking={voice.speaking}
           onMouseDown={(e) => {
             if ((e.target as HTMLElement).closest('button, textarea, blockquote, [role=menu], [tabindex]')) return
             e.preventDefault()
@@ -590,6 +595,7 @@ export default function ChatPanelView({
               className="sidechat-input"
               value={draft}
               disabled={!active}
+              readOnly={voice.phase !== 'idle'}
               rows={1}
               maxLength={MAX_MESSAGE_CHARS}
               placeholder={quote ? 'Ask about the highlighted passage…' : variant === 'notebook' ? 'Ask about this notebook…' : variant === 'document' ? 'Ask about this document…' : variant === 'authoring' ? 'Create or edit this course…' : variant === 'project' ? 'Ask about your project…' : 'Ask about this lesson…'}
@@ -636,7 +642,7 @@ export default function ChatPanelView({
                 label: PROVIDER_LABELS[choice],
                 icon: <ConnectionIcon provider={choice} />,
                 checked: choice === provider,
-                hint: choice === panel.defaultProvider ? 'Default' : panel.connections[choice]?.ready === false ? 'Not set up' : '',
+                hint: panel.connections[choice]?.ready === false ? 'Not set up' : '',
                 onSelect: () => void panel.setProvider(choice)
               }))}
             />
@@ -674,14 +680,12 @@ export default function ChatPanelView({
                   {
                     id: 'default',
                     label: 'Default',
-                    hint: "the model's own",
                     checked: reasoning === null,
                     onSelect: () => void panel.setReasoning(null)
                   },
                   ...efforts.map((effort) => ({
                     id: effort,
                     label: REASONING_LABELS[effort],
-                    hint: REASONING_HINTS[effort],
                     checked: reasoning === effort,
                     onSelect: () => void panel.setReasoning(effort)
                   }))
@@ -695,9 +699,11 @@ export default function ChatPanelView({
               </span>
             )}
             {answering ? (
-              <button key="stop" className="sidechat-send stop" title="Stop the answer" aria-label="Stop" onClick={panel.stop}>
+              <button key="stop" className="sidechat-send stop" title="Stop the answer" aria-label="Stop response" onClick={panel.stop}>
                 <StopIcon />
               </button>
+            ) : voice.phase !== 'idle' || (canDictate && !draft.trim()) ? (
+              <DictationButton state={voice} className="sidechat-send" />
             ) : (
               <button
                 key="send"

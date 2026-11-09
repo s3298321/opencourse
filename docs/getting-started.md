@@ -136,8 +136,8 @@ course's Python environment. Hide the floating notebook button in **Settings
 
 ## AI features
 
-Connect local AI in **Settings ▸ Connections**: add an **OpenAI API key** or
-choose **Continue with ChatGPT**. Provider charges and plan limits apply. The
+In **Settings ▸ Connections**, enter your OpenAI key under **API Key** or
+choose **Continue with ChatGPT** under **Subscription**. Provider charges and plan limits apply. The
 local credential is protected by your Mac's keychain.
 
 - **Reading chat.** Open **Ask** while reading a lesson or PDF, or highlight

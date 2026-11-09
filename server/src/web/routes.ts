@@ -37,7 +37,7 @@ export function plainSummary(text: string): string {
 export function securityHeaders(reply: FastifyReply): FastifyReply {
   return reply.header('Content-Security-Policy', PAGE_CSP).header('X-Content-Type-Options', 'nosniff')
     .header('Referrer-Policy', 'strict-origin-when-cross-origin').header('X-Frame-Options', 'DENY')
-    .header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), interest-cohort=()')
+    .header('Permissions-Policy', 'camera=(), microphone=(self), geolocation=(), interest-cohort=()')
 }
 
 export interface Shell {

@@ -113,8 +113,6 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
         <div className="notebook-heading"><h1>Python notebook</h1><span className="spacer" /><span className="meta">{status?.kernel ?? 'stopped'} · {document.dirty ? 'Saving…' : 'Saved'}</span>
           <ActionButton icon="stop" className="secondary" disabled={status?.kernel === 'stopped' || status?.kernel === 'stopping'} onClick={() => stop()}>Stop kernel</ActionButton>
           <ActionButton icon="restart" className="secondary" disabled={status?.stage !== 'ready' || status?.kernel === 'stopping'} onClick={() => stop(true)}>Restart kernel</ActionButton></div>
-        <p className="meta">Cells share Python variables until you stop or restart the kernel. Installed packages stay in this course’s environment.</p>
-        <details className="notebook-help"><summary>Install a Python package</summary><p>Run this in a cell, replacing the package name:</p><pre>{'import subprocess, sys\nsubprocess.check_call([sys.executable, "-m", "pip", "install", "package-name"])'}</pre><p className="meta">Restart the kernel if an already imported package was upgraded.</p></details>
         {(error || document.error) && <p className="error">{error || document.error}</p>}
         {document.conflict && <div className="notebook-conflict"><ActionButton icon="save" onClick={() => document.resolve(true)}>Keep my edits</ActionButton><ActionButton icon="refresh" className="secondary" onClick={() => document.resolve(false)}>Reload saved notebook</ActionButton></div>}
         {document.cells.map((cell, index) => <div key={cell.id} className="notebook-cell-wrap">

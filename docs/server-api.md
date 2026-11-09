@@ -308,9 +308,10 @@ enrollment, and moderated/deleted content remains unavailable.
 
 | Method and path | Behavior |
 | --- | --- |
-| `GET /me/ai` | Configured status, masked hint, study-chat `model` and `reasoning`, web-search preference, `title` defaults, `enabledModels`, enabled status |
-| `PUT /me/ai { key?, model?, reasoning?, webSearch?, title?, enabledModels? }` | Update account-specific encrypted connection/settings |
+| `GET /me/ai` | Configured status, masked hint, study-chat `model` and `reasoning`, web-search preference, `title` defaults, `enabledModels`, `transcription` defaults, enabled status |
+| `PUT /me/ai { key?, model?, reasoning?, webSearch?, title?, enabledModels?, transcription? }` | Update account-specific encrypted connection/settings |
 | `GET /me/ai/models` | `{ models, source, error? }`: the key's chat models, or a curated list (`source: "fallback"`) without a key or an answer |
+| `POST /me/ai/transcription/session { account, sdp }` | Exchange an audio WebRTC offer using the authenticated account’s API key and transcription model. Returns `{ answerSdp }`. |
 | `DELETE /me/ai` | Revoke the stored key and stop active generations |
 | `GET /learning/chats?kind=&id=` | Account/content reading conversations |
 | `POST /learning/chats { kind, id, version }` | Create a version-bound conversation |
@@ -332,8 +333,10 @@ Offline desktop readers can view cached history and keep drafts; sending
 requires this server and its configured API key. Local credentials are never a
 fallback. Subscription connections are outside this release.
 
-A server runs two AI activities, each with its own model and reasoning level:
-study chat (courses and documents alike) and naming its conversations. Course
+Study chat and conversation naming each have their own model and reasoning level.
+Live dictation is available whenever the account has an API key. Its
+`transcription.model` is `gpt-live-transcribe` (the default) or `gpt-realtime-whisper`. The session endpoint accepts the caller’s
+account ID and WebRTC offer. Only the SDP answer returns to the client. Course
 authoring and Coach run in the desktop app on the app's own settings.
 `reasoning` is one of `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or
 `null` (send none: the model's default). A level the model does not take, as

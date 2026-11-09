@@ -32,7 +32,7 @@ export function SubscriptionSection(): JSX.Element {
   }
   const active = status?.accounts.find(account => account.id === status.activeId)
   return <section className="settings-section settings-subscription">
-    <h2 className="settings-connection-heading"><ConnectionIcon provider="chatgpt" />ChatGPT subscription</h2>
+    <h2 className="settings-connection-heading"><ConnectionIcon provider="chatgpt" />{PROVIDER_LABELS.chatgpt}</h2>
     <p className="meta">Use your ChatGPT plan for course and document Ask, the project assistant, and course creation. Coach needs an OpenAI API key. Choose your ChatGPT workspace during browser sign-in.</p>
     <p role="status">{status === null ? 'Loading…' : active?.connected ? `Connected: ${active.label}` : 'No subscription connected.'}</p>
     {!!status?.accounts.length && <label className="settings-row"><span>Account / workspace registration</span>

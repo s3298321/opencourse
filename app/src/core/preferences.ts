@@ -11,6 +11,7 @@ import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
 import { isBuiltinThemeId } from './theme/builtin-ids'
 import { sketchSettings } from './writing-notebooks/sketch'
 import { normalizePomodoroSettings } from './pomodoro'
+import { isTranscriptionConfig } from './transcription'
 import { normalizeCoachPrompts } from './coach/prompt-defaults'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -77,6 +78,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     ...(typeof values.floatingNotebookButton === 'boolean' ? { floatingNotebookButton: values.floatingNotebookButton } : {})
   }
   if (values['ai'] && typeof values['ai'] === 'object') kept.ai = aiSettings({ ...kept, ai: values['ai'] as Preferences['ai'] })
+  if (isTranscriptionConfig(values.transcription)) kept.transcription = { model: values.transcription.model }
   const title = values['titleGeneration'] as Partial<NonNullable<Preferences['titleGeneration']>> | undefined
   if (title && isAIProvider(title.provider) && validModelId(title.model) && (title.reasoning === null || isReasoningEffort(title.reasoning))) {
     kept.titleGeneration = { provider: title.provider, model: title.model, reasoning: title.reasoning }

@@ -7,6 +7,7 @@ import { PUBLIC_LINKS } from '@core/links'
 import type { AppInfo, AppLinks, AppUpdateInfo, CoachModel, ReasoningEffort, Session, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
+import TranscriptionSettings from '../components/TranscriptionSettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
 import ThemeSection from '../components/ThemeSettings'
 import NotebookSketchSettings from '../components/NotebookSketchSettings'
@@ -14,7 +15,7 @@ import PomodoroSettings from '../components/PomodoroSettings'
 import CoachVoicePicker from '../components/CoachVoicePicker'
 import CoachPromptSettings from '../components/CoachPromptSettings'
 import ServerSettings from '../components/ServerSettings'
-import ConnectionIcon from '../components/ConnectionIcon'
+import ConnectionIcon, { PROVIDER_LABELS } from '../components/ConnectionIcon'
 import { formatDownloadSize, useAppUpdate } from '../components/useAppUpdate'
 import type { Route, Screen, SettingsSection } from '../routes'
 import { FLOATING_COACH_BUTTON_CHANGED } from '../coach/CoachLauncher'
@@ -86,7 +87,7 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
       case 'appearance': return <><ThemeSection />{user ? <><NotebookButtonSection /><NotebookSketchSettings /><CoachButtonSection /></> : <p className="meta">Choose a user to configure the notebooks button.</p>}</>
       case 'pomodoro': return user ? <PomodoroSettings /> : <p className="meta">Choose a user to configure Pomodoro.</p>
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
-      case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><PlanDefaultSection /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
+      case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><PlanDefaultSection /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /><TranscriptionSettings version={keyVersion} /></>
       case 'coach': return <><CoachDefaultsSection keyVersion={keyVersion} active={section === 'coach'} /><CoachPromptSettings /></>
       case 'servers': return <ServerSettings />
       case 'updates': return <UpdatesSection focus={section === 'updates'} />
@@ -256,7 +257,7 @@ function KeySection({ onChanged }: { onChanged: () => void }): JSX.Element {
 
   return (
     <section className={`settings-section${stored?.has ? ' settings-key-ready' : ''}`}>
-      <h2 className="settings-connection-heading"><ConnectionIcon provider="apiKey" />Your OpenAI key</h2>
+      <h2 className="settings-connection-heading"><ConnectionIcon provider="apiKey" />{PROVIDER_LABELS.apiKey}</h2>
       <div className={`settings-key-status${stored?.has ? ' ready' : ''}`} role="status">
         <span className="settings-key-badge">
           {stored?.has && <span aria-hidden="true">✓</span>}

@@ -907,6 +907,7 @@ export interface ChatPickerModels {
 export interface Preferences {
   pomodoro?: import('./pomodoro').PomodoroSettings
   ai?: AISettings
+  transcription?: import('./transcription').TranscriptionConfig
   titleGeneration?: TitleGenerationConfig
   /** Which chat models the side chat's picker offers. Absent: every one the key can reach. */
   chatModels?: string[]

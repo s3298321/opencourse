@@ -91,7 +91,7 @@ describe('floating coach conversation lifecycle', () => {
     await click('[aria-label="Manage French"]')
     const options = container.querySelector('.coach-launcher-manage')!
     const original = options.textContent
-    await act(async () => { button('Delete coach').focus(); button('Delete coach').click() })
+    await act(async () => { button('Delete').focus(); button('Delete').click() })
     const dialog = document.querySelector<HTMLElement>('[role=dialog]')!
     expect(dialog.classList.contains('writing-title-dialog')).toBe(true)
     expect(container.contains(dialog)).toBe(false)
@@ -101,8 +101,8 @@ describe('floating coach conversation lifecycle', () => {
     await act(async () => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(document.querySelector('[role=dialog]')).toBeNull()
     expect(api.deleteCoachProject).not.toHaveBeenCalled()
-    expect(document.activeElement).toBe(button('Delete coach'))
-    await act(async () => button('Delete coach').click())
+    expect(document.activeElement).toBe(button('Delete'))
+    await act(async () => button('Delete').click())
     await act(async () => document.querySelector<HTMLButtonElement>('[role=dialog] .secondary')!.click())
     expect(document.querySelector('[role=dialog]')).toBeNull()
     expect(api.deleteCoachProject).not.toHaveBeenCalled()
@@ -112,7 +112,7 @@ describe('floating coach conversation lifecycle', () => {
     await act(async () => root.render(h(Harness)))
     await click('.coach-floating .writing-launcher-toggle')
     await click('[aria-label="Manage French"]')
-    await act(async () => button('Delete coach').click())
+    await act(async () => button('Delete').click())
     const confirm = document.querySelector<HTMLButtonElement>('[role=dialog] .action-button:not(.secondary)')!
     await act(async () => confirm.click())
     expect(document.querySelector('[role=dialog] [role=alert]')?.textContent).toBe('Could not delete coach')

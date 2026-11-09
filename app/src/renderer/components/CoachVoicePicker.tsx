@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { VOICES } from '@core/coach/models'
+import { isCoachVoice, VOICES, VOICE_LANGUAGES } from '@core/coach/models'
 import { VoicePreview, type VoicePreviewState } from '../coach/voice-preview'
 import ActionButton from './ActionButton'
+
+function voiceLabel(id: string): string {
+  const name = id.charAt(0).toUpperCase() + id.slice(1)
+  return isCoachVoice(id) ? `${name} · ${VOICE_LANGUAGES[id]}` : name
+}
 
 export default function CoachVoicePicker({ voice, busy, active, onSave }: {
   voice: string | null; busy: boolean; active: boolean; onSave: (voice: string) => Promise<void>
@@ -36,7 +41,7 @@ export default function CoachVoicePicker({ voice, busy, active, onSave }: {
       <span>Default voice</span>
       <select className="settings-default-coach-voice" value={chosen} disabled={voice === null || busy}
         onChange={event => { void preview.current?.stop(); setChosen(event.target.value); setError(null) }}>
-        {VOICES.map(option => <option key={option} value={option}>{option.charAt(0).toUpperCase() + option.slice(1)}</option>)}
+        {VOICES.map(id => <option key={id} value={id}>{voiceLabel(id)}</option>)}
       </select>
     </label>
     <div className="actions">
@@ -47,7 +52,7 @@ export default function CoachVoicePicker({ voice, busy, active, onSave }: {
       <ActionButton icon="check" className="settings-save-coach-voice" disabled={!chosen || chosen === voice || busy}
         onClick={() => { void preview.current?.stop(); void onSave(chosen) }}>Use voice</ActionButton>
     </div>
-    <p className="meta" role="status">{state === 'loading' ? 'Connecting voice preview…' : state === 'playing' ? 'Playing voice preview…' : `Saved voice: ${voice ? voice.charAt(0).toUpperCase() + voice.slice(1) : 'Loading…'}.`}</p>
+    <p className="meta" role="status">{state === 'loading' ? 'Connecting voice preview…' : state === 'playing' ? 'Playing voice preview…' : `Saved voice: ${voice ? voiceLabel(voice) : 'Loading…'}.`}</p>
     <p className="meta">Listen before choosing Use voice. Previews use your OpenAI API key and incur normal voice charges. Your microphone stays off.</p>
     {error && <p className="import-note error" role="alert">{error}</p>}
   </div>

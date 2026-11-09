@@ -85,9 +85,9 @@ app.on('second-instance', () => {
  * Deny by default. Electron hands geolocation, notifications, MIDI and display
  * capture to any renderer that asks for them; this app needs none of that. It
  * needs fullscreen, for the visualization button, and audio capture - and audio
- * only while a coaching session is actually live (see main/mic.ts).
+ * only while this window holds a coaching or dictation lease (see main/mic.ts).
  */
-function allowPermission(permission: string, details?: unknown): boolean {
+function allowPermission(permission: string, details: unknown, sender?: number): boolean {
   if (permission === 'fullscreen') return true
   if (permission !== 'media') return false
 
@@ -100,7 +100,7 @@ function allowPermission(permission: string, details?: unknown): boolean {
     : typeof d.mediaType === 'string'
       ? [d.mediaType]
       : []
-  return types.length > 0 && types.every((t) => t === 'audio') && wantsMic()
+  return sender !== undefined && types.length > 0 && types.every((t) => t === 'audio') && wantsMic(sender)
 }
 
 function createWindow(notebookId?: string): BrowserWindow {
@@ -223,13 +223,13 @@ app.whenReady().then(async () => {
   })
 
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
-    callback(allowPermission(permission, details))
+    callback(allowPermission(permission, details, details.isMainFrame ? _wc.id : undefined))
   })
   // The synchronous path, which is what getUserMedia consults in a sandboxed
   // renderer. Without it Chromium can refuse without ever asking, which reads
   // like a bug in the app rather than the policy decision it is.
   session.defaultSession.setPermissionCheckHandler((_wc, permission, _origin, details) =>
-    allowPermission(permission, details)
+    allowPermission(permission, details, _wc && details.isMainFrame ? _wc.id : undefined)
   )
 
   // The one database handle the app holds, released the way pty.ts releases shells.

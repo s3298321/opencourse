@@ -709,7 +709,7 @@ export function WebLearning() {
             onChange={(scale) => void action('preference:readingScale', scale)}
           />
         )}
-        <ReadingChatDock
+        {account && <ReadingChatDock accountId={account.id}
           key={`${kind}:${id}:${source.version}`}
           open={chatOpen}
           onOpenChange={setChatOpen}
@@ -724,7 +724,7 @@ export function WebLearning() {
               if (index >= 0) go(index)
             }
           }}
-        />
+        />}
       </div>
       <AskAboutOffer
         reader={reader}

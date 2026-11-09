@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { CoachProjectSummary } from '@core/types'
+import ActionButton from '../components/ActionButton'
 import FloatingSurface from '../components/FloatingSurface'
 import TitleDialog from '../writing-notebooks/TitleDialog'
 import { screenOf, type Route } from '../routes'
@@ -38,10 +39,12 @@ export default function CoachLauncher({ route, userId, navigate }: { route: Rout
   const settings = () => navigate({ name: 'settings', from: screenOf(route), section: 'connections' })
   const row = (coach: CoachProjectSummary) => <div className="coach-launcher-entry" key={coach.id}>
     <div className="coach-launcher-row"><button className="writing-launcher-row" disabled={coach.busy} onClick={() => { setManaging(null); void conversation.start(coach) }}><strong>{coach.name}</strong>{coach.busy && <small>Conversation in progress</small>}</button><button className="writing-launcher-close" aria-label={`Manage ${coach.name}`} disabled={coach.busy} aria-expanded={managing === coach.id} onClick={() => { setManaging(managing === coach.id ? null : coach.id); setDeleting(null) }}>⋯</button></div>
-    {managing === coach.id && <div className="coach-launcher-manage">
-      <button className="ghost" onClick={() => setRenaming(coach)}>Rename</button>
-      <button className="ghost" onClick={() => setDeleting(coach)}>Delete coach</button>
-    </div>}
+    <div className="coach-launcher-menu" inert={managing !== coach.id}>
+      <div className="coach-launcher-manage">
+        <ActionButton icon="edit" className="ghost" onClick={() => setRenaming(coach)}>Rename</ActionButton>
+        <ActionButton icon="trash" className="ghost" onClick={() => setDeleting(coach)}>Delete</ActionButton>
+      </div>
+    </div>
   </div>
   return <>
     <FloatingSurface name="coach" label="Coaches" open={open} onOpenChange={setOpen} icon={<CoachIcon />} active={conversation.busy}

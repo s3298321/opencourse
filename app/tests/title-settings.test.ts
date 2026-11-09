@@ -48,7 +48,7 @@ describe('title generation settings', () => {
   it('selects connection, model and reasoning independently, and can restore conversation settings', async () => {
     const f = await fixture()
     expect(f.container.querySelector<HTMLSelectElement>('.settings-title-model')!.disabled).toBe(true)
-    await f.provider('OpenAI API key')
+    await f.provider('API Key')
     expect(f.save).toHaveBeenLastCalledWith({ provider: 'apiKey', model: 'gpt-5.1', reasoning: 'low' })
     expect(f.container.querySelector('.settings-title-provider svg')).not.toBeNull()
     await f.select('.settings-title-reasoning', 'high')
@@ -56,7 +56,7 @@ describe('title generation settings', () => {
     await f.select('.settings-title-model', 'gpt-4.1')
     expect(f.save).toHaveBeenLastCalledWith({ provider: 'apiKey', model: 'gpt-4.1', reasoning: null })
     expect(f.container.querySelector<HTMLSelectElement>('.settings-title-reasoning')!.disabled).toBe(true)
-    await f.provider('ChatGPT subscription')
+    await f.provider('Subscription')
     expect(f.save).toHaveBeenLastCalledWith({ provider: 'chatgpt', model: 'gpt-5.3-codex', reasoning: 'low' })
     await f.select('.settings-title-reasoning', '')
     expect(f.save).toHaveBeenLastCalledWith({ provider: 'chatgpt', model: 'gpt-5.3-codex', reasoning: null })
@@ -66,12 +66,12 @@ describe('title generation settings', () => {
   })
   it('retains saved settings if another connection has no models or saving fails', async () => {
     const f = await fixture()
-    await f.provider('OpenAI API key')
+    await f.provider('API Key')
     f.catalogs.chatgpt = []
-    await f.provider('ChatGPT subscription')
+    await f.provider('Subscription')
     expect(f.save).toHaveBeenCalledTimes(1)
     expect(f.container.querySelector('[role=alert]')?.textContent).toContain('No title models')
-    expect(f.container.querySelector('.settings-title-provider')?.getAttribute('aria-label')).toContain('OpenAI API key')
+    expect(f.container.querySelector('.settings-title-provider')?.getAttribute('aria-label')).toContain('API Key')
     f.save.mockRejectedValueOnce(new Error('Could not save settings'))
     await f.select('.settings-title-reasoning', 'high')
     expect(f.container.querySelector<HTMLSelectElement>('.settings-title-reasoning')!.value).toBe('low')
@@ -81,7 +81,7 @@ describe('title generation settings', () => {
 
 it('hides a saved title model when its connection is disconnected', async () => {
   const f = await fixture()
-  await f.provider('OpenAI API key')
+  await f.provider('API Key')
   const settings = await f.get()
   f.get.mockResolvedValue({ ...settings, connection: { provider: 'apiKey', ready: false, message: 'Add an OpenAI API key in Settings.' } })
   await act(async () => root!.render(createElement(TitleGenerationSection, { version: 1 })))

@@ -17,6 +17,48 @@ const call = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, payload?:
     headers: auth(key),
     ...(payload === undefined ? {} : { payload: payload as object })
   })
+it('negotiates dictation using only the current account’s key and saved live model', async () => {
+  const path = '/me/ai/transcription/session'
+  const sdp = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n'
+  const offer = { sdp, account }
+  const other = await signUp(server)
+  expect((await call('POST', path, offer)).statusCode).toBe(409)
+  const config = { connection: 'apiKey', model: 'gpt-realtime-whisper' }
+  const saved = await call('PUT', '/me/ai', { key: 'sk-first-test', transcription: { model: config.model } })
+  expect(saved.json().transcription).toEqual(config)
+  expect((await call('PUT', '/me/ai', { webSearch: true })).json().transcription).toEqual(config)
+  expect((await call('PUT', '/me/ai', { transcription: { ...config, model: 'gpt-5' } })).statusCode).toBe(400)
+  await call('PUT', '/me/ai', { key: 'sk-second-test' }, other.token)
+  const requests: unknown[] = []
+  server.ctx.aiFetch = async (url, init) => {
+    const key = new Headers(init!.headers).get('authorization')
+    if (String(url).endsWith('/client_secrets')) {
+      requests.push({ key, session: JSON.parse(String(init?.body)).session })
+      return Response.json({ value: 'ek_test' })
+    }
+    expect(url).toBe('https://api.openai.com/v1/realtime/calls')
+    expect(key).toBe('Bearer ek_test')
+    expect(init?.body).toBe(sdp)
+    return new Response('v=0 answer')
+  }
+  expect((await call('POST', path, offer, other.token)).statusCode).toBe(409)
+  expect((await call('POST', path, offer)).json()).toEqual({ answerSdp: 'v=0 answer' })
+  expect((await call('POST', path, { sdp, account: other.id }, other.token)).statusCode).toBe(200)
+  expect(requests).toEqual(['first', 'second'].map((name, i) => ({
+    key: 'Bearer sk-' + name + '-test', session: {
+      type: 'transcription', audio: { input: { transcription: {
+        model: i ? 'gpt-live-transcribe' : config.model, delay: 'low'
+      }, turn_detection: null } }
+    }
+  })))
+  const legacy = await call('PUT', '/me/ai', { transcription: { ...config, connection: 'off' } })
+  expect(legacy.json().transcription).toEqual(config)
+  expect((await call('POST', path, offer)).statusCode).toBe(200)
+  await call('DELETE', '/me/ai', undefined, other.token)
+  expect((await call('POST', path, { sdp, account: other.id }, other.token)).statusCode).toBe(409)
+  expect(requests).toHaveLength(3)
+})
+
 async function enrolled() {
   const response = await call('PUT', `/me/learning/course/${id}`, {})
   expect(response.statusCode).toBe(200)

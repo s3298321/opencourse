@@ -96,6 +96,7 @@ export interface ServerAISettings extends ServerAIDefaults {
   enabledModels?: string[] | null
   configured: boolean
   hint: string | null
+  transcription?: import('../transcription').TranscriptionConfig & { connection?: 'apiKey' }
   idempotentChatCreation?: boolean
   perChatTools?: boolean
   webSearch: boolean

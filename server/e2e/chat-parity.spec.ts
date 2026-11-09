@@ -46,7 +46,7 @@ test('reading chat matches app citations, activity, quotes and composer choices'
   await expect(panel.getByRole('status', { name: 'Thinking' })).toBeVisible()
   await expect(panel.locator('.chat-typing i').first()).toHaveCSS('animation-duration', '1.2s')
   await expect(panel.locator('.project-tool-activity')).toHaveCSS('animation-duration', '1.4s')
-  await expect(panel.getByRole('img', { name: 'OpenAI API key' })).toBeVisible()
+  await expect(panel.getByRole('img', { name: 'API Key' })).toBeVisible()
   await page.screenshot({ path: join(tmpdir(), 'opencourse-web-chat-thinking.png') })
   const warning = panel.locator('.chat-network-warning')
   messages[1].retryAttempt = 2

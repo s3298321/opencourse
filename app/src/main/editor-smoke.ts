@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { Menu, type BrowserWindow } from 'electron'
 import { exportCourseZipPath } from './course-authoring'
 import { extractArchive } from './unzip'
+import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
 interface Result { name: string; ok: boolean; detail: string }
 export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
   const results: Result[] = []
@@ -19,6 +20,10 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
         const wait = async test => { for(let n=0;n<200;n++) { const result=test(); if(result) return result; await sleep(25); } throw new Error('Timed out: '+test.toString()); };
         const visible = element => element?.checkVisibility({ visibilityProperty: true });
         const find = selector => [...document.querySelectorAll(selector)].find(visible);
+        const settleLayout = async () => {
+          await new Promise(requestAnimationFrame);
+          await Promise.all(find('.author-layout').getAnimations().map(animation => animation.finished));
+        };
         const button = text => [...document.querySelectorAll('button')].find(b=>visible(b) && b.textContent.trim()===text);
         const field = async (label,value) => { const input=await wait(()=>document.querySelector('[aria-label="'+label+'"]')); Object.getOwnPropertyDescriptor(input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value); input.dispatchEvent(new Event('input',{bubbles:true})); await sleep(30); };
         ${source}
@@ -90,7 +95,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       [...document.querySelectorAll('.outline-add')].find(b=>b.textContent.includes('Add lesson')).click(); await field('Lesson title','First lesson');
       button('Elements').click();
       const transfer = new DataTransfer();
-      document.querySelector('[aria-label="Drag Text"]').dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer})); await sleep(30);
+      (await wait(()=>find('[aria-label="Drag Text"]'))).dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer})); await sleep(30);
       document.querySelector('.lesson-drop-zone.append').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer})); await sleep(30); await field('Block slug','lesson-text'); await field('Markdown content','## Authored in the app\\n\\nStable identities survive edits. Evaluate $f(x)$ at $x = 2$.');
       await wait(()=>document.querySelector('.lesson-element [aria-label="Block slug"]')?.value==='lesson-text');
       button('Outline').click();
@@ -129,7 +134,7 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       if(tab.getBoundingClientRect().height>34 || parseFloat(getComputedStyle(tab).fontSize)>12) throw new Error('Sidebar tabs are not compact');
       window.__EDITOR_DRAG_EVENTS=[];
       for(const type of ['dragstart','dragover','drop','dragend']) document.addEventListener(type,e=>{window.__EDITOR_DRAG_EVENTS.push({type, target:e.target.outerHTML.slice(0,160),dragging:!!document.querySelector('.lesson-workspace.dragging'),effect:e.dataTransfer.effectAllowed,x:e.clientX,y:e.clientY})},true);
-      const source=document.querySelector('[aria-label="Drag Text"]'), target=document.querySelector('[data-drop-index="0"]');
+      const source=await wait(()=>find('[aria-label="Drag Text"]')), target=document.querySelector('[data-drop-index="0"]');
       target.scrollIntoView({block:'center'}); await sleep(100);
       const a=source.getBoundingClientRect(), b=target.getBoundingClientRect();
       return {from:{x:Math.round(a.x+a.width/2),y:Math.round(a.y+a.height/2)},to:{x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}};
@@ -242,14 +247,27 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       button('Outline').click();
       return 'Edited formula previewed and saved';
     `)
+    await run('editor: Panda layers inputs, canvas and cards', `
+      await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)});
+      const background = selector => getComputedStyle(find(selector)).backgroundColor;
+      await wait(() => background('[aria-label="Lesson title"]') === 'rgb(236, 234, 230)');
+      for (const selector of ['.course-editor', '.author-preview']) {
+        if (background(selector) !== 'rgb(250, 248, 245)') throw new Error(selector + ' lost the Panda canvas');
+      }
+      if (background('.lesson-element') !== 'rgb(255, 255, 255)') throw new Error('Lesson card lost its white surface');
+      return 'Gray fields, warm off-white canvas and white lesson cards';
+    `)
     const image = await win.webContents.capturePage()
     writeFileSync(join(tmpdir(), 'opencourse-course-editor.png'), image.toPNG())
+    await win.webContents.executeJavaScript('window.opencourse.applyTheme(null)')
     await run('editor: learn, edit, rename and preserve progress', `
       document.querySelector('.crumbs a').click(); await wait(()=>find('.library'));
       (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>document.querySelector('.detail'));
       document.querySelector('.lesson-row').click(); await wait(()=>document.querySelector('.lesson-head'));
       if(!document.querySelector('.lesson-head').parentElement.textContent.includes('Stable identities')) throw new Error('Saved content not readable');
       await wait(()=>document.querySelector('.lesson-inner p .course-inline-formula annotation')?.textContent === 'f(x)');
+      const reader = getComputedStyle(find('.lesson-inner'));
+      window.__EDITOR_READING_WIDTH = parseFloat(reader.maxWidth) - parseFloat(reader.paddingLeft) - parseFloat(reader.paddingRight);
       const fraction = await wait(()=>document.querySelector('.lesson-inner mfrac'));
       const [numerator, denominator] = fraction.children;
       if(numerator.getBoundingClientRect().bottom > denominator.getBoundingClientRect().top) throw new Error('Saved fraction is not stacked');
@@ -266,6 +284,70 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       if(!(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID)).completedLessons.includes(window.__EDITOR_SMOKE_LESSON)) throw new Error('Completion lost');
       return 'Renamed lesson retains its UUID and completion';
     `)
+    await run('editor: manual and AI previews share the lesson reading width', `
+      const layout = find('.author-layout'), pane = find('.author-preview');
+      for (const mode of ['Manual', 'AI']) {
+        button(mode).click();
+        await wait(() => button(mode).getAttribute('aria-pressed') === 'true');
+        for (const width of [2400, 1100]) {
+          layout.style.width = width + 'px';
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const heading = find('.author-preview .lesson-head').getBoundingClientRect();
+          const left = heading.left - pane.getBoundingClientRect().left - pane.clientLeft;
+          const right = pane.clientWidth - left - heading.width;
+          if (Math.abs(left - right) > 1) throw new Error(mode + ' preview is off center');
+          const gutter = parseFloat(getComputedStyle(find('.author-preview .content-inner')).paddingLeft);
+          const expected = Math.min(window.__EDITOR_READING_WIDTH, pane.clientWidth - 2 * gutter);
+          if (Math.abs(heading.width - expected) > 1) throw new Error(mode + ' preview width ' + heading.width + ', expected ' + expected);
+        }
+      }
+      layout.style.removeProperty('width');
+      button('Manual').click();
+      await settleLayout();
+      return 'Both previews center the reader column and fit narrower panes';
+    `)
+    const dragDivider = async (pane: 'outline' | 'preview' | 'chat', delta: number): Promise<number> => {
+      const selector = JSON.stringify(`[role="separator"][aria-label="Resize ${pane}"]`)
+      const { x, y, width } = await win.webContents.executeJavaScript(`(() => {
+        const handle = document.querySelector(${selector});
+        const rect = handle.getBoundingClientRect();
+        return {x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + 60), width: Number(handle.ariaValueNow)};
+      })()`)
+      win.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: x + delta, y, modifiers: ['leftbuttondown'] })
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: x + delta, y, button: 'left', clickCount: 1 })
+      const expected = width + (pane === 'outline' ? delta : -delta)
+      await run(`editor: drag the ${pane} divider`, `
+        await wait(()=>Number(find(${selector}).ariaValueNow) === ${expected});
+        return find(${selector}).ariaValueText;
+      `)
+      return expected
+    }
+    const outlineWidth = await dragDivider('outline', 30)
+    const previewWidth = await dragDivider('preview', 30)
+    await run('editor: AI inherits the resized outline', `
+      button('AI').click(); await wait(()=>find('[aria-label="Resize chat"]'));
+      await settleLayout();
+      if (find('.author-outline').offsetWidth !== ${outlineWidth}) throw new Error('AI lost the outline width');
+      return 'Shared outline';
+    `)
+    const chatWidth = await dragDivider('chat', -30)
+    await run('editor: reopening restores each split and minimum widths protect adjacent panes', `
+      document.querySelector('.crumbs a').click(); await wait(()=>find('.library'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click();
+      (await wait(()=>button('Edit course'))).click(); await wait(()=>find('.authoring-chat'));
+      if (find('.author-outline').offsetWidth !== ${outlineWidth} || find('.authoring-chat').offsetWidth !== ${chatWidth}) throw new Error('AI widths lost on reopen');
+      const key = (pane, key) => find('[aria-label="Resize '+pane+'"]').dispatchEvent(new KeyboardEvent('keydown', {key,bubbles:true}));
+      key('chat','Home'); await wait(()=>find('.authoring-chat').offsetWidth === 320);
+      key('chat','End'); await wait(()=>find('.author-preview').offsetWidth === 280);
+      button('Manual').click(); await wait(()=>find('.author-form'));
+      await settleLayout();
+      if (find('.author-outline').offsetWidth !== ${outlineWidth} || find('.author-preview').offsetWidth !== ${previewWidth}) throw new Error('Manual widths lost on reopen');
+      key('outline','Home'); await wait(()=>find('.author-outline').offsetWidth === 170);
+      key('preview','End'); await wait(()=>find('.author-form').offsetWidth === 340);
+      key('preview','Home'); await wait(()=>find('.author-preview').offsetWidth === 280);
+      return 'Outline, manual and AI splits persist, and all pane minima hold';
+    `)
     await run('editor: AI mode preserves selection and tabs and displays preview beside chat', `
       const selected = document.querySelector('.outline-row.selected').textContent;
       button('AI').click(); await wait(()=>document.querySelector('.authoring-chat .sidechat-input'));
@@ -278,9 +360,84 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
       const chat = document.querySelector('.authoring-chat').getBoundingClientRect();
       if (!(outline.right <= preview.left + 1 && preview.right <= chat.left + 1 && chat.right <= innerWidth + 1)) throw new Error('AI mode columns are incorrectly positioned: '+JSON.stringify({outline:outline.toJSON(),preview:preview.toJSON(),chat:chat.toJSON(),innerWidth}));
       const tab = document.querySelector('.sidechat-tab').textContent;
-      button('Manual').click(); button('AI').click();
+      const thumb = find('.author-mode-thumb');
+      const layout = find('.author-layout'), previewPane = find('.author-preview');
+      for (const label of ['Manual', 'AI']) {
+        const start = thumb.getBoundingClientRect(), target = button(label).getBoundingClientRect();
+        const previewStart = previewPane.getBoundingClientRect().left;
+        button(label).click();
+        await wait(()=>button(label).getAttribute('aria-pressed') === 'true');
+        const transitions = thumb.getAnimations();
+        const slide = layout.getAnimations().find(a => a.transitionProperty === '--author-mode-progress');
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          if (!slide) throw new Error(label + ' panes did not animate');
+          slide.pause(); slide.currentTime = Number(slide.effect.getTiming().duration) / 2;
+          const halfway = previewPane.getBoundingClientRect().left;
+          slide.finish();
+          const destination = previewPane.getBoundingClientRect().left;
+          if (halfway <= Math.min(previewStart, destination) || halfway >= Math.max(previewStart, destination)) throw new Error(label + ' preview skipped its intermediate position');
+          if (!transitions.length) throw new Error(label + ' switch did not animate');
+          transitions.forEach(t => { t.pause(); t.currentTime = Number(t.effect.getTiming().duration) / 2; });
+          const middle = thumb.getBoundingClientRect().left;
+          if (middle <= Math.min(start.left, target.left) || middle >= Math.max(start.left, target.left)) throw new Error(label + ' thumb did not slide between buttons');
+          transitions.forEach(t => t.finish());
+        } else if (transitions.length || slide) throw new Error('Mode switch ignored reduced motion');
+        const end = thumb.getBoundingClientRect();
+        if (Math.abs(end.left - target.left) > 1 || Math.abs(end.width - target.width) > 1) throw new Error(label + ' thumb missed its button');
+      }
       if (document.querySelector('.outline-row.selected').textContent !== selected || document.querySelector('.sidechat-tab').textContent !== tab) throw new Error('Selection or chat was reset');
       return 'Outline, preview and chat; selection and tabs survive mode switches';
+    `)
+    await run('editor: shared outline rows move vertically and the elements palette slides sideways', `
+      const pane = find('.author-outline'), width = pane.offsetWidth;
+      const tabs = pane.querySelector('.author-sidebar-tabs'), panel = pane.querySelector('#author-panel-outline');
+      const row = panel.querySelector('.outline-entry'), reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      for (const label of ['Manual', 'Elements', 'AI', 'Manual', 'Outline', 'AI']) {
+        const tab = label === 'Outline' || label === 'Elements';
+        const shared = !tab && pane.dataset.tab === 'outline';
+        const before = row.getBoundingClientRect().top, tabsTop = tabs.getBoundingClientRect().top;
+        if (label === 'Outline') button('Elements').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+        else button(label).click();
+        await wait(()=>tab ? button(label).getAttribute('aria-selected') === 'true' : pane.dataset.view === label.toLowerCase());
+        const animations = pane.getAnimations({subtree:true});
+        if (reduced) {
+          if (animations.length) throw new Error('Sidebar ignored reduced motion');
+        } else if (shared) {
+          const shift = animations.find(a => a.effect.target === panel && a.transitionProperty === 'margin-top');
+          const fade = animations.find(a => a.effect.target === tabs && a.transitionProperty === 'opacity');
+          if (!shift || !fade) throw new Error(label + ' missing row or control transition');
+          const movement = shift.effect.getTiming(), controls = fade.effect.getTiming();
+          if (label === 'AI' && (movement.delay !== 0 || controls.delay !== 0)) throw new Error('AI row movement and control fade should start together');
+          if (label === 'Manual' && controls.delay < movement.delay + movement.duration) throw new Error('Manual controls appeared before the rows settled');
+          const sample = label === 'AI' ? controls.duration / 2 : movement.duration / 2;
+          animations.forEach(a=>{ a.pause(); a.currentTime = sample; });
+          const middle = row.getBoundingClientRect().top;
+          const addOpacity = Number(getComputedStyle(panel.querySelector('.outline-add')).opacity);
+          if (label === 'AI' ? !(addOpacity > 0 && addOpacity < 1) : addOpacity !== 0) throw new Error(label + ' Add button has incorrect mid-motion opacity');
+          if (getComputedStyle(panel).opacity !== '1' || getComputedStyle(panel).transform !== 'none' || row !== panel.querySelector('.outline-entry')) throw new Error('Shared outline was replaced or crossfaded');
+          animations.forEach(a=>a.finish());
+          const end = row.getBoundingClientRect().top;
+          if (label === 'AI' ? !(before > middle && middle > end) : !(before < middle && middle < end)) throw new Error(label + ' row did not move smoothly');
+        } else {
+          const direction = label === 'AI' || label === 'Elements' ? 1 : -1;
+          for (const body of pane.querySelectorAll('.author-tab-panel')) {
+            const motion = animations.filter(a=>a.effect.target === body);
+            if (!motion.some(a=>a.transitionProperty === 'transform')) throw new Error(label + ' panel did not slide');
+            motion.forEach(a=>{ a.pause(); a.currentTime = Number(a.effect.getTiming().duration) / 2; });
+            const style = getComputedStyle(body), matrix = new DOMMatrix(style.transform);
+            if (!(Number(style.opacity) > 0 && Number(style.opacity) < 1 && matrix.is2D && Math.abs(matrix.m41) <= 12 &&
+              matrix.m41 * (body.inert ? -direction : direction) > 0 && matrix.m42 === 0)) throw new Error(label + ' incorrect sideways fade: ' + style.transform);
+            const middle = body.getBoundingClientRect().top;
+            motion.forEach(a=>a.finish());
+            if (!body.inert && Math.abs(body.getBoundingClientRect().top - middle) > 1) throw new Error(label + ' incoming panel jumped vertically');
+          }
+        }
+        if (tab && tabs.getBoundingClientRect().top !== tabsTop) throw new Error('Tab switch moved the controls');
+        if (label === 'Outline' && document.activeElement !== button('Outline')) throw new Error('Arrow key lost tab focus');
+        if (pane.offsetWidth !== width) throw new Error('Sidebar changed width');
+        await settleLayout();
+      }
+      return 'Shared rows rise during the Add button fade and settle before the controls return; sideways slides keep a steady vertical position';
     `)
     const authored = getAuthoringCourse(courseId)
     const block = authored.draft.manifest.modules[0].lessons![0].blocks[0]
@@ -404,8 +561,12 @@ export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
         const preview = document.querySelector('.author-preview').getBoundingClientRect();
         const chat = document.querySelector('.authoring-chat').getBoundingClientRect();
         if(!(outline.right <= preview.left + 1 && chat.top >= preview.bottom - 1 && preview.height > 100 && chat.height > 200 && chat.right <= innerWidth + 1)) throw new Error('Narrow AI layout overflows or hides a pane');
+        find('[aria-label="Resize outline"]').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));
+        const wideOutline = await wait(()=>find('.author-outline').offsetWidth > 300 && find('.author-outline').offsetWidth);
         document.querySelector('.outline-row[aria-label="Renamed lesson"]').click(); await wait(()=>document.querySelector('.author-preview .author-preset-files'));
         button('Edit file').click(); await wait(()=>!document.querySelector('.course-editor').classList.contains('ai-mode'));
+        await settleLayout();
+        if(find('.author-outline').offsetWidth !== wideOutline) throw new Error('Manual mode resized the narrow outline');
         if(getComputedStyle(document.querySelector('.author-preview')).display==='none' || !document.querySelector('.author-preview .cm-content[contenteditable="true"]')) throw new Error('Editing a preset file hides the narrow preview');
         button('AI').click(); await wait(()=>document.querySelector('.course-editor').classList.contains('ai-mode'));
         document.querySelector('.outline-row[aria-label="Renamed lesson"]').click(); await wait(()=>document.querySelector('.outline-row.selected')?.getAttribute('aria-label')==='Renamed lesson'); await sleep(80);

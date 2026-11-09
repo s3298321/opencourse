@@ -1,4 +1,4 @@
-import { VOICE_PREVIEW_INSTRUCTIONS, VOICE_PREVIEW_MS } from '@core/coach/voice-preview'
+import { voicePreviewInstructions, VOICE_PREVIEW_MS } from '@core/coach/voice-preview'
 
 export type VoicePreviewState = 'loading' | 'playing' | 'idle'
 
@@ -30,6 +30,7 @@ export class VoicePreview {
   }
 
   private async connect(voice: string): Promise<void> {
+    const instructions = voicePreviewInstructions(voice)
     this.context = new AudioContext()
     this.source = this.context.createConstantSource()
     this.source.offset.value = 0
@@ -60,7 +61,7 @@ export class VoicePreview {
       if (message?.type === 'session.started' && !this.started) {
         this.started = true
         if (!this.stopped) {
-          this.send({ type: 'session.commentary.append', delegation_id: null, content: VOICE_PREVIEW_INSTRUCTIONS })
+          this.send({ type: 'session.commentary.append', delegation_id: null, content: instructions })
           this.timer = setTimeout(() => void this.stop(), VOICE_PREVIEW_MS)
         }
       } else if (message?.type === 'session.closed') {

@@ -7,6 +7,7 @@ import { configureProjectTools } from './projectchat'
 import { configureDocumentTools } from './document-chat'
 import { configureNotebookTools } from './writing-notebook-chat'
 import { advanceAuthoringQuestion, configureAuthoringTools, rejectAuthoringPlan } from './authoring-chat'
+import { registerDictation, stopDictation, checkDictationAccount } from './dictation'
 import { readPreferences as toolPreferences, writePreferences as writeToolPreferences } from './preferences'
 import type { ReviewTarget } from '../core/personal-cards'
 import { personalCardEvents, listPersonalCards, deletePersonalCard, listFlashcardProposals, decideFlashcardProposal } from './personal-cards'
@@ -274,6 +275,7 @@ function holdEditor(sender: WebContents): number {
 }
 
 export function registerIpc(): void {
+  registerDictation()
   const pomodoro = new PomodoroTimer(getPomodoroSettings, state => broadcast('pomodoro:changed', state))
   powerMonitor.on('resume', () => pomodoro.get())
   registerCoachContextIpc()
@@ -336,7 +338,7 @@ export function registerIpc(): void {
   authoringEvents.on('run', (...args) => broadcast('authoring:runState', ...args))
   subscriptionEvents.on('changed', notifyAIConnectionChanged)
   subscriptionEvents.on('stop', () => { cancelAllChats('chatgpt'); cancelAllProjectChats('chatgpt'); cancelAllAuthoringChats('chatgpt'); cancelAllDocumentChats('chatgpt'); cancelAllWritingNotebookChats('chatgpt') })
-  app.on('before-quit', () => { cancelAllWritingNotebookChats(); releaseSubscriptionSession() })
+  app.on('before-quit', () => { stopDictation(); cancelAllWritingNotebookChats(); releaseSubscriptionSession() })
   ipcMain.handle('ai:settings', (_e, scope: AIScope, provider?: AIProvider, refresh = false) => {
     if (process.env['OPENCOURSE_SMOKE'] || process.env['OPENCOURSE_SHOTS']) smokeCatalogs()
     return getAIModelSettings(scope, provider, refresh)
@@ -367,7 +369,7 @@ export function registerIpc(): void {
     stopLearningSync()
     await stopAllNotebooks()
     endAllReviews()
-    releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); cancelAllDocumentChats(); cancelAllWritingNotebookChats(); stopDocumentWorkers(); endAllSessions(); closeDb(); forgetVolatileKeys()
+    releaseSubscriptionSession(); cancelAllChats(); cancelAllProjectChats(); cancelAllAuthoringChats(); cancelAllDocumentChats(); cancelAllWritingNotebookChats(); stopDocumentWorkers(); endAllSessions(); stopDictation(); closeDb(); forgetVolatileKeys()
     const user = createUser(name)
     pomodoro.reset()
     startLearningSync()
@@ -399,6 +401,7 @@ export function registerIpc(): void {
     cancelAllAuthoringChats()
     releaseSubscriptionSession()
     endAllSessions()
+    stopDictation()
     closeDb()
     forgetVolatileKeys()
     const user = switchUser(id)
@@ -426,6 +429,7 @@ export function registerIpc(): void {
     cancelAllProjectChats()
     cancelAllAuthoringChats()
     endAllSessions()
+    stopDictation()
     closeDb()
     forgetVolatileKeys()
     deleteUser(id)
@@ -523,7 +527,7 @@ export function registerIpc(): void {
   ipcMain.handle('authoring:export', (_e, courseId: string) => exportCourseZip(courseId))
   // Servers. Every call answers with a ServerResult, so a refusal arrives as the
   // server's own words rather than as Electron's "Error invoking remote method".
-  const changedServers = <T>(result: T): T => { broadcast('servers:changed'); void syncAll(true); return result }
+  const changedServers = <T>(result: T): T => { checkDictationAccount(); broadcast('servers:changed'); void syncAll(true); return result }
   ipcMain.handle('servers:list', () => { const list = listConnections(); discover(list.map((c) => c.url)); return list })
   ipcMain.handle('servers:retry', async (_e, id: string) => {
     const connection = listConnections().find((c) => c.id === id)

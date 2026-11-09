@@ -18,7 +18,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 const source = { kind: 'course' as const, id: 'published-course', version: '1' }
-async function fixture(configured = true) {
+async function fixture(configured = true, supportsDictation = false) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   Element.prototype.getAnimations = () => []
@@ -26,7 +26,8 @@ async function fixture(configured = true) {
   const view: LearningChatView = { chat: { id: 'server-chat', kind: 'course', contentId: source.id,
     version: '1', title: '', createdAt: '2026-10-21T00:00:00Z', messages: 0 }, messages: [] }
   const request = vi.fn(async (path: string, method = 'GET', body?: any): Promise<any> => {
-    if (path === '/me/ai') return { configured, enabled: true, model: 'gpt-5', reasoning: 'high', webSearch: true }
+    if (path === '/me/ai') return { configured, enabled: true, model: 'gpt-5', reasoning: 'high', webSearch: true,
+      ...(supportsDictation ? { transcription: { connection: 'apiKey', model: 'gpt-live-transcribe' } } : {}) }
     if (path.includes('?')) return { chats: [] }
     if (path.endsWith('/cancel')) return {}
     if (path.endsWith('/messages') && method === 'POST') {
@@ -74,7 +75,7 @@ it('uses the local chat UI while sending and stopping exclusively through the se
   expect(f.onQuoteUsed).toHaveBeenCalledOnce()
   expect(f.el.querySelector('.partial math annotation')?.textContent).toBe('f(x)')
   expect(f.el.querySelector('.partial')?.textContent).toContain('Server answer')
-  await act(async () => f.el.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!.click())
+  await act(async () => f.el.querySelector<HTMLButtonElement>('[aria-label="Stop response"]')!.click())
   expect(f.request).toHaveBeenCalledWith('/learning/chats/server-chat/cancel', 'POST', {})
   await act(async () => f.el.querySelector<HTMLButtonElement>('.sidechat-close')!.click())
   expect(f.onClose).toHaveBeenCalledOnce()
@@ -104,8 +105,19 @@ it('blocks sending without the server connection and opens server settings from 
   expect(f.onAddKey).toHaveBeenCalledOnce()
   await act(async () => f.el.querySelector<HTMLButtonElement>('.sidechat-connection')!.click())
   expect(document.body.textContent).toContain('Server settings')
-  expect(document.body.textContent).not.toContain('ChatGPT')
+  expect(document.querySelector('.connection-menu')?.textContent).not.toContain('Subscription')
   expect(f.request.mock.calls.every(([, method]) => !method || method === 'GET')).toBe(true)
+})
+
+it.each([
+  [true, false, false], [false, true, false], [true, true, true]
+])('uses server dictation capability and key status (%s, %s)', async (configured, supported, expected) => {
+  const settings = vi.fn().mockRejectedValue(new Error('Local settings must not be consulted'))
+  vi.stubGlobal('opencourse', { dictation: { settings } })
+  const f = await fixture(configured, supported)
+  expect(!!f.el.querySelector('[aria-label="Start dictation"]')).toBe(expected)
+  expect(settings).not.toHaveBeenCalled()
+  if (!expected) expect(f.el.querySelector<HTMLButtonElement>('[aria-label="Send"]')?.disabled).toBe(true)
 })
 
 it('preserves failed replies and maps server citations to local reading destinations', () => {

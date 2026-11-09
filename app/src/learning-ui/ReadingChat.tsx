@@ -1,3 +1,4 @@
+import { useDictation, DictationButton } from './useDictation'
 import { networkRetryWarning } from '../core/chat-network'
 import ActiveChatTools from './ActiveChatTools'
 import ChatToolsMenu from './ChatToolsMenu'
@@ -9,7 +10,7 @@ import type { LearningClient } from './client'
 import './learning.css'
 import { REASONING_LABELS, reasoningEffortsFor, webSearchFor } from '../core/sidechat/models'
 import Menu from './Menu'
-import ConnectionIcon from './ConnectionIcon'
+import ConnectionIcon, { PROVIDER_LABELS } from './ConnectionIcon'
 import { ReadingMessage, Thinking, type ReadingCitation } from './ReadingMessage'
 import { ChatIcon } from './ChatIcon'
 import { useReadingTabs } from './useReadingTabs'
@@ -17,6 +18,7 @@ import ChatTabTitle from './ChatTabTitle'
 
 function ReadingChatPanel({
   client,
+  accountId,
   source,
   quote,
   onQuoteUsed,
@@ -33,6 +35,7 @@ function ReadingChatPanel({
   settingsLink?: ReactNode
   renderAnswer?: (text: string) => ReactNode
   draftKey?: string
+  accountId: string
   client: LearningClient
   source: ContentRef
   quote?: string
@@ -62,6 +65,11 @@ function ReadingChatPanel({
     return () => { alive = false }
   }, [client, configured, settings?.hint])
   const field = useRef<HTMLTextAreaElement>(null)
+  const canDictate = visible && configured === true && modelEnabled && !!settings?.transcription &&
+    !busy && !answering && !panel.sending && !panel.loading
+  const voice = useDictation({ connect: (_id, sdp) =>
+    client.request('/me/ai/transcription/session', 'POST', { sdp, account: accountId })
+  }, canDictate, panel.active, 12000, setText, field)
   const transcript = useRef<HTMLDivElement>(null)
   const tabList = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -113,7 +121,7 @@ function ReadingChatPanel({
     }
   }, [client])
   async function send() {
-    if (configured !== true || !modelEnabled) return
+    if (voice.locked() || configured !== true || !modelEnabled) return
     following.current = true
     if (await panel.send(quote, text, { model, reasoning })) onQuoteUsed?.()
   }
@@ -288,7 +296,8 @@ function ReadingChatPanel({
           void send()
         }}
       >
-        <div className="learning-chat-box">
+        {voice.notice && <p className="meta" role="status">{voice.notice}</p>}
+        <div className="learning-chat-box" data-dictation={voice.phase} data-speaking={voice.speaking}>
           {quote && (
             <div className="sidechat-quote">
               <div className="sidechat-quote-head">
@@ -316,6 +325,7 @@ function ReadingChatPanel({
             }
             value={text}
             maxLength={12000}
+            readOnly={voice.phase !== 'idle'}
             onChange={(e) => {
               setText(e.target.value)
             }}
@@ -328,7 +338,7 @@ function ReadingChatPanel({
             }}
           />
           <div className="learning-chat-actions">
-            <span className="learning-chat-connection" role="img" aria-label="OpenAI API key" title="OpenAI API key · managed in Settings"><ConnectionIcon provider="apiKey" /></span>
+            <span className="learning-chat-connection" role="img" aria-label={PROVIDER_LABELS.apiKey} title={`${PROVIDER_LABELS.apiKey} · managed in Settings`}><ConnectionIcon provider="apiKey" /></span>
             <ChatToolsMenu tools={chatTools} change={panel.setTools} supportsWeb={supportsWeb} busy={busy || answering || panel.loading} active={visible} resetKey={panel.active} />
             {configured && modelEnabled && <>
               <Menu className="learning-chat-picker learning-chat-model" panelClassName="learning-chat-menu" screenActive={visible} resetKey={panel.active}
@@ -340,7 +350,7 @@ function ReadingChatPanel({
               {!!efforts.length && <Menu className="learning-chat-picker learning-chat-reasoning" panelClassName="learning-chat-menu" screenActive={visible} resetKey={panel.active}
                 label={<><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 1.9a4.2 4.2 0 0 0-2.55 7.55c.45.35.7.85.7 1.4v.6h3.7v-.6c0-.55.25-1.05.7-1.4A4.2 4.2 0 0 0 8 1.9ZM6.4 13.9h3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg><span className="learning-chat-picker-label">{reasoning ? REASONING_LABELS[reasoning] : 'Default'}</span></>}
                 ariaLabel="Reasoning for this chat" title="How hard it thinks before answering" align="left" side="above" disabled={busy || answering}
-                items={[{ id: 'default', label: 'Default', hint: "the model’s own", checked: reasoning === null, onSelect: () => panel.setSelection({ model, reasoning: null }) },
+                items={[{ id: 'default', label: 'Default', checked: reasoning === null, onSelect: () => panel.setSelection({ model, reasoning: null }) },
                   ...efforts.map(effort => ({ id: effort, label: REASONING_LABELS[effort], checked: effort === reasoning, onSelect: () => panel.setSelection({ model, reasoning: effort }) }))]} />}
             </>}
             {configured && !modelEnabled && <span className="learning-chat-picker-label">Enable a model in Settings</span>}
@@ -349,7 +359,7 @@ function ReadingChatPanel({
               <button
                 type="button"
                 className="learning-chat-send"
-                aria-label="Stop"
+                aria-label="Stop response"
                 title="Stop response"
                 onClick={() =>
                   void client
@@ -361,6 +371,8 @@ function ReadingChatPanel({
                   <rect x="5" y="5" width="10" height="10" rx="2" fill="currentColor" stroke="none" />
                 </svg>
               </button>
+            ) : voice.phase !== 'idle' || (canDictate && !text.trim()) ? (
+              <DictationButton state={voice} className="learning-chat-send" />
             ) : (
               <button
                 type="submit"
@@ -383,5 +395,5 @@ function ReadingChatPanel({
 
 // Replacing an account/content binding unmounts all in-flight UI state.
 export function ReadingChat(props: Parameters<typeof ReadingChatPanel>[0]) {
-  return <ReadingChatPanel key={`${props.draftKey ?? ''}:${props.source.kind}:${props.source.id}`} {...props} />
+  return <ReadingChatPanel key={`${props.accountId}:${props.draftKey ?? ''}:${props.source.kind}:${props.source.id}`} {...props} />
 }

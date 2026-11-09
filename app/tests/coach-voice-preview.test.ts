@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { VoicePreview } from '../src/renderer/coach/voice-preview'
-import { VOICE_PREVIEW_MS } from '../src/core/coach/voice-preview'
+import { VOICE_PREVIEW_MS, voicePreviewInstructions } from '../src/core/coach/voice-preview'
 
 let channel: any, pc: any, context: any, audio: any, track: any, source: any, connect: any
 const events: any[] = []
@@ -48,6 +48,9 @@ it('uses a silent track, plays the chosen voice and automatically closes and rel
   expect(audio.play).toHaveBeenCalledOnce()
   expect(changed).toHaveBeenCalledWith('playing')
   expect(events.filter(e => e.type === 'session.commentary.append')).toHaveLength(1)
+  const greeting = events.find(e => e.type === 'session.commentary.append').content
+  expect(greeting).toContain('Bonjour')
+  expect(greeting).toBe(voicePreviewInstructions('brise'))
   await vi.advanceTimersByTimeAsync(VOICE_PREVIEW_MS)
   expect(events.filter(e => e.type === 'session.close')).toHaveLength(1)
   expect(track.stop).toHaveBeenCalledOnce()

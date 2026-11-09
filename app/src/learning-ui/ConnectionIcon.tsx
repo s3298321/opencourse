@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import type { AIProvider } from '../core/types'
 
-export const PROVIDER_LABELS: Record<AIProvider, string> = { apiKey: 'OpenAI API key', chatgpt: 'ChatGPT subscription' }
+export const PROVIDER_LABELS: Record<AIProvider, string> = { apiKey: 'API Key', chatgpt: 'Subscription' }
 
 export function ConnectionLabel({ provider }: { provider: AIProvider }): JSX.Element {
   return <span className="settings-connection-label"><ConnectionIcon provider={provider} /><span>{PROVIDER_LABELS[provider]}</span></span>

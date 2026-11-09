@@ -58,8 +58,7 @@ mac:
   # dies at the microphone prompt - a trap only a packaged build can catch.
   extendInfo:
     NSMicrophoneUsageDescription: >-
-      OpenCourse uses the microphone only while a coaching session is running, so
-      your coach can hear you.
+      OpenCourse uses the microphone when you dictate a chat message or talk to your coach.
   # Replaces electron-builder's template, which has no audio-input entitlement.
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist

@@ -1,3 +1,5 @@
+import { isTranscriptionConfig, type TranscriptionConfig } from '@core/transcription'
+import { negotiateTranscription, validTranscriptionOffer } from '@core/transcription-session'
 import { InterruptedConnection, withNetworkRetries } from '@core/network-retry'
 import { validateChatTools } from '@core/chat-tools'
 import { FLASHCARD_TOOL, FLASHCARD_INSTRUCTIONS, validateFlashcards } from '@core/personal-cards'
@@ -30,7 +32,7 @@ import { CHAT_MODELS, filterChatModels, isReasoningEffort, reasoningEffortsFor, 
 import { normalizeChatTitle, TITLE_INSTRUCTIONS } from '@core/sidechat/title'
 import type { Ctx } from '../context'
 import { requireAccount } from '../auth/routes'
-import { badRequest, conflict, notFound, tooMany, forbidden } from '../errors'
+import { ApiError, badRequest, conflict, notFound, tooMany, forbidden } from '../errors'
 import { tx } from '../db'
 import { contentRecord, readCourse } from './content'
 import { change } from './sync'
@@ -214,6 +216,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
     active = new Map<string, { account: string; controller: AbortController; done: Promise<void> }>(),
     naming = new Map<string, { account: string; controller: AbortController; done: Promise<void> }>(),
     limits = new RateLimiter(30, 60000),
+    dictationStarts = new RateLimiter(20, 60000),
     listing = new RateLimiter(20, 60000)
   if (ctx.config.aiEncryptionKeys) keyring(ctx)
   const interrupted = d
@@ -287,6 +290,24 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
     naming.set(chatId, { account, controller, done })
   }
   app.get('/api/v1/me/ai', async (req) => aiSettings(ctx, requireAccount(req).id))
+  app.post('/api/v1/me/ai/transcription/session', { bodyLimit: 70000 }, async (req, reply) => {
+    const account = requireAccount(req).id
+    const offer = req.body as { sdp?: unknown; account?: unknown } | null
+    if (offer?.account !== account) throw conflict('account_changed', 'The signed-in account changed. Reopen the chat.')
+    const sdp = offer.sdp
+    if (!validTranscriptionOffer(sdp)) throw badRequest('invalid_offer', 'Invalid microphone connection offer.')
+    const settings = aiSettings(ctx, account)
+    if (!settings.enabled || !settings.configured || !settings.transcription)
+      throw conflict('dictation_disabled', 'Add an OpenAI API key in server Settings to dictate.')
+    if (!dictationStarts.hit(account)) throw tooMany('Please wait before starting dictation again.')
+    const key = readAIKey(ctx, account)
+    reply.header('Cache-Control', 'no-store')
+    try {
+      return await negotiateTranscription(key, settings.transcription, sdp, ctx.aiFetch ?? fetch)
+    } catch (error) {
+      throw new ApiError(502, 'dictation_unavailable', (error as Error).message)
+    }
+  })
   app.get('/api/v1/me/ai/models', async (req): Promise<ServerAIModels> => {
     const account = requireAccount(req).id,
       settings = aiSettings(ctx, account)
@@ -303,6 +324,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.put('/api/v1/me/ai', async (req) => {
     const account = requireAccount(req).id,
       body = req.body as {
+        transcription?: TranscriptionConfig
         key?: string
         enabledModels?: string[] | null
         model?: string
@@ -314,6 +336,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       level = (value: unknown) => value === null || isReasoningEffort(value)
     if (
       !body ||
+      (body.transcription !== undefined && !isTranscriptionConfig(body.transcription)) ||
       (body.enabledModels !== undefined && body.enabledModels !== null && (!Array.isArray(body.enabledModels) || body.enabledModels.length > 500 || body.enabledModels.some(id => !model(id)))) ||
       (body.model !== undefined && !model(body.model)) ||
       (body.reasoning !== undefined && !level(body.reasoning)) ||
@@ -349,6 +372,8 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       title?.model ?? null,
       title ? fittedReasoning(title.model, title.reasoning) : null
     )
+    if (body.transcription) d.prepare('UPDATE learning_ai SET transcription_model=? WHERE account_id=?')
+      .run(body.transcription.model, account)
     d.prepare('UPDATE learning_ai SET enabled_models=? WHERE account_id=?').run(enabledModels === null ? null : JSON.stringify([...new Set(enabledModels)]), account)
     if (body.key) {
       d.prepare('UPDATE learning_ai SET secret=?,hint=? WHERE account_id=?').run(encrypted, body.key.slice(-4), account)

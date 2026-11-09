@@ -456,6 +456,14 @@ const api = {
   getAIModelSettings: (scope: AIScope, provider?: AIProvider, refresh = false): Promise<AIModelSettings> => ipcRenderer.invoke('ai:settings', scope, provider, refresh),
   setAIProvider: (scope: AIScope, provider: AIProvider): Promise<void> => ipcRenderer.invoke('ai:provider', scope, provider),
   setAIProfile: (scope: AIScope, provider: AIProvider, profile: AIProfile): Promise<void> => ipcRenderer.invoke('ai:profile', scope, provider, profile),
+  dictation: {
+    settings: (): Promise<{config: import('../core/transcription').TranscriptionConfig; configured: boolean}> => ipcRenderer.invoke('dictation:settings'),
+    configure: (config: import('../core/transcription').TranscriptionConfig): Promise<{config: typeof config; configured: boolean}> => ipcRenderer.invoke('dictation:configure', config),
+    begin: (id: string, localId?: string): Promise<void> => ipcRenderer.invoke('dictation:begin', id, localId),
+    connect: (id: string, sdp: string): Promise<{answerSdp: string}> => ipcRenderer.invoke('dictation:connect', id, sdp),
+    end: (id: string): Promise<void> => ipcRenderer.invoke('dictation:end', id),
+    onEnded: (handler: (id: string) => void): (() => void) => subscribe('dictation:ended', handler)
+  },
   getTitleGenerationSettings: (provider?: AIProvider, refresh = false): Promise<TitleGenerationSettings> => ipcRenderer.invoke('ai:titleSettings', provider, refresh),
   setTitleGenerationSettings: (config: TitleGenerationConfig | null): Promise<void> => ipcRenderer.invoke('ai:setTitleSettings', config),
   onAIChanged: (handler: () => void): (() => void) => subscribe('ai:changed', handler),

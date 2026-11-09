@@ -57,7 +57,7 @@ async function fixture(existingChats: string[] = [], saved = false) {
   const register = vi.fn(), navigate = vi.fn(), onDirty = vi.fn()
   await act(async () => root!.render(createElement(CourseEditor, { courseId: 'demo', user: { id: 'author', name: 'Author' } as never, route: { name: 'courseEditor', courseId: 'demo' }, navigate, registerEditor: register, onDirty, ask: vi.fn(async () => true) })))
   const flush = async () => { await act(async () => { await register.mock.calls.filter(([handle]) => handle).at(-1)![0].flush() }) }
-  const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text)!
+  const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text && !b.closest('[inert], [hidden]'))!
   const emit = (name: string, ...args: unknown[]) => listeners[name]?.(...args as never[])
   const type = async (text: string) => { const input = container.querySelector<HTMLTextAreaElement>('.sidechat-input')!; await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, text); input.dispatchEvent(new Event('input', { bubbles: true })) }) }
   return { container, button, api, emit, type, send, stop, register, flush, onDirty, state: () => state }

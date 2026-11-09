@@ -1,5 +1,5 @@
 import type { LearningState } from '@core/learning/types'
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -7,19 +7,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { makeZip } from '../../app/tests/helpers/zip'
 import { tmpdir } from 'node:os'
 import { proposeCards } from '../../app/src/main/personal-card-store'
-import { createSession } from '../src/auth/sessions'
-
-// These journeys exercise cards, not sign-in. Seed real sessions so the shared
-// server's production login rate limit does not depend on the suite's size.
-async function signInFixture(page: Page, username: string): Promise<string> {
-  const d = new DatabaseSync(join(process.env.OPENCOURSE_E2E_DATA!, 'server.db'))
-  try {
-    const account = String(d.prepare('SELECT id FROM accounts WHERE username=?').get(username)!.id)
-    const webToken = createSession(d, account, { kind: 'web' })
-    await page.context().addCookies([{ name: 'ocs_session', value: webToken, url: process.env.OPENCOURSE_E2E_URL!, httpOnly: true, sameSite: 'Lax' }])
-    return createSession(d, account, { kind: 'app' })
-  } finally { d.close() }
-}
+import { signInFixture } from './sign-in-fixture'
 
 test('approve personal cards in chat, review immediately, and delete through the question-only popup',async({page})=>{
   const errors:string[]=[]

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { signInFixture } from './sign-in-fixture'
 import { answerDictationOffer } from '../../app/tests/helpers/dictation-peer'
 
 test.use({ permissions: ['microphone'], launchOptions: { args: ['--use-fake-device-for-media-stream'] },
@@ -16,17 +17,15 @@ test('reading chat streams into the draft, finalizes on Stop, and sends only on 
   })
   let sends = 0
   page.on('request', request => { if (request.url().endsWith('/messages') && request.method() === 'POST') sends++ })
-  await page.goto((process.env.OPENCOURSE_DICTATION_HTTPS_URL ?? '') + '/signin')
-  await page.getByLabel('Email or username').fill('kit')
-  await page.getByLabel('Password', { exact: true }).fill('correct horse battery')
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  const url = process.env.OPENCOURSE_DICTATION_HTTPS_URL ?? process.env.OPENCOURSE_E2E_URL!
+  await signInFixture(page, 'kit', url)
+  await page.goto(url)
   await expect(page.getByRole('button', { name: /kit/ })).toBeVisible()
   await page.getByRole('link', { name: /The OpenCourse example course/ }).first().click()
   const add = page.getByRole('button', { name: 'Add to library' })
-  const start = page.getByRole('link', { name: 'Start course', exact: true })
-  await expect(add.or(start)).toBeVisible()
-  if (await add.isVisible()) await add.click()
-  await start.click()
+  const open = page.getByRole('link', { name: 'Open course', exact: true })
+  await add.or(open).click()
+  await page.getByRole('link', { name: /^(Start course|Continue)$/ }).click()
   await page.getByRole('button', { name: 'Open reading chat' }).click()
   await page.getByRole('button', { name: 'Start dictation' }).click()
   const input = page.getByRole('textbox', { name: 'Your question' })

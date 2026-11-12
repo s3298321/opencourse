@@ -37,7 +37,7 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     const started = await js(main, `return window.opencourse.getPomodoroState();`)
     await js(notebookWindow, `await until(()=>document.querySelector('.pomodoro')?.dataset.phase==='study','Notebook timer did not synchronize');`)
     notebookWindow.reload()
-    await js(notebookWindow, `await wait('.writing-editor .cm-content'); await until(()=>document.querySelector('.pomodoro')?.dataset.phase==='study','Reload lost the timer'); const state=await window.opencourse.getPomodoroState(); assert(state.cycle.endsAt===${started.cycle.endsAt},'Reload changed the deadline'); document.querySelector('.pomodoro-icon').click();`)
+    await js(notebookWindow, `await wait('.writing-editor .cm-content'); await until(()=>document.querySelector('.pomodoro')?.dataset.phase==='study','Reload lost the timer'); const state=await window.opencourse.getPomodoroState(); assert(state.cycle.endsAt===${started.cycle.endsAt},'Reload changed the deadline'); const icon=document.querySelector('.pomodoro-icon'); icon.click(); if (!document.querySelector('.pomodoro-content')?.textContent.includes('Stop session')) icon.click();`)
     const [width, height] = notebookWindow.getSize()
     try {
       notebookWindow.setSize(720, height)

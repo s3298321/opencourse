@@ -37,7 +37,7 @@ export default function PomodoroSettings() {
         <label>Break <span className="meta">minutes</span><input type="number" min="1" max="180" step="1" required value={rest} disabled={!loaded || busy}
           onChange={event => { setRest(event.target.value); setSaved(false) }} /></label>
       </div>
-      <p className="meta">Choose 1–180 minutes. Changes apply to the next study session and its break.</p>
+      <p className="meta">Choose 1–180 minutes. Changes apply to the next study session and its break. A length entered on the clock applies to that session.</p>
       <ActionButton icon="save" type="submit" disabled={!loaded || !valid || busy}>{busy ? 'Saving' : 'Save'}</ActionButton>
       {saved && <p role="status" className="import-note">Saved.</p>}
       {error && <p role="alert" className="error">{error}</p>}

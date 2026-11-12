@@ -1,4 +1,4 @@
-import { advancePomodoro, type PomodoroCommand, type PomodoroCycle, type PomodoroSettings, type PomodoroState } from '../core/pomodoro'
+import { advancePomodoro, validPomodoroSeconds, type PomodoroCommand, type PomodoroCycle, type PomodoroSettings, type PomodoroState } from '../core/pomodoro'
 
 /** One clock owned by main, independent of renderer lifetimes and throttling. */
 export class PomodoroTimer {
@@ -17,11 +17,12 @@ export class PomodoroTimer {
     const { cycle, revision } = this.get()
     // Two windows can answer the same prompt. Only the first answer applies.
     if (!command || command.revision !== revision) return this.state
+    const seconds = validPomodoroSeconds(command.seconds) ? command.seconds : undefined
     if (command.action === 'start' && (cycle.phase === 'idle' || cycle.phase === 'ready')) {
       const settings = this.settings()
-      this.publish({ phase: 'study', endsAt: Date.now() + settings.studyMinutes * 60_000, breakMinutes: settings.breakMinutes })
+      this.publish({ phase: 'study', endsAt: Date.now() + (seconds ?? settings.studyMinutes * 60) * 1_000, breakMinutes: settings.breakMinutes })
     } else if (command.action === 'break' && cycle.phase === 'breakReady') {
-      this.publish({ phase: 'break', endsAt: Date.now() + cycle.breakMinutes * 60_000 })
+      this.publish({ phase: 'break', endsAt: Date.now() + (seconds ?? cycle.breakMinutes * 60) * 1_000 })
     } else if ((command.action === 'stop' && (cycle.phase === 'study' || cycle.phase === 'break')) ||
       (command.action === 'dismiss' && (cycle.phase === 'ready' || cycle.phase === 'breakReady'))) {
       this.publish({ phase: 'idle' })

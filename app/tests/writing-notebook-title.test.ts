@@ -49,7 +49,7 @@ beforeEach(async () => {
     if (notebook.selectedPageId === pageId) notebook.selectedPageId = notebook.pages[0]!.id
     return structuredClone(notebook)
   })
-  Object.defineProperty(window, 'opencourse', { configurable: true, value: { getPomodoroState: async () => ({ revision: 0, cycle: { phase: 'idle' } }), onPomodoroChanged: () => () => {}, onCoachContextRequest: (handler: typeof contextRequest) => { contextRequest = handler; return () => {} }, replyCoachContext: contextReply, writing: {
+  Object.defineProperty(window, 'opencourse', { configurable: true, value: { getPomodoroState: async () => ({ revision: 0, cycle: { phase: 'idle' } }), getPomodoroSettings: async () => ({ studyMinutes: 40, breakMinutes: 5 }), onPomodoroChanged: () => () => {}, onCoachContextRequest: (handler: typeof contextRequest) => { contextRequest = handler; return () => {} }, replyCoachContext: contextReply, writing: {
     get: async () => structuredClone(notebook), page: async (_id: string, pageId: string) => structuredClone(pages[pageId]),
     update: async (_id: string, patch: Partial<WritingNotebook>) => { Object.assign(notebook, patch); return structuredClone(notebook) },
     renamePage: rename, deletePage, remove, chat: {}, ready: () => {}, flushed,

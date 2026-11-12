@@ -55,7 +55,9 @@ export default function Pomodoro() {
 
   useEffect(() => {
     let alive = true
-    void window.opencourse.getPomodoroSettings().then(value => { if (alive) defaults.current = value }).catch(() => {})
+    try {
+      void window.opencourse.getPomodoroSettings().then(value => { if (alive) defaults.current = value }).catch(() => {})
+    } catch { /* Keep the built-in lengths when settings cannot be read. */ }
     return () => { alive = false }
   }, [])
 

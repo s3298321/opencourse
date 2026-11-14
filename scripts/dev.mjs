@@ -3,8 +3,9 @@
 // world - the app signed in to the local server, the site's catalog links
 // leading to the server's web app - and none of it touches the deployed one.
 //
-//   npm run dev                      all three
+//   npm run dev                      the app, the server and the website
 //   npm run dev -- --only app,server  some of them
+//   npm run dev -- --only notebook    OpenCourse Notebook, on its own
 //
 // One of them stopping leaves the others running on purpose: an app whose
 // server has gone away should say so and carry on, and this is where you see
@@ -14,11 +15,12 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
-const ALL = ['server', 'site', 'app']
-const COLOURS = { server: 36, site: 35, app: 33 }
+const DEFAULT = ['server', 'site', 'app']
+const ALL = [...DEFAULT, 'notebook']
+const COLOURS = { server: 36, site: 35, app: 33, notebook: 32 }
 
 const flag = process.argv.indexOf('--only')
-const only = flag >= 0 ? (process.argv[flag + 1] ?? '').split(',').map((s) => s.trim()).filter(Boolean) : ALL
+const only = flag >= 0 ? (process.argv[flag + 1] ?? '').split(',').map((s) => s.trim()).filter(Boolean) : DEFAULT
 const unknown = only.filter((name) => !ALL.includes(name))
 if (unknown.length || !only.length) {
   console.error(`--only takes a comma-separated list of ${ALL.join(', ')}; got ${unknown.join(', ') || 'nothing'}.`)
@@ -40,7 +42,7 @@ const children = new Map()
 let stopping = false
 
 function prefixed(name, stream, target) {
-  const label = process.stdout.isTTY ? `\x1b[${COLOURS[name]}m${name.padEnd(6)}\x1b[0m│ ` : `${name.padEnd(6)}| `
+  const label = process.stdout.isTTY ? `\x1b[${COLOURS[name]}m${name.padEnd(8)}\x1b[0m│ ` : `${name.padEnd(8)}| `
   let rest = ''
   stream.on('data', (chunk) => {
     const lines = (rest + chunk.toString()).split('\n')

@@ -1,6 +1,6 @@
 # Working on OpenCourse
 
-How to build, test and release the app, the server and the website. For what
+How to build, test and release the app, OpenCourse Notebook, the server and the website. For what
 the project is, start with the [README](README.md); for the formats, see
 [`docs/`](docs/).
 
@@ -76,12 +76,13 @@ app/src/core/theme/         themes: the format, its compiler, its contrast audit
 app/src/main/               the only code that touches Electron, files or the network
 app/src/renderer/           React; talks to main only through window.opencourse
 app/tests/fixtures/courses/ the committed courses every test and smoke run uses
+notebook/                  OpenCourse Notebook, versioned on its own (notebook-v*)
 server/                     the catalog server: accounts, catalog, publishing
 server/web/                 the server's web app (React): catalog, my courses, admin
 site/                       opencourse.dev (Astro, static)
 design/                     the web's tokens and primitives, shared by site and web app
 docs/                       the course, theme and server formats, and the user guide
-.github/workflows/          CI, app releases, the website, the server image
+.github/workflows/          CI, app releases, notebook releases, the website, the server image
 content/                    courses you are authoring (gitignored)
 ```
 
@@ -166,6 +167,22 @@ shows no catalog courses until the server answers.
 `server/data`; the next `npm run dev` seeds either again. Reset both together
 if you want the app's server courses to match a fresh server.
 
+## OpenCourse Notebook
+
+```bash
+cd notebook
+nvm use
+npm install
+npm run dev     # OpenCourse Notebook Dev, sharing the dev profile's notebooks
+npm test
+npm run dist    # unsigned app in notebook/dist/
+```
+
+It is a separate Electron app. Standalone notebooks, users and the AI
+connection are the ones OpenCourse already keeps. `npm run dev` at the
+repository root does not start it; `npm run dev -- --only notebook` does.
+Releases are tags `notebook-v<version>`, described below.
+
 ## The server
 
 ```bash
@@ -207,6 +224,13 @@ nothing from anywhere else.
    the website explains how to open it.
 4. Write the notes and publish the draft. opencourse.dev rebuilds with the new
    version.
+
+For OpenCourse Notebook, update `notebook/package.json` and its lockfile
+together, then push `notebook-v<version>` (for example, `notebook-v0.1.0`).
+`.github/workflows/notebook-release.yml` builds
+`OpenCourse-Notebook-mac-arm64.dmg` and uploads it to a draft release. Publish
+the draft and opencourse.dev's notebook page picks up that version. These tags
+are separate from the app's `v*` tags.
 
 For the learning server, update `server/package.json` and its lockfile
 together, then push `server-v<version>` (for example, `server-v0.3.0`). This

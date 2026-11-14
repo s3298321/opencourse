@@ -1,0 +1,80 @@
+import type { CourseItemRef, ReviewSession } from '@core/types'
+/**
+ * Where the app can be. No router: one union, switched on in App.tsx.
+ *
+ * `settings` and `logs` are the routes that remember where they were opened
+ * from - the overlays - so closing one puts you back in the lesson you were
+ * reading rather than at the top of the library. `Screen` exists to make that
+ * safe: `from` cannot itself be an overlay, so `sectionOf` recurses exactly
+ * once and the compiler, not a convention, is what guarantees it. Going from
+ * one overlay to the other hands `from` along rather than nesting.
+ */
+export type Screen =
+  | { name: 'users' }
+  | { name: 'desk' }
+  | { name: 'library'; source?: string }
+  | { name: 'catalog'; serverId: string }
+  | { name: 'documents'; source?: string }
+  | { name: 'documentOverview'; documentId: string }
+  | { name: 'document'; documentId: string; sourcePage?: number; sourceRequest?: string }
+  | { name: 'documentCatalog'; serverId: string }
+  | { name: 'catalogDocument'; serverId: string; documentId: string }
+  | { name: 'documentPublication'; serverId: string; documentId: string }
+  | { name: 'catalogCourse'; serverId: string; courseId: string }
+  | { name: 'publication'; serverId: string; courseId: string }
+  | { name: 'courseEditor'; courseId: string }
+  | { name: 'course'; courseId: string }
+  | { name: 'review'; session: ReviewSession; from?: Screen }
+  | { name: 'lesson'; courseId: string; moduleId: string; lessonId: string }
+  | { name: 'notebook'; courseId: string }
+  | { name: 'project'; courseId: string; moduleId: string }
+
+export type SettingsSection = 'profile' | 'appearance' | 'pomodoro' | 'connections' | 'ai' | 'coach' | 'servers' | 'updates' | 'about'
+
+export type Overlay =
+  /** Optional category to open directly from a control elsewhere. */
+  | { name: 'settings'; from: Screen; section?: SettingsSection }
+  | { name: 'logs'; from: Screen }
+
+export type Route = Screen | Overlay
+
+/** The screen underneath: an overlay's `from`, or the route itself. */
+export function screenOf(route: Route): Screen {
+  return route.name === 'settings' || route.name === 'logs' ? route.from : route
+}
+
+/** Which workspace a route belongs to, for the titlebar's switch. */
+export function sectionOf(route: Route): 'courses' | 'documents' | null {
+  switch (route.name) {
+    case 'review': return route.session.target?.kind === 'document' ? 'documents' : 'courses'
+    case 'library':
+    case 'catalog':
+    case 'catalogCourse':
+    case 'publication':
+    case 'courseEditor':
+    case 'course':
+    case 'lesson':
+    case 'notebook':
+    case 'project':
+      return 'courses'
+    case 'documents':
+    case 'document':
+    case 'documentOverview':
+    case 'documentCatalog':
+    case 'catalogDocument':
+    case 'documentPublication':
+      return 'documents'
+    case 'users':
+    case 'desk':
+      return null
+    // An overlay borrows the workspace it was opened from, so the switch stays where
+    // it was and going back is the only thing that moved.
+    case 'settings':
+    case 'logs':
+      return sectionOf(route.from)
+  }
+}
+
+export function itemRoute(courseId: string, item: { kind: 'lesson'; moduleId: string; lessonId: string } | { kind: 'project'; moduleId: string } | CourseItemRef): Screen {
+  return item.kind === 'project' ? { name: 'project', courseId, moduleId: item.moduleId } : { name: 'lesson', courseId, moduleId: item.moduleId, lessonId: item.lessonId }
+}

@@ -1,0 +1,578 @@
+import { readPreferences } from './preferences'
+/**
+ * The app's databases: their files, their pragmas, their migrations.
+ *
+ * Courses, progress and users stay JSON files, and that split is deliberate:
+ * JSON for small documents a human might hand-edit, which must degrade to
+ * "what I can still read"; SQLite for the things with a relational shape and
+ * unbounded growth - a coach project's sessions and their turns, and a course's
+ * side chats and their messages.
+ *
+ * There are two files. `db()` is the user's, one per user, holding everything
+ * above. `logDb()` is the app's log, and it is app-wide because some lines
+ * belong to nobody - startup, a crash, anything before the picker; each row
+ * names the user it was written under instead (main/logdb.ts).
+ *
+ * It uses Node's built-in `node:sqlite`, NOT better-sqlite3, and that is not an
+ * accident: electron-builder.yml sets `npmRebuild: false` because node-pty is a
+ * Node-API addon whose prebuilts load in Electron unchanged, and adding a
+ * dependency that needs node-gyp would break packaging for everyone. Electron
+ * 44 bundles Node 24, which has `node:sqlite` (with FTS5, should transcript
+ * search ever want it); so does the repo's pinned Node 22, which is what
+ * vitest runs on. Zero new dependencies. Do not "fix" this back.
+ *
+ * `node:sqlite` is still marked experimental, which is why its *lifecycle* API
+ * - DatabaseSync itself, the pragmas, user_version - is confined to this file.
+ * If it shifts in a Node major, this is the file that changes; coachdb.ts and
+ * chatdb.ts only ever prepare statements against the handle it hands them.
+ *
+ * DatabaseSync is synchronous and blocks the main process, so every query in
+ * those files is bounded and filtered by project, session, chat or course. No
+ * unbounded SELECT.
+ */
+import { DatabaseSync } from 'node:sqlite'
+import { PERSONAL_CARD_SCHEMA } from './personal-card-store'
+import { existsSync, mkdirSync, renameSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { logDbFile, userDbFile } from './paths'
+import { requireUser } from './users'
+import { log } from './log'
+
+/** Bumped by every migration step below; tests pin against it rather than a literal. */
+export const SCHEMA_VERSION = 30
+
+/** Coach: a project, its sessions, and what was said and done in them. */
+const SCHEMA_V1 = `
+CREATE TABLE IF NOT EXISTS projects (
+  id           TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  model        TEXT NOT NULL,
+  voice        TEXT NOT NULL,
+  instructions TEXT NOT NULL,
+  allow_delete INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  started_at   TEXT NOT NULL,
+  ended_at     TEXT,
+  status       TEXT NOT NULL,
+  model        TEXT NOT NULL,
+  instructions TEXT NOT NULL,
+  error        TEXT
+);
+CREATE INDEX IF NOT EXISTS sessions_by_project ON sessions(project_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS turns (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  seq        INTEGER NOT NULL,
+  role       TEXT NOT NULL,
+  text       TEXT NOT NULL,
+  at         TEXT NOT NULL,
+  PRIMARY KEY (session_id, seq)
+);
+
+CREATE TABLE IF NOT EXISTS tool_calls (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  seq        INTEGER NOT NULL,
+  call_id    TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  arguments  TEXT NOT NULL,
+  result     TEXT,
+  ok         INTEGER NOT NULL DEFAULT 0,
+  at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tool_calls_by_session ON tool_calls(session_id, seq);
+`
+
+/**
+ * Side chat: a conversation about a course, and its messages.
+ *
+ * Additive, so a v1 database keeps every coach row. There is no user_id column
+ * for the same reason the v1 tables have none - the file itself is per user, so
+ * no query can forget a `WHERE user_id = ?`. The course slug *is* a column,
+ * because a course is not a directory here.
+ *
+ * `role = 'context'` rows hold a lesson snapshot the app injected rather than
+ * anything a person typed. Keeping them as ordinary rows is what makes "has
+ * this chat already been told about this lesson?" a question about the
+ * transcript instead of hidden state.
+ */
+const SCHEMA_V2 = `
+CREATE TABLE IF NOT EXISTS chats (
+  id          TEXT PRIMARY KEY,
+  course_slug TEXT NOT NULL,
+  model       TEXT NOT NULL,
+  module_slug TEXT NOT NULL,
+  lesson_slug TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS chats_by_course ON chats(course_slug, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  chat_id     TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  seq         INTEGER NOT NULL,
+  role        TEXT NOT NULL,
+  text        TEXT NOT NULL,
+  quote       TEXT,
+  module_slug TEXT,
+  lesson_slug TEXT,
+  at          TEXT NOT NULL,
+  PRIMARY KEY (chat_id, seq)
+);
+`
+
+/**
+ * Adds a nullable column, unless it is already there.
+ *
+ * Checked rather than assumed, because unlike the CREATE steps above an ALTER
+ * is not idempotent: a launch killed between it and the user_version bump would
+ * otherwise fail the next open with "duplicate column", and a failed open
+ * quarantines the file - every transcript in it - over a column it already has.
+ * The table and column are this file's own literals, never input.
+ */
+function addColumn(d: DatabaseSync, table: string, column: string, definition = 'TEXT'): void {
+  const columns = d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (!columns.some((c) => c.name === column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+}
+
+let handle: { file: string; db: DatabaseSync } | null = null
+
+function applyPragmas(d: DatabaseSync): void {
+  d.exec('PRAGMA journal_mode = WAL')
+  d.exec('PRAGMA foreign_keys = ON')
+  d.exec('PRAGMA busy_timeout = 5000')
+  d.exec('PRAGMA synchronous = FULL')
+}
+
+function migrate(d: DatabaseSync): void {
+  const row = d.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined
+  const from = Number(row?.user_version ?? 0)
+  if (from > SCHEMA_VERSION) throw new Error(`coach.db is from a newer version of OpenCourse (${from})`)
+  if (from < 1) d.exec(SCHEMA_V1)
+  if (from < 2) d.exec(SCHEMA_V2)
+  // v3: where a quoted passage came from, 'lesson' or 'answer'. NULL on every
+  // row written before an answer could be quoted - and those were all from the
+  // lesson, which is what NULL is read as.
+  if (from < 3) addColumn(d, 'chat_messages', 'quote_from')
+  // v4: a chat's reasoning level. NULL is the model's own default, which is
+  // what every chat had before there was a choice.
+  if (from < 4) addColumn(d, 'chats', 'reasoning')
+  if (from < 5) d.exec(`
+    CREATE TABLE IF NOT EXISTS course_project_chats (
+      id TEXT PRIMARY KEY, course_slug TEXT NOT NULL, module_slug TEXT NOT NULL,
+      model TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS course_project_chats_by_scope ON course_project_chats(course_slug, module_slug, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS course_project_messages (
+      chat_id TEXT NOT NULL REFERENCES course_project_chats(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, payload TEXT NOT NULL,
+      PRIMARY KEY(chat_id, seq)
+    );
+    CREATE TABLE IF NOT EXISTS course_project_tool_calls (
+      chat_id TEXT NOT NULL REFERENCES course_project_chats(id) ON DELETE CASCADE,
+      message_seq INTEGER NOT NULL, call_id TEXT NOT NULL, name TEXT NOT NULL,
+      arguments TEXT NOT NULL, result TEXT NOT NULL, at TEXT NOT NULL,
+      PRIMARY KEY(chat_id, message_seq, call_id)
+    );
+  `)
+  // v6: the pages an answer cited from a web search, as JSON. NULL on every
+  // answer that did not search - which was every answer before it could.
+  if (from < 6) addColumn(d, 'chat_messages', 'sources')
+  if (from < 7) {
+    addColumn(d, 'chats', 'provider')
+    addColumn(d, 'course_project_chats', 'provider')
+    addColumn(d, 'chat_messages', 'status')
+    d.exec("UPDATE chats SET provider = 'apiKey' WHERE provider IS NULL; UPDATE course_project_chats SET provider = 'apiKey' WHERE provider IS NULL")
+  }
+  // v8: optional AI titles; the first prompt remains the fallback while naming.
+  if (from < 8) {
+    addColumn(d, 'chats', 'generated_title')
+    addColumn(d, 'course_project_chats', 'generated_title')
+  }
+  // v9: preserve the actual model, reasoning and connection for each lesson response.
+  // Project messages already store their full payload as JSON.
+  if (from < 9) addColumn(d, 'chat_messages', 'generation')
+  if (from < 10) {
+    d.exec(`
+      CREATE TABLE IF NOT EXISTS library_courses (id TEXT PRIMARY KEY, revision INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS course_elements (
+        id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES library_courses(id) ON DELETE CASCADE,
+        parent_id TEXT REFERENCES course_elements(id) ON DELETE CASCADE, kind TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS course_elements_by_course ON course_elements(course_id);
+      CREATE TABLE IF NOT EXISTS course_operations (id TEXT PRIMARY KEY, course_id TEXT NOT NULL, revision INTEGER NOT NULL);
+    `)
+    const add = (table: string, column: string, declaration: string): void => {
+      const cols = d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+      if (!cols.some((c) => c.name === column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${declaration}`)
+    }
+    add('chats', 'course_id', 'TEXT REFERENCES library_courses(id) ON DELETE CASCADE')
+    add('chats', 'start_lesson_id', 'TEXT REFERENCES course_elements(id) ON DELETE SET NULL')
+    add('chats', 'next_seq', 'INTEGER NOT NULL DEFAULT 0')
+    add('chat_messages', 'lesson_id', 'TEXT REFERENCES course_elements(id) ON DELETE CASCADE')
+    add('chat_messages', 'context_fingerprint', 'TEXT')
+    add('course_project_chats', 'course_id', 'TEXT REFERENCES library_courses(id) ON DELETE CASCADE')
+    add('course_project_chats', 'module_id', 'TEXT REFERENCES course_elements(id) ON DELETE CASCADE')
+    d.exec(`UPDATE chats SET next_seq = COALESCE((SELECT MAX(seq)+1 FROM chat_messages WHERE chat_id=chats.id), 0)`)
+  }
+  if (from < 11) d.exec(`
+    CREATE TABLE IF NOT EXISTS authoring_chats (
+      id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES library_courses(id) ON DELETE CASCADE,
+      model TEXT NOT NULL, reasoning TEXT, provider TEXT NOT NULL, generated_title TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, next_seq INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS authoring_chats_by_course ON authoring_chats(course_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS authoring_messages (
+      chat_id TEXT NOT NULL REFERENCES authoring_chats(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, payload TEXT NOT NULL,
+      PRIMARY KEY(chat_id, seq)
+    );
+    CREATE TABLE IF NOT EXISTS authoring_tool_calls (
+      chat_id TEXT NOT NULL REFERENCES authoring_chats(id) ON DELETE CASCADE,
+      message_seq INTEGER NOT NULL, call_id TEXT NOT NULL, name TEXT NOT NULL,
+      arguments TEXT NOT NULL, result TEXT NOT NULL, at TEXT NOT NULL,
+      PRIMARY KEY(chat_id, message_seq, call_id)
+    );
+  `)
+  if (from < 12) d.exec(`
+    CREATE TABLE IF NOT EXISTS flashcard_states (
+      card_id TEXT PRIMARY KEY REFERENCES course_elements(id) ON DELETE CASCADE,
+      course_id TEXT NOT NULL REFERENCES library_courses(id) ON DELETE CASCADE,
+      due TEXT NOT NULL, state TEXT NOT NULL, configuration TEXT NOT NULL, version INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS flashcard_states_by_due ON flashcard_states(course_id, due);
+    CREATE TABLE IF NOT EXISTS flashcard_reviews (
+      session_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES flashcard_states(card_id) ON DELETE CASCADE,
+      rating TEXT NOT NULL CHECK(rating IN ('again', 'hard', 'good', 'easy')),
+      at TEXT NOT NULL, log TEXT NOT NULL,
+      PRIMARY KEY(session_id, card_id)
+    );
+    CREATE INDEX IF NOT EXISTS flashcard_reviews_by_card ON flashcard_reviews(card_id, at);
+  `)
+  // v13: a connection chosen for one conversation, overriding Settings' default
+  // for it alone. NULL - every row before this - follows the default.
+  if (from < 13) {
+    addColumn(d, 'chats', 'pinned_provider')
+    addColumn(d, 'course_project_chats', 'pinned_provider')
+    addColumn(d, 'authoring_chats', 'pinned_provider')
+  }
+  if (from < 14) {
+    d.exec(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, bytes INTEGER NOT NULL,
+        fingerprint TEXT NOT NULL UNIQUE, pages INTEGER NOT NULL DEFAULT 0,
+        indexed_pages INTEGER NOT NULL DEFAULT 0, searchable_pages INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'indexing', error TEXT, completed INTEGER NOT NULL DEFAULT 0,
+        sections TEXT NOT NULL DEFAULT '[]', index_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS document_pages (
+        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        page INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY(document_id, page)
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS document_search USING fts5(document_id UNINDEXED, page UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');
+      CREATE TRIGGER IF NOT EXISTS document_pages_delete AFTER DELETE ON document_pages BEGIN
+        DELETE FROM document_search WHERE document_id=old.document_id AND page=old.page;
+      END;
+      CREATE TABLE IF NOT EXISTS document_chats (
+        id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        started_on INTEGER NOT NULL, model TEXT NOT NULL, reasoning TEXT, provider TEXT NOT NULL,
+        pinned_provider TEXT, generated_title TEXT, next_seq INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS document_chats_by_document ON document_chats(document_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS document_messages (
+        chat_id TEXT NOT NULL REFERENCES document_chats(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, payload TEXT NOT NULL,
+        PRIMARY KEY(chat_id, seq)
+      );
+    `)
+    addColumn(d, 'chat_messages', 'local_sources')
+  }
+  // Keep user-assigned PDF titles separate from metadata rebuilt by the indexer.
+  if (from < 15) addColumn(d, 'documents', 'title_override')
+  if (from < 16) {
+    addColumn(d, 'chats', 'start_source')
+    addColumn(d, 'chat_messages', 'source_kind')
+    addColumn(d, 'chat_messages', 'quote_metadata')
+  }
+  if (from < 17) addColumn(d, 'documents', 'last_page', 'INTEGER NOT NULL DEFAULT 1')
+  if (from < 18) {
+    d.exec(`CREATE TABLE IF NOT EXISTS text_chat_state (
+      mode TEXT NOT NULL, chat_id TEXT NOT NULL, contract TEXT NOT NULL,
+      context_key TEXT NOT NULL, turn_seq INTEGER NOT NULL, status TEXT NOT NULL,
+      payload TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(mode,chat_id)
+    )`)
+    for (const [mode, table] of [['chat','chats'], ['document','document_chats'], ['project','course_project_chats'], ['authoring','authoring_chats']]) {
+      d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_delete_text_state AFTER DELETE ON ${table}
+        BEGIN DELETE FROM text_chat_state WHERE mode='${mode}' AND chat_id=OLD.id; END`)
+    }
+  }
+  if (from < 19) {
+    addColumn(d, 'sessions', 'metadata', "TEXT NOT NULL DEFAULT '{}'")
+    d.exec(`CREATE TABLE IF NOT EXISTS coach_transcript_fragments (
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL,
+      start_ms REAL NOT NULL, end_ms REAL NOT NULL,
+      PRIMARY KEY (session_id, event_id)
+    )`)
+  }
+  if (from < 20) addColumn(d, 'projects', 'backend_model', "TEXT NOT NULL DEFAULT 'gpt-6-luna'")
+  // Reading progress is explicit, independent of the automatically restored viewing position.
+  if (from < 21) addColumn(d, 'documents', 'read_page', 'INTEGER NOT NULL DEFAULT 0')
+  // PDF completion is derived from marked reading progress; retire the manual flag.
+  if (from < 22) {
+    const columns = d.prepare('PRAGMA table_info(documents)').all() as { name: string }[]
+    if (columns.some(column => column.name === 'completed')) d.exec('ALTER TABLE documents DROP COLUMN completed')
+  }
+  if (from < 23) { d.exec(`
+    CREATE TABLE IF NOT EXISTS learning_document_installs (local_id TEXT PRIMARY KEY,version TEXT NOT NULL,metadata TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS learning_bindings (server_id TEXT NOT NULL,account_id TEXT NOT NULL,connection_id TEXT NOT NULL,kind TEXT NOT NULL,remote_id TEXT NOT NULL,local_id TEXT NOT NULL UNIQUE,version TEXT NOT NULL,state TEXT NOT NULL,downloaded INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(server_id,account_id,kind,remote_id));
+    CREATE TABLE IF NOT EXISTS learning_elements (server_id TEXT NOT NULL,account_id TEXT NOT NULL,remote_id TEXT NOT NULL,local_id TEXT NOT NULL,PRIMARY KEY(server_id,account_id,remote_id));
+    CREATE TABLE IF NOT EXISTS learning_outbox (id TEXT PRIMARY KEY,server_id TEXT NOT NULL,account_id TEXT NOT NULL,payload TEXT NOT NULL,error TEXT);
+    CREATE TABLE IF NOT EXISTS learning_cursors (server_id TEXT NOT NULL,account_id TEXT NOT NULL,cursor INTEGER NOT NULL DEFAULT 0,clock_offset REAL NOT NULL DEFAULT 0,PRIMARY KEY(server_id,account_id));
+    CREATE TABLE IF NOT EXISTS learning_progress_journal (local_id TEXT PRIMARY KEY,value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS learning_chat_cache (server_id TEXT NOT NULL,account_id TEXT NOT NULL,id TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(server_id,account_id,id));
+    CREATE TABLE IF NOT EXISTS learning_chat_imports (server_id TEXT NOT NULL,account_id TEXT NOT NULL,chat_id TEXT NOT NULL,PRIMARY KEY(server_id,account_id,chat_id));
+    CREATE TABLE IF NOT EXISTS learning_bootstrap (server_id TEXT NOT NULL,account_id TEXT NOT NULL,local_id TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(server_id,account_id,local_id));
+  `); addColumn(d, 'documents', 'publication', 'TEXT') }
+  // The last exercise code this machine and its server agreed on (exercise-code.ts).
+  if (from < 24) d.exec('CREATE TABLE IF NOT EXISTS learning_exercise_code (local_id TEXT NOT NULL,block_id TEXT NOT NULL,operation TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(local_id,block_id))')
+  if (from < 25) addColumn(d, 'projects', 'backend_reasoning', 'TEXT')
+  if (from < 26) d.exec(`
+    CREATE TABLE IF NOT EXISTS writing_notebook_page_index (notebook_id TEXT NOT NULL,page_id TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(notebook_id,page_id));
+    CREATE TABLE IF NOT EXISTS writing_notebook_index (notebook_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
+    CREATE VIRTUAL TABLE IF NOT EXISTS writing_notebook_search USING fts5(notebook_id UNINDEXED,page_id UNINDEXED,title,page_title,content,tokenize='unicode61 remove_diacritics 2');
+    CREATE TABLE IF NOT EXISTS writing_notebook_chats (
+      id TEXT PRIMARY KEY, notebook_id TEXT NOT NULL, started_on TEXT NOT NULL,
+      model TEXT NOT NULL, reasoning TEXT, provider TEXT NOT NULL, pinned_provider TEXT,
+      generated_title TEXT, next_seq INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS writing_chats_by_notebook ON writing_notebook_chats(notebook_id,updated_at DESC);
+    CREATE TABLE IF NOT EXISTS writing_notebook_messages (
+      chat_id TEXT NOT NULL REFERENCES writing_notebook_chats(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL,role TEXT NOT NULL,text TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(chat_id,seq)
+    );
+    CREATE TRIGGER IF NOT EXISTS writing_chats_delete_state AFTER DELETE ON writing_notebook_chats BEGIN
+      DELETE FROM text_chat_state WHERE mode='writing-notebook' AND chat_id=OLD.id;
+    END;
+  `)
+  if (from < 27) addColumn(d, 'projects', 'association', 'TEXT')
+  if (from < 28) addColumn(d, 'projects', 'prompts', 'TEXT')
+  if (from < 29) {
+    d.exec(PERSONAL_CARD_SCHEMA)
+    for (const [table,scope] of [['chats','chat'],['document_chats','document'],['course_project_chats','project'],['writing_notebook_chats','writing-notebook']]) {
+      d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_delete_card_proposals AFTER DELETE ON ${table} BEGIN DELETE FROM flashcard_proposals WHERE chat_scope='${scope}' AND chat_id=old.id; END;`)
+    }
+    d.exec(`CREATE TRIGGER IF NOT EXISTS local_course_delete_personal_cards AFTER DELETE ON library_courses BEGIN DELETE FROM personal_cards WHERE owner='' AND kind='course' AND content_id=old.id; END;
+      CREATE TRIGGER IF NOT EXISTS local_document_delete_personal_cards AFTER DELETE ON documents BEGIN DELETE FROM personal_cards WHERE owner='' AND kind='document' AND content_id=old.id; END;`)
+
+    d.exec('CREATE TABLE IF NOT EXISTS personal_card_inbox (server_id TEXT, account_id TEXT, id TEXT, payload TEXT NOT NULL, PRIMARY KEY(server_id,account_id,id))')
+    d.exec('CREATE TABLE IF NOT EXISTS personal_card_bootstrap (server_id TEXT, account_id TEXT, kind TEXT, content_id TEXT, PRIMARY KEY(server_id,account_id,kind,content_id))')
+  }
+  if (from < 30) {
+    d.exec(`CREATE TABLE IF NOT EXISTS chat_tools (scope TEXT NOT NULL, chat_id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,chat_id));
+      CREATE TABLE IF NOT EXISTS authoring_plans (chat_id TEXT PRIMARY KEY REFERENCES authoring_chats(id) ON DELETE CASCADE, payload TEXT NOT NULL);`)
+    const prefs = readPreferences()
+    for (const [scope, table] of [['chat','chats'], ['project','course_project_chats'], ['document','document_chats'], ['writing-notebook','writing_notebook_chats'], ['authoring','authoring_chats']]) {
+      const options = { webSearch: scope === 'authoring' ? prefs.authoringWebSearch !== false : scope === 'project' ? false : prefs.webSearch === true, ...(scope === 'authoring' ? { plan: false } : {}) }
+      d.prepare(`INSERT OR IGNORE INTO chat_tools SELECT ?,id,? FROM ${table}`).run(scope, JSON.stringify(options))
+      d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_delete_tools AFTER DELETE ON ${table} BEGIN DELETE FROM chat_tools WHERE scope='${scope}' AND chat_id=old.id; END;`)
+    }
+  }
+  d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+}
+
+/**
+ * A session left `live` means the app went away mid-conversation - a force
+ * quit, a crash, a lost renderer. The app does not reconnect a previous session,
+ * so none may survive a launch still claiming to be running.
+ */
+function sweepLiveSessions(d: DatabaseSync): void {
+  d.exec(`UPDATE sessions SET metadata = json_set(metadata, '$.finalization', 'unconfirmed')
+    WHERE status = 'live' AND json_extract(metadata, '$.finalization') = 'pending'`)
+  d.prepare(`UPDATE sessions SET status = 'ended', ended_at = ?, error = ? WHERE status = 'live'`).run(
+    new Date().toISOString(),
+    'interrupted'
+  )
+}
+
+/** A corrupt database costs transcripts, never the app. Projects come back from their mirrors. */
+function quarantine(file: string): string {
+  const stamp = Date.now()
+  for (const suffix of ['', '-wal', '-shm']) {
+    const from = `${file}${suffix}`
+    if (existsSync(from)) {
+      try {
+        renameSync(from, `${file}.broken-${stamp}${suffix}`)
+      } catch {
+        /* best effort: a fresh open is what matters */
+      }
+    }
+  }
+  return `${file}.broken-${stamp}`
+}
+
+export class DatabaseMigrationError extends Error {}
+
+function open(file: string): DatabaseSync {
+  mkdirSync(dirname(file), { recursive: true })
+  const d = new DatabaseSync(file)
+  applyPragmas(d)
+  try { migrate(d) } catch (err) {
+    d.close()
+    throw new DatabaseMigrationError(`Database migration failed: ${(err as Error).message}`)
+  }
+  sweepLiveSessions(d)
+  return d
+}
+
+/**
+ * Opens lazily, cached on the resolved file path rather than the user id:
+ * courses.ts caches on the id, which is right for it, but a test that points
+ * userData somewhere new while keeping ids would be served a stale handle.
+ *
+ * Only IPC handlers reach this - never app.whenReady() - so even a pathological
+ * failure shows up as an error on the screen that asked rather than a window
+ * that never paints.
+ */
+export function db(): DatabaseSync {
+  const file = userDbFile(requireUser())
+  if (handle?.file === file) return handle.db
+
+  if (handle) {
+    try {
+      handle.db.close()
+    } catch {
+      /* already gone */
+    }
+    handle = null
+  }
+
+  let d: DatabaseSync
+  try {
+    d = open(file)
+  } catch (err) {
+    if (err instanceof DatabaseMigrationError) {
+      log.child('db').error('The database could not be migrated', { error: err })
+      throw err
+    }
+    const moved = quarantine(file)
+    log.child('db').error('The database was unreadable and has been set aside', { file, movedTo: moved, error: err })
+    d = open(file)
+  }
+  handle = { file, db: d }
+  return d
+}
+
+/** Test seam, switchUser, and before-quit. Reopening is cheap. */
+export function closeDb(): void {
+  if (!handle) return
+  try {
+    handle.db.close()
+  } catch {
+    /* already gone */
+  }
+  handle = null
+}
+
+/* --- the log ---------------------------------------------------------------- */
+
+/** The log's own ladder: a different file, so a different user_version. */
+export const LOG_SCHEMA_VERSION = 1
+
+/**
+ * One table, one row per line. `level` is a number (core/logging LEVEL_RANK) so
+ * sorting by it sorts by severity; `at` is epoch ms so a range is two integer
+ * comparisons. `user_id` is NULL for a line that belongs to nobody.
+ */
+const LOG_SCHEMA_V1 = `
+CREATE TABLE IF NOT EXISTS logs (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  at      INTEGER NOT NULL,
+  level   INTEGER NOT NULL,
+  scope   TEXT NOT NULL,
+  message TEXT NOT NULL,
+  user_id TEXT,
+  data    TEXT
+);
+CREATE INDEX IF NOT EXISTS logs_by_at ON logs(at);
+CREATE INDEX IF NOT EXISTS logs_by_user ON logs(user_id, at);
+`
+
+let logHandle: { file: string; db: DatabaseSync } | null = null
+
+function openLog(file: string): DatabaseSync {
+  mkdirSync(dirname(file), { recursive: true })
+  const d = new DatabaseSync(file)
+  try {
+    d.exec('PRAGMA journal_mode = WAL')
+    d.exec('PRAGMA busy_timeout = 5000')
+    // A log line lost to a power cut is not worth an fsync per batch.
+    d.exec('PRAGMA synchronous = NORMAL')
+    const row = d.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined
+    const from = Number(row?.user_version ?? 0)
+    if (from > LOG_SCHEMA_VERSION) throw new Error(`logs.db is from a newer version of OpenCourse (${from})`)
+    if (from < 1) d.exec(LOG_SCHEMA_V1)
+    d.exec(`PRAGMA user_version = ${LOG_SCHEMA_VERSION}`)
+    return d
+  } catch (err) {
+    d.close()
+    throw err
+  }
+}
+
+/**
+ * The log's handle, opened lazily like `db()`. A log that cannot be opened is
+ * set aside and started again - losing old lines is always better than losing
+ * the next ones. It reports through stderr rather than `log`, because the log
+ * is the thing that is broken.
+ */
+export function logDb(): DatabaseSync {
+  const file = logDbFile()
+  if (logHandle?.file === file) return logHandle.db
+  closeLogDb()
+  let d: DatabaseSync
+  try {
+    d = openLog(file)
+  } catch (err) {
+    process.stderr.write(`[log] ${file} is unreadable, setting it aside: ${(err as Error).message}\n`)
+    quarantine(file)
+    d = openLog(file)
+  }
+  logHandle = { file, db: d }
+  return d
+}
+
+export function closeLogDb(): void {
+  if (!logHandle) return
+  try {
+    logHandle.db.close()
+  } catch {
+    /* already gone */
+  }
+  logHandle = null
+}
+
+/** BEGIN IMMEDIATE, so a write transaction does not start as a reader and upgrade. */
+export function tx<T>(fn: (d: DatabaseSync) => T): T {
+  const d = db()
+  d.exec('BEGIN IMMEDIATE')
+  try {
+    const result = fn(d)
+    d.exec('COMMIT')
+    return result
+  } catch (err) {
+    try {
+      d.exec('ROLLBACK')
+    } catch {
+      /* the transaction is already gone */
+    }
+    throw err
+  }
+}

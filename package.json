@@ -1,7 +1,7 @@
 {
   "name": "opencourse-workspace",
   "private": true,
-  "description": "Runs the app, the server and the website together, as one local world. Each still has its own package and its own npm run dev.",
+  "description": "Runs the app, the server and the website together, as one local world. OpenCourse Notebook is a separate package and starts with npm run dev -- --only notebook. Each still has its own npm run dev.",
   "license": "MIT",
   "type": "module",
   "engines": {

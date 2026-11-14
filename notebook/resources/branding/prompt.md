@@ -1,0 +1,9 @@
+# OpenCourse Notebook logo master
+
+The notebook master is a silver fountain pen on the OpenCourse charcoal tile, selected on 2026-11-14. The tile, bevel, and silver material come from the OpenCourse master (`app/resources/branding/master.png`); the pen replaces that app's book. The master keeps alpha transparency outside the tile. `npm run build:icons` exports `resources/icon.png`, `resources/icon.icns`, and `resources/branding/mark.png`.
+
+The generated artwork was a JPEG with a black surround. The transparent master uses the OpenCourse tile's alpha, shifted 1px left and 11px up so the pen's tile lines up with the book's.
+
+## Selected pen prompt
+
+Use case: precise-object-edit. Square macOS app icon. The attached image is the authoritative reference for the charcoal rounded-square tile, brushed texture, soft bevel, upper-left glint, lighting, and silvery pearlescent metal. Preserve that exact tile, its placement with transparent padding outside it, and the transparent exterior. REMOVE the closed book completely. Replace it with ONE bold simple fountain pen emblem, diagonal from upper right to lower left, nib pointing down-left. The pen is chunky and sculptural so it stays readable at favicon size: thick barrel about 18% of tile width, overall length about 62% of tile height, centered on the tile. Softly rounded cap at the upper-right end, a simple tapered nib at the lower-left, and one shallow collar band where the nib meets the barrel. The whole pen is the same silvery satin pearlescent metal as the book cover: bright upper-left highlights, muted silver-gray lower-right shading, gently beveled edges, subtle contact shadow on the charcoal tile. No ink, no gold, no black painted details. A clean highly readable silhouette. No text, letters, stars, book, notebook, paper, sparkles, extra objects, colored accents, or watermark. Output ONE complete square logo PNG with genuine alpha transparency outside the charcoal tile.

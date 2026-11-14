@@ -20,8 +20,10 @@ npm run check        # astro check, then scripts/verify-dist.mjs over dist/
 - **`scripts/build-resources.mjs`** runs before every `dev` and `build`. It:
   - copies the brand pictures from `../design/assets/brand`;
   - zips the example course and themes, and copies both schemas, into `public/downloads/`;
-  - asks GitHub for the stars and the newest release, cached an hour in
-    `.cache/` outside CI. Set `GITHUB_TOKEN` to avoid the rate limit;
+  - asks GitHub for the stars and the published releases, cached an hour in
+    `.cache/` outside CI. The newest `v*` release is OpenCourse; the newest
+    `notebook-v*` release is OpenCourse Notebook. Set `GITHUB_TOKEN` to avoid
+    the rate limit;
   - copies the most-added courses from the catalog into `public/featured/`.
     `PUBLIC_CATALOG_URL` points it at another server. `npm run dev`
     (`scripts/dev.mjs`) points it, and every catalog link, at the server's
@@ -29,9 +31,12 @@ npm run check        # astro check, then scripts/verify-dist.mjs over dist/
     not running; `npm run build` keeps the public catalog.
 
   A network failure makes the page show less, never break.
-- **The download button** is GitHub's
-  `releases/latest/download/OpenCourse-mac-arm64.dmg` once a release exists, and
-  `/download` before. The release workflow must keep that asset name.
+- **The download buttons** point at a specific release's DMG
+  (`OpenCourse-mac-arm64.dmg` on the newest `v*` tag, and
+  `OpenCourse-Notebook-mac-arm64.dmg` on the newest `notebook-v*` tag), and at
+  `/download` or `/notebook` before one exists. `/releases/latest` is whichever
+  product was published last, so it is not used. Each workflow must keep its
+  asset name, with the version out of it.
 - **The look** is `../design/` (the app's own tokens and primitives) plus
   `src/styles/site.css`. `public/og.png` is drawn by `scripts/make-og.mjs`; run
   it by hand and commit the result.

@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DOWNLOAD_PAGE, MAX_ASSET_BYTES, parseRelease, RELEASE_ASSET, RELEASE_REPO, releaseFeedUrl } from '@core/updates/release'
+import { DOWNLOAD_PAGE, MAX_ASSET_BYTES, parseRelease, RELEASE_ASSET, RELEASE_REPO, releaseFeedUrl, selectRelease } from '@core/updates/release'
 import { allowedUpdateUrl, CHECK_INTERVAL_MS, checkDue, installTarget, isNewer, notWritable } from '@core/updates/policy'
 
 const DIGEST = 'a'.repeat(64)
@@ -71,6 +71,7 @@ describe('parseRelease', () => {
       ['a two-part version', release({ tag_name: 'v1.2' })],
       ['a pre-release version', release({ tag_name: 'v1.2.0-beta.1' })],
       ['a server tag', release({ tag_name: 'server-v0.2.0' })],
+      ['a notebook tag', release({ tag_name: 'notebook-v0.2.0', html_url: 'https://github.com/s3298321/opencourse/releases/tag/notebook-v0.2.0' })],
       ['a page on another site', release({ html_url: 'https://evil.example/releases/tag/v0.2.0' })],
       ['a page of another repository', release({ html_url: 'https://github.com/someone/opencourse/releases/tag/v0.2.0' })],
       ['no assets', release({ assets: [] })],
@@ -85,6 +86,17 @@ describe('parseRelease', () => {
     ]
     for (const [what, raw] of refused) expect(parseRelease(raw), what).toBeNull()
     expect(parseRelease(release({}, { size: MAX_ASSET_BYTES }))).not.toBeNull()
+  })
+
+  it('keeps the newest OpenCourse release when a notebook release is newer', () => {
+    const notebook = release({
+      tag_name: 'notebook-v0.9.0',
+      html_url: 'https://github.com/s3298321/opencourse/releases/tag/notebook-v0.9.0'
+    }, { name: 'OpenCourse-Notebook-mac-arm64.dmg', browser_download_url: 'https://github.com/s3298321/opencourse/releases/download/notebook-v0.9.0/OpenCourse-Notebook-mac-arm64.dmg' })
+    const older = release({ tag_name: 'v0.1.0', html_url: 'https://github.com/s3298321/opencourse/releases/tag/v0.1.0' })
+    expect(selectRelease([notebook, release(), older])?.version).toBe('0.2.0')
+    expect(selectRelease([])).toBeNull()
+    expect(selectRelease(release())?.version).toBe('0.2.0')
   })
 
   it('takes a test feed\'s page and file from its own host, and only then', () => {
@@ -106,7 +118,7 @@ describe('update policy', () => {
 
   it('sends a request only to GitHub over HTTPS, and to this machine only for a test feed', () => {
     for (const ok of [
-      'https://api.github.com/repos/s3298321/opencourse/releases/latest',
+      'https://api.github.com/repos/s3298321/opencourse/releases?per_page=30',
       'https://github.com/s3298321/opencourse/releases/download/v0.2.0/x.dmg',
       'https://objects.githubusercontent.com/github-production-release-asset/1',
       'https://release-assets.githubusercontent.com/github-production-release-asset/1'
@@ -156,9 +168,14 @@ describe('the release the app looks for is the one the workflow publishes', () =
     expect(builder).toMatch(new RegExp(`owner:\\s*${RELEASE_REPO.owner}\\b`))
     expect(builder).toMatch(new RegExp(`repo:\\s*${RELEASE_REPO.repo}\\b`))
     const site = readFileSync(join(root, 'site', 'src', 'site.config.ts'), 'utf8')
+    const resources = readFileSync(join(root, 'site', 'scripts', 'build-resources.mjs'), 'utf8')
     expect(site).toContain(`repo: '${RELEASE_REPO.owner}/${RELEASE_REPO.repo}'`)
-    expect(site).toContain(`/releases/latest/download/${RELEASE_ASSET}`)
-    expect(releaseFeedUrl()).toBe(`https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`)
+    expect(site).toContain(RELEASE_ASSET)
+    expect(site).not.toContain('releases/latest/download/')
+    expect(resources).toContain('releases?per_page=30')
+    expect(resources).toContain(RELEASE_ASSET)
+    expect(resources).not.toContain('releases/latest')
+    expect(releaseFeedUrl()).toBe(`https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases?per_page=30`)
     expect(DOWNLOAD_PAGE).toBe('https://opencourse.dev/download')
   })
 })

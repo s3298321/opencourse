@@ -1,7 +1,9 @@
 # A tag v<version> builds the Mac app and uploads OpenCourse-mac-arm64.dmg to a
 # draft release. A maintainer writes the notes and publishes it; publishing
-# rebuilds opencourse.dev (site.yml), whose download button is GitHub's
-# permalink to the newest release's DMG - so the asset name must not change.
+# rebuilds opencourse.dev (site.yml). The site then links to this asset on the
+# newest v* release. OpenCourse Notebook uses notebook-v* tags
+# (notebook-release.yml), so the asset name must stay OpenCourse-mac-arm64.dmg
+# and must not contain the version. A glob v* does not match notebook-v*.
 #
 # Signing and notarization happen when these repository secrets exist:
 #   MAC_CERTIFICATE_P12_BASE64  the Developer ID Application certificate, .p12, base64

@@ -20,7 +20,10 @@ const site = resolve(import.meta.dirname, '..')
 const repo = resolve(site, '..')
 const pub = join(site, 'public')
 const REPO = 's3298321/opencourse'
-const ASSET = 'OpenCourse-mac-arm64.dmg'
+const APP_ASSET = 'OpenCourse-mac-arm64.dmg'
+const NOTEBOOK_ASSET = 'OpenCourse-Notebook-mac-arm64.dmg'
+const APP_TAG = /^v\d+\.\d+\.\d+$/
+const NOTEBOOK_TAG = /^notebook-v\d+\.\d+\.\d+$/
 const catalogUrl = (process.env.PUBLIC_CATALOG_URL ?? 'https://catalog.opencourse.dev').replace(/\/+$/, '')
 
 /* ---------- brand ---------- */
@@ -28,6 +31,7 @@ const brand = join(repo, 'design', 'assets', 'brand')
 rmSync(join(pub, 'brand'), { recursive: true, force: true })
 cpSync(brand, join(pub, 'brand'), { recursive: true })
 for (const file of ['favicon-32.png', 'favicon-192.png', 'favicon-512.png', 'apple-touch-icon.png', 'apple-touch-icon-180.png']) cpSync(join(brand, file), join(pub, file))
+cpSync(join(repo, 'notebook', 'resources', 'icon.png'), join(pub, 'notebook-icon.png'))
 
 /* ---------- format downloads ---------- */
 const downloads = join(pub, 'downloads')
@@ -62,25 +66,41 @@ async function json(url, headers = {}, timeout = 8000) {
 
 async function github() {
   const fresh = existsSync(cacheFile) && !process.env.CI && Date.now() - statSync(cacheFile).mtimeMs < 60 * 60_000
-  if (fresh) return JSON.parse(readFileSync(cacheFile, 'utf8'))
+  if (fresh) {
+    const cached = JSON.parse(readFileSync(cacheFile, 'utf8'))
+    if ('notebook' in cached) return cached
+  }
   const headers = { accept: 'application/vnd.github+json', 'user-agent': 'opencourse.dev build', ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) }
-  const result = { repo: null, release: null }
+  const result = { repo: null, release: null, notebook: null }
   try {
     const r = await json(`https://api.github.com/repos/${REPO}`, headers)
     result.repo = { stars: r.stargazers_count, forks: r.forks_count, description: r.description, license: r.license?.spdx_id ?? null }
   } catch (error) { console.warn(`  GitHub repository: ${error.message}`) }
   try {
-    const r = await json(`https://api.github.com/repos/${REPO}/releases/latest`, headers)
-    const asset = r.assets?.find((a) => a.name === ASSET)
-    result.release = {
-      version: String(r.tag_name ?? '').replace(/^v/, ''),
-      tag: r.tag_name, url: r.html_url, publishedAt: r.published_at, notes: r.body ?? '',
-      // The release workflow marks a build it could not sign; the download page explains Gatekeeper then.
-      unsigned: /<!--\s*opencourse:unsigned\s*-->/.test(r.body ?? ''),
-      asset: asset ? { size: asset.size, downloads: asset.download_count } : null
+    // GitHub's newest-release endpoint is whichever product was published last.
+    // OpenCourse is a v* tag; OpenCourse Notebook is a notebook-v* tag.
+    // The list is newest first.
+    const list = await json(`https://api.github.com/repos/${REPO}/releases?per_page=30`, headers)
+    const published = (entry) => entry && entry.draft !== true && entry.prerelease !== true
+    const describe = (r, assetName, marker) => {
+      const asset = r.assets?.find((a) => a.name === assetName)
+      return {
+        version: String(r.tag_name).replace(/^(?:notebook-)?v/, ''),
+        tag: r.tag_name,
+        url: r.html_url,
+        publishedAt: r.published_at,
+        notes: r.body ?? '',
+        unsigned: new RegExp(`<!--\\s*${marker}\\s*-->`).test(r.body ?? ''),
+        downloadUrl: asset?.browser_download_url ?? null,
+        asset: asset ? { size: asset.size, downloads: asset.download_count } : null
+      }
     }
-  } catch (error) { console.warn(`  GitHub release: ${error.message.includes('404') ? 'none published yet' : error.message}`) }
-  if (result.repo || result.release) {
+    const app = list.find((r) => published(r) && APP_TAG.test(r.tag_name ?? ''))
+    const notebook = list.find((r) => published(r) && NOTEBOOK_TAG.test(r.tag_name ?? ''))
+    result.release = app ? describe(app, APP_ASSET, 'opencourse:unsigned') : null
+    result.notebook = notebook ? describe(notebook, NOTEBOOK_ASSET, 'opencourse-notebook:unsigned') : null
+  } catch (error) { console.warn(`  GitHub releases: ${error.message.includes('404') ? 'none published yet' : error.message}`) }
+  if (result.repo || result.release || result.notebook) {
     mkdirSync(join(site, '.cache'), { recursive: true })
     writeFileSync(cacheFile, JSON.stringify(result))
   } else if (existsSync(cacheFile)) {
@@ -123,4 +143,4 @@ async function featured() {
 const [gh, courses] = await Promise.all([github(), featured()])
 mkdirSync(join(site, 'src', 'data'), { recursive: true })
 writeFileSync(join(site, 'src', 'data', 'generated.json'), JSON.stringify({ ...gh, featured: courses, builtAt: new Date().toISOString() }, null, 2))
-console.log(`Site resources: ${gh.repo ? `${gh.repo.stars} stars` : 'no repository data'}, ${gh.release ? `release ${gh.release.version}` : 'no release'}, ${courses.length} catalog courses.`)
+console.log(`Site resources: ${gh.repo ? `${gh.repo.stars} stars` : 'no repository data'}, ${gh.release ? `release ${gh.release.version}` : 'no release'}, ${gh.notebook ? `notebook ${gh.notebook.version}` : 'no notebook release'}, ${courses.length} catalog courses.`)

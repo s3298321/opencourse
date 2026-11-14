@@ -24,7 +24,7 @@ const faq = [
   { q: 'Do I need an account?', a: 'No account is needed to import courses or PDFs, write personal notebooks, or create courses. Enrolling in or publishing content on a server requires an account there. Registration availability depends on the server.' },
   { q: 'Where does learning material come from?', a: 'Import a course ZIP or PDF, add courses and documents from a connected server, or write a course in the built-in editor. The editor can also draft and revise a course with AI. You review the changes and choose when to save.' },
   { q: 'What can Coach see?', a: 'When you use Coach, it can inspect your current lesson, PDF page, selections and open notebooks, including unsaved notebook edits. It can search and read local material and accessible content on connected servers, with quiz answers and exercise solutions excluded. Each coach keeps its own memory between conversations. Open it from the floating Coaches button; there is no separate Coach workspace or file browser.' },
-  { q: 'Are personal notebooks the same as Python notebooks?', a: 'No. Personal notebooks are autosaving Markdown pages in their own windows, with images, search and optional read-only AI chat. They stay on your Mac and can link to a course or PDF. Python notebooks belong to a course and run code using its Python environment.' },
+  { q: 'Are personal notebooks the same as Python notebooks?', a: 'No. Personal notebooks are autosaving Markdown pages in their own windows, with images, sketches and optional read-only AI chat. They stay on your Mac. The same standalone notebooks open in OpenCourse and in OpenCourse Notebook. Notebooks linked to a course or a PDF stay in OpenCourse. Python notebooks belong to a course and run code using its Python environment.' },
   { q: 'Can I study in a browser?', a: 'Yes. A connected learning server provides a web reader for courses and PDFs, quizzes, flashcards and reading chat, with enrolled progress and reading conversations synchronized with the desktop app. Coding exercises, projects, Python notebooks, personal notebooks, course authoring and Coach use the desktop app.' },
   { q: 'Is it only for programming?', a: 'No. Lessons, pictures, interactive visualizations, quizzes and flashcards work for any subject. Programming courses also get checked Python exercises and executable notebooks with bundled Python. Projects can use other languages with tools you set up yourself.' },
   { q: 'What happens to my data?', a: 'Imported content, personal notebooks, Coach memory and local conversations stay on your Mac unless you use AI or explicitly publish content. Enrolled server content synchronizes progress and reading conversations with that server. AI sends relevant material to OpenAI; Coach can also read accessible server material through your local AI connection. The app collects no usage analytics.' },
@@ -40,7 +40,7 @@ const jsonLd = {
   url: SITE.url,
   license: 'https://opensource.org/licenses/MIT',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-  ...(release ? { softwareVersion: release.version, downloadUrl: SITE.downloadUrl } : {})
+  ...(release?.downloadUrl ? { softwareVersion: release.version, downloadUrl: release.downloadUrl } : {})
 }
 ---
 <Base active="features" jsonLd={jsonLd}>
@@ -153,8 +153,8 @@ const jsonLd = {
         <article class="bento-card oc-card oc-glow oc-reveal" data-glow>
           <span class="bento-icon"><Icon name="pen-line" /></span>
           <h3>Personal Markdown notebooks</h3>
-          <p>Write in separate windows with autosaving pages and pasted or dropped images. Search across your notebooks, link one to a course or PDF, and ask about your notes without AI changing them.</p>
-          <a class="more-link" href="/docs/getting-started#personal-notebooks">Start a notebook<Icon name="arrow-right" size={15} /></a>
+          <p>Write in separate windows with autosaving pages, images and sketches. The same standalone notebooks open in OpenCourse Notebook, a Mac app of their own. Course-linked and PDF-linked notebooks stay in OpenCourse.</p>
+          <a class="more-link" href="/notebook">OpenCourse Notebook<Icon name="arrow-right" size={15} /></a>
         </article>
         <article class="bento-card oc-card oc-glow oc-reveal" data-glow>
           <span class="bento-icon"><Icon name="globe" /></span>

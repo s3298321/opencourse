@@ -1,0 +1,38 @@
+appId: dev.opencourse.notebook
+productName: OpenCourse Notebook
+copyright: Copyright © 2026 Sergei K. and OpenCourse contributors
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - '**/node_modules/node-pty/**'
+npmRebuild: false
+mac:
+  icon: resources/icon.icns
+  category: public.app-category.education
+  target:
+    - target: dmg
+      arch: [arm64]
+  darkModeSupport: true
+  identity: null
+  extendInfo:
+    NSMicrophoneUsageDescription: >-
+      OpenCourse Notebook uses the microphone when you dictate a chat message.
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+dmg:
+  icon: resources/icon.icns
+  title: OpenCourse Notebook ${version}
+  # No version in the name. The site resolves the newest notebook-v* release
+  # and downloads this file from it. OpenCourse's own DMG has another name.
+  artifactName: OpenCourse-Notebook-mac-${arch}.${ext}
+# `electron-builder --publish always` (notebook-release.yml) uploads to a draft
+# release for the notebook-v* tag. A maintainer reviews the notes and publishes it.
+publish:
+  - provider: github
+    owner: s3298321
+    repo: opencourse
+    releaseType: draft

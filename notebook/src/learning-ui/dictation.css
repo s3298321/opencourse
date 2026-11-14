@@ -1,0 +1,30 @@
+@property --dictation-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+[data-dictation="listening"] { position: relative; }
+[data-dictation="listening"]::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 2px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(from var(--dictation-angle), transparent 15%, var(--accent, #7c83ff) 34%, transparent 56%);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: .55;
+  transition: opacity 180ms;
+  animation: dictation-orbit 2.8s linear infinite;
+}
+[data-dictation="listening"][data-speaking="true"]::after { opacity: 1; }
+@keyframes dictation-orbit { to { --dictation-angle: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-dictation="listening"]::after {
+    background: var(--accent, #7c83ff);
+    opacity: 1;
+    animation: none;
+    transition: none;
+  }
+}

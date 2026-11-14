@@ -1,0 +1,102 @@
+{
+  "$schema": "urn:opencourse:theme:1.0",
+  "format": 1,
+  "id": "opencourse-default",
+  "name": "Bond",
+  "version": "1.0.0",
+  "author": "OpenCourse",
+  "description": "The app's own look, written out as a theme: near-black surfaces, silver controls and grained glass over the window. Copy it to start your own.",
+  "appearance": "dark",
+
+  "palette": {
+    "background": "#111110",
+    "text": "#dedee3",
+    "accent": "#e4e4e8",
+    "muted": "#a5a5af",
+    "success": "#78bd91",
+    "danger": "#ee9292"
+  },
+
+  "tokens": {
+    "fg": "#dedee3",
+    "muted": "#a5a5af",
+    "bg": "#111110",
+    "card": "#232323",
+    "accent": "#e4e4e8",
+    "accent-fg": "#202024",
+    "border": "#393940",
+    "selected": { "from": "#38383f", "to": "#2c2c32" },
+    "selected-edge": "rgba(222, 222, 227, 0.10)",
+    "check-accent": "#565660",
+    "ok": "#78bd91",
+    "err": "#ee9292",
+    "err-fg": "#ffffff",
+    "chip-bg": "#2b2b30",
+    "chip-fg": "#c5c5cd",
+    "ok-bg": "#13231a",
+    "ok-border": "#2b4b35",
+    "err-bg": "#2b1719",
+    "err-border": "#563036",
+    "accent-ring": "rgba(196, 196, 205, 0.15)",
+    "code-bg": "#1d1d21",
+    "bubble": "#232323",
+    "bubble-border": "#42424a",
+    "composer-bg": "#232323",
+    "scrollbar": "rgba(222, 222, 227, 0.18)",
+    "scrollbar-hover": "rgba(222, 222, 227, 0.36)",
+    "chrome": "rgba(0, 0, 0, 0.36)",
+    "glass": "rgba(0, 0, 0, 0.17)",
+    "popover": "rgba(0, 0, 0, 0.65)",
+    "overlay": "rgba(0, 0, 0, 0.35)",
+    "shadow": "#000000",
+    "hover-ring": "rgba(238, 238, 239, 0.12)",
+    "editor-active-line": "rgba(255, 255, 255, 0.04)",
+    "sketch-background": "#252525",
+    "sketch-brush": "#ffffff",
+    "sketch-cursor-border": "#929298",
+    "sketch-cursor-shadow": "rgba(0, 0, 0, 0.32)",
+    "terminal-selection": "rgba(196, 196, 205, 0.18)"
+  },
+
+  "reducedTransparency": {
+    "chrome": "#1c1c20",
+    "glass": "#111110",
+    "popover": "#232323"
+  },
+
+  "increasedContrast": {
+    "border": "#74747c",
+    "muted": "#c5c5cd",
+    "selected-edge": "rgba(222, 222, 227, 0.55)"
+  },
+
+  "window": {
+    "material": "vibrancy",
+    "color": "#111110"
+  },
+
+  "grain": {
+    "amount": 0.2,
+    "scale": 1
+  },
+
+  "surfaces": {
+    "titlebar": { "grain": 0 },
+    "sidebar": { "grain": 0.2 },
+    "list": { "grain": 0.2 },
+    "sidechat": { "grain": 0.2 },
+    "popover": { "grain": 0.2, "blur": 20 },
+    "reading": { "grain": 0 }
+  },
+
+  "fonts": {
+    "faces": [],
+    "ui": { "lineHeight": 1.55 },
+    "heading": { "weight": 700 },
+    "brand": { "weight": 600, "letterSpacing": -0.025 }
+  },
+
+  "logo": {
+    "mark": "images/mark.png"
+  }
+}

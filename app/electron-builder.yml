@@ -65,9 +65,9 @@ mac:
 dmg:
   icon: resources/icon.icns
   title: OpenCourse ${version}
-  # No version in the name, on purpose: opencourse.dev links to
-  # releases/latest/download/OpenCourse-mac-arm64.dmg, which GitHub resolves to
-  # the newest release's file only while the name stays the same.
+  # No version in the name, on purpose. The site and the app find the newest
+  # v* release and download this file from it. OpenCourse Notebook publishes
+  # into the same repository, so the name is what tells the two apart.
   artifactName: OpenCourse-mac-${arch}.${ext}
 # `electron-builder --publish always` (the release workflow) uploads to a draft
 # release for the tag; a maintainer reviews the notes and publishes it.

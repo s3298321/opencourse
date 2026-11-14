@@ -1,0 +1,95 @@
+/**
+ * A user's preferences.json, read the way every JSON file here is read: as
+ * whatever can still be made sense of. A hand-edited file with a typo costs the
+ * setting it broke, never the app.
+ */
+import { defaultChatModel, isChatModelId, isReasoningEffort, reasoningEffortsFor } from './sidechat/models'
+import { BACKEND_MODEL, VOICES, isBackendModelId, isLiveModelId, migrateCoachModel, normalizeBackendReasoning } from './coach/models'
+import type { ChatDefaults, Preferences } from './types'
+import { aiSettings, isAIProvider, validModelId } from './ai'
+import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
+import { isBuiltinThemeId } from './theme/builtin-ids'
+import { sketchSettings } from './writing-notebooks/sketch'
+import { normalizePomodoroSettings } from './pomodoro'
+import { isTranscriptionConfig } from './transcription'
+import { normalizeCoachPrompts } from './coach/prompt-defaults'
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/** More than any key reaches, and few enough that a corrupt file stays small. */
+export const MAX_CHAT_MODELS = 200
+
+/**
+ * Chat model ids, deduplicated and in their given order. Null means there is
+ * no choice to keep - including an empty list, because a picker with nothing
+ * in it is a chat nobody can use, and that is not a choice anyone made.
+ */
+export function normalizeChatModels(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null
+  const seen = new Set<string>()
+  for (const id of raw) {
+    if (typeof id !== 'string' || id.length > 100 || !isChatModelId(id) || seen.has(id)) continue
+    seen.add(id)
+    if (seen.size >= MAX_CHAT_MODELS) break
+  }
+  return seen.size ? [...seen] : null
+}
+
+export function normalizePreferences(raw: unknown): Preferences {
+  if (!raw || typeof raw !== 'object') return {}
+  const chatModels = normalizeChatModels((raw as Record<string, unknown>)['chatModels'])
+  const projectEditor = (raw as Record<string, unknown>)['projectEditor']
+  const values = raw as Record<string, unknown>
+  const model = values['defaultChatModel']
+  const preferred = typeof model === 'string' && model.length <= 100 && isChatModelId(model) &&
+    (!chatModels || chatModels.includes(model)) ? model : undefined
+  const reasoning = values['defaultChatReasoning']
+  const coachModel = typeof values['defaultCoachModel'] === 'string' ? migrateCoachModel(values['defaultCoachModel']) : undefined
+  // Only a literal true turns search on. It costs money on every use, so a
+  // hand-edited "yes" or 1 reads as the default - off - rather than as consent.
+  const webSearch = (raw as Record<string, unknown>)['webSearch'] === true
+  // Themes use an installed UUID or a reserved built-in id.
+  const theme = values['theme']
+  const readingScale = normalizeReadingScale(values['readingScale'])
+  const kept: Preferences = {
+    ...(values.defaultCoachPrompts && typeof values.defaultCoachPrompts === 'object' ? { defaultCoachPrompts: normalizeCoachPrompts(values.defaultCoachPrompts) } : {}),
+    ...(values.notebookSketch && typeof values.notebookSketch === 'object' ? { notebookSketch: sketchSettings(values.notebookSketch) } : {}),
+    ...(values.pomodoro && typeof values.pomodoro === 'object' ? { pomodoro: normalizePomodoroSettings(values.pomodoro) } : {}),
+    ...(chatModels ? { chatModels } : {}),
+    ...(preferred ? { defaultChatModel: preferred } : {}),
+    ...(isReasoningEffort(reasoning) && reasoningEffortsFor(defaultChatModel(chatModels, preferred)).includes(reasoning)
+      ? { defaultChatReasoning: reasoning } : {}),
+    ...(typeof coachModel === 'string' && coachModel.length <= 100 && isLiveModelId(coachModel)
+      ? { defaultCoachModel: coachModel } : {}),
+    ...(typeof values.defaultCoachVoice === 'string' && VOICES.includes(values.defaultCoachVoice)
+      ? { defaultCoachVoice: values.defaultCoachVoice } : {}),
+    ...(typeof values.defaultCoachBackendModel === 'string' && isBackendModelId(values.defaultCoachBackendModel)
+      ? { defaultCoachBackendModel: values.defaultCoachBackendModel } : {}),
+    ...(values.defaultCoachBackendReasoning !== undefined ? { defaultCoachBackendReasoning: normalizeBackendReasoning(typeof values.defaultCoachBackendModel === 'string' ? values.defaultCoachBackendModel : BACKEND_MODEL, values.defaultCoachBackendReasoning) } : {}),
+    ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
+    ...(webSearch ? { webSearch } : {}),
+    ...(typeof values.authoringPlan === 'boolean' ? { authoringPlan: values.authoringPlan } : {}),
+    ...(typeof values.authoringWebSearch === 'boolean' ? { authoringWebSearch: values.authoringWebSearch } : {}),
+    ...(values['coachAllowDelete'] === true ? { coachAllowDelete: true } : {}),
+    ...(typeof theme === 'string' && (UUID.test(theme) || isBuiltinThemeId(theme)) ? { theme } : {}),
+    ...(typeof values['activeServer'] === 'string' && UUID.test(values['activeServer']) ? { activeServer: values['activeServer'] } : {}),
+    ...(readingScale !== DEFAULT_READING_SCALE ? { readingScale } : {}),
+    ...(typeof values.floatingCoachButton === 'boolean' ? { floatingCoachButton: values.floatingCoachButton } : {}),
+    ...(typeof values.floatingNotebookButton === 'boolean' ? { floatingNotebookButton: values.floatingNotebookButton } : {})
+  }
+  if (values['ai'] && typeof values['ai'] === 'object') kept.ai = aiSettings({ ...kept, ai: values['ai'] as Preferences['ai'] })
+  if (isTranscriptionConfig(values.transcription)) kept.transcription = { model: values.transcription.model }
+  const title = values['titleGeneration'] as Partial<NonNullable<Preferences['titleGeneration']>> | undefined
+  if (title && isAIProvider(title.provider) && validModelId(title.model) && (title.reasoning === null || isReasoningEffort(title.reasoning))) {
+    kept.titleGeneration = { provider: title.provider, model: title.model, reasoning: title.reasoning }
+  }
+  return kept
+}
+
+/** Apply the user's defaults once, when a lesson or project chat is created. */
+export function newChatDefaults(preferences: Preferences, override?: string): ChatDefaults {
+  const model = override && isChatModelId(override) ? override :
+    defaultChatModel(preferences.chatModels ?? null, preferences.defaultChatModel)
+  const reasoning = preferences.defaultChatReasoning
+  return { model, reasoning: reasoning && reasoningEffortsFor(model).includes(reasoning) ? reasoning : null }
+}

@@ -12,6 +12,8 @@ export interface Release {
   publishedAt: string
   notes: string
   unsigned: boolean
+  /** The DMG on that release. Null when the release exists but the asset does not. */
+  downloadUrl: string | null
   asset: { size: number; downloads: number } | null
 }
 export interface FeaturedCourse {
@@ -29,6 +31,8 @@ export interface FeaturedCourse {
 export interface Generated {
   repo: { stars: number; forks: number; description: string | null; license: string | null } | null
   release: Release | null
+  /** The newest published notebook-v* release, or null before the first one. */
+  notebook?: Release | null
   featured: FeaturedCourse[]
   builtAt: string
 }
@@ -36,9 +40,13 @@ export interface Generated {
 const file = join(process.cwd(), 'src', 'data', 'generated.json')
 export const generated: Generated = existsSync(file)
   ? JSON.parse(readFileSync(file, 'utf8')) as Generated
-  : { repo: null, release: null, featured: [], builtAt: new Date().toISOString() }
+  : { repo: null, release: null, notebook: null, featured: [], builtAt: new Date().toISOString() }
 
-export const release = generated.release?.asset ? generated.release : null
+const withDownload = (found: Release | null | undefined): Release | null =>
+  found?.asset && found.downloadUrl ? found : null
+
+export const release = withDownload(generated.release)
+export const notebookRelease = withDownload(generated.notebook)
 
 export function megabytes(bytes: number): string {
   return `${Math.round(bytes / 1024 / 1024)} MB`

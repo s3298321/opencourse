@@ -24,7 +24,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, re
 import { dirname, join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { isLoopbackHost } from '../core/catalog/url'
-import { parseRelease, releaseFeedUrl, type Release } from '../core/updates/release'
+import { releaseFeedUrl, selectRelease, type Release } from '../core/updates/release'
 import { allowedUpdateUrl, checkDue, CHECK_INTERVAL_MS, installTarget, installTargetMessage, isNewer, notWritable, type InstallTarget } from '../core/updates/policy'
 import type { AppUpdateInfo, AppUpdateStatus } from '../core/types'
 import { log } from './log'
@@ -306,11 +306,18 @@ export async function checkForAppUpdate(manual: boolean): Promise<AppUpdateInfo>
       logger.info('Update check refused', { status: code, ms: Date.now() - t0 })
       set(manual ? { state: 'error', message: code === 403 || code === 429 ? 'GitHub asked to wait before checking again. Try later.' : `GitHub answered ${code}.` } : quiet)
     } else {
-      const found = parseRelease(body, feed ? { feedOrigin: `${feed.origin}/` } : {})
+      const found = selectRelease(body, feed ? { feedOrigin: `${feed.origin}/` } : {})
       if (!found) {
-        logger.warn('The latest release is not one this app can install', { ms: Date.now() - t0 })
         release = null
-        set(manual ? { state: 'error', message: 'The latest release could not be read.' } : quiet)
+        if (Array.isArray(body)) {
+          // Notebook releases share this repository. None of them is an
+          // OpenCourse release, so there is nothing to install.
+          logger.info('No OpenCourse release in the feed', { ms: Date.now() - t0 })
+          set({ state: 'current' })
+        } else {
+          logger.warn('The release feed is not one this app can install', { ms: Date.now() - t0 })
+          set(manual ? { state: 'error', message: 'The latest release could not be read.' } : quiet)
+        }
       } else if (isNewer(app.getVersion(), found.version)) {
         release = found
         logger.info('Update available', { current: app.getVersion(), version: found.version, size: found.asset.size, ms: Date.now() - t0 })

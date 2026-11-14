@@ -1,0 +1,476 @@
+/**
+ * Smoke checks for the reader's text size, against the real window and the
+ * example course - which ships in the spec bundle, so this suite needs nothing
+ * from content/ and runs on its own (OPENCOURSE_SMOKE_ONLY=reading) as well as
+ * inside the full run.
+ *
+ * What it judges is what rendered: computed font sizes, where the control sits
+ * against the column and the window, whether the composer clips. The presses
+ * are real ones, routed by the browser (CDP), because the control refuses
+ * mousedown on purpose and a synthetic el.click() would skip exactly that.
+ * Leaves the size at 100%, so nothing after it notices.
+ */
+import type { BrowserWindow } from 'electron'
+import { writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { specResourcesDir } from './paths'
+
+interface Result { name: string; ok: boolean; detail: string }
+
+const EXAMPLE = 'opencourse-example'
+
+const HELPERS = `
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (e) => e && e.checkVisibility({ visibilityProperty: true });
+  const find = selector => [...document.querySelectorAll(selector)].find(visible);
+  const wait = async (selector, timeout = 8000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeout) {
+      const el = [...document.querySelectorAll(selector)].find(visible);
+      if (el) return el;
+      await sleep(50);
+    }
+    throw new Error('timed out waiting for ' + selector);
+  };
+  const until = async (test, what, timeout = 6000) => {
+    const t0 = Date.now();
+    while (!(await test())) { if (Date.now() - t0 > timeout) throw new Error('timed out waiting for ' + what); await sleep(50); }
+  };
+  const px = (target) => parseFloat(getComputedStyle(typeof target === 'string' ? find(target) : target).fontSize);
+  const pill = () => find('.content .reading-size');
+  const label = () => pill().querySelector('.reading-size-value')?.textContent;
+  /** What scales, by what it is: the first visible match of each, in the lesson. */
+  const SCALED = {
+    paragraph: '.lesson-inner .prose p',
+    title: '.lesson-head h1',
+    meta: '.lesson-inner .meta',
+    objective: '.objectives li',
+    question: '.quiz .question',
+    option: '.quiz label',
+    code: '.lesson-inner .prose code',
+    exercise: '.exercise h3'
+  };
+  const sizes = () => Object.fromEntries(Object.entries(SCALED).map(([key, selector]) => {
+    const found = [...document.querySelectorAll(selector)].find(visible);
+    return [key, found ? px(found) : null];
+  }));
+`
+
+/** The example course, imported through the real path the first time a suite asks for it. */
+export async function ensureExampleCourse(win: BrowserWindow): Promise<ReturnType<typeof import('./fixture-identities')['fixtureCourse']>> {
+  const { fixtureCourse } = await import('./fixture-identities')
+  const found = fixtureCourse(EXAMPLE)
+  if (found) return found
+  const { importCourseZip } = await import('./import')
+  const imported = await importCourseZip(join(specResourcesDir(), 'opencourse-example-course.zip'))
+  if (imported.status !== 'ok') throw new Error('the example course did not import: ' + imported.status)
+  win.webContents.send('courses:changed')
+  return fixtureCourse(EXAMPLE)
+}
+
+/** Renderer code that opens the example course's first lesson from wherever the window is. */
+export const OPEN_EXAMPLE_LESSON = `
+  const readerFind = selector => [...document.querySelectorAll(selector)].find(visible);
+  if (readerFind('.settings') || readerFind('.logs')) { readerFind('.titlebar .crumbs a').click(); await sleep(250); }
+  readerFind('.titlebar [data-section="courses"]').click();
+  await sleep(100);
+  // The courses switch restores the last courses screen. A lesson's back link
+  // is its course overview, and the overview's is All courses.
+  for (let n = 0; n < 3 && !readerFind('.library'); n++) { readerFind('.titlebar .crumbs a')?.click(); await sleep(250); }
+  await wait('.library');
+  const card = await (async () => {
+    for (let n = 0; n < 160; n++) {
+      const found = [...document.querySelectorAll('.course-card')].find((c) => visible(c) && /OpenCourse example course/.test(c.textContent));
+      if (found) return found;
+      await sleep(50);
+    }
+    throw new Error('no example course card');
+  })();
+  card.click();
+  (await wait('.lesson-row')).click();
+  await wait('.lesson-head h1');
+`
+
+export async function readingSizeChecks(win: BrowserWindow): Promise<Result[]> {
+  const results: Result[] = []
+  const run = async (name: string, body: string): Promise<void> => {
+    try {
+      const detail = await win.webContents.executeJavaScript(`(async () => { ${HELPERS} ${body} })()`)
+      results.push({ name, ok: true, detail: String(detail ?? '') })
+    } catch (err) {
+      results.push({ name, ok: false, detail: String(err) })
+    }
+  }
+  const inMain = async (name: string, body: () => string | Promise<string>): Promise<void> => {
+    try { results.push({ name, ok: true, detail: await body() }) } catch (err) { results.push({ name, ok: false, detail: String(err) }) }
+  }
+  /** A real press - mousedown, mouseup, click - at the centre of what `selector` finds. */
+  const press = async (selector: string): Promise<void> => {
+    const box = await win.webContents.executeJavaScript(`(() => {
+      const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.checkVisibility({ visibilityProperty: true }));
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`) as { x: number; y: number } | null
+    if (!box) throw new Error('nothing to press at ' + selector)
+    const cdp = win.webContents.debugger
+    const attached = cdp.isAttached()
+    if (!attached) cdp.attach('1.3')
+    try {
+      const at = { x: Math.round(box.x), y: Math.round(box.y), button: 'left', clickCount: 1 }
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', ...at })
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at })
+    } finally {
+      if (!attached) cdp.detach()
+    }
+  }
+  /** For a person to look at: os.tmpdir()/opencourse-reading-<name>.png. */
+  const shot = async (name: string): Promise<void> => {
+    // A window in the background is not repainted on its own: ask for a frame
+    // and wait for it, or the picture is of a moment ago.
+    try {
+      win.webContents.invalidate()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      writeFileSync(join(tmpdir(), `opencourse-reading-${name}.png`), (await win.webContents.capturePage()).toPNG())
+    } catch { /* best effort */ }
+  }
+  /** Keys as a keyboard sends them, into whatever has the focus: text, then Enter or Escape. */
+  const typing = async (name: string, text: string, key: 'Enter' | 'Escape'): Promise<void> => {
+    const cdp = win.webContents.debugger
+    const attached = cdp.isAttached()
+    if (!attached) cdp.attach('1.3')
+    try {
+      if (text) await cdp.sendCommand('Input.insertText', { text })
+      const code = key === 'Enter' ? 13 : 27
+      await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code })
+      await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code })
+    } catch (err) {
+      results.push({ name, ok: false, detail: String(err) })
+    } finally {
+      if (!attached) cdp.detach()
+    }
+  }
+  /** A real wheel over the centre of what `selector` finds, in notches of 100px. */
+  const wheel = async (selector: string, deltaY: number): Promise<void> => {
+    const box = await win.webContents.executeJavaScript(`(() => {
+      const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.checkVisibility({ visibilityProperty: true }));
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`) as { x: number; y: number } | null
+    if (!box) { results.push({ name: 'wheel over ' + selector, ok: false, detail: 'nothing there' }); return }
+    const cdp = win.webContents.debugger
+    const attached = cdp.isAttached()
+    if (!attached) cdp.attach('1.3')
+    try {
+      for (let done = 0; done < deltaY; done += 100) {
+        await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(box.x), y: Math.round(box.y), deltaX: 0, deltaY: 100 })
+        await new Promise((resolve) => setTimeout(resolve, 30))
+      }
+    } finally {
+      if (!attached) cdp.detach()
+    }
+  }
+  const pressing = async (name: string, selector: string, times = 1): Promise<void> => {
+    try { for (let n = 0; n < times; n++) await press(selector) } catch (err) { results.push({ name, ok: false, detail: String(err) }) }
+  }
+
+  const { getReadingScale, readPreferences, setReadingScale } = await import('./preferences')
+
+  await inMain('the example course is in the library, with an answered side chat', async () => {
+    const course = await ensureExampleCourse(win)
+    const module = course?.modules[0]
+    const first = module?.lessons?.[0]
+    if (!course || !module || !first) throw new Error('the example course has no first lesson')
+    const { insertChat, appendMessage } = await import('./chatdb')
+    const { newChatId } = await import('../core/sidechat/ids')
+    const { DEFAULT_CHAT_MODEL } = await import('../core/sidechat/models')
+    const lesson = { moduleId: module.slug, lessonId: first.slug }
+    const id = newChatId()
+    const at = new Date().toISOString()
+    insertChat({ id, courseId: course.courseId, model: DEFAULT_CHAT_MODEL, startedIn: lesson, at })
+    for (const [role, text] of [['context', 'the lesson'], ['user', 'what does print do?'], ['assistant', 'It writes its arguments to standard output, separated by spaces.']] as const) {
+      appendMessage(id, { role, text, lesson, at })
+    }
+    setReadingScale(1)
+    return course.title
+  })
+
+  // A known starting point, whatever the suites before left: the window at its
+  // usual size, and the side chat closed - it narrows the column, and the chip
+  // pressed later toggles it.
+  win.setSize(1240, 860)
+  await run('a lesson opens at the app\'s own size, with the control at the column\'s foot', `
+    ${OPEN_EXAMPLE_LESSON}
+    const close = find('.sidechat-close');
+    if (close) { close.click(); await until(() => !find('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'the side chat to close'); }
+    await sleep(200);
+    await wait('.content .reading-size');
+    if (label() !== '100%') throw new Error('the control reads ' + label());
+    const box = pill().getBoundingClientRect();
+    const column = find('.content').getBoundingClientRect();
+    const sidebar = find('.sidebar').getBoundingClientRect();
+    const fromLeft = box.left - column.left;
+    const fromBottom = window.innerHeight - box.bottom;
+    if (fromLeft < 4 || fromLeft > 24) throw new Error('it sits ' + fromLeft + 'px into the column');
+    if (fromBottom < 4 || fromBottom > 24) throw new Error('it sits ' + fromBottom + 'px above the window\\'s foot');
+    if (box.left < sidebar.right) throw new Error('it overlaps the sidebar');
+    // At this window's width the lesson has a margin, and the control fits in it.
+    const inner = find('.lesson-inner');
+    const textLeft = inner.getBoundingClientRect().left + parseFloat(getComputedStyle(inner).paddingLeft);
+    if (box.right > textLeft) throw new Error('it covers the start of the lines: ' + Math.round(box.right) + ' > ' + Math.round(textLeft));
+    window.__readingBase = sizes();
+    window.__readingButtons = [...document.querySelectorAll('.lesson-nav button, .lesson-actions button, .exercise .action-button')].map(button => ({button, size:px(button), height:button.getBoundingClientRect().height}));
+    window.__readingSidebar = px([...document.querySelectorAll('.sidebar a')].find(visible));
+    const missing = ['paragraph', 'title', 'meta', 'objective', 'option'].filter((key) => window.__readingBase[key] === null);
+    if (missing.length) throw new Error('nothing to measure for ' + missing.join(', '));
+    return Math.round(fromLeft) + 'px in, ' + Math.round(fromBottom) + 'px up';
+  `)
+
+  // Pin a passage near the top of the column before the change, to see the
+  // reading position kept.
+  await run('(setup) scroll a quiz near the top', `
+    const column = find('.content');
+    const quiz = find('.lesson-inner .quiz');
+    // The quiz's top just inside the column's, so it is the passage the
+    // position is pinned to: the text above it is out of view.
+    column.scrollTop += quiz.getBoundingClientRect().top - column.getBoundingClientRect().top - 2;
+    await sleep(100);
+    window.__readingAnchor = quiz.getBoundingClientRect().top;
+    return Math.round(window.__readingAnchor) + 'px';
+  `)
+  await pressing('A+ pressed with a real mouse', '.reading-size-larger', 2)
+
+  await run('A+ twice makes every text in the lesson 125%, and nothing outside it', `
+    await until(() => label() === '125%', 'the control to read 125%');
+    const now = sizes();
+    const wrong = Object.entries(window.__readingBase)
+      .filter(([key, base]) => base !== null && Math.abs(now[key] - base * 1.25) > 1)
+      .map(([key, base]) => key + ' ' + base + '→' + now[key]);
+    if (wrong.length) throw new Error(wrong.join(', '));
+    for (const {button, size, height} of window.__readingButtons) { if (px(button)!==size || Math.abs(button.getBoundingClientRect().height-height)>1) throw new Error('Lesson action grew with text size: '+button.textContent); }
+    const sidebar = px([...document.querySelectorAll('.sidebar a')].find(visible));
+    if (sidebar !== window.__readingSidebar) throw new Error('the sidebar moved: ' + window.__readingSidebar + '→' + sidebar);
+    const body = find('.body');
+    if (body.scrollWidth > body.clientWidth + 1) throw new Error('the screen scrolls sideways');
+    return Object.entries(now).filter(([, v]) => v !== null).map(([k, v]) => k + ' ' + v).join(', ');
+  `)
+
+  await shot('125')
+  await run('the passage you were reading stays where it was', `
+    const quiz = find('.lesson-inner .quiz');
+    const moved = quiz.getBoundingClientRect().top - window.__readingAnchor;
+    if (Math.abs(moved) > 4) throw new Error('it moved ' + Math.round(moved) + 'px');
+    return Math.round(moved) + 'px';
+  `)
+
+  await inMain('the size is saved for this user', () => {
+    const saved = getReadingScale()
+    if (saved !== 1.25) throw new Error('preferences hold ' + saved)
+    return String(saved)
+  })
+
+  await pressing('the chat chip pressed', '.titlebar .chat-chip')
+  await run('the side chat follows the size, and its composer does not clip', `
+    const field = await wait('.sidechat-input');
+    const expected = 0.88 * 16 * 1.25;
+    if (Math.abs(px(field) - expected) > 0.5) throw new Error('composer ' + px(field) + 'px, expected ' + expected);
+    const turn = await wait('.chat-turn.assistant .prose');
+    if (Math.abs(px(turn) - 0.9 * 16 * 1.25) > 0.5) throw new Error('answer ' + px(turn) + 'px');
+    if (px('.sidechat-head strong') > 0.85 * 16 + 0.5) throw new Error('the chat\\'s own chrome grew too');
+    field.focus();
+    document.execCommand('insertText', false, 'one line, then another, and a third that wraps in a narrow column of text');
+    await sleep(300);
+    if (field.scrollHeight > field.clientHeight + 1) throw new Error('the composer clips: ' + field.scrollHeight + ' > ' + field.clientHeight);
+    window.__readingField = field.clientHeight;
+    return Math.round(px(field)) + 'px, ' + field.clientHeight + 'px high';
+  `)
+  await shot('125-chat')
+  await pressing('A+ pressed with the chat open', '.reading-size-larger')
+  await run('the composer refits when the size changes under it', `
+    await until(() => label() === '150%', 'the control to read 150%');
+    await sleep(300);
+    const field = find('.sidechat-input');
+    if (field.scrollHeight > field.clientHeight + 1) throw new Error('the composer clips at 150%: ' + field.scrollHeight + ' > ' + field.clientHeight);
+    if (field.clientHeight <= window.__readingField) throw new Error('the composer did not grow: ' + field.clientHeight);
+    field.select(); document.execCommand('delete');
+    return field.clientHeight + 'px';
+  `)
+  await pressing('A− pressed', '.reading-size-smaller')
+  await pressing('the chat chip pressed again', '.titlebar .chat-chip')
+
+  await run('the next lesson keeps the size', `
+    await until(() => label() === '125%' && !find('.sidechat:not(.lesson-chat-host[data-open=false] *):not(.screen-host[hidden] *)'), 'back to 125% with the chat closed');
+    const title = find('.lesson-head h1').textContent;
+    const next = find('.lesson-nav button[aria-label^="Next:"]');
+    next.click();
+    await until(() => find('.lesson-head h1')?.textContent !== title, 'the next lesson');
+    await sleep(200);
+    if (label() !== '125%') throw new Error('it reads ' + label());
+    const paragraph = px([...document.querySelectorAll('.lesson-inner .prose p')].find(visible));
+    if (Math.abs(paragraph - window.__readingBase.paragraph * 1.25) > 1) throw new Error('paragraph ' + paragraph);
+    return find('.lesson-head h1').textContent;
+  `)
+
+  await run('a trip to Settings comes back to the same place at the same size', `
+    const column = find('.content');
+    column.scrollTop = Math.min(300, column.scrollHeight - column.clientHeight);
+    await sleep(100);
+    const before = column.scrollTop;
+    find('.titlebar .user-chip').click();
+    const menu = await wait('.menu-panel');
+    [...menu.querySelectorAll('.menu-item')].find((b) => /Settings/.test(b.textContent)).click();
+    await wait('.settings');
+    find('.titlebar .crumbs a').click();
+    await wait('.content .reading-size');
+    await sleep(300);
+    const after = find('.content').scrollTop;
+    if (Math.abs(after - before) > 2) throw new Error('scrolled ' + before + ' → ' + after);
+    if (label() !== '125%') throw new Error('it reads ' + label());
+    return before + 'px, ' + label();
+  `)
+
+  await run('the exercise shares the lesson size, with its own control at the brief\'s foot', `
+    const back = find('.lesson-nav button[aria-label^="Previous:"]');
+    back.click();
+    await wait('.exercise');
+    const open = [...document.querySelectorAll('.exercise button')].find((b) => /Open editor/.test(b.textContent));
+    if (!open) throw new Error('no Open editor button');
+    open.click();
+    const brief = await wait('.workbench-brief');
+    const size = px(brief);
+    if (Math.abs(size - 14 * 1.25) > 0.5) throw new Error('brief ' + size + 'px');
+    if (visible(pill())) throw new Error('the lesson control is still showing over the editor');
+    const control = await wait('.workbench-brief .reading-size');
+    if (control.querySelector('.reading-size-value').textContent !== '125%') throw new Error('exercise size is not synced');
+    const box = control.getBoundingClientRect(), column = brief.getBoundingClientRect();
+    if (Math.abs(box.left - column.left - 16) > 2 || Math.abs(column.bottom - box.bottom - 16) > 2) throw new Error('control is not at the bottom-left of the brief');
+    const editor = await wait('.workbench .cm-editor');
+    const checks = await wait('.workbench .pane.active .xterm-rows');
+    if (Math.abs(px(editor) - 12.5 * 1.25) > 0.5) throw new Error('code ' + px(editor) + 'px');
+    if (Math.abs(px(checks) - 12 * 1.25) > 0.5) throw new Error('checks ' + px(checks) + 'px');
+    window.__readingEditor = editor;
+    window.__readingCode = editor.querySelector('.cm-content').textContent;
+    window.__readingChecks = checks;
+    return size + 'px brief, ' + px(editor) + 'px code, ' + px(checks) + 'px checks';
+  `)
+  await pressing('the exercise terminal opened', '.workbench-tabs button:nth-child(2)')
+  await run('a terminal first opened at a larger size uses that size', `
+    await until(() => find('.workbench-tabs button.active')?.textContent.trim() === 'Terminal', 'the terminal tab to finish starting', 30000);
+    const terminal = await wait('.workbench .pane:nth-child(2) .xterm-rows');
+    await until(() => terminal.textContent.trim().length > 0, 'the shell to write its prompt', 10000);
+    if (Math.abs(px(terminal) - 12 * 1.25) > 0.5) throw new Error('terminal ' + px(terminal) + 'px');
+    window.__readingTerminal = terminal;
+    return px(terminal) + 'px';
+  `)
+  await pressing('A+ pressed in the exercise', '.workbench-brief .reading-size-larger')
+  await run('the exercise control resizes the statement, code and both output panes in place', `
+    await until(() => find('.workbench-brief .reading-size-value')?.textContent === '150%', 'exercise 150%');
+    const expected = [[find('.workbench-brief .prompt'), 14], [window.__readingEditor, 12.5], [window.__readingChecks, 12], [window.__readingTerminal, 12]];
+    for (const [element, base] of expected) {
+      if (!element.isConnected) throw new Error('a text pane was recreated');
+      if (Math.abs(px(element) - base * 1.5) > 0.5) throw new Error(element.className + ' ' + px(element) + 'px');
+    }
+    if (window.__readingEditor.querySelector('.cm-content').textContent !== window.__readingCode) throw new Error('code changed while resizing');
+    const scroller = find('.workbench-brief-content');
+    scroller.scrollTop = scroller.scrollHeight;
+    const box = find('.workbench-brief .reading-size').getBoundingClientRect();
+    if (scroller.getBoundingClientRect().bottom > box.top) throw new Error('the control overlaps the statement scroller');
+    if (find('.body').scrollWidth > find('.body').clientWidth + 1) throw new Error('the exercise scrolls sideways');
+    return '150%, same editor and output panes';
+  `)
+  await shot('150-exercise')
+  await pressing('the checks tab opened after resizing', '.workbench-tabs button:first-child')
+  await run('the checks pane fits at the new size, and the lesson reflects exercise changes', `
+    const checks = await wait('.workbench .pane.active .xterm-rows');
+    if (checks !== window.__readingChecks || Math.abs(px(checks) - 18) > 0.5) throw new Error('checks lost their new size');
+    if (checks.getBoundingClientRect().width <= 0) throw new Error('checks have no width');
+    find('.workbench-back').click();
+    await wait('.content .reading-size');
+    if (label() !== '150%') throw new Error('lesson is not synced: ' + label());
+    return label();
+  `)
+  await pressing('restore 125% for the remaining reader checks', '.content .reading-size-smaller')
+  await run('the shared size is restored', `await until(() => label() === '125%', '125%'); return label();`)
+
+  // Back from the editor lands where you were in the lesson, not at its top.
+  // Scrolled with a wheel and pressed with a mouse, the way a reader does it.
+  await run('(setup) the lesson is at the top', `find('.content').scrollTop = 0; await sleep(100); return 'top';`)
+  await wheel('.content', 1400)
+  await run('(setup) the exercise card is on screen', `
+    await sleep(400);
+    const column = find('.content');
+    if (column.scrollTop < 200) throw new Error('the wheel scrolled the lesson to ' + column.scrollTop);
+    const open = [...document.querySelectorAll('.exercise button')].find((b) => visible(b) && /Open editor/.test(b.textContent));
+    if (!open) throw new Error('no Open editor button on screen');
+    open.setAttribute('data-reading-open', '');
+    window.__readingAt = column.scrollTop;
+    return column.scrollTop + 'px';
+  `)
+  await pressing('Open editor pressed', '[data-reading-open]')
+  await run('(setup) the editor is open', `await wait('.workbench .cm-editor'); await sleep(400); return 'open';`)
+  await pressing('Mark completed pressed in the brief', '.workbench-brief .actions button:last-child')
+  await run('(setup) the exercise is completed', `await until(() => /Completed/.test(find('.workbench-brief .actions button:last-child').textContent), 'Completed'); await sleep(300); return 'done';`)
+  await pressing('Back to lesson pressed', '.workbench-back')
+  await run('back from the editor is where the lesson was left', `
+    await wait('.content .reading-size');
+    await sleep(400);
+    const after = find('.content').scrollTop;
+    if (Math.abs(after - window.__readingAt) > 2) throw new Error('left at ' + window.__readingAt + ', came back at ' + after);
+    return after + 'px';
+  `)
+
+  await shot('125-next')
+  // The size can be typed: any whole percent from 50 to 200. Anything else, or
+  // Escape, puts back the size it had.
+  const typeSize = async (name: string, text: string, key: 'Enter' | 'Escape' = 'Enter'): Promise<void> => {
+    await pressing(name + ' (the size pressed)', '.reading-size-value')
+    await run(name + ' (the field is ready)', `
+      const field = await wait('.reading-size .reading-size-field');
+      if (document.activeElement !== field) throw new Error('the field does not have the focus');
+      if (field.selectionStart !== 0 || field.selectionEnd !== field.value.length) throw new Error('the size is not selected to be typed over');
+      return field.value;
+    `)
+    await typing(name, text, key)
+  }
+  await typeSize('250%', '250')
+  await run('a size outside 50 to 200 puts back the one it had', `
+    await until(() => label() === '125%', 'the size to come back');
+    if (find('.reading-size-field')) throw new Error('the field stayed open');
+    return label();
+  `)
+  await typeSize('130%', '130')
+  await run('a typed size from 50 to 200 is the new size, saved', `
+    await until(() => label() === '130%', 'the control to read 130%');
+    const paragraph = px([...document.querySelectorAll('.lesson-inner .prose p')].find(visible));
+    if (Math.abs(paragraph - window.__readingBase.paragraph * 1.3) > 1) throw new Error('paragraph ' + paragraph);
+    return label();
+  `)
+  await inMain('the typed size is saved for this user', () => {
+    if (getReadingScale() !== 1.3) throw new Error('preferences hold ' + getReadingScale())
+    return '1.3'
+  })
+  await typeSize('Escape', '90', 'Escape')
+  await run('Escape keeps the size it had', `
+    await until(() => !find('.reading-size-field'), 'the field to close');
+    if (label() !== '130%') throw new Error('it reads ' + label());
+    return label();
+  `)
+  await typeSize('100%', '100')
+  await run('typing 100 goes back to the app\'s own', `
+    await until(() => label() === '100%', 'the control to read 100%');
+    const now = sizes();
+    const wrong = Object.entries(window.__readingBase).filter(([key, base]) => base !== null && now[key] !== null && Math.abs(now[key] - base) > 0.5);
+    if (wrong.length) throw new Error(wrong.map(([k]) => k).join(', ') + ' did not come back');
+    return '100%';
+  `)
+  await shot('100')
+  await inMain('nothing is kept for the default size', () => {
+    if ('readingScale' in readPreferences()) throw new Error('preferences.json still holds a size')
+    return 'absent'
+  })
+  setReadingScale(1)
+  return results
+}

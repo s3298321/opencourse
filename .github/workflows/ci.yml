@@ -1,8 +1,10 @@
-# Every push to master and every pull request: the three packages, each with
+# Every push to master and every pull request: the four packages, each with
 # its own checks. The app runs on macOS - its resources are zipped with `ditto`
 # and its exercises use bundled Python. content/ is not in the repository, and no
 # test reads it: they use the committed courses in app/tests/fixtures/courses
 # and docs/example-course. Only the content gates look in content/.
+# OpenCourse Notebook is a second Mac app; its unit tests and typecheck do not
+# need macOS.
 name: CI
 
 on:
@@ -72,6 +74,23 @@ jobs:
         run: npm run e2e
         env:
           PLAYWRIGHT_CHANNEL: chromium
+
+  notebook:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: notebook
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: notebook/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
 
   site:
     runs-on: ubuntu-24.04

@@ -1,0 +1,211 @@
+/**
+ * The contract between the app and an OpenCourse server (server/ in this repo).
+ *
+ * Both sides import this file: the server builds these shapes, and the app's
+ * main process checks every response against them before anything reaches the
+ * renderer - a server is someone else's computer. The account rules are here
+ * for the same reason the course schema is shared: the app says "that username
+ * is not allowed" as you type, and the server refuses exactly the same names.
+ *
+ * docs/server-api.md is the prose version. Change both together.
+ */
+import type { Difficulty } from '../types'
+
+export const API_VERSION = 1
+export const API_PREFIX = '/api/v1'
+/** Every token a server issues starts with this, so a log scrubber can find one. */
+export const TOKEN_PREFIX = 'ocs_'
+
+/* --- accounts ------------------------------------------------------------- */
+
+export const USERNAME = /^[a-z0-9](?:[a-z0-9_-]{1,30})[a-z0-9]$/
+export const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
+  'admin', 'administrator', 'root', 'system', 'support', 'help', 'opencourse', 'api', 'www', 'mail',
+  'me', 'moderator', 'staff', 'owner', 'null', 'undefined', 'anonymous', 'courses', 'catalog'
+])
+export const MIN_PASSWORD = 8
+export const MAX_PASSWORD = 256
+export const CODE_LENGTH = 6
+
+/** Null when the name is acceptable; otherwise what to tell the person typing it. */
+export function usernameProblem(name: string): string | null {
+  if (name.length < 3) return 'At least 3 characters.'
+  if (name.length > 32) return 'At most 32 characters.'
+  if (!USERNAME.test(name)) return 'Lowercase letters, digits, "-" and "_", starting and ending with a letter or digit.'
+  if (RESERVED_USERNAMES.has(name)) return 'That name is reserved.'
+  return null
+}
+
+export function emailProblem(email: string): string | null {
+  if (email.length > 254) return 'That address is too long.'
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !/^[^\s@]+@localhost$/.test(email)) return 'That does not look like an email address.'
+  return null
+}
+
+export function passwordProblem(password: string): string | null {
+  if (password.length < MIN_PASSWORD) return `At least ${MIN_PASSWORD} characters.`
+  if (password.length > MAX_PASSWORD) return `At most ${MAX_PASSWORD} characters.`
+  return null
+}
+
+export function isCode(code: string): boolean {
+  return new RegExp(`^\\d{${CODE_LENGTH}}$`).test(code)
+}
+
+/* --- shapes --------------------------------------------------------------- */
+
+export interface ServerInfo {
+  id?: string
+  capabilities?: string[]
+  opencourse: 1
+  api: number
+  name: string
+  description: string
+  registration: 'open' | 'closed'
+  /** The server's own version; absent on servers older than the web app. */
+  version?: string
+}
+
+export interface Account { id: string; username: string; email: string }
+export interface AuthResult { token: string; account: Account }
+export interface ApiErrorBody { error: { code: string; message: string } }
+
+/* --- the web app's account pages (docs/server-api.md, "Your account") ------ */
+
+export type AccountRole = 'member' | 'admin'
+export type SessionKind = 'app' | 'web'
+/** A sign-in made by the web app: the token went into an HttpOnly cookie, not this body. */
+export interface WebAuthResult { account: AccountDetails }
+export interface AccountDetails extends Account { role: AccountRole; createdAt: string }
+export interface SessionInfo {
+  id: string
+  kind: SessionKind
+  userAgent: string
+  createdAt: string
+  lastUsedAt: string
+  /** The session this request was made with. */
+  current: boolean
+}
+
+/* --- moderation and the admin console (docs/server-api.md, "Administration") */
+
+export interface Moderation { at: string; reason: string }
+export interface AdminStats {
+  accounts: number
+  disabledAccounts: number
+  admins: number
+  courses: number
+  listedCourses: number
+  moderatedCourses: number
+  versions: number
+  /** Distinct accounts that added a course in the last 30 days. */
+  downloads30d: number
+  /** Archives and covers on disk. */
+  storageBytes: number
+}
+export interface AdminAccount extends AccountDetails {
+  disabledAt: string | null
+  courseCount: number
+  lastSeenAt: string | null
+}
+export interface AdminCourse {
+  id: string
+  title: string
+  publisher: string
+  currentVersion: string | null
+  listed: boolean
+  unlistedAt: string | null
+  moderation: Moderation | null
+  downloads: number
+  updatedAt: string
+}
+export interface AuditEntry {
+  id: number
+  at: string
+  actor: string
+  action: string
+  targetKind: string
+  targetId: string
+  targetName: string
+  detail: string
+}
+export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
+
+/** One catalog card. Everything a list needs, nothing a learner should not see. */
+export interface CatalogCourse {
+  id: string
+  slug: string
+  title: string
+  description?: string
+  subject?: string
+  difficulty?: Difficulty
+  estimatedHours?: number
+  author?: string
+  tags: string[]
+  /** The username of the account that published it. */
+  publisher: string
+  /** The current version - what adding or updating installs. */
+  version: string
+  /** Distinct accounts that have added the course. */
+  downloads: number
+  lessonCount: number
+  projectCount: number
+  hasCover: boolean
+  updatedAt: string
+}
+
+export interface CatalogPage { courses: CatalogCourse[]; total: number; page: number; pageSize: number }
+export interface CatalogTag { tag: string; count: number }
+export type CatalogSort = 'downloads' | 'recent' | 'title'
+
+/** The outline of a course: titles and counts. Never a question, an answer or a test. */
+export interface OutlineModule {
+  title: string
+  kind: 'lessons' | 'project'
+  lessons: { title: string; minutes?: number }[]
+}
+
+export type VersionStatus = 'current' | 'available' | 'withdrawn' | 'deleted'
+export interface VersionEntry {
+  version: string
+  publishedAt: string
+  releaseNote: string
+  status: VersionStatus
+  /** Owner only: accounts that added the course at this version. */
+  downloads?: number
+}
+
+export interface CourseOverview extends CatalogCourse {
+  prerequisites: string[]
+  outline: OutlineModule[]
+  totalMinutes: number
+  quizCount: number
+  exerciseCount: number
+  flashcardCount: number
+  versions: VersionEntry[]
+  ownedByYou: boolean
+  /** False only for its owner: an unpublished course is not shown to anyone else. */
+  listed: boolean
+}
+
+/** What an update check needs per course. `currentVersion` null: no longer published. */
+export interface CourseStatus { id: string; currentVersion: string | null; listed: boolean }
+
+export interface PublishResult { courseId: string; version: string; created: boolean }
+
+/** A publisher's view of one of their courses. */
+export interface ManagedCourse {
+  id: string
+  title: string
+  slug: string
+  currentVersion: string | null
+  maxVersion: string
+  listed: boolean
+  downloads: number
+  versions: VersionEntry[]
+  /** Set when a moderator removed the course from the catalog; only a moderator can restore it. */
+  moderation?: Moderation | null
+  /** When the course was last published or changed. Absent on servers older than the web app. */
+  updatedAt?: string
+  hasCover?: boolean
+}

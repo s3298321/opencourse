@@ -1,0 +1,633 @@
+import { authoringRunState, beginAuthoringTurn } from './authoring-state'
+import { runAuthoringTool } from './authoring-tools'
+import { getAuthoringCourse } from './course-authoring'
+/** The authoring journey uses real React controls and the production save/export services. */
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Menu, type BrowserWindow } from 'electron'
+import { exportCourseZipPath } from './course-authoring'
+import { extractArchive } from './unzip'
+import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
+interface Result { name: string; ok: boolean; detail: string }
+export async function editorSmoke(win: BrowserWindow): Promise<Result[]> {
+  const results: Result[] = []
+  const staging = mkdtempSync(join(tmpdir(), 'opencourse-editor-smoke-'))
+  const run = async (name: string, source: string): Promise<unknown> => {
+    try {
+      const detail = await win.webContents.executeJavaScript(`(async () => {
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const wait = async test => { for(let n=0;n<200;n++) { const result=test(); if(result) return result; await sleep(25); } throw new Error('Timed out: '+test.toString()); };
+        const visible = element => element?.checkVisibility({ visibilityProperty: true });
+        const find = selector => [...document.querySelectorAll(selector)].find(visible);
+        const settleLayout = async () => {
+          await new Promise(requestAnimationFrame);
+          await Promise.all(find('.author-layout').getAnimations().map(animation => animation.finished));
+        };
+        const button = text => [...document.querySelectorAll('button')].find(b=>visible(b) && b.textContent.trim()===text);
+        const field = async (label,value) => { const input=await wait(()=>document.querySelector('[aria-label="'+label+'"]')); Object.getOwnPropertyDescriptor(input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value); input.dispatchEvent(new Event('input',{bubbles:true})); await sleep(30); };
+        ${source}
+      })()`)
+      results.push({ name, ok: true, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) })
+      return detail
+    } catch (error) {
+      writeFileSync(join(tmpdir(), 'opencourse-editor-failure.png'), (await win.webContents.capturePage()).toPNG())
+      results.push({ name, ok: false, detail: String(error) }); throw error
+    }
+  }
+  const pointerDrag = async (dragPoints: { from: { x: number; y: number }; to: { x: number; y: number } }): Promise<void> => {
+    // Intercept Chromium's drag so the test doesn't depend on macOS's native drag loop.
+    win.webContents.debugger.attach('1.3')
+    try {
+      await win.webContents.debugger.sendCommand('Input.setInterceptDrags', { enabled: true })
+      let dragData: unknown
+      const onMessage = (_event: Electron.Event, method: string, params: { data?: unknown }): void => { if (method === 'Input.dragIntercepted') dragData = params.data }
+      win.webContents.debugger.on('message', onMessage)
+      try {
+        await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...dragPoints.from })
+        await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', buttons: 1, clickCount: 1, ...dragPoints.from })
+        for (let step = 1; step <= 10; step++) {
+          await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', button: 'left', buttons: 1, x: Math.round(dragPoints.from.x + (dragPoints.to.x - dragPoints.from.x) * step / 10), y: Math.round(dragPoints.from.y + (dragPoints.to.y - dragPoints.from.y) * step / 10) })
+        }
+        for (let n = 0; n < 50 && !dragData; n++) await new Promise(resolve => setTimeout(resolve, 20))
+        if (!dragData) throw new Error('Chromium did not start the palette drag')
+        for (const type of ['dragEnter', 'dragOver', 'dragOver', 'drop']) {
+          await win.webContents.debugger.sendCommand('Input.dispatchDragEvent', { type, ...dragPoints.to, data: dragData })
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      } finally { win.webContents.debugger.off('message', onMessage) }
+    } catch (error) { results.push({ name: 'editor: Chromium pointer drag', ok: false, detail: String(error) }); throw error }
+    finally { win.webContents.debugger.detach() }
+  }
+  try {
+    await run('editor: a new course is unsaved until Save, and leaving asks first', `
+      (await wait(()=>find('.titlebar [data-section="courses"]'))).click(); await sleep(100);
+      for(let n=0;n<4 && !find('.library:not(.documents-library):not(.coach)');n++) {find('.titlebar .crumbs a')?.click(); await sleep(200);}
+      await wait(()=>find('.library:not(.documents-library):not(.coach)'));
+      button('Create course').click(); await wait(()=>document.querySelector('.course-editor'));
+      const state=await wait(()=>document.querySelector('.author-save-state'));
+      if(state.textContent!=='Not saved yet') throw new Error('A new course does not say it is unsaved: '+state.textContent);
+      for (const label of ['Discard draft','Save & export ZIP…','Save course']) if (button(label)) throw new Error('Old editor action remains: '+label);
+      const save = button('Save'), modes = find('.author-mode');
+      const saveBox = save.getBoundingClientRect(), modesBox = modes.getBoundingClientRect();
+      if (saveBox.height !== 28) throw new Error('Save should keep its compact 28px height');
+      const headerBox = find('.author-header').getBoundingClientRect();
+      if (Math.abs(modesBox.left + modesBox.right - headerBox.left - headerBox.right) > 1) throw new Error('Editing mode should be centered in the header');
+      if (modesBox.right > saveBox.left) throw new Error('Editing mode should be to the left of Save');
+      for (const control of [modes, ...modes.querySelectorAll('button')]) {
+        const box = control.getBoundingClientRect();
+        if (box.top !== saveBox.top || box.bottom !== saveBox.bottom) throw new Error('Editing mode and Save must have the same top and bottom edges');
+      }
+      const before = find('.author-layout').getBoundingClientRect().top;
+      save.click();
+      const notice = await wait(()=>find('.author-errors'));
+      if (!notice.textContent.includes('Course validation') || find('.author-layout').getBoundingClientRect().top !== before) throw new Error('Validation moved the workspace');
+      find('[aria-label="Dismiss notice"]').click(); await wait(()=>!find('.author-notice'));
+
+      await field('Course title','Editor smoke course'); await field('Course slug','editor-smoke');
+      await field('Description','Allow $T$ minutes.\\n\\n$$t = T/3$$');
+      await field('Prerequisites (one per line)','Understand $x^2$.\\n$$a+b=T$$');
+      await wait(()=>document.querySelector('.author-preview .course-description-markdown .course-inline-formula annotation')?.textContent === 'T');
+      await wait(()=>document.querySelector('.author-preview .course-description-markdown math[display="block"] annotation')?.textContent === 't = T/3');
+      await wait(()=>document.querySelector('.author-preview .course-prerequisites li msup'));
+      await wait(()=>document.querySelector('.author-preview .course-prerequisites math[display="block"] annotation')?.textContent === 'a+b=T');
+      button('Add module').click(); await field('Module title','First module');
+      [...document.querySelectorAll('.outline-add')].find(b=>b.textContent.includes('Add lesson')).click(); await field('Lesson title','First lesson');
+      button('Elements').click();
+      const transfer = new DataTransfer();
+      (await wait(()=>find('[aria-label="Drag Text"]'))).dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer})); await sleep(30);
+      document.querySelector('.lesson-drop-zone.append').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer})); await sleep(30); await field('Block slug','lesson-text'); await field('Markdown content','## Authored in the app\\n\\nStable identities survive edits. Evaluate $f(x)$ at $x = 2$.');
+      await wait(()=>document.querySelector('.lesson-element [aria-label="Block slug"]')?.value==='lesson-text');
+      button('Outline').click();
+      await wait(()=>document.querySelector('.author-preview p .course-inline-formula annotation')?.textContent === 'f(x)');
+      await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
+      await sleep(300);
+      if((await window.opencourse.listCourses()).some(c=>c.title==='Editor smoke course')) throw new Error('An unsaved course reached the library');
+      const parkedEditor = document.querySelector('.course-editor');
+      document.querySelector('.titlebar [data-section="documents"]').click();
+      await wait(()=>document.querySelector('.titlebar [data-section="documents"]').getAttribute('aria-checked')==='true');
+      if(document.querySelector('.dialog')) throw new Error('Switching halves asked to discard the parked draft');
+      document.dispatchEvent(new Event('authoring:save')); await sleep(100);
+      if((await window.opencourse.listCourses()).some(c=>c.title==='Editor smoke course')) throw new Error('Hidden editor handled Save');
+      const windowUnload = new Event('beforeunload', {cancelable:true}); window.dispatchEvent(windowUnload);
+      if(!windowUnload.defaultPrevented) throw new Error('Parked dirty editor did not guard window close');
+      document.querySelector('.titlebar .user-chip').click();
+      const userMenu=await wait(()=>document.querySelector('.user-menu'));
+      [...userMenu.querySelectorAll('.menu-item')].find(b=>/Switch user/.test(b.textContent)).click();
+      await wait(()=>document.querySelector('.dialog')); document.querySelector('.dialog-cancel').click(); await sleep(50);
+      document.querySelector('.titlebar [data-section="courses"]').click(); await sleep(100);
+      if(document.querySelector('.course-editor')!==parkedEditor) throw new Error('Parked editor was remounted');
+      document.querySelector('.titlebar .crumbs a').click();
+      const dialog=await wait(()=>document.querySelector('.dialog'));
+      if(!dialog.textContent.includes('Discard unsaved changes?')) throw new Error('Leaving did not warn');
+      document.querySelector('.dialog-cancel').click(); await sleep(80);
+      if(document.querySelector('.dialog') || !document.querySelector('.course-editor')) throw new Error('Keep editing left the editor');
+      if(!document.querySelector('.author-preview').textContent.includes('Stable identities')) throw new Error('Keep editing lost the edits');
+      return 'Unsaved indicator, no library card, Back warns and Keep editing stays';
+    `)
+    const dragPoints = await run('editor: palette and drop targets are visible', `
+      button('Elements').click();
+      if(document.querySelector('.elements-palette [aria-label^="Add "]')) throw new Error('Palette still has Add buttons');
+      const append=document.querySelector('.lesson-drop-zone.append');
+      if(append.getBoundingClientRect().height<100 || getComputedStyle(append).borderTopStyle!=='dashed') throw new Error('Persistent append zone is missing or too small');
+      const tab=document.querySelector('.author-sidebar-tabs button');
+      if(tab.getBoundingClientRect().height>34 || parseFloat(getComputedStyle(tab).fontSize)>12) throw new Error('Sidebar tabs are not compact');
+      window.__EDITOR_DRAG_EVENTS=[];
+      for(const type of ['dragstart','dragover','drop','dragend']) document.addEventListener(type,e=>{window.__EDITOR_DRAG_EVENTS.push({type, target:e.target.outerHTML.slice(0,160),dragging:!!document.querySelector('.lesson-workspace.dragging'),effect:e.dataTransfer.effectAllowed,x:e.clientX,y:e.clientY})},true);
+      const source=await wait(()=>find('[aria-label="Drag Text"]')), target=document.querySelector('[data-drop-index="0"]');
+      target.scrollIntoView({block:'center'}); await sleep(100);
+      const a=source.getBoundingClientRect(), b=target.getBoundingClientRect();
+      return {from:{x:Math.round(a.x+a.width/2),y:Math.round(a.y+a.height/2)},to:{x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}};
+    `) as { from: { x: number; y: number }; to: { x: number; y: number } }
+    await pointerDrag(dragPoints)
+    await run('editor: palette drag inserts and keyboard reordering preserves existing editors', `
+      try { await wait(()=>document.querySelectorAll('.lesson-workspace > .lesson-element').length===2); } catch(e) { throw new Error(e.message+' '+JSON.stringify(window.__EDITOR_DRAG_EVENTS)); }
+      const added=document.querySelector('.lesson-workspace > .lesson-element');
+      window.__EDITOR_SMOKE_DRAGGED=added.dataset.elementId;
+      const input=added.querySelector('[aria-label="Markdown content"]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'A second element created by dragging.'); input.dispatchEvent(new Event('input',{bubbles:true})); await sleep(50);
+      [...added.querySelectorAll('button')].find(b=>b.textContent==='↓ Move down').click(); await sleep(50);
+      if(document.querySelectorAll('.lesson-workspace > .lesson-element')[1]!==added || added.querySelector('[aria-label="Markdown content"]')!==input) throw new Error('Reordering remounted the element editor');
+      if(!document.querySelector('.author-preview').textContent.includes('A second element created by dragging.')) throw new Error('Full lesson preview is stale');
+      button('Outline').click();
+      return 'Native pointer drag inserts text and reordering retains the editor and live preview';
+    `)
+    const reorderPoints = await run('editor: collapsed elements expose reorder handles', `
+      for (const button of document.querySelectorAll('.lesson-element-heading button[aria-expanded="true"]')) button.click();
+      await sleep(50);
+      const target=document.querySelector('[data-drop-index="0"]'); target.scrollIntoView({block:'center'}); await sleep(100);
+      const source=document.querySelectorAll('.lesson-workspace > .lesson-element')[1].querySelector('.element-drag-handle');
+      const a=source.getBoundingClientRect(), b=target.getBoundingClientRect();
+      return {from:{x:Math.round(a.x+a.width/2),y:Math.round(a.y+a.height/2)},to:{x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}};
+    `) as { from: { x: number; y: number }; to: { x: number; y: number } }
+    await pointerDrag(reorderPoints)
+    await run('editor: handle dragging reorders existing elements without changing their identity', `
+      await wait(()=>document.querySelector('.lesson-workspace > .lesson-element')?.dataset.elementId===window.__EDITOR_SMOKE_DRAGGED);
+      const moved=document.querySelector('.lesson-workspace > .lesson-element');
+      [...moved.querySelectorAll('button')].find(b=>b.textContent==='↓ Move down').click(); await sleep(50);
+      for (const button of document.querySelectorAll('.lesson-element-heading button[aria-expanded="false"]')) button.click();
+      await sleep(50);
+      if(document.querySelectorAll('.lesson-workspace > .lesson-element')[1].dataset.elementId!==window.__EDITOR_SMOKE_DRAGGED) throw new Error('Reordering replaced identity');
+      return 'Existing elements move using their handles and retain IDs';
+    `)
+    // ⌘S is a menu accelerator; a synthetic key would only prove the fallback listener.
+    const saveItem = Menu.getApplicationMenu()?.getMenuItemById('save-course')
+    if (!saveItem?.enabled) throw new Error('Course ▸ Save Course is not enabled while the editor is open')
+    saveItem.click()
+    const courseId = await run('editor: Course ▸ Save Course (⌘S) saves the course', `
+      await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved');
+      const entry=(await window.opencourse.listCourses()).find(c=>c.title==='Editor smoke course');
+      if(!entry || entry.draft || !(await window.opencourse.getCourse(entry.courseId))) throw new Error('Saved course is not in the library');
+      window.__EDITOR_SMOKE_ID=entry.courseId;
+      return entry.courseId;
+    `) as string
+
+    let stoppedCleanTurn = false
+    const cleanTurn = beginAuthoringTurn(courseId, 'smoke-clean-turn', () => { stoppedCleanTurn = true })
+    try {
+      await run('editor: a clean running assistant warns before departure and stays running when parked', `
+        document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
+        if(!document.querySelector('.dialog').textContent.includes('The assistant is still working. Leaving stops it.')) throw new Error('Clean running turn had no warning');
+        document.querySelector('.dialog-cancel').click(); await sleep(80);
+        if(!(await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Cancelling stopped the assistant');
+        document.querySelector('[data-section="documents"]').click(); await sleep(80);
+        if(document.querySelector('.dialog')) throw new Error('Parking asked to stop the turn');
+        document.querySelector('[data-section="courses"]').click(); await sleep(80);
+        document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
+        document.querySelector('.dialog-confirm').click(); await wait(()=>find('.library'));
+        if((await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Leaving did not stop the turn');
+        const card=await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>visible(c) && c.textContent.includes('Editor smoke course')));card.click();
+        await wait(()=>document.querySelector('.detail .course-description-markdown math[display="block"] annotation')?.textContent === 't = T/3');
+      await wait(()=>document.querySelector('.detail .course-prerequisites li msup'));
+      await wait(()=>document.querySelector('.detail .course-prerequisites math[display="block"] annotation')?.textContent === 'a+b=T');
+      (await wait(()=>button('Edit course'))).click(); await wait(()=>document.querySelector('.course-editor'));
+        return 'Clean running turn confirms; Cancel and parking preserve it; confirmed departure stops it';
+      `)
+      if (!stoppedCleanTurn || authoringRunState(courseId).chatId !== null) throw new Error('Clean authoring lease survived confirmed departure')
+    } finally { cleanTurn.release() }
+    await run('editor: Discard leaves the saved course as it was, and a discarded new course leaves nothing', `
+      button('Course details').click(); await field('Course title','Unsaved title');
+      await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
+      document.querySelector('.crumbs a').click();
+      await wait(()=>document.querySelector('.dialog')); document.querySelector('.dialog-confirm').click();
+      await wait(()=>find('.library'));
+      const saved=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID);
+      if(saved.document.manifest.title!=='Editor smoke course' || saved.draft.dirty) throw new Error('Discard changed the saved course');
+      await window.opencourse.discardCourseDraft(window.__EDITOR_SMOKE_ID);
+      const before=(await window.opencourse.listCourses()).length;
+      button('Create course').click(); await wait(()=>document.querySelector('.course-editor'));
+      await field('Course title','Thrown away');
+      await wait(()=>document.querySelector('.author-save-state').textContent==='Unsaved changes');
+      document.querySelector('.crumbs a').click();
+      await wait(()=>document.querySelector('.dialog')); document.querySelector('.dialog-confirm').click();
+      await wait(()=>find('.library'));
+      if((await window.opencourse.listCourses()).length!==before) throw new Error('A discarded new course left a library entry');
+      [...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
+      return 'Saved course untouched; discarded new course gone';
+    `)
+    await run('editor: stacked lesson editors retain a live preview', `
+      document.querySelector('.outline-row[aria-label="First lesson"]').click();
+      const input=await wait(()=>document.querySelector('[aria-label="Markdown content"]'));
+      if(input.getBoundingClientRect().height<150 || !input.closest('.lesson-element')) throw new Error('Markdown editor is not in the lesson stack');
+      const workspace=document.querySelector('.author-form').getBoundingClientRect(), preview=document.querySelector('.author-preview').getBoundingClientRect();
+      if(preview.width<250 || preview.left<workspace.right-1) throw new Error('Preview is not beside the workspace');
+      if(document.querySelector('.outline-row[aria-label="Text: lesson-text"]')) throw new Error('Blocks remain in outline');
+      return 'Stacked editor and full lesson preview side by side';
+    `)
+    await run('editor: author a LaTeX block and preview its stacked fraction', `
+      button('Elements').click();
+      const transfer = new DataTransfer();
+      (await wait(()=>find('[aria-label="Drag LaTeX formula"]'))).dispatchEvent(new DragEvent('dragstart', {bubbles:true, dataTransfer:transfer}));
+      await sleep(30);
+      (await wait(()=>find('.lesson-drop-zone.append'))).dispatchEvent(new DragEvent('drop', {bubbles:true, cancelable:true, dataTransfer:transfer}));
+      await field('LaTeX source', ${JSON.stringify(String.raw`m = \frac{f(b)-f(a)}{b-a},\quad b \ne a`)});
+      await wait(()=>document.querySelector('.author-preview mfrac')?.textContent.includes('f(b)'));
+      button('Save').click();
+      await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved');
+      button('Outline').click();
+      return 'Edited formula previewed and saved';
+    `)
+    await run('editor: Panda layers inputs, canvas and cards', `
+      await window.opencourse.applyTheme(${JSON.stringify(WHITE_THEME_ID)});
+      const background = selector => getComputedStyle(find(selector)).backgroundColor;
+      await wait(() => background('[aria-label="Lesson title"]') === 'rgb(236, 234, 230)');
+      for (const selector of ['.course-editor', '.author-preview']) {
+        if (background(selector) !== 'rgb(250, 248, 245)') throw new Error(selector + ' lost the Panda canvas');
+      }
+      if (background('.lesson-element') !== 'rgb(255, 255, 255)') throw new Error('Lesson card lost its white surface');
+      return 'Gray fields, warm off-white canvas and white lesson cards';
+    `)
+    const image = await win.webContents.capturePage()
+    writeFileSync(join(tmpdir(), 'opencourse-course-editor.png'), image.toPNG())
+    await win.webContents.executeJavaScript('window.opencourse.applyTheme(null)')
+    await run('editor: learn, edit, rename and preserve progress', `
+      document.querySelector('.crumbs a').click(); await wait(()=>find('.library'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>document.querySelector('.detail'));
+      document.querySelector('.lesson-row').click(); await wait(()=>document.querySelector('.lesson-head'));
+      if(!document.querySelector('.lesson-head').parentElement.textContent.includes('Stable identities')) throw new Error('Saved content not readable');
+      await wait(()=>document.querySelector('.lesson-inner p .course-inline-formula annotation')?.textContent === 'f(x)');
+      const reader = getComputedStyle(find('.lesson-inner'));
+      window.__EDITOR_READING_WIDTH = parseFloat(reader.maxWidth) - parseFloat(reader.paddingLeft) - parseFloat(reader.paddingRight);
+      const fraction = await wait(()=>document.querySelector('.lesson-inner mfrac'));
+      const [numerator, denominator] = fraction.children;
+      if(numerator.getBoundingClientRect().bottom > denominator.getBoundingClientRect().top) throw new Error('Saved fraction is not stacked');
+      button('Mark lesson completed').click(); await wait(()=>button('Lesson completed'));
+      const before=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID); window.__EDITOR_SMOKE_LESSON=before.document.manifest.modules[0].lessons[0].nodeId;
+      // A lesson's back link is its course overview, and the overview's is All courses.
+      for (let n=0;n<3 && !find('.library');n++) { document.querySelector('.titlebar .crumbs a').click(); await sleep(250); }
+      await wait(()=>find('.library'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click(); await wait(()=>button('Edit course')); button('Edit course').click(); await wait(()=>document.querySelector('.course-editor'));
+      [...document.querySelectorAll('.outline-row')].find(b=>b.textContent.includes('First lesson')).click(); await field('Lesson title','Renamed lesson'); await field('Lesson slug','renamed-lesson');
+      button('Save').click(); await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved');
+      const after=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID);
+      if(after.document.manifest.modules[0].lessons[0].nodeId!==window.__EDITOR_SMOKE_LESSON) throw new Error('Lesson identity changed');
+      if(!(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID)).completedLessons.includes(window.__EDITOR_SMOKE_LESSON)) throw new Error('Completion lost');
+      return 'Renamed lesson retains its UUID and completion';
+    `)
+    await run('editor: manual and AI previews share the lesson reading width', `
+      const layout = find('.author-layout'), pane = find('.author-preview');
+      for (const mode of ['Manual', 'AI']) {
+        button(mode).click();
+        await wait(() => button(mode).getAttribute('aria-pressed') === 'true');
+        for (const width of [2400, 1100]) {
+          layout.style.width = width + 'px';
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const heading = find('.author-preview .lesson-head').getBoundingClientRect();
+          const left = heading.left - pane.getBoundingClientRect().left - pane.clientLeft;
+          const right = pane.clientWidth - left - heading.width;
+          if (Math.abs(left - right) > 1) throw new Error(mode + ' preview is off center');
+          const gutter = parseFloat(getComputedStyle(find('.author-preview .content-inner')).paddingLeft);
+          const expected = Math.min(window.__EDITOR_READING_WIDTH, pane.clientWidth - 2 * gutter);
+          if (Math.abs(heading.width - expected) > 1) throw new Error(mode + ' preview width ' + heading.width + ', expected ' + expected);
+        }
+      }
+      layout.style.removeProperty('width');
+      button('Manual').click();
+      await settleLayout();
+      return 'Both previews center the reader column and fit narrower panes';
+    `)
+    const dragDivider = async (pane: 'outline' | 'preview' | 'chat', delta: number): Promise<number> => {
+      const selector = JSON.stringify(`[role="separator"][aria-label="Resize ${pane}"]`)
+      const { x, y, width } = await win.webContents.executeJavaScript(`(() => {
+        const handle = document.querySelector(${selector});
+        const rect = handle.getBoundingClientRect();
+        return {x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + 60), width: Number(handle.ariaValueNow)};
+      })()`)
+      win.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: x + delta, y, modifiers: ['leftbuttondown'] })
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: x + delta, y, button: 'left', clickCount: 1 })
+      const expected = width + (pane === 'outline' ? delta : -delta)
+      await run(`editor: drag the ${pane} divider`, `
+        await wait(()=>Number(find(${selector}).ariaValueNow) === ${expected});
+        return find(${selector}).ariaValueText;
+      `)
+      return expected
+    }
+    const outlineWidth = await dragDivider('outline', 30)
+    const previewWidth = await dragDivider('preview', 30)
+    await run('editor: AI inherits the resized outline', `
+      button('AI').click(); await wait(()=>find('[aria-label="Resize chat"]'));
+      await settleLayout();
+      if (find('.author-outline').offsetWidth !== ${outlineWidth}) throw new Error('AI lost the outline width');
+      return 'Shared outline';
+    `)
+    const chatWidth = await dragDivider('chat', -30)
+    await run('editor: reopening restores each split and minimum widths protect adjacent panes', `
+      document.querySelector('.crumbs a').click(); await wait(()=>find('.library'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click();
+      (await wait(()=>button('Edit course'))).click(); await wait(()=>find('.authoring-chat'));
+      if (find('.author-outline').offsetWidth !== ${outlineWidth} || find('.authoring-chat').offsetWidth !== ${chatWidth}) throw new Error('AI widths lost on reopen');
+      const key = (pane, key) => find('[aria-label="Resize '+pane+'"]').dispatchEvent(new KeyboardEvent('keydown', {key,bubbles:true}));
+      key('chat','Home'); await wait(()=>find('.authoring-chat').offsetWidth === 320);
+      key('chat','End'); await wait(()=>find('.author-preview').offsetWidth === 280);
+      button('Manual').click(); await wait(()=>find('.author-form'));
+      await settleLayout();
+      if (find('.author-outline').offsetWidth !== ${outlineWidth} || find('.author-preview').offsetWidth !== ${previewWidth}) throw new Error('Manual widths lost on reopen');
+      key('outline','Home'); await wait(()=>find('.author-outline').offsetWidth === 170);
+      key('preview','End'); await wait(()=>find('.author-form').offsetWidth === 340);
+      key('preview','Home'); await wait(()=>find('.author-preview').offsetWidth === 280);
+      return 'Outline, manual and AI splits persist, and all pane minima hold';
+    `)
+    await run('editor: AI mode preserves selection and tabs and displays preview beside chat', `
+      const selected = document.querySelector('.outline-row.selected').textContent;
+      button('AI').click(); await wait(()=>document.querySelector('.authoring-chat .sidechat-input'));
+      await wait(()=>document.querySelector('.authoring-chat .sidechat-tab'));
+      await sleep(450);
+      const form = document.querySelector('.author-form');
+      if (getComputedStyle(form).display !== 'none') throw new Error('Manual fields remain visible in AI mode');
+      const outline = document.querySelector('.author-outline').getBoundingClientRect();
+      const preview = document.querySelector('.author-preview').getBoundingClientRect();
+      const chat = document.querySelector('.authoring-chat').getBoundingClientRect();
+      if (!(outline.right <= preview.left + 1 && preview.right <= chat.left + 1 && chat.right <= innerWidth + 1)) throw new Error('AI mode columns are incorrectly positioned: '+JSON.stringify({outline:outline.toJSON(),preview:preview.toJSON(),chat:chat.toJSON(),innerWidth}));
+      const tab = document.querySelector('.sidechat-tab').textContent;
+      const thumb = find('.author-mode-thumb');
+      const layout = find('.author-layout'), previewPane = find('.author-preview');
+      for (const label of ['Manual', 'AI']) {
+        const start = thumb.getBoundingClientRect(), target = button(label).getBoundingClientRect();
+        const previewStart = previewPane.getBoundingClientRect().left;
+        button(label).click();
+        await wait(()=>button(label).getAttribute('aria-pressed') === 'true');
+        const transitions = thumb.getAnimations();
+        const slide = layout.getAnimations().find(a => a.transitionProperty === '--author-mode-progress');
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          if (!slide) throw new Error(label + ' panes did not animate');
+          slide.pause(); slide.currentTime = Number(slide.effect.getTiming().duration) / 2;
+          const halfway = previewPane.getBoundingClientRect().left;
+          slide.finish();
+          const destination = previewPane.getBoundingClientRect().left;
+          if (halfway <= Math.min(previewStart, destination) || halfway >= Math.max(previewStart, destination)) throw new Error(label + ' preview skipped its intermediate position');
+          if (!transitions.length) throw new Error(label + ' switch did not animate');
+          transitions.forEach(t => { t.pause(); t.currentTime = Number(t.effect.getTiming().duration) / 2; });
+          const middle = thumb.getBoundingClientRect().left;
+          if (middle <= Math.min(start.left, target.left) || middle >= Math.max(start.left, target.left)) throw new Error(label + ' thumb did not slide between buttons');
+          transitions.forEach(t => t.finish());
+        } else if (transitions.length || slide) throw new Error('Mode switch ignored reduced motion');
+        const end = thumb.getBoundingClientRect();
+        if (Math.abs(end.left - target.left) > 1 || Math.abs(end.width - target.width) > 1) throw new Error(label + ' thumb missed its button');
+      }
+      if (document.querySelector('.outline-row.selected').textContent !== selected || document.querySelector('.sidechat-tab').textContent !== tab) throw new Error('Selection or chat was reset');
+      return 'Outline, preview and chat; selection and tabs survive mode switches';
+    `)
+    await run('editor: shared outline rows move vertically and the elements palette slides sideways', `
+      const pane = find('.author-outline'), width = pane.offsetWidth;
+      const tabs = pane.querySelector('.author-sidebar-tabs'), panel = pane.querySelector('#author-panel-outline');
+      const row = panel.querySelector('.outline-entry'), reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      for (const label of ['Manual', 'Elements', 'AI', 'Manual', 'Outline', 'AI']) {
+        const tab = label === 'Outline' || label === 'Elements';
+        const shared = !tab && pane.dataset.tab === 'outline';
+        const before = row.getBoundingClientRect().top, tabsTop = tabs.getBoundingClientRect().top;
+        if (label === 'Outline') button('Elements').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+        else button(label).click();
+        await wait(()=>tab ? button(label).getAttribute('aria-selected') === 'true' : pane.dataset.view === label.toLowerCase());
+        const animations = pane.getAnimations({subtree:true});
+        if (reduced) {
+          if (animations.length) throw new Error('Sidebar ignored reduced motion');
+        } else if (shared) {
+          const shift = animations.find(a => a.effect.target === panel && a.transitionProperty === 'margin-top');
+          const fade = animations.find(a => a.effect.target === tabs && a.transitionProperty === 'opacity');
+          if (!shift || !fade) throw new Error(label + ' missing row or control transition');
+          const movement = shift.effect.getTiming(), controls = fade.effect.getTiming();
+          if (label === 'AI' && (movement.delay !== 0 || controls.delay !== 0)) throw new Error('AI row movement and control fade should start together');
+          if (label === 'Manual' && controls.delay < movement.delay + movement.duration) throw new Error('Manual controls appeared before the rows settled');
+          const sample = label === 'AI' ? controls.duration / 2 : movement.duration / 2;
+          animations.forEach(a=>{ a.pause(); a.currentTime = sample; });
+          const middle = row.getBoundingClientRect().top;
+          const addOpacity = Number(getComputedStyle(panel.querySelector('.outline-add')).opacity);
+          if (label === 'AI' ? !(addOpacity > 0 && addOpacity < 1) : addOpacity !== 0) throw new Error(label + ' Add button has incorrect mid-motion opacity');
+          if (getComputedStyle(panel).opacity !== '1' || getComputedStyle(panel).transform !== 'none' || row !== panel.querySelector('.outline-entry')) throw new Error('Shared outline was replaced or crossfaded');
+          animations.forEach(a=>a.finish());
+          const end = row.getBoundingClientRect().top;
+          if (label === 'AI' ? !(before > middle && middle > end) : !(before < middle && middle < end)) throw new Error(label + ' row did not move smoothly');
+        } else {
+          const direction = label === 'AI' || label === 'Elements' ? 1 : -1;
+          for (const body of pane.querySelectorAll('.author-tab-panel')) {
+            const motion = animations.filter(a=>a.effect.target === body);
+            if (!motion.some(a=>a.transitionProperty === 'transform')) throw new Error(label + ' panel did not slide');
+            motion.forEach(a=>{ a.pause(); a.currentTime = Number(a.effect.getTiming().duration) / 2; });
+            const style = getComputedStyle(body), matrix = new DOMMatrix(style.transform);
+            if (!(Number(style.opacity) > 0 && Number(style.opacity) < 1 && matrix.is2D && Math.abs(matrix.m41) <= 12 &&
+              matrix.m41 * (body.inert ? -direction : direction) > 0 && matrix.m42 === 0)) throw new Error(label + ' incorrect sideways fade: ' + style.transform);
+            const middle = body.getBoundingClientRect().top;
+            motion.forEach(a=>a.finish());
+            if (!body.inert && Math.abs(body.getBoundingClientRect().top - middle) > 1) throw new Error(label + ' incoming panel jumped vertically');
+          }
+        }
+        if (tab && tabs.getBoundingClientRect().top !== tabsTop) throw new Error('Tab switch moved the controls');
+        if (label === 'Outline' && document.activeElement !== button('Outline')) throw new Error('Arrow key lost tab focus');
+        if (pane.offsetWidth !== width) throw new Error('Sidebar changed width');
+        await settleLayout();
+      }
+      return 'Shared rows rise during the Add button fade and settle before the controls return; sideways slides keep a steady vertical position';
+    `)
+    const authored = getAuthoringCourse(courseId)
+    const block = authored.draft.manifest.modules[0].lessons![0].blocks[0]
+    const lease = beginAuthoringTurn(courseId, 'smoke-agent', () => {})
+    try {
+      const edited = JSON.parse(await runAuthoringTool(courseId, 'update_element', { ref: block.nodeId, fields: { content: '## AI edited content\n\nGenerated changes are visible immediately.' } }, lease.token, new AbortController().signal))
+      if (!edited.ok) throw new Error(edited.error)
+      const lessonRef = authored.draft.manifest.modules[0].lessons![0].nodeId
+      for (const [name, args] of [
+        ['update_element', { ref: lessonRef, fields: { estimated_minutes: 5, objectives: ['Evaluate $f(x)$ at a given input.', 'Check this example:\n\n$$f(2) = 4$$'] } }],
+        ['add_element', { parent_ref: lessonRef, element: { type: 'quiz', slug: 'preview-quiz', id: 'preview-quiz', kind: 'single', question: 'What is $2 + 2$?', options: [{ id: 'three', text: '$3$', correct: false }, { id: 'four', text: '$$4$$', correct: true }], explanation: 'Two plus two is **four**. Start at $2$ and add two more.\n\n$$2 + 2 = 4$$' } }],
+        ['add_element', { parent_ref: lessonRef, element: { type: 'exercise', slug: 'preview-exercise', id: 'preview-exercise', title: 'Preview exercise', prompt: 'Write a **small program** to compute $2 + 2$.', hints: ['Try the sum on paper.\n\n$$2 + 2 = 4$$'], verification_instructions: 'Read the output $s$ and compare it with\n\n$$s = 4$$', starter_code: 'print(1)', extra_files: [{ path: 'data.txt', content: 'original support' }], solution: 'print(2)' } }]
+      ] as const) {
+        const result = JSON.parse(await runAuthoringTool(courseId, name, args, lease.token, new AbortController().signal))
+        if (!result.ok) throw new Error(result.error)
+      }
+      await run('editor: AI tools update preview and lock manual fields until the turn finishes', `
+        await wait(()=>document.querySelector('.author-preview').textContent.includes('Generated changes are visible immediately'));
+        const addModule=button('Add module'); if(!button('Save').disabled || (addModule && !addModule.disabled)) throw new Error('Mutations remain available during AI authoring');
+        button('Manual').click();
+        if(!document.querySelector('.author-form fieldset').disabled) throw new Error('Manual changes are not locked');
+        button('AI').click();
+        document.querySelector('.crumbs a').click(); await wait(()=>document.querySelector('.dialog'));
+        const warning=document.querySelector('.dialog').textContent;
+        if(!warning.includes('Your edits to this course have not been saved.') || !warning.includes('The assistant is still working. Leaving stops it.')) throw new Error('Dirty running turn did not combine both warnings');
+        document.querySelector('.dialog-cancel').click();
+        if(!(await window.opencourse.getAuthoringRunState(window.__EDITOR_SMOKE_ID)).chatId) throw new Error('Cancelling stopped the running assistant');
+        return 'Tool edits update the current draft immediately; departure combines unsaved changes and assistant warnings';
+      `)
+    } finally { lease.release() }
+    await run('editor: complete lesson and quiz previews match learning without writing progress', `
+      await wait(()=>document.querySelector('.author-preview .lesson-head') && document.querySelector('.author-preview .exercise .author-preset-files'));
+      await wait(()=>document.querySelector('.author-preview .objectives li .course-inline-formula annotation')?.textContent === 'f(x)');
+      await wait(()=>document.querySelector('.author-preview .objectives li math[display="block"] annotation')?.textContent === 'f(2) = 4');
+      if(!document.querySelector('.author-preview .quiz input') || !document.querySelector('.author-preview .exercise .author-preset-files')) throw new Error('Full lesson preview is missing lesson content');
+      const progress=JSON.stringify(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID));
+      document.querySelector('.outline-row[aria-label="Renamed lesson"]').click();
+      await wait(()=>document.querySelector('.outline-row.selected')?.getAttribute('aria-label')==='Renamed lesson');
+      if(document.querySelector('.author-preview .feedback') || document.querySelector('.author-preview').textContent.includes('Two plus two is')) throw new Error('Quiz preview reveals answers before checking');
+      await wait(()=>document.querySelector('.author-preview .quiz .question annotation')?.textContent === '2 + 2');
+      await wait(()=>document.querySelector('.author-preview .quiz label math[display="block"] annotation')?.textContent === '4');
+      document.querySelector('.author-preview .quiz label math[display="block"]').dispatchEvent(new MouseEvent('click', {bubbles:true})); await sleep(30);
+      button('Check answer').click(); await wait(()=>document.querySelector('.author-preview .feedback.ok'));
+      await wait(()=>document.querySelector('.author-preview .explanation .course-inline-formula annotation')?.textContent === '2');
+      await wait(()=>document.querySelector('.author-preview .explanation math[display="block"] annotation')?.textContent === '2 + 2 = 4');
+      if(JSON.stringify(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID))!==progress) throw new Error('Preview quiz changed learner progress');
+      return 'Full lesson header, objectives and block components; interactive quiz with local grading';
+    `)
+    writeFileSync(join(tmpdir(), 'opencourse-course-editor-quiz.png'), (await win.webContents.capturePage()).toPNG())
+    await run('editor: exercise preset files are viewable and editable in the draft', `
+      document.querySelector('.outline-row[aria-label="Renamed lesson"]').click();
+      await wait(()=>document.querySelector('.author-preview .author-preset-files'));
+      await wait(()=>document.querySelector('.author-preview .exercise .prompt annotation')?.textContent === '2 + 2');
+      await wait(()=>document.querySelector('.author-preview .exercise .verify .course-inline-formula annotation')?.textContent === 's');
+      await wait(()=>document.querySelector('.author-preview .exercise .verify math[display="block"] annotation')?.textContent === 's = 4');
+      const hints = [...document.querySelectorAll('.author-preview .exercise details')].find(el=>el.querySelector('summary')?.textContent.startsWith('Hints'));
+      hints.querySelector('summary').click();
+      await wait(()=>hints.open && hints.querySelector('math[display="block"] annotation')?.textContent === '2 + 2 = 4');
+      if([...document.querySelectorAll('.author-preview button')].some(b=>b.textContent==='Open editor')) throw new Error('Preview offers the learner workbench');
+      const progress=JSON.stringify(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID));
+      button('data.txt').click();
+      const buffer=await wait(()=>document.querySelector('.author-preview [aria-label="Support file: data.txt"]'));
+      if(buffer.getAttribute('contenteditable')!=='false' || !buffer.textContent.includes('original support')) throw new Error('Preset file is not readable in AI preview');
+      button('Edit file').click();
+      await wait(()=>!document.querySelector('.course-editor').classList.contains('ai-mode'));
+      const editor=await wait(()=>document.querySelector('.author-preview [aria-label="Support file: data.txt"][contenteditable="true"]'));
+      editor.focus();
+      const selection=window.getSelection(); const range=document.createRange(); range.selectNodeContents(editor); selection.removeAllRanges(); selection.addRange(range);
+      document.execCommand('insertText',false,'edited support in preview');
+      await sleep(750);
+      const draft=await window.opencourse.getAuthoringCourse(window.__EDITOR_SMOKE_ID);
+      const exercise=draft.draft.manifest.modules[0].lessons[0].blocks.find(b=>b.slug==='preview-exercise');
+      if(exercise.extra_files[0].content!=='edited support in preview') throw new Error('Preset file edit did not autosave: '+exercise.extra_files[0].content);
+      if(JSON.stringify(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID))!==progress) throw new Error('Preview file editing changed learner progress');
+      button('AI').click(); await wait(()=>document.querySelector('.course-editor').classList.contains('ai-mode'));
+      await sleep(80);
+      return 'Browse preset files; Edit file opens manual mode; changes stay in the edit session until Save';
+    `)
+    writeFileSync(join(tmpdir(), 'opencourse-course-editor-exercise.png'), (await win.webContents.capturePage()).toPNG())
+    await run('editor: selected preview text attaches to the course assistant and stays highlighted', `
+      document.querySelector('.outline-row[aria-label="Renamed lesson"]').click();
+      await wait(()=>document.querySelector('.outline-row.selected')?.getAttribute('aria-label')==='Renamed lesson');
+      await sleep(80);
+      const paragraph=await wait(()=>document.querySelector('.author-preview .prose p'));
+      const range=document.createRange(); range.selectNodeContents(paragraph);
+      const selection=window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      paragraph.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+      const offer=await wait(()=>button('Ask about this')); offer.click();
+      const quote=await wait(()=>document.querySelector('.sidechat-quote'));
+      if(!quote.textContent.includes('From the preview') || !quote.textContent.includes('Generated changes')) throw new Error('Preview quote was not attached');
+      if(document.activeElement!==document.querySelector('.sidechat-input') || !CSS.highlights.has('ask-quote')) throw new Error('Composer focus lost the preview highlight');
+      await sleep(100);
+      quote.querySelector('[title="Do not attach this"]').click();
+      await wait(()=>!document.querySelector('.sidechat-quote'));
+      if(CSS.highlights.has('ask-quote')) throw new Error('Dismissed quote remains highlighted');
+      return 'Ask about this attaches the selected preview passage and keeps its highlight until dismissed';
+    `)
+    await run('editor: modules collapse and lessons remain selected across editing modes', `
+      const toggle = label => document.querySelector('.outline-toggle[aria-label="'+label+'"]');
+      const previewText = () => [...document.querySelectorAll('.author-preview .prose')].map(element=>element.textContent).join('\\n');
+      const preview = previewText();
+      if(!document.querySelector('.outline-row[aria-label="First module"] svg.outline-icon')) throw new Error('Module folder icon is missing');
+      if(toggle('Collapse Renamed lesson')) throw new Error('Lessons should not have outline children');
+      if([...document.querySelectorAll('.outline-row')].some(b=>b.textContent.trim()==='lesson-text')) throw new Error('Collapsed lesson still shows blocks');
+      toggle('Collapse First module').click(); await wait(()=>toggle('Expand First module'));
+      if(document.querySelector('.outline-row[aria-label="Renamed lesson"]')) throw new Error('Collapsed module still shows lessons');
+      button('Manual').click(); await wait(()=>!document.querySelector('.course-editor').classList.contains('ai-mode'));
+      if(!toggle('Expand First module')) throw new Error('Mode switch reset collapsed state');
+      toggle('Expand First module').click(); await wait(()=>document.querySelector('.outline-row.selected')?.getAttribute('aria-label')==='Renamed lesson');
+      if(previewText()!==preview) throw new Error('Collapsing changed the selected preview');
+      button('AI').click(); await wait(()=>document.querySelector('.course-editor').classList.contains('ai-mode'));
+      return 'Folder icon, module collapse and unchanged lesson selection across modes';
+    `)
+    writeFileSync(join(tmpdir(), 'opencourse-course-editor-ai.png'), (await win.webContents.capturePage()).toPNG())
+    const previousSize = win.getSize()
+    try {
+      win.setSize(800, 800)
+      await run('editor: narrow AI mode keeps preview above chat', `
+        await sleep(150);
+        const outline = document.querySelector('.author-outline').getBoundingClientRect();
+        const preview = document.querySelector('.author-preview').getBoundingClientRect();
+        const chat = document.querySelector('.authoring-chat').getBoundingClientRect();
+        if(!(outline.right <= preview.left + 1 && chat.top >= preview.bottom - 1 && preview.height > 100 && chat.height > 200 && chat.right <= innerWidth + 1)) throw new Error('Narrow AI layout overflows or hides a pane');
+        find('[aria-label="Resize outline"]').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));
+        const wideOutline = await wait(()=>find('.author-outline').offsetWidth > 300 && find('.author-outline').offsetWidth);
+        document.querySelector('.outline-row[aria-label="Renamed lesson"]').click(); await wait(()=>document.querySelector('.author-preview .author-preset-files'));
+        button('Edit file').click(); await wait(()=>!document.querySelector('.course-editor').classList.contains('ai-mode'));
+        await settleLayout();
+        if(find('.author-outline').offsetWidth !== wideOutline) throw new Error('Manual mode resized the narrow outline');
+        if(getComputedStyle(document.querySelector('.author-preview')).display==='none' || !document.querySelector('.author-preview .cm-content[contenteditable="true"]')) throw new Error('Editing a preset file hides the narrow preview');
+        button('AI').click(); await wait(()=>document.querySelector('.course-editor').classList.contains('ai-mode'));
+        document.querySelector('.outline-row[aria-label="Renamed lesson"]').click(); await wait(()=>document.querySelector('.outline-row.selected')?.getAttribute('aria-label')==='Renamed lesson'); await sleep(80);
+        return 'Preview and chat remain visible; editing preset files keeps the narrow preview open';
+      `)
+      writeFileSync(join(tmpdir(), 'opencourse-course-editor-ai-narrow.png'), (await win.webContents.capturePage()).toPNG())
+    } finally { win.setSize(previousSize[0], previousSize[1]) }
+    await run('editor: AI changes become manually editable and save with existing learner identities', `
+      button('Manual').click();
+      document.querySelector('.outline-row[aria-label="Renamed lesson"]').click();
+      const input=await wait(()=>document.querySelector('[aria-label="Markdown content"]'));
+      if(!input.value.includes('Generated changes') || input.closest('fieldset').disabled) throw new Error('AI changes are not editable');
+      button('Save').click(); await wait(()=>document.querySelector('.author-save-state').textContent==='All changes saved');
+      if(!(await window.opencourse.getProgress(window.__EDITOR_SMOKE_ID)).completedLessons.includes(window.__EDITOR_SMOKE_LESSON)) throw new Error('AI edit lost learner progress');
+      return 'Shared AI/manual draft saves without regenerating existing identities';
+    `)
+    await run('editor: take the saved quiz by selecting a rendered formula', `
+      document.querySelector('.crumbs a').click(); await wait(()=>find('.library'));
+      (await wait(()=>[...document.querySelectorAll('.course-card')].find(c=>c.textContent.includes('Editor smoke course')))).click();
+      (await wait(()=>find('.lesson-row'))).click();
+      await wait(()=>document.querySelector('.lesson-inner .quiz .question annotation')?.textContent === '2 + 2');
+      await wait(()=>document.querySelector('.lesson-inner .objectives li .course-inline-formula annotation')?.textContent === 'f(x)');
+      await wait(()=>document.querySelector('.lesson-inner .objectives li math[display="block"] annotation')?.textContent === 'f(2) = 4');
+      const choice = await wait(()=>find('.lesson-inner .quiz label math[display="block"]'));
+      choice.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+      await wait(()=>choice.closest('label').querySelector('input').checked);
+      button('Check answer').click(); await wait(()=>find('.lesson-inner .quiz .feedback.ok'));
+      await wait(()=>document.querySelector('.lesson-inner .explanation .course-inline-formula annotation')?.textContent === '2');
+      await wait(()=>document.querySelector('.lesson-inner .explanation math[display="block"] annotation')?.textContent === '2 + 2 = 4');
+      return 'Saved quiz grades the selected formula and typesets the explanation';
+    `)
+    await run('exercise: open a saved prompt and reveal its formula hint beside the editor', `
+      button('Open editor').click();
+      const brief = await wait(()=>find('.workbench-brief'));
+      await wait(()=>brief.querySelector('.prompt annotation')?.textContent === '2 + 2');
+      await wait(()=>brief.querySelector('.verify .course-inline-formula annotation')?.textContent === 's');
+      await wait(()=>brief.querySelector('.verify math[display="block"] annotation')?.textContent === 's = 4');
+      const hints = [...brief.querySelectorAll('details')].find(el=>el.querySelector('summary')?.textContent.startsWith('Hints'));
+      if(hints.open) throw new Error('Hints opened before the learner requested them');
+      hints.querySelector('summary').click();
+      await wait(()=>hints.open && hints.querySelector('math[display="block"] annotation')?.textContent === '2 + 2 = 4');
+      return 'Exercise prompt and revealed hint are typeset in the working brief';
+    `)
+    const archive = join(staging, 'course.zip')
+    await exportCourseZipPath(courseId, archive)
+    const extracted = join(staging, 'extracted')
+    const extraction = await extractArchive(archive, extracted)
+    if (extraction.error) throw new Error(extraction.error)
+    const portable = readFileSync(join(extracted, 'course.json'), 'utf8')
+    if (/"(?:nodeId|courseId|revision)"/.test(portable)) throw new Error('Local metadata leaked into ZIP')
+    await run('editor: export and reimport create fresh identities with no learner state', `
+      const imported=await window.opencourse.importCoursePath(${JSON.stringify(archive)});
+      if(imported.status!=='ok' || imported.courseId===window.__EDITOR_SMOKE_ID) throw new Error('Import failed or reused identity');
+      const document=await window.opencourse.getAuthoringCourse(imported.courseId);
+      if(document.document.manifest.modules[0].lessons[0].title!=='Renamed lesson') throw new Error('Edited content lost');
+      if(document.document.manifest.modules[0].lessons[0].nodeId===window.__EDITOR_SMOKE_LESSON) throw new Error('Reimport reused lesson ID');
+      if((await window.opencourse.getProgress(imported.courseId)).completedLessons.length) throw new Error('Reimport inherited completion');
+      await window.opencourse.removeCourse(imported.courseId);
+      return 'Format 1.5 ZIP has authored content, fresh IDs, and no progress';
+    `)
+  } catch { /* individual result reports the failure */ }
+  finally { rmSync(staging, { recursive: true, force: true }) }
+  return results
+}

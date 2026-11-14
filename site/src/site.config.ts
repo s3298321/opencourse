@@ -10,11 +10,13 @@ export const SITE = {
   repo: 's3298321/opencourse',
   repoUrl: 'https://github.com/s3298321/opencourse',
   /**
-   * The Mac download. GitHub answers this with a redirect to the newest
-   * release's file, so the button never goes stale and never shows a GitHub
-   * page - as long as the release workflow keeps the asset's name.
+   * Stable DMG names. The version stays out of the file. The site resolves the
+   * newest `v*` release for OpenCourse and the newest `notebook-v*` release for
+   * OpenCourse Notebook at build time — `/releases/latest` is whichever of the
+   * two was published last, so it is not a download address.
    */
-  downloadUrl: 'https://github.com/s3298321/opencourse/releases/latest/download/OpenCourse-mac-arm64.dmg',
+  appAsset: 'OpenCourse-mac-arm64.dmg',
+  notebookAsset: 'OpenCourse-Notebook-mac-arm64.dmg',
   releasesUrl: 'https://github.com/s3298321/opencourse/releases',
   issuesUrl: 'https://github.com/s3298321/opencourse/issues',
   /** Who runs opencourse.dev and the public catalog, for the privacy page and the legal notice. */

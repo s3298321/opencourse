@@ -1,0 +1,723 @@
+import { useComposerDraft } from '../sidechat/useComposerDraft'
+import { useDesktopDictation, type ServerDictation } from '../sidechat/useDesktopDictation'
+import { useDictation, DictationButton } from '../../learning-ui/useDictation'
+import { networkRetryWarning } from '@core/chat-network'
+import { ToolActivityIcon } from '../../learning-ui/ToolActivityIcon'
+import ActiveChatTools from '../../learning-ui/ActiveChatTools'
+import ChatToolsMenu from '../../learning-ui/ChatToolsMenu'
+import PlanQuestions from './PlanQuestions'
+import { FlashcardPreview } from '../../learning-ui/PersonalCards'
+import type { FlashcardProposal } from '@core/personal-cards'
+import { normalizeResearchSources } from '@core/authoring/research'
+import ActionButton from './ActionButton'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, JSX } from 'react'
+import type { ChatMessage, ChatQuote, QuoteSource } from '@core/types'
+import type { ReadingSource } from '@core/documents/types'
+import { modelReasoning } from '@core/ai'
+import { OPENAI_OVERLOADED, isOpenAIOverload } from '@core/ai-errors'
+import { CHATGPT_USAGE_URL } from './AISettings'
+import ConnectionIcon, { PROVIDER_LABELS } from './ConnectionIcon'
+import { citeAnswer, shortTitle, stripWebCitationTokens, type CitedSource } from '@core/sidechat/citations'
+import { REASONING_LABELS, webSearchFor } from '@core/sidechat/models'
+import { MAX_MESSAGE_CHARS } from '@core/sidechat/thread'
+import Html from './Html'
+import { useAutoGrow } from '../sidechat/useAutoGrow'
+import { useChatScroll } from '../sidechat/useChatScroll'
+import type { ChatPanel } from '../sidechat/useChat'
+import Menu from './Menu'
+import { useScreenActive } from '../screen-activity'
+import ChatTabTitle from './ChatTabTitle'
+import ChatMessageMeta from './ChatMessageMeta'
+
+const noSourceIcons = async (): Promise<Record<string, string | null>> => ({})
+
+interface Props {
+  serverDictation?: ServerDictation
+  flashcards?: { proposals: FlashcardProposal[]; decide: (id: string, action: 'save' | 'dismiss', cardId: string) => Promise<FlashcardProposal> }
+  visible?: boolean
+  panel: ChatPanel
+  variant?: 'lesson' | 'project' | 'authoring' | 'document' | 'notebook'
+  onSource?: (source: ReadingSource) => void
+  sourceIcons?: (id: string, seq: number) => Promise<Record<string, string | null>>
+  storageKey?: string
+  composer?: { text: string; setText: (text: string) => void }
+  /** What the learner highlighted - in the lesson or in an answer - waiting to be asked about. */
+  quote: ChatQuote | null
+  onQuoteUsed: () => void
+  onClose?: () => void
+  /** Takes you to settings. The panel never learns what a Route is. */
+  onAddKey: () => void
+  /** The reader's text size, when a lesson screen sets one: the composer refits to it. */
+  textScale?: number
+}
+
+const MIN_WIDTH = 320
+/** How much of the lesson column must survive a drag. */
+const MIN_CONTENT = 320
+/** The count appears once a message is this close to the limit, and not before. */
+const COUNT_FROM = MAX_MESSAGE_CHARS * 0.8
+
+/** What an attached passage is called, by where it was highlighted. */
+const QUOTE_LABEL: Record<QuoteSource, string> = { lesson: 'From the lesson', answer: 'From an answer', preview: 'From the preview', document: 'From the document', notebook: 'From the Python notebook', 'writing-notebook': 'From the notebook page' }
+
+/** A chat with nothing said in it yet has no title, so say where it started. */
+function tabLabel(title: string, fallback: string): string {
+  const text = title.trim()
+  if (!text) return fallback
+  return text.length > 26 ? `${text.slice(0, 26)}…` : text
+}
+
+function HistoryMessageTime({ at }: { at?: string | null }): JSX.Element | null {
+  if (!at) return null
+  const date = new Date(at)
+  if (Number.isNaN(date.getTime())) return null
+  const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'long' }).format(date)
+  return <> · <time dateTime={at} title={`Last message: ${fullDate}`} aria-label={`Last message: ${fullDate}`}>
+    {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', hourCycle: 'h23' }).format(date)}
+  </time></>
+}
+
+function Answer({ text }: { text: string }): JSX.Element {
+  return <Html className="chat-body prose" lesson source={text} />
+}
+
+function SendIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+      <path
+        d="M8 13V3.5M3.5 7.5 8 3l4.5 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+
+/** A bulb: what the reasoning picker is about, so its label can be one word. */
+function ThinkIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <path
+        d="M8 1.9a4.2 4.2 0 0 0-2.55 7.55c.45.35.7.85.7 1.4v.6h3.7v-.6c0-.55.25-1.05.7-1.4A4.2 4.2 0 0 0 8 1.9ZM6.4 13.9h3.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * Icons already fetched, by answer, for the life of the window. A tab that
+ * comes back up redraws its sources with their icons at once, rather than
+ * flashing letter tiles while main answers from its own cache.
+ */
+const sourceIcons = new Map<string, Record<string, string | null>>()
+
+/** A letter tile's colour, from the site's name: the same site always looks the same. */
+function hueOf(host: string): number {
+  let hash = 0
+  for (const char of host) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  return hash % 360
+}
+
+function siteOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * The site's favicon once main has it, and a letter tile until then - or for
+ * good, if it has none. Same box either way, so nothing moves when it lands.
+ */
+function SourceIcon({ host, icon }: { host: string; icon: string | null | undefined }): JSX.Element {
+  const [broken, setBroken] = useState(false)
+  if (icon && !broken) {
+    return <img className="source-icon" src={icon} alt="" width={16} height={16} onError={() => setBroken(true)} />
+  }
+  return (
+    <span className="source-icon letter" style={{ '--hue': hueOf(host) } as CSSProperties} aria-hidden="true">
+      {(host.match(/[a-z0-9]/i)?.[0] ?? '?').toUpperCase()}
+    </span>
+  )
+}
+
+/**
+ * The pages an answer leaned on, numbered to match the markers in its text.
+ * `data-ask="none"` keeps a selection in here from being offered as a quote of
+ * the answer: these are the app's labels, not anything the model said.
+ * A click opens the page in the browser, through App's handler for every link.
+ */
+function Sources({ chatId, seq, sources, fetchIcons }: { chatId: string; seq: number; sources: CitedSource[]; fetchIcons?: Props['sourceIcons'] }): JSX.Element {
+  const cacheKey = `${chatId}:${seq}`
+  const [icons, setIcons] = useState<Record<string, string | null>>(() => sourceIcons.get(cacheKey) ?? {})
+  useEffect(() => {
+    if (sourceIcons.has(cacheKey)) return
+    let cancelled = false
+    ;(fetchIcons ?? window.opencourse.getChatSourceIcons)(chatId, seq)
+      .then((found) => {
+        // All letter tiles may be an outage rather than an answer, so that is
+        // not kept: the next time this answer comes up, it asks again.
+        if (Object.values(found).some(Boolean)) sourceIcons.set(cacheKey, found)
+        if (!cancelled) setIcons(found)
+      })
+      .catch(() => {
+        // Letter tiles are the fallback for every failure; there is nothing to report.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cacheKey, chatId, seq, fetchIcons])
+  return (
+    <nav className="chat-sources" data-ask="none" aria-label="Cited sources">
+      <div className="chat-sources-label">Cited sources</div>
+      <ol>
+        {sources.map((source) => (
+          <li key={source.n}>
+            <a className="chat-source" href={source.url} title={source.title ? `${source.title}\n${source.url}` : source.url}>
+              <span className="chat-source-n">{source.n}</span>
+              <SourceIcon host={source.host} icon={icons[siteOf(source.url)]} />
+              <span className="chat-source-title">{shortTitle(source.title, source.url)}</span>
+              <span className="chat-source-host">{source.host}</span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}
+
+/**
+ * A finished answer. Its citations become numbered markers in the text and a
+ * list under it - decided here, from what was stored (core/sidechat/citations.ts).
+ * `data-ask` is on the answer's text alone, so a drag that runs on into the
+ * sources is not offered as a quote of what the model said.
+ */
+function AnswerTurn({ chatId, message, onSource, sourceIcons: fetchIcons }: { chatId: string | null; message: ChatMessage; onSource?: Props['onSource']; sourceIcons?: Props['sourceIcons'] }): JSX.Element {
+  const cited = useMemo(() => citeAnswer(message.text, message.citations), [message.text, message.citations])
+  const consulted = normalizeResearchSources(message.researchSources).filter(source => !cited.sources.some(c => c.url === source.url))
+  const localSources = message.localSources?.filter(source => source.kind !== 'coach')
+  const localSourcesLabel = localSources?.every(source => source.kind === 'document') ? 'Consulted pages' : 'Consulted sources'
+  return (
+    <div className="chat-turn assistant">
+      <div className="chat-answer" data-ask="answer">
+        <Answer text={cited.markdown} />
+      </div>
+      {(message.status === 'stopped' || message.status === 'failed') && <p className="meta" data-ask="none">{message.status === 'stopped' ? 'Stopped · partial response' : 'Response failed · partial text preserved'}</p>}
+      {!!localSources?.length && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label={localSourcesLabel}>
+        <summary className="chat-sources-label">{localSourcesLabel} ({localSources.length})</summary>
+        <nav className="chat-local-sources" aria-label="Reading sources">{localSources.map((source, index) => <button className="ghost" key={index} onClick={() => onSource ? onSource(source) : window.dispatchEvent(new CustomEvent('reading:source', { detail: source }))}>{source.kind === 'document' ? `Page ${source.page}` : source.title}</button>)}</nav>
+      </details>}
+      {chatId && cited.sources.length > 0 && <Sources chatId={chatId} seq={message.seq} sources={cited.sources} fetchIcons={fetchIcons} />}
+      {consulted.length > 0 && <details className="chat-sources chat-consulted-sources" data-ask="none" aria-label="Other research sources">
+        <summary className="chat-sources-label">Other research sources ({consulted.length})</summary>
+        <ul>{consulted.map(source => <li key={source.url}><a className="chat-source" href={source.url} title={source.url}>{shortTitle(source.title, source.url)}</a></li>)}</ul>
+      </details>}
+      <ChatMessageMeta message={message} />
+    </div>
+  )
+}
+
+function StopIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+      <rect x="2" y="2" width="12" height="12" rx="2.5" fill="currentColor" />
+    </svg>
+  )
+}
+
+/**
+ * `fresh` is a message said while you were watching, and it arrives rather
+ * than appears. `chatId` is the side chat's, for an answer's sources; a
+ * project chat has none to show.
+ */
+function Message({ message, fresh, chatId, onSource, sourceIcons }: { message: ChatMessage; fresh: boolean; chatId: string | null; onSource?: Props['onSource']; sourceIcons?: Props['sourceIcons'] }): JSX.Element | null {
+  // A lesson snapshot is not something anyone said. It is shown as a divider so
+  // the learner can see where the chat changed lesson, and nothing more - the
+  // text itself is the whole lesson and would bury the conversation.
+  if (message.role === 'context') {
+    return (
+      <div className={`chat-context${fresh ? ' enter' : ''}`} title={message.authoring ? "The current course selection was supplied to the assistant here" : message.project ? "The project requirements were given to the assistant here" : "The lesson was given to the assistant here"}>
+        {message.writingNotebook ? `Notebook page: ${message.writingNotebook.title}` : message.notebook ? 'Python notebook context' : message.document ? `Reading page ${message.document.page}` : message.authoring ? `Working on: ${message.authoring.label}` : message.project ? 'Project requirements supplied' : message.lessonTitle ? `Now reading: ${message.lessonTitle}` : 'Lesson context'}
+      </div>
+    )
+  }
+  // Never animated: a finished answer replaces the partial that streamed it,
+  // and fading in text that was already on screen reads as a flicker.
+  // `data-ask` is what lets a passage of it be highlighted and asked about; the
+  // lesson listens for that (routes/Lesson.tsx), and the partial never has it.
+  if (message.role === 'assistant') return <AnswerTurn chatId={chatId} message={message} onSource={onSource} sourceIcons={sourceIcons} />
+  // A bubble on the right, so scrolling back through a long answer you can
+  // still find where each question was asked without reading for it.
+  return (
+    <div className={`chat-turn user${fresh ? ' enter' : ''}`}>
+      <div className="chat-bubble">
+        {message.quote && (
+          <blockquote className="chat-quote" title={QUOTE_LABEL[message.quote.from]}>
+            {message.quote.text}
+          </blockquote>
+        )}
+        <div className="chat-body">{message.text}</div>
+      </div>
+      <ChatMessageMeta message={message} />
+    </div>
+  )
+}
+
+export default function ChatPanelView({
+  flashcards,
+  panel,
+  variant = 'lesson',
+  visible = true,
+  quote,
+  onQuoteUsed,
+  onClose,
+  onAddKey,
+  storageKey,
+  serverDictation,
+  composer,
+  onSource,
+  sourceIcons: fetchIcons,
+  textScale = 1
+}: Props): JSX.Element {
+  const screenActive = useScreenActive() && visible
+  // The lesson column leaves room for chat; the workbench uses its own dock
+  // or drawer layout while retaining this same panel.
+  const [width, setWidth] = useState(() =>
+    Math.max(MIN_WIDTH, Math.min(420, window.innerWidth - MIN_CONTENT - 268))
+  )
+  const [localDraft, setLocalDraft] = useComposerDraft(panel.activeId, composer ? undefined : storageKey)
+  const draft = composer?.text ?? localDraft
+  const setDraft = composer?.setText ?? setLocalDraft
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const submitting = useRef(false)
+
+  const field = useRef<HTMLTextAreaElement | null>(null)
+  const twin = useRef<HTMLTextAreaElement | null>(null)
+  useAutoGrow(field, twin, draft, textScale)
+
+  const answering = panel.activeId !== null && panel.busy.has(panel.activeId)
+  const dictation = useDesktopDictation(screenActive, serverDictation)
+  const canDictate = dictation.available && screenActive && !!panel.activeId && !answering && !panel.loading && !panel.sendBlocked
+  const voice = useDictation(dictation.transport, canDictate, panel.activeId, MAX_MESSAGE_CHARS, setDraft, field)
+  const overloaded = !!panel.error && isOpenAIOverload(panel.error)
+  const [retrying, setRetrying] = useState(false)
+  const retry = async (): Promise<void> => {
+    if (!panel.retry || answering || panel.sendBlocked || submitting.current) return
+    submitting.current = true
+    setRetrying(true)
+    try { await panel.retry() }
+    finally { submitting.current = false; setRetrying(false) }
+  }
+
+  // What was already in a chat when its tab came up is history and appears as
+  // it is; only what is said while you watch animates in. Remembered per chat,
+  // so switching tabs never replays a whole conversation.
+  const thread = panel.thread
+  const displayedMessages = useMemo(() => {
+    let lastTarget = ''
+    return thread?.messages.filter(message => {
+      if (message.role !== 'context' || !message.authoring) return true
+      const target = JSON.stringify([message.authoring.target, message.authoring.label])
+      const changed = target !== lastTarget
+      lastTarget = target
+      return changed
+    })
+  }, [thread])
+  const [settled, setSettled] = useState<{ chatId: string; upTo: number } | null>(null)
+  if (thread && (settled?.chatId !== thread.chat.id || (!screenActive && (thread.messages.at(-1)?.seq ?? -1) > settled.upTo))) {
+    setSettled({ chatId: thread.chat.id, upTo: thread.messages.at(-1)?.seq ?? -1 })
+  }
+
+  // Which model this tab answers with, and what may be picked instead. A model
+  // already chosen but missing from the list is kept at the front, so changing
+  // tabs retains an unavailable individual selection until the learner chooses
+  // an available model. Main has already reset models removed from the allowlist.
+  const active = panel.tabs.find((t) => t.id === panel.activeId)
+  const provider = active?.provider ?? panel.provider
+  const connectionLabel = `${panel.settingsManagedBy ? `${panel.settingsManagedBy} · ` : ''}${PROVIDER_LABELS[provider]}${panel.connection.account ? ` (${panel.connection.account})` : ''}`
+  const model = active?.model || null
+  const reasoning = active?.reasoning ?? null
+  const modelChoices = useMemo(() => {
+    if (!panel.ready) return []
+    const ids = panel.models.map((m) => m.id)
+    return model && !ids.includes(model) ? [model, ...ids] : ids
+  }, [panel.models, model, panel.ready])
+  // The levels this model takes. None at all hides the picker: the request
+  // then says nothing about reasoning, which every model accepts.
+  const efforts = useMemo(() => (model ? modelReasoning(model, panel.models) : []), [model, panel.models])
+  // Whether a question sent now may search: Settings said yes, and this model
+  // at this level takes the tool. The model still decides whether it does.
+  const searchable = model !== null && webSearchFor(model, reasoning)
+  const chatTools = thread?.chat.tools ?? { webSearch: panel.webSearch, ...(variant === 'authoring' ? { plan: true } : {}) }
+
+  // The panel opens with no tab up, so put one there rather than showing an
+  // empty shell: the last chat about this course, or a new one if there is none.
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current || panel.loading || panel.activeId) return
+    started.current = true
+    void panel.resume()
+  }, [panel])
+
+  useEffect(() => {
+    if (screenActive) field.current?.focus()
+  }, [panel.activeId, quote, visible])
+
+  // Include stored answers as well as the partial, so finishing a response
+  // respects the same reading position as each streaming update.
+  const answerPosition = JSON.stringify([thread?.chat.id, thread?.messages.map(message => [message.seq, message.text, message.status])])
+  const { scroller, content, following, onScroll, jumpToLatest } = useChatScroll(
+    panel.activeId, JSON.stringify([answerPosition, panel.streaming, panel.activity, panel.retryAttempt, panel.error]), screenActive
+  )
+
+  const startWidthDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const onMove = (move: PointerEvent): void => {
+      // Measured from the right edge, so the lesson column gives way first -
+      // and never past the point where it stops being readable.
+      const room = window.innerWidth - MIN_CONTENT
+      setWidth(Math.max(MIN_WIDTH, Math.min(room, window.innerWidth - move.clientX)))
+    }
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [])
+
+  const submit = useCallback(async (): Promise<void> => {
+    const text = draft.trim()
+    if (!text || voice.locked() || answering || panel.sendBlocked || submitting.current) return
+    const attached = quote ?? undefined
+    submitting.current = true
+    if (!composer) setLocalDraft('')
+    try {
+      if (await panel.send(text, attached)) {
+        if (attached) onQuoteUsed()
+      } else if (!composer) setLocalDraft(current => current || text)
+    } catch { if (!composer) setLocalDraft(current => current || text) }
+    finally { submitting.current = false }
+  }, [draft, answering, quote, onQuoteUsed, panel, composer, voice])
+
+  return (
+    <aside className={`sidechat${variant === 'authoring' ? ' authoring-chat' : ''}`} style={variant === 'authoring' ? undefined : { width, flex: '0 1 auto' }}>
+      {variant !== 'authoring' && <div className="sidechat-grip" onPointerDown={startWidthDrag} role="separator" aria-orientation="vertical" />}
+
+      <div className="sidechat-head">
+        <strong>{variant === 'notebook' ? 'Ask about this notebook' : variant === 'document' ? 'Ask about this document' : variant === 'authoring' ? 'Course assistant' : variant === 'project' ? 'Project assistant' : 'Ask about this lesson'}</strong>
+        {onClose && <button className="ghost sidechat-close" onClick={onClose} title="Close the side chat">
+          ✕
+        </button>}
+      </div>
+
+      <div className="sidechat-tabs">
+        {panel.tabs.map((tab) => (
+          <span
+            key={tab.id}
+            className={`sidechat-tab${tab.id === panel.activeId ? ' active' : ''}`}
+            onClick={() => panel.setActive(tab.id)}
+            title={tab.title || 'A new chat'}
+          >
+            {panel.busy.has(tab.id) && <span className="sidechat-dot" aria-label="answering" />}
+            <ChatTabTitle title={tabLabel(tab.title, 'New chat')} />
+            <button
+              className="sidechat-tab-close"
+              title="Close this tab (the chat is kept)"
+              onClick={(e) => {
+                e.stopPropagation()
+                panel.close(tab.id)
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <button className="sidechat-new" title="Start another chat" onClick={() => void panel.startNew()}>
+          ＋
+        </button>
+        <span className="spacer" />
+        <button
+          className={`sidechat-history-toggle${historyOpen ? ' active' : ''}`}
+          aria-expanded={historyOpen}
+          onClick={() => {
+            if (!historyOpen) void panel.refreshHistory?.()
+            setHistoryOpen((open) => !open)
+          }}
+        >
+          History
+        </button>
+      </div>
+
+      {!panel.ready && (
+        panel.connectionLoading ? <div className="sidechat-note sidechat-connection-loading" role="status">
+          <i className="sidechat-connection-spinner" aria-hidden="true" />
+          <span>Checking AI connection…</span>
+        </div> : <div className="sidechat-note">
+          <span>{panel.connection.message ?? `Connect ${PROVIDER_LABELS[panel.provider]} in Settings.`}</span>
+          <ActionButton icon="settings" onClick={onAddKey}>Open Settings</ActionButton>
+        </div>
+      )}
+
+      <div className="sidechat-transcript">
+        {historyOpen && (
+          <div className="sidechat-history chat-history-overlay">
+            <div className="chat-history-list">
+              {panel.chats.length === 0 && <div className="meta">No conversations yet.</div>}
+              {panel.chats.map((chat) => (
+                <div key={chat.id} className="sidechat-history-row" onClick={() => {
+                  panel.open(chat.id)
+                  setHistoryOpen(false)
+                }}>
+                  <div>
+                    <div>{chat.title || 'A new chat'}</div>
+                    <div className="meta">
+                      {chat.historyLabel ?? (chat.startedIn ? 'Conversation' : 'Project')} · {chat.messages} message
+                      {chat.messages === 1 ? '' : 's'}
+                      <HistoryMessageTime at={chat.lastMessageAt} />
+                    </div>
+                  </div>
+                  <button
+                    className="ghost"
+                    title="Delete this chat for good"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (window.confirm('Delete this chat? This cannot be undone.')) void panel.remove(chat.id)
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="sidechat-scroll scroll" ref={scroller} onScroll={onScroll}>
+          <div ref={content}>
+            {/* Shown with or without a key: a panel that is blank and silent reads
+                as broken, and the guidance is true either way. */}
+            {thread?.messages.length === 0 && (
+              <div className="sidechat-empty">
+                <p>{variant === 'authoring' ? 'Describe the course you want' : `Ask about this ${variant}`}</p>
+              </div>
+            )}
+            {displayedMessages?.map((message) => (
+              <Fragment key={message.seq}><Message
+                message={message}
+                fresh={settled?.chatId === thread!.chat.id && message.seq > settled.upTo}
+                chatId={thread!.chat.id}
+                onSource={onSource}
+                sourceIcons={fetchIcons ?? (variant === 'authoring' || variant === 'project' ? noSourceIcons : undefined)}
+              />
+              {message.planning?.questions && <PlanQuestions key={message.planning.questions.id} batch={message.planning.questions}
+                pending={!!thread?.chat.tools?.plan && thread.chat.planning?.questions?.id === message.planning.questions.id}
+                disabled={answering || !!panel.sendBlocked || !panel.ready}
+                progress={thread?.chat.planning?.questions?.progress}
+                advance={step => window.opencourse.advanceAuthoringQuestion(thread!.chat.id, step)}
+                saved={thread?.messages.find(m => m.planning?.answers?.batchId === message.planning?.questions?.id)?.planning?.answers}
+                submit={(response, revision) => panel.send('Submit planning answers', undefined, false, { kind: 'answer', response, revision })} />}
+              {message.planning?.plan && !answering && !panel.sendBlocked && thread?.chat.tools?.plan && thread.chat.planning?.status === 'ready' && thread.chat.planning.published?.decisionId === message.planning.plan.decisionId &&
+                <div className="plan-actions"><button className="action-button primary" disabled={!panel.ready} onClick={() => void panel.send('Accept plan and create this course.', undefined, false, { kind: 'accept', decisionId: message.planning!.plan!.decisionId })}>Accept plan</button>
+                <button className="action-button ghost" onClick={() => void panel.rejectPlan?.(message.planning!.plan!.decisionId)}>Reject plan</button></div>}
+              </Fragment>
+            ))}
+            {flashcards?.proposals.map(p => <FlashcardPreview key={p.id} proposal={p} decide={flashcards.decide} renderText={text => <Html className="prose" lesson source={text} />} />)}
+            {panel.streaming !== null && (
+              <div className={`chat-turn assistant partial${panel.streaming === '' ? ' thinking' : ''}`}>
+                {panel.streaming ? (
+                  <Answer text={stripWebCitationTokens(panel.streaming)} />
+                ) : (
+                  <span className="chat-typing" role="status" aria-label="Thinking">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                )}
+              </div>
+            )}
+            {panel.retryAttempt && <div className="chat-network-warning" role="status">{networkRetryWarning(panel.retryAttempt)}</div>}
+            {!panel.retryAttempt && panel.activity && <div className={`project-tool-activity meta${panel.toolRunning ? ' running' : ''}`} role="status"><ToolActivityIcon /><span>{panel.activity}</span></div>}
+            {panel.error && <div className="sidechat-error" role="alert">
+              {overloaded && !panel.error.startsWith(OPENAI_OVERLOADED) ? OPENAI_OVERLOADED : panel.error}{' '}
+              {overloaded && panel.retry && <button className="ghost" disabled={answering || panel.sendBlocked || !panel.ready || retrying} onClick={() => void retry()} title="Continue the interrupted request using current state and completed work">{retrying ? 'Retrying…' : 'Retry'}</button>}
+              {!overloaded && <button className="ghost" onClick={onAddKey}>Settings</button>}
+              {panel.provider === 'chatgpt' && !overloaded && <button className="ghost" onClick={() => void window.opencourse.openExternal(CHATGPT_USAGE_URL)}>Manage usage ↗</button>}
+            </div>}
+          </div>
+        </div>
+        {!following && (
+          <button className="sidechat-latest" type="button" onClick={jumpToLatest} aria-label="Scroll to latest response" title="Scroll to latest response and resume following">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+              <path d="M10 4v12m-5-5 5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      <div className="sidechat-composer">
+        {voice.notice && <div className="meta" role="status">{voice.notice}</div>}
+        {/* The whole box is the field to a pointer - a press on its padding or
+            its footer lands in the text - except for the controls inside it. */}
+        <div
+          className="sidechat-box" data-dictation={voice.phase} data-speaking={voice.speaking}
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).closest('button, textarea, blockquote, [role=menu], [tabindex]')) return
+            e.preventDefault()
+            field.current?.focus()
+          }}
+        >
+          {quote && (
+            <div className="sidechat-quote">
+              <div className="sidechat-quote-head">
+                <span className="sidechat-quote-label">{QUOTE_LABEL[quote.from]}{quote.document ? ` · Page ${quote.document.page}` : ''}</span>
+                <button className="ghost" title="Do not attach this" onClick={onQuoteUsed}>
+                  ✕
+                </button>
+              </div>
+              <blockquote>{quote.text}</blockquote>
+            </div>
+          )}
+          <div className="sidechat-field">
+            <textarea
+              ref={field}
+              className="sidechat-input"
+              value={draft}
+              disabled={!active}
+              readOnly={voice.phase !== 'idle'}
+              rows={1}
+              maxLength={MAX_MESSAGE_CHARS}
+              placeholder={quote ? 'Ask about the highlighted passage…' : variant === 'notebook' ? 'Ask about this notebook…' : variant === 'document' ? 'Ask about this document…' : variant === 'authoring' ? 'Create or edit this course…' : variant === 'project' ? 'Ask about your project…' : 'Ask about this lesson…'}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends, because this is a chat. A newline is still one
+                // modifier away, which is what the multi-line box is for - and
+                // an Enter that is confirming an input method's candidate is
+                // not a send at all.
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  void submit()
+                }
+              }}
+            />
+            <textarea
+              ref={twin}
+              className="sidechat-input sidechat-twin"
+              value={draft}
+              rows={1}
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+          </div>
+          {/* Under the field rather than in the header, the way Copilot does
+              it: what answers is a property of the message you are writing,
+              and a picker in the header read as a setting of the panel. */}
+          <div className="sidechat-actions">
+            {/* Which connection answers this conversation. Choosing here is for
+                this conversation alone; Settings' default stays as it is. */}
+            <Menu
+              className="sidechat-connection"
+              panelClassName="connection-menu chat-menu"
+              disabled={answering}
+              title={panel.settingsManagedBy ? `${connectionLabel}. Managed in server settings.` : `${connectionLabel}. Choose another connection for this chat.`}
+              ariaLabel={`Connection for this chat: ${connectionLabel}`}
+              align="left"
+              side="above"
+              heading="This chat uses"
+              label={<ConnectionIcon provider={provider} />}
+              items={panel.settingsManagedBy ? [{ id: 'server', label: `${panel.settingsManagedBy} settings`, icon: <ConnectionIcon provider={provider} />, checked: true, onSelect: onAddKey }] : (['apiKey', 'chatgpt'] as const).map((choice) => ({
+                id: choice,
+                label: PROVIDER_LABELS[choice],
+                icon: <ConnectionIcon provider={choice} />,
+                checked: choice === provider,
+                hint: panel.connections[choice]?.ready === false ? 'Not set up' : '',
+                onSelect: () => void panel.setProvider(choice)
+              }))}
+            />
+            <ChatToolsMenu active={screenActive} tools={chatTools} change={panel.setTools} supportsWeb={searchable} busy={answering || panel.sendBlocked === true || !thread} resetKey={panel.activeId} />
+            {panel.ready && model !== null && (
+              <Menu
+                className="sidechat-model"
+                panelClassName="chat-menu"
+                disabled={answering}
+                title="Which model answers"
+                align="left"
+                label={<span className="sidechat-picker-label">{model}</span>}
+                items={panel.settingsManagedBy ? [{ id: 'server', label: 'Change model in server settings', onSelect: onAddKey }] : modelChoices.map((id) => ({
+                  id,
+                  label: id,
+                  checked: id === model,
+                  onSelect: () => void panel.setModel(id)
+                }))}
+              />
+            )}
+            {panel.ready && model !== null && efforts.length > 0 && (
+              <Menu
+                className="sidechat-reasoning"
+                panelClassName="chat-menu"
+                disabled={answering}
+                title="How hard it thinks before answering"
+                align="left"
+                label={
+                  <>
+                    <ThinkIcon />
+                    <span className="sidechat-picker-label">{reasoning ? REASONING_LABELS[reasoning] : 'Default'}</span>
+                  </>
+                }
+                items={panel.settingsManagedBy ? [{ id: 'server', label: 'Change reasoning in server settings', onSelect: onAddKey }] : [
+                  {
+                    id: 'default',
+                    label: 'Default',
+                    checked: reasoning === null,
+                    onSelect: () => void panel.setReasoning(null)
+                  },
+                  ...efforts.map((effort) => ({
+                    id: effort,
+                    label: REASONING_LABELS[effort],
+                    checked: reasoning === effort,
+                    onSelect: () => void panel.setReasoning(effort)
+                  }))
+                ]}
+              />
+            )}
+            <ActiveChatTools tools={chatTools} supportsWeb={searchable} />
+            {draft.length >= COUNT_FROM && (
+              <span className={`sidechat-count${draft.length >= MAX_MESSAGE_CHARS ? ' full' : ''}`}>
+                {draft.length.toLocaleString()} / {MAX_MESSAGE_CHARS.toLocaleString()}
+              </span>
+            )}
+            {answering ? (
+              <button key="stop" className="sidechat-send stop" title="Stop the answer" aria-label="Stop response" onClick={panel.stop}>
+                <StopIcon />
+              </button>
+            ) : voice.phase !== 'idle' || (canDictate && !draft.trim()) ? (
+              <DictationButton state={voice} className="sidechat-send" />
+            ) : (
+              <button
+                key="send"
+                className="sidechat-send"
+                title="Send (↩) · ⇧↩ for a new line"
+                aria-label="Send"
+                disabled={!draft.trim() || !panel.activeId || panel.sendBlocked}
+                onClick={() => void submit()}
+              >
+                <SendIcon />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </aside>
+  )
+}

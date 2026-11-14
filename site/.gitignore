@@ -7,4 +7,5 @@ public/downloads/
 public/featured/
 public/favicon-*.png
 public/apple-touch-icon*.png
+public/notebook-icon.png
 src/data/generated.json

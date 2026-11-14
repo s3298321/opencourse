@@ -4,7 +4,7 @@
 //  - a link inside the site points at a page, a file or an #anchor that does not exist;
 //  - a page carries an inline script or style the CSP would refuse
 //    (JSON-LD data blocks are not scripts, and are allowed);
-//  - the download button points anywhere but the release permalink or /download;
+//  - a download button points anywhere but that product's release asset, or its page;
 //  - a download the docs offer is missing.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -12,7 +12,8 @@ import { join, resolve } from 'node:path'
 const site = resolve(import.meta.dirname, '..')
 const dist = join(site, 'dist')
 const problems = []
-const PERMALINK = 'https://github.com/s3298321/opencourse/releases/latest/download/OpenCourse-mac-arm64.dmg'
+const APP_DMG = /^https:\/\/github\.com\/s3298321\/opencourse\/releases\/download\/v\d+\.\d+\.\d+\/OpenCourse-mac-arm64\.dmg$/
+const NOTEBOOK_DMG = /^https:\/\/github\.com\/s3298321\/opencourse\/releases\/download\/notebook-v\d+\.\d+\.\d+\/OpenCourse-Notebook-mac-arm64\.dmg$/
 
 const html = (dir) => readdirSync(dir).flatMap((name) => {
   const path = join(dir, name)
@@ -41,7 +42,7 @@ for (const [file, text] of pages) {
   if (/\sstyle="/.test(text)) problems.push(`${where}: style attribute`)
   for (const [, href] of text.matchAll(/\shref="([^"]+)"/g)) {
     if (/^(https?:|mailto:)/.test(href)) {
-      if (href.includes('/releases/latest/download/') && href !== PERMALINK) problems.push(`${where}: download link ${href}`)
+      if (href.includes('/releases/latest/download/')) problems.push(`${where}: download link uses releases/latest: ${href}`)
       continue
     }
     const [path, hash] = href.split('#')
@@ -49,8 +50,11 @@ for (const [file, text] of pages) {
     if (!target) { problems.push(`${where}: broken link ${href}`); continue }
     if (hash && target.endsWith('.html') && !ids(pages.get(target) ?? readFileSync(target, 'utf8')).has(decodeURIComponent(hash))) problems.push(`${where}: missing anchor ${href}`)
   }
-  for (const [, href] of text.matchAll(/<a[^>]*data-download[^>]*href="([^"]+)"|<a[^>]*href="([^"]+)"[^>]*data-download/g)) {
-    if (href && href !== PERMALINK && href !== '/download') problems.push(`${where}: download button points at ${href}`)
+  for (const tag of text.matchAll(/<a\b[^>]*>/g)) {
+    const href = /\bhref="([^"]*)"/.exec(tag[0])?.[1]
+    if (!href) continue
+    if (/\bdata-download\b/.test(tag[0]) && href !== '/download' && !APP_DMG.test(href)) problems.push(`${where}: download button points at ${href}`)
+    if (/\bdata-notebook-download\b/.test(tag[0]) && href !== '/notebook' && !NOTEBOOK_DMG.test(href)) problems.push(`${where}: notebook download button points at ${href}`)
   }
 }
 

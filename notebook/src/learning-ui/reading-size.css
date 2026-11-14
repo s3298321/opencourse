@@ -1,0 +1,43 @@
+/* The reader's text size, floating at the foot of the lesson column. The strip
+   is the last thing in the scroller, zero high and sticky to its bottom, so the
+   pill stays put at the column's bottom-left while the lesson scrolls under it
+   - inside the column, so it never covers the sidebar or the side chat, and
+   hides with the column when the editor opens. The lesson's own column is at
+   least as tall as the scroller, so a short lesson still puts it at the foot.
+   Above a visualization's bar (2), below the "Ask about this" offer (8). */
+.reading-size-strip { position: sticky; bottom: 0; height: 0; z-index: 4; }
+/* An opaque card rather than glass: it floats over text, and text showing
+   through text is unreadable twice. Quiet until it is wanted - the letters are
+   muted, not the whole pill faded. */
+/* Stacked, like a map's zoom: narrow enough to sit in the lesson's left
+   margin at an ordinary window width instead of over the start of its lines. */
+.reading-size {
+  position: absolute; left: 1rem; bottom: 1rem;
+  display: flex; flex-direction: column; align-items: stretch;
+  padding: 2px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background-color: var(--card);
+  box-shadow: 0 6px 18px rgb(var(--shadow-rgb) / 0.28);
+}
+.reading-size button {
+  background: none; border: 0; border-radius: 9px;
+  padding: 0.2rem 0.3rem;
+  color: var(--muted);
+  font-size: 12px; font-weight: 600; line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.reading-size button span { margin-left: 1px; }
+/* The two letters say which way they go by their own size. */
+.reading-size .reading-size-smaller { font-size: 11px; }
+.reading-size .reading-size-larger { font-size: 14px; }
+.reading-size .reading-size-value { min-width: 3.2em; font-size: 10.5px; padding: 0.15rem 0.2rem; cursor: text; }
+/* The size, being typed: the same box as the button it replaced, so nothing moves. */
+.reading-size .reading-size-field {
+  width: 3.6em; min-width: 0; margin: 1px 0; padding: 0.12rem 0.2rem;
+  border: 1px solid var(--accent); border-radius: 6px; outline: none;
+  background: var(--bg); color: var(--fg);
+  font-family: inherit; font-size: 10.5px; font-weight: 600; line-height: 1.5; text-align: center; font-variant-numeric: tabular-nums;
+}
+.reading-size button:not(:disabled):hover { color: var(--fg); background: var(--chip-bg); }
+.reading-size button:disabled { opacity: 0.45; cursor: default; }
+.reading-size button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }

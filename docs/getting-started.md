@@ -107,6 +107,11 @@ The floating **Notebooks** button at the bottom-left opens your recent
 notebooks and searches notebook titles, page titles and page contents. Create a
 standalone notebook or one linked to the course or PDF you are viewing.
 
+Standalone notebooks also open in [OpenCourse Notebook](https://opencourse.dev/notebook),
+a separate Mac app in this repository (`notebook/`). Create one there and it
+is the same notebook here. Course-linked notebooks, PDF-linked notebooks and
+Python notebooks stay in OpenCourse. The two apps can run at the same time.
+
 Each notebook opens in its own window with a page list and a live Markdown
 editor. Pages save automatically. Paste or drop PNG, JPEG, WebP or GIF images;
 rename and reorder pages from the sidebar. Highlight text and choose **Ask

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="24 24 80 80">
+  <!-- The six-star mark without the app icon's tile, for floating artwork. -->
+  <defs>
+    <linearGradient id="silver" x1="0" y1="0" x2="0.3" y2="1">
+      <stop stop-color="#fff"/>
+      <stop offset="0.42" stop-color="#eeeff5"/>
+      <stop offset="1" stop-color="#a5acbc"/>
+    </linearGradient>
+    <path id="ray" d="M0-12C.8-3 3-.8 12 0C3 .8 .8 3 0 12C-.8 3-3 .8-12 0C-3-.8-.8-3 0-12Z" fill="url(#silver)"/>
+  </defs>
+  <use href="#ray" transform="translate(52 62) scale(1.45)"/>
+  <use href="#ray" transform="translate(77 39) scale(.95)"/>
+  <use href="#ray" transform="translate(94 63) scale(.82)"/>
+  <use href="#ray" transform="translate(38 41) scale(.48)"/>
+  <use href="#ray" transform="translate(42 90) scale(.58)"/>
+  <use href="#ray" transform="translate(81 86) scale(.58)"/>
+</svg>

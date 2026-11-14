@@ -4,10 +4,15 @@
  *
  * Releases are GitHub releases of this repository: the same DMG the website's
  * download button serves, built and uploaded by .github/workflows/release.yml.
- * GitHub computes a SHA-256 of every asset at upload and reports it as the
- * asset's `digest`, which is what a download is checked against. The response
- * is someone else's JSON, so it is read like a server's: known fields only,
- * each checked, and anything off is "no release" rather than half a release.
+ * OpenCourse Notebook publishes into the same repository under `notebook-v*`
+ * tags, so this app does not ask for `/releases/latest` — that endpoint is
+ * whichever product was published most recently. It reads the releases list
+ * and keeps the newest tag that is `vMAJOR.MINOR.PATCH` and carries this
+ * app's DMG. GitHub computes a SHA-256 of every asset at upload and reports
+ * it as the asset's `digest`, which is what a download is checked against.
+ * The response is someone else's JSON, so it is read like a server's: known
+ * fields only, each checked, and anything off is "no release" rather than
+ * half a release.
  */
 import { parseVersion } from '../catalog/semver'
 import { PUBLIC_LINKS } from '../links'
@@ -23,8 +28,13 @@ export const DOWNLOAD_PAGE = PUBLIC_LINKS.download
 /** A DMG of the app is ~150 MB; anything near this is not one. */
 export const MAX_ASSET_BYTES = 1024 * 1024 * 1024
 
+/**
+ * The first page of published releases, newest first. One page is enough while
+ * an OpenCourse release stays among the thirty newest tags; a notebook release
+ * on that page is skipped rather than installed.
+ */
 export function releaseFeedUrl(): string {
-  return `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`
+  return `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases?per_page=30`
 }
 
 export interface Release {
@@ -39,9 +49,9 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
- * `releases/latest` as a Release, or null when it is not one this app can
- * install. Drafts and prereleases never come from that endpoint, but a feed
- * that says so anyway is refused rather than trusted.
+ * One release object as a Release, or null when it is not one this app can
+ * install. A draft, a prerelease, a `server-v*` tag and a `notebook-v*` tag
+ * are refused. A tag has to be `v` plus MAJOR.MINOR.PATCH.
  *
  * `options.feedOrigin` is set only for a test feed on this machine
  * (OPENCOURSE_UPDATE_FEED): its release page and asset are on that host too.
@@ -75,4 +85,20 @@ export function parseRelease(raw: unknown, options: { feedOrigin?: string } = {}
   const sha256 = typeof digest === 'string' ? /^sha256:([0-9a-f]{64})$/i.exec(digest)?.[1]?.toLowerCase() : undefined
   if (!sha256) return null
   return { version, notesUrl, asset: { url, size, sha256 } }
+}
+
+/**
+ * The release to install from a feed body. GitHub's list is an array, newest
+ * first, and the first entry this app can install wins. A test feed is one
+ * object, the same shape `/releases/latest` used to be.
+ */
+export function selectRelease(raw: unknown, options: { feedOrigin?: string } = {}): Release | null {
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const found = parseRelease(entry, options)
+      if (found) return found
+    }
+    return null
+  }
+  return parseRelease(raw, options)
 }

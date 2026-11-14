@@ -130,6 +130,7 @@ because a server course keeps the same IDs from one version to the next.
 | | |
 | --- | --- |
 | [`app/`](app/) | The Electron app: `src/core` (pure), `src/main` (Node/Electron), `src/renderer` (React) |
+| [`notebook/`](notebook/) | OpenCourse Notebook: a Mac app for standalone personal notebooks, sharing this app's local data. Its own version, currently 0.1.0 |
 | [`server/`](server/) | The learning server: Fastify, `node:sqlite`, archives on disk, and its React web app in `server/web/` |
 | [`site/`](site/) | [opencourse.dev](https://opencourse.dev): Astro, static, with these `docs/` as its documentation |
 | [`design/`](design/) | Tokens and primitives shared by the site and the server's web app |
@@ -181,5 +182,9 @@ read other pages and the notebook’s linked course or PDF. Notebook chat uses y
 pages. Missing linked material does not remove your notebook.
 
 Personal notebooks belong to the selected local user and do not sync to servers.
+Standalone notebooks also open in [OpenCourse Notebook](notebook/), a separate
+Mac app with its own version. Create one there and it is the same notebook
+here. Course-linked notebooks, PDF-linked notebooks and Python notebooks stay
+in OpenCourse.
 The existing executable course notebooks are now labelled **Python notebook**;
 their saved cells, outputs, and environments are unchanged.

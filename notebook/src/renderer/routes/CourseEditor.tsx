@@ -1,0 +1,426 @@
+import type { PlanAction } from '@core/authoring/planning'
+import ActionButton, { Icon } from '../components/ActionButton'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { JSX } from 'react'
+import { currentFormat, newDraftRef } from '@core/course-document'
+import type { AuthoringCourse, AuthoringRunState } from '@core/course-document'
+import { useConversationPanel } from '../sidechat/useChat'
+import type { ChatTransport } from '../sidechat/useChat'
+import ChatPanel from '../components/ChatPanel'
+import { useScreenActive } from '../screen-activity'
+import { AskProvider } from '../ask-context'
+import { PreviewAskOffer, usePreviewAsk } from '../sidechat/usePreviewAsk'
+import { availableBlockSlug } from '@core/block-slugs'
+import type { AuthoringTarget, ChatQuote, ChatSendResult, Block, CourseManifest, Flashcard, Lesson, Module, UserProfile } from '@core/types'
+import { copyElement, deleteElement, editElement, locateElement, reorderElement } from '@core/course-editor'
+import CourseEditorOutline from './CourseEditorOutline'
+import CourseEditorLayout from './CourseEditorLayout'
+import { CourseFields, ElementFields, EditorValidation, EditorAttachments } from './CourseEditorFields'
+import { BlockPreview, FlashcardPreview, LessonPreview, CourseOverviewPreview, ProjectPreview } from './CourseEditorPreview'
+import type { PreviewEditing } from './CourseEditorPreview'
+import TitleBar from '../components/TitleBar'
+import CourseLessonWorkspace, { ElementsPalette } from './CourseLessonWorkspace'
+import type { ElementDrag } from './CourseLessonWorkspace'
+import type { ConfirmRequest } from '../components/ConfirmDialog'
+import type { Route, Screen } from '../routes'
+import { useAuthoringMotion } from '../authoring/useAuthoringMotion'
+import { useActiveTheme } from '../theme/ThemeProvider'
+import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
+
+const uuid = newDraftRef
+function retainCollapsed(refs: string[], manifest: CourseManifest, map?: Record<string, string>): string[] {
+  return [...new Set(refs.map(ref => map?.[ref] ?? ref))].filter(ref => {
+    const element = locateElement(manifest, ref)?.element
+    return element && 'lessons' in element
+  })
+}
+function fieldPath(manifest: CourseManifest, id: string | null): string {
+  for (const [m, module] of manifest.modules.entries()) {
+    if (module.nodeId === id) return `/modules/${m}`
+    if (module.type === 'project') continue
+    for (const [l, lesson] of module.lessons.entries()) {
+      if (lesson.nodeId === id) return `/modules/${m}/lessons/${l}`
+      for (const [b, block] of lesson.blocks.entries()) if (block.nodeId === id) return `/modules/${m}/lessons/${l}/blocks/${b}`
+      for (const [c, card] of (lesson.flashcards ?? []).entries()) if (card.nodeId === id) return `/modules/${m}/lessons/${l}/flashcards/${c}`
+    }
+  }
+  return ''
+}
+
+/** What App needs from an open editor to leave it safely. */
+export interface EditorHandle { courseId: string; flush: () => Promise<void> }
+
+/**
+ * Nothing here is written to the course until Save. Edits - yours and the
+ * assistant's - collect in main's edit session (main/edit-sessions.ts); this
+ * component pushes its own there shortly after each change so the assistant
+ * always works on what is on screen, and so a trip to Settings and back keeps
+ * them. Leaving any other way goes through App's confirmLeave.
+ */
+export default function CourseEditor({ courseId, user, route, navigate, registerEditor, onDirty, ask }: {
+  courseId: string; user: UserProfile | null; route: Screen; navigate: (route: Route, options?: { skipGuard?: boolean }) => void
+  registerEditor: (handle: EditorHandle | null) => void
+  onDirty: (dirty: boolean) => void
+  ask: (request: ConfirmRequest) => Promise<boolean>
+}): JSX.Element {
+  const active = useScreenActive()
+  const theme = useActiveTheme()
+  const [data, setData] = useState<AuthoringCourse | null>(null)
+  const [manifest, setManifest] = useState<CourseManifest | null>(null)
+  const storageKey = `authoring:${user?.id ?? 'user'}:${courseId}`
+  const readState = (): { mode?: string; selected?: string | null; collapsed?: unknown } => { try { return JSON.parse(localStorage.getItem(`${storageKey}:editor`) ?? '{}') ?? {} } catch { return {} } }
+  const [selected, setSelected] = useState<string | null>(() => readState().selected ?? null)
+  const [collapsed, setCollapsed] = useState<string[]>(() => {
+    const saved = readState().collapsed
+    return Array.isArray(saved) ? saved.filter((ref): ref is string => typeof ref === 'string') : []
+  })
+  const [mode, setMode] = useState<'manual' | 'ai'>(() => readState().mode === 'ai' ? 'ai' : 'manual')
+  const motion = useAuthoringMotion(manifest, selected, mode)
+  const manualOutline = mode === 'manual'
+  const [chatInitialized, setChatInitialized] = useState(mode === 'ai')
+  const previewAsk = usePreviewAsk(mode === 'ai', `${courseId}/${selected ?? 'overview'}`)
+  const [{ chatId: runChatId, editing }, setRunState] = useState<AuthoringRunState>({ chatId: null, editing: false })
+  const selectedRef = useRef(selected); selectedRef.current = selected
+  const runRef = useRef(runChatId); runRef.current = runChatId
+  const request = useRef<(id: string, text: string, quote?: ChatQuote, action?: PlanAction) => Promise<ChatSendResult>>(async () => ({ status: 'failed', message: 'The draft is loading.' }))
+  const transport = useMemo<ChatTransport>(() => {
+    const api = window.opencourse
+    return { list: () => api.listAuthoringChats(courseId), get: api.getAuthoringChat, create: () => api.createAuthoringChat(courseId),
+      remove: api.deleteAuthoringChat, send: (id, text, quote, _review, action) => request.current(id, text, quote, action), cancel: api.cancelAuthoringChat,
+      setModel: api.setAuthoringChatModel, setReasoning: api.setAuthoringChatReasoning, setProvider: api.setAuthoringChatProvider, onDelta: api.onAuthoringChatDelta,
+      onDone: api.onAuthoringChatDone, onTitle: api.onAuthoringChatTitle, onError: api.onAuthoringChatError, onActivity: api.onAuthoringChatActivity }
+  }, [courseId])
+  const panel = useConversationPanel(transport, 'authoring', mode === 'ai', `${storageKey}:tabs`)
+  useEffect(() => { try { localStorage.setItem(`${storageKey}:editor`, JSON.stringify({ mode, selected, collapsed })) } catch { /* Optional. */ } }, [storageKey, mode, selected, collapsed])
+
+  const [status, setStatus] = useState('')
+  const [errors, setErrors] = useState<string[]>([])
+  const [validationDismissed, setValidationDismissed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  // Whether main's session differs from the saved course. Edits not yet
+  // pushed there are the other half of "unsaved" (see `unsaved` below).
+  const [remoteDirty, setRemoteDirty] = useState(false)
+  const [conflict, setConflict] = useState(false)
+  const saving = useRef(false)
+  const [sidebarTab, setSidebarTab] = useState<'outline' | 'elements'>('outline')
+  const [sidebarChange, setSidebarChange] = useState<'tab' | 'mode'>()
+  const showElements = manualOutline && sidebarTab === 'elements'
+  const switchMode = (next: typeof mode): void => {
+    if (next === mode) return
+    if (next === 'ai') setChatInitialized(true)
+    setSidebarChange('mode')
+    setMode(next)
+  }
+  const switchTab = (next: typeof sidebarTab): void => {
+    if (next === sidebarTab) return
+    setSidebarChange('tab')
+    setSidebarTab(next)
+  }
+  const [activeElement, setActiveElement] = useState<string | null>(null)
+  const [drag, setDrag] = useState<ElementDrag | null>(null)
+  const editingLocked = busy || runChatId !== null || conflict
+  useEffect(() => { setDrag(null) }, [manifest, selected, mode, editingLocked])
+  useEffect(() => {
+    if (!manifest || !selected) return
+    const found = locateElement(manifest, selected)
+    if (found?.kind === 'block' || found?.kind === 'flashcard') { setActiveElement(selected); setSelected(found.parentId) }
+  }, [manifest, selected])
+  const sending = useRef(false)
+  const writing = useRef(false)
+  const deferredRemote = useRef<{ data: AuthoringCourse; map?: Record<string, string> } | null>(null)
+  const receiveRemote = useRef<(next: AuthoringCourse, nodeRefMap?: Record<string, string>) => void>(() => {})
+  const current = useRef<CourseManifest | null>(null)
+  const persisted = useRef<CourseManifest | null>(null)
+  const version = useRef({ revision: 0, draft: 0 })
+  const queue = useRef<Promise<void>>(Promise.resolve())
+  const conflicted = useRef(false)
+  const mounted = useRef(true)
+
+  const load = useCallback(async (): Promise<void> => {
+    const result = await window.opencourse.getAuthoringCourse(courseId)
+    current.current = result.draft.manifest
+    persisted.current = result.draft.manifest
+    version.current = { revision: result.document.revision, draft: result.draft.draftVersion }
+    conflicted.current = result.draft.baseRevision !== result.document.revision
+    setConflict(conflicted.current); setRemoteDirty(result.draft.dirty === true)
+    setData(result); setManifest(result.draft.manifest)
+    setCollapsed(value => retainCollapsed(value, result.draft.manifest, result.document.nodeRefMap))
+    setSelected(value => {
+      const mapped = value ? result.document.nodeRefMap?.[value] ?? value : null
+      return mapped && locateElement(result.draft.manifest, mapped) ? mapped : null
+    })
+    setStatus(conflicted.current ? 'These unsaved edits are based on an older version of the course. Reload the latest to keep editing.' : '')
+  }, [courseId])
+  useEffect(() => { mounted.current = true; void load().catch((err) => setStatus(err.message)); return () => { mounted.current = false } }, [load])
+  // A course added from a server is never changed in place by its learner:
+  // saving makes a local copy. Say so before any edit, once per opening.
+  const origin = data?.document.origin
+  const learnerCopy = origin?.role === 'learner'
+  const warned = useRef(false)
+  useEffect(() => {
+    if (!origin || origin.role !== 'learner' || warned.current) return
+    warned.current = true
+    void ask({
+      title: 'Edit a copy of this course?',
+      detail: `This course comes from ${origin.serverName}. If you make changes and save, a local copy is created and opened, and the downloaded course stays as it is and keeps receiving updates. Your progress stays with the downloaded course.`,
+      confirmLabel: 'Continue', cancelLabel: 'Cancel'
+    }).then((go) => { if (!go) navigate({ name: 'course', courseId }) })
+  }, [origin, ask, navigate, courseId])
+
+  /** Pushes on-screen edits into main's edit session. Nothing is saved. */
+  const flush = useCallback((): Promise<void> => {
+    const run = async (): Promise<void> => {
+      if (conflicted.current) throw new Error('These edits conflict with another window. Reload the latest to keep editing.')
+      while (current.current && current.current !== persisted.current) {
+        const snapshot = current.current
+        writing.current = true
+        let result
+        try { result = await window.opencourse.saveCourseDraft(courseId, snapshot, version.current.revision, version.current.draft) } finally { writing.current = false }
+        if ('status' in result) {
+          conflicted.current = true
+          if (mounted.current) setConflict(true)
+          throw new Error('The course changed in another window. Your edits remain here; reload the latest to keep editing.')
+        }
+        version.current.draft = result.draftVersion
+        persisted.current = snapshot
+        if (mounted.current) setRemoteDirty(result.dirty === true)
+        if (deferredRemote.current) { const pending = deferredRemote.current; deferredRemote.current = null; receiveRemote.current(pending.data, pending.map) }
+      }
+    }
+    queue.current = queue.current.catch(() => {}).then(run).catch((error) => { if (mounted.current) setStatus(error.message); throw error })
+    return queue.current
+  }, [courseId])
+
+  useEffect(() => {
+    registerEditor({ courseId, flush })
+    return () => {
+      registerEditor(null)
+      void window.opencourse.setEditorActive(false).catch(() => {})
+      void window.opencourse.stopCourseAuthoring(courseId).catch(() => {})
+    }
+  }, [registerEditor, flush, courseId])
+  useEffect(() => {
+    let useInitialRunState = true
+    const applyRun = (state: AuthoringRunState) => { runRef.current = state.chatId; setRunState(state) }
+    const offRun = window.opencourse.onAuthoringRunState((id, state) => {
+      if (id !== courseId) return
+      useInitialRunState = false
+      applyRun(state)
+    })
+    void window.opencourse.getAuthoringRunState(courseId).then(state => { if (useInitialRunState) applyRun(state) }).catch(() => {})
+    receiveRemote.current = (next, nodeRefMap) => {
+      if (!mounted.current) return
+      if (writing.current) { deferredRemote.current = { data: next, map: nodeRefMap }; return }
+      if (current.current !== persisted.current) {
+        conflicted.current = true; setConflict(true); setStatus('The course changed in another window. Your edits remain here; reload the latest to keep editing.'); return
+      }
+      const old = current.current
+      if (old) motion.prepare(old, next.draft.manifest, runRef.current !== null)
+      current.current = persisted.current = next.draft.manifest
+      version.current = { revision: next.document.revision, draft: next.draft.draftVersion }
+      setData(next); setManifest(next.draft.manifest); setErrors([]); setRemoteDirty(next.draft.dirty === true)
+      setCollapsed(value => retainCollapsed(value, next.draft.manifest, nodeRefMap))
+      setActiveElement(value => { const ref = value ? nodeRefMap?.[value] ?? value : null; return ref && locateElement(next.draft.manifest, ref) ? ref : null })
+      setSelected(value => {
+        if (!value) return null
+        const mapped = nodeRefMap?.[value] ?? value
+        if (locateElement(next.draft.manifest, mapped)) return mapped
+        let parent = old && locateElement(old, value)?.parentId
+        while (parent) { if (locateElement(next.draft.manifest, parent)) return parent; parent = old && locateElement(old, parent)?.parentId }
+        return null
+      })
+      setStatus('')
+    }
+    const offDraft = window.opencourse.onAuthoringDraftChanged((id, next, map) => { if (id === courseId) receiveRemote.current(next, map) })
+    return () => { useInitialRunState = false; offRun(); offDraft() }
+  }, [courseId])
+  request.current = async (id, text, quote, action) => {
+    if (sending.current || runRef.current || busy || conflicted.current) return { status: 'busy' }
+    const snapshot = current.current, selectedId = selectedRef.current
+    const location = snapshot && selectedId ? locateElement(snapshot, selectedId) : undefined
+    const target: AuthoringTarget = location && selectedId ? { kind: location.kind === 'module' && 'type' in location.element && location.element.type === 'project' ? 'project' : location.kind, ref: selectedId } : { kind: 'overview' }
+    sending.current = true
+    try { await flush(); return await window.opencourse.sendAuthoringMessage(id, text, target, version.current.revision, version.current.draft, quote, ...(action ? [action] as const : [])) }
+    finally { sending.current = false }
+  }
+
+  // Push soon after each change: the assistant reads main's copy, and so does
+  // Settings-and-back. It is memory either way.
+  useEffect(() => {
+    if (!manifest || current.current === persisted.current) return
+    const timer = setTimeout(() => { void flush().catch(() => {}) }, 150)
+    return () => clearTimeout(timer)
+  }, [manifest, flush])
+
+  const mutate = (fn: (manifest: CourseManifest) => CourseManifest): void => {
+    if (!current.current || editingLocked || conflicted.current || sending.current) return
+    const next = fn(current.current)
+    current.current = next; setManifest(next); setErrors([])
+  }
+  const save = async (): Promise<void> => {
+    if (editingLocked || saving.current || !current.current) return
+    saving.current = true
+    setBusy(true)
+    try {
+      await flush()
+      let result = await window.opencourse.saveCourse(courseId, version.current.revision, version.current.draft)
+      if (result.status === 'confirmation-required') {
+        const preview = result.preview
+        const names = preview.deleted.slice(0, 12).map((n) => `• ${n.label}`).join('\n')
+        if (!window.confirm(`Save and delete ${preview.deleted.length} course elements?\n\n${names}${preview.deleted.length > 12 ? '\n…' : ''}\n\nTheir progress, ${preview.messages} attached messages, and ${preview.workspaces} learner workspaces will be permanently deleted.`)) return
+        result = await window.opencourse.saveCourse(courseId, version.current.revision, version.current.draft, true)
+      }
+      if (result.status === 'invalid') { setErrors(result.errors); setValidationDismissed(false); setStatus(''); return }
+      if (result.status !== 'ok') { setStatus('The course changed in another window. Reload the latest before saving.'); conflicted.current = true; setConflict(true); return }
+      if (result.copiedTo) {
+        // The edits are a course of their own now; continue in its editor.
+        onDirty(false)
+        navigate({ name: 'courseEditor', courseId: result.copiedTo }, { skipGuard: true })
+        return
+      }
+      const savedRefs = result.nodeRefMap
+      setCollapsed(value => [...new Set(value.map(ref => savedRefs?.[ref] ?? ref))])
+      setSelected(value => value ? savedRefs?.[value] ?? value : null)
+      setActiveElement(value => value ? savedRefs?.[value] ?? value : null)
+      await load(); setErrors([])
+    } catch (err) { setStatus((err as Error).message) } finally { saving.current = false; setBusy(false) }
+  }
+  useEffect(() => {
+    void window.opencourse.setEditorActive(active).catch(() => {})
+    return () => { void window.opencourse.setEditorActive(false).catch(() => {}) }
+  }, [active])
+  const saveHandler = useRef(save); saveHandler.current = save
+  useEffect(() => {
+    if (!active) return
+    const onSave = (): void => { void saveHandler.current() }
+    const keyboard = (event: KeyboardEvent): void => { if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 's') { event.preventDefault(); onSave() } }
+    document.addEventListener('authoring:save', onSave); document.addEventListener('keydown', keyboard)
+    return () => { document.removeEventListener('authoring:save', onSave); document.removeEventListener('keydown', keyboard) }
+  }, [active])
+  const reloadLatest = async (): Promise<void> => {
+    if (!(await ask({ title: 'Reload the latest version?', detail: 'Edits in this window that conflict with the other window will be discarded.', confirmLabel: 'Reload', cancelLabel: 'Cancel', danger: true }))) return
+    conflicted.current = false; setConflict(false); setStatus('')
+    await load().catch((err) => setStatus(err.message))
+  }
+
+  const addModule = (project = false): void => {
+    const nodeId = uuid()
+    const module: Module = project ? { nodeId, type: 'project', slug: availableBlockSlug('project', current.current?.modules.map(m => m.slug) ?? []), title: 'New project', project: { nodeId: uuid(), definition: '', requirements: [], deliverables: [] } } : { nodeId, slug: availableBlockSlug('module', current.current?.modules.map(m => m.slug) ?? []), title: 'New module', lessons: [] }
+    mutate((m) => ({ ...currentFormat(m), modules: [...m.modules, module] })); setSelected(nodeId)
+  }
+  const addLesson = (moduleId: string): void => {
+    const nodeId = uuid()
+    const lesson: Lesson = { nodeId, slug: availableBlockSlug('lesson', (current.current?.modules.find(m => m.nodeId === moduleId)?.lessons ?? []).map(l => l.slug)), title: 'New lesson', blocks: [] }
+    mutate((m) => { const copy = structuredClone(m); const module = copy.modules.find((mod) => mod.nodeId === moduleId); if (module && module.type !== 'project') module.lessons.push(lesson); return copy }); setSelected(nodeId)
+  }
+  const addCard = (lessonId: string): void => {
+    const nodeId = uuid()
+    mutate(m => {
+      const copy = structuredClone(m), found = locateElement(copy, lessonId)
+      if (found && 'blocks' in found.element) {
+        const cards = found.element.flashcards ??= []
+        cards.push({ nodeId, id: availableBlockSlug('card', cards.map(card => card.id)), question: '', answer: '' })
+      }
+      return currentFormat(copy)
+    })
+    setActiveElement(nodeId)
+  }
+  const resetCard = async (cardId: string): Promise<void> => {
+    if (!window.confirm('Reset this card’s review progress? Its schedule and rating history will be cleared immediately for you. This is independent of saving or discarding draft changes.')) return
+    setBusy(true)
+    try { await window.opencourse.resetFlashcardProgress(courseId, cardId); setStatus('Review progress reset. Draft content is unchanged.') }
+    catch (err) { setStatus((err as Error).message) } finally { setBusy(false) }
+  }
+  // Unsaved: edits still on their way to main, or main's session differing
+  // from the saved course. A course never saved has nothing to compare to.
+  const unsaved = (manifest !== null && manifest !== persisted.current) || remoteDirty
+  const neverSaved = data !== null && !data.document.manifest
+  const saveLabel = editing ? 'Changes in progress...'
+    : unsaved ? 'Unsaved changes'
+    : neverSaved ? 'Not saved yet' : 'All changes saved'
+  const showValidation = errors.length > 0 && !validationDismissed
+  useEffect(() => { onDirty(unsaved) }, [onDirty, unsaved])
+  const location = manifest && selected ? locateElement(manifest, selected) : undefined
+  const previewEditing: PreviewEditing = {
+    language: manifest?.runtime?.language, editable: mode === 'manual', locked: editingLocked,
+    onEdit: () => switchMode('manual'),
+    onChange: (ref, fields) => mutate(m => editElement(m, ref, fields))
+  }
+  const toggleCollapsed = (id: string): void => setCollapsed(value => value.includes(id) ? value.filter(ref => ref !== id) : [...value, id])
+
+  return <>
+    <TitleBar user={user} route={route} navigate={navigate} back={{ label: 'All courses', onClick: () => navigate({ name: 'library' }) }} />
+    <div className={`course-editor${mode === 'ai' ? ' ai-mode' : ''}`} data-panda={theme.id === WHITE_THEME_ID ? '' : undefined}>
+      <header className="author-header">
+        <div className="author-title">
+          <h1 title={manifest?.title}>{manifest?.title || 'Course editor'}</h1>
+        </div>
+        <div className="author-mode" role="group" aria-label="Course editing mode">
+          <button aria-pressed={mode === 'manual'} onClick={() => switchMode('manual')}>Manual</button>
+          <button aria-pressed={mode === 'ai'} onClick={() => switchMode('ai')}>AI</button>
+          <span className="author-mode-thumb" aria-hidden="true" />
+        </div>
+        <div className="actions">
+          {conflict && <button className="ghost author-reload" disabled={busy || runChatId !== null} onClick={() => void reloadLatest()}>Reload latest</button>}
+          <div className="author-save-controls">
+            {data && <span className={`author-save-state${editing || unsaved ? ' unsaved' : ''}`} role="status">{saveLabel}</span>}
+            <ActionButton icon="save" className="author-save" title="Save (⌘S)" disabled={editingLocked || !manifest || (!unsaved && !neverSaved)} onClick={() => void save()}>{busy ? 'Saving' : learnerCopy ? 'Save as local copy' : 'Save'}</ActionButton>
+          </div>
+        </div>
+        {(showValidation || status) && <div className="author-notice">
+          <div className="author-notice-body scroll">
+            {showValidation && <div className="author-errors" role="alert"><strong>Course validation</strong>{errors.map((error) => <p key={error}>{error}</p>)}</div>}
+            {status && <p role="status">{status}</p>}
+          </div>
+          <button type="button" className="ghost author-dismiss" aria-label="Dismiss notice" onClick={() => { setValidationDismissed(true); setStatus('') }}><Icon name="close" /></button>
+        </div>}
+      </header>
+      {manifest && <EditorAttachments value={data?.document.attachments ?? []}><CourseEditorLayout mode={mode} userId={user?.id ?? 'user'}>
+        <aside id="author-outline" className="author-outline" data-view={mode} data-tab={sidebarTab} data-change={sidebarChange}
+          data-enter-from={(sidebarChange === 'tab' ? showElements : mode === 'ai') ? 'right' : 'left'}>
+          <div className="author-sidebar-tabs outline-manual-controls" role="tablist" aria-label="Course sidebar" inert={!manualOutline}>
+            {(['outline', 'elements'] as const).map(tab => <button key={tab} id={`author-tab-${tab}`} role="tab" aria-selected={sidebarTab === tab} aria-controls={`author-panel-${tab}`} tabIndex={sidebarTab === tab ? 0 : -1} onKeyDown={event => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              const next = event.key === 'Home' ? 'outline' : event.key === 'End' ? 'elements' : tab === 'outline' ? 'elements' : 'outline'
+              switchTab(next); document.getElementById(`author-tab-${next}`)?.focus()
+            }} onClick={() => switchTab(tab)}>{tab === 'outline' ? 'Outline' : 'Elements'}</button>)}
+          </div>
+          <div className="author-sidebar-content">
+            <div id="author-panel-outline" ref={motion.outlineRef} className="author-tab-panel" role={manualOutline ? 'tabpanel' : undefined} aria-labelledby={manualOutline ? 'author-tab-outline' : undefined} inert={showElements}>
+              <CourseEditorOutline manifest={manifest} selected={selected} collapsed={collapsed} manual={manualOutline} locked={editingLocked}
+                onSelect={setSelected} onToggle={toggleCollapsed} onAddLesson={addLesson} onAddModule={addModule} />
+            </div>
+            <div id="author-panel-elements" className="author-tab-panel" role="tabpanel" aria-labelledby="author-tab-elements" inert={!showElements}>
+              <ElementsPalette enabled={!editingLocked && location?.kind === 'lesson'} onDrag={setDrag} />
+            </div>
+          </div>
+        </aside>
+        <section hidden={mode === 'ai'} inert={mode === 'ai'} className="author-form scroll"><fieldset disabled={editingLocked} inert={editingLocked}>
+          {location && selected && <div className="author-element-actions actions">
+            <button className="ghost" disabled={location.index === 0} onClick={() => mutate((m) => reorderElement(m, selected, -1))}>↑ Move up</button><button className="ghost" disabled={location.index === location.siblings.length - 1} onClick={() => mutate((m) => reorderElement(m, selected, 1))}>↓ Move down</button>
+            <button className="ghost" onClick={() => { const result = copyElement(current.current!, selected, uuid); mutate(() => result.manifest); setSelected(result.id) }}>Duplicate</button>
+            <button className="ghost" onClick={() => { mutate((m) => deleteElement(m, selected)); setSelected(null) }}>Delete</button>
+          </div>}
+          {location?.kind === 'lesson' && selected ? <CourseLessonWorkspace key={selected} lesson={location.element as Lesson} manifest={manifest} courseId={courseId}
+            path={fieldPath(manifest, selected)} errors={errors} locked={editingLocked || mode !== 'manual'} drag={drag} onDrag={setDrag} mutate={mutate}
+            activeElement={activeElement} onActiveElement={setActiveElement} onAddCard={() => addCard(selected)} onResetCard={id => void resetCard(id)}
+            savedCardIds={new Set(data?.document.manifest?.modules.flatMap(module => module.type === 'project' ? [] : module.lessons.flatMap(lesson => (lesson.flashcards ?? []).map(card => card.nodeId!))))} /> :
+          <EditorValidation value={{ path: fieldPath(manifest, selected), errors }}>
+            {location && selected ? <ElementFields key={selected} element={location.element} manifest={manifest} courseId={courseId} set={(fields) => mutate((m) => editElement(m, selected, fields))} /> : <CourseFields manifest={manifest} courseId={courseId} versionHint={origin?.role === 'publisher' ? `Last published as v${origin.version} on ${origin.serverName}. Publishing again needs a higher version.` : undefined} set={(fields) => mutate((m) => ({ ...m, ...fields }))} />}
+          </EditorValidation>}
+        </fieldset></section>
+        <AskProvider value={previewAsk.ask}><section id="author-preview" ref={motion.previewRef} className="author-preview scroll" data-ask={mode === 'ai' ? 'preview' : undefined}>
+          <div className="content-inner">
+            <div className="author-preview-label" data-ask="none">Preview</div>
+            <div className="author-preview-part" data-authoring-preview-key={selected ?? 'overview'}>
+              {!location ? <CourseOverviewPreview courseId={courseId} manifest={manifest} /> : 'blocks' in location.element ? <LessonPreview key={selected} lesson={location.element} manifest={manifest} courseId={courseId} {...previewEditing} /> : 'project' in location.element ? <><h1>{location.element.title}</h1><ProjectPreview project={location.element.project} /></> : 'lessons' in location.element ? <><h1>{location.element.title}</h1>{location.element.lessons.map((lesson) => <p key={lesson.nodeId}>{lesson.title}</p>)}</> : 'answer' in location.element ? <FlashcardPreview key={selected} card={location.element as Flashcard} courseId={courseId} /> : <BlockPreview key={selected} block={location.element as Block} courseId={courseId} {...previewEditing} />}
+            </div>
+          </div>
+        </section></AskProvider>
+        {chatInitialized && <div id="author-chat" className="author-chat-column" hidden={mode !== 'ai'} inert={mode !== 'ai'}><ChatPanel visible={mode === 'ai'} variant="authoring" storageKey={storageKey} panel={{ ...panel, busy: runChatId ? new Set([...panel.busy, runChatId]) : panel.busy, sendBlocked: editingLocked || conflicted.current }} quote={previewAsk.quote} onQuoteUsed={previewAsk.clearQuote} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} /></div>}
+      </CourseEditorLayout></EditorAttachments>}
+    </div>
+    <PreviewAskOffer offer={previewAsk.selection} attach={previewAsk.ask.attach} />
+  </>
+}

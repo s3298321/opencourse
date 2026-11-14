@@ -1,0 +1,8 @@
+.empty-art { position: relative; width: 96px; height: 80px; margin-bottom: 0.75rem; }
+.empty-art .sparkles { position: absolute; inset: 0; pointer-events: none; }
+/* The sparkle emoji's own trio, held close: one large star low on the left,
+   a smaller one up and to its right, the smallest tucked under that. */
+.empty-art .sparkles > .oc-sparkle { position: absolute; opacity: 0.6; translate: -50% -50%; }
+.empty-art .sparkles > :nth-child(1) { top: 58%; left: 38%; width: 34px; height: 34px; }
+.empty-art .sparkles > :nth-child(2) { top: 24%; left: 72%; width: 16px; height: 16px; }
+.empty-art .sparkles > :nth-child(3) { top: 80%; left: 76%; width: 10px; height: 10px; }

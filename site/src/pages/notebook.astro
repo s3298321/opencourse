@@ -1,0 +1,134 @@
+---
+import Base from '../layouts/Base.astro'
+import Icon from '../components/Icon.astro'
+import Sparkles from '../components/Sparkles.astro'
+import DownloadButton from '../components/DownloadButton.astro'
+import { SITE } from '../site.config'
+import { formatDate, megabytes, notebookRelease } from '../lib/data'
+import { renderNotes } from '../lib/docs'
+
+const notes = notebookRelease?.notes ? renderNotes(notebookRelease.notes) : ''
+const build = [
+  { cmd: 'git clone https://github.com/s3298321/opencourse.git' },
+  { cmd: 'cd opencourse/notebook' },
+  { cmd: 'nvm use', note: '# Node 22' },
+  { cmd: 'npm install' },
+  { cmd: 'npm run dev', note: '# or npm run dist for an unsigned app' }
+]
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'OpenCourse Notebook',
+  applicationCategory: 'EducationalApplication',
+  operatingSystem: `macOS (${SITE.minimumMacOS} or later)`,
+  description: 'A Mac app for personal Markdown notebooks that shares its local notebooks with OpenCourse.',
+  url: new URL('/notebook', SITE.url).toString(),
+  license: 'https://opensource.org/licenses/MIT',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  ...(notebookRelease?.downloadUrl ? { softwareVersion: notebookRelease.version, downloadUrl: notebookRelease.downloadUrl } : {})
+}
+---
+<Base title="OpenCourse Notebook" description={`OpenCourse Notebook is a free Mac app for personal Markdown notebooks. It shares notebooks, users and the AI connection with OpenCourse. Apple silicon, ${SITE.minimumMacOS} or later.`} active="notebook" jsonLd={jsonLd}>
+  <section class="dl-hero">
+    <div class="oc-aurora" aria-hidden="true"></div>
+    <Sparkles count={8} class="hero-sparkles" />
+    <div class="oc-wrap dl-inner oc-stagger">
+      <img class="dl-mark" src="/notebook-icon.png" alt="" width="112" height="112" />
+      <h1 class="oc-silver-text">OpenCourse Notebook</h1>
+      <p class="dl-lede">Personal notebooks on your Mac, shared with OpenCourse. Write Markdown pages, sketch in the margin, and ask about a passage. The notebooks stay on this computer.</p>
+      {notebookRelease
+        ? <p class="dl-lede">Version {notebookRelease.version}, released {formatDate(notebookRelease.publishedAt)}.</p>
+        : <p class="dl-lede">No release is available to download yet. You can build OpenCourse Notebook from source using the instructions below.</p>}
+      {notebookRelease
+        ? <DownloadButton product="notebook" meta={false} note={false} />
+        : <a class="oc-btn xl secondary" href={SITE.releasesUrl} rel="noopener noreferrer"><Icon name="github" size={18} />Check releases on GitHub</a>}
+      <ul class="dl-facts">
+        <li><Icon name="laptop" size={16} />Apple silicon Macs</li>
+        <li><Icon name="check" size={16} />{SITE.minimumMacOS} or later</li>
+        {notebookRelease?.asset && <li><Icon name="package" size={16} />{megabytes(notebookRelease.asset.size)} disk image</li>}
+        <li><Icon name="scale" size={16} />Free · MIT License</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="oc-wrap dl-body">
+    {notebookRelease?.unsigned && (
+      <section class="dl-section" id="first-open">
+        <div class="callout">
+          <Icon name="shield-check" size={20} />
+          <div>
+            <strong>Not yet signed by Apple</strong>
+            <p>OpenCourse Notebook is not signed with an Apple Developer ID yet, so the first time you open it, macOS says it cannot verify the app. Close that message, open <strong>System Settings ▸ Privacy &amp; Security</strong>, scroll to the note about OpenCourse Notebook and choose <strong>Open Anyway</strong>. You do this once for each version you download yourself; a version OpenCourse Notebook installs from <strong>Settings ▸ Updates</strong> opens without it.</p>
+          </div>
+        </div>
+      </section>
+    )}
+
+    <section class="dl-section oc-reveal">
+      <h2>The same notebooks, in their own app</h2>
+      <p class="muted">A notebook is a set of Markdown pages that belong to one local user. OpenCourse Notebook opens the standalone notebooks OpenCourse already keeps: the ones that are not tied to a course or a PDF. Create one here and it shows up in OpenCourse. Open one there and it is the same notebook, with the same pages, images and chats.</p>
+      <div class="share-grid">
+        <article class="oc-panel oc-edge share-card">
+          <span class="bento-icon"><Icon name="pen-line" /></span>
+          <h3>Pages that save themselves</h3>
+          <p>Each notebook opens with a page list and a live Markdown editor. Headings, lists, tables and images format where you type. Rename a page in its title, and add, reorder or delete pages from the page menu.</p>
+        </article>
+        <article class="oc-panel oc-edge share-card">
+          <span class="bento-icon"><Icon name="palette" /></span>
+          <h3>Pictures and sketches</h3>
+          <p>Drop or paste PNG, JPEG, WebP or GIF images. Press ⌘E to sketch on an empty line, or below a line that already has text. Draw freehand, or use a rectangle, circle or arrow, and erase a stroke by dragging across it.</p>
+        </article>
+        <article class="oc-panel oc-edge share-card">
+          <span class="bento-icon"><Icon name="message-square-text" /></span>
+          <h3>Ask about a passage</h3>
+          <p>Highlight text and attach it to the notebook chat. The conversation continues when you change pages. The assistant can read the notebook’s saved pages, including the one you just wrote, and it does not edit them.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="dl-section oc-reveal">
+      <h2>What stays in OpenCourse</h2>
+      <ul class="ticks">
+        <li><Icon name="check" size={16} />Notebooks linked to a course or a PDF</li>
+        <li><Icon name="check" size={16} />Python notebooks, which run code inside a course</li>
+        <li><Icon name="check" size={16} />Courses, documents, exercises and Coach</li>
+      </ul>
+      <p class="muted">Both apps can be open at once. They share users, standalone notebooks, chats and the AI connection in the macOS keychain. They do not upload notebooks to a server. OpenCourse Notebook keeps its own window cache, so the two apps do not take each other’s place.</p>
+      <p class="muted">Local AI uses the OpenAI API key or ChatGPT connection stored for OpenCourse. Provider charges and plan limits apply. Chat sends the notebook material needed for a reply to OpenAI and needs an internet connection.</p>
+    </section>
+
+    {notebookRelease && (
+      <section class="dl-section oc-reveal">
+        <h2>Install it</h2>
+        <ol class="steps">
+          <li class="oc-panel"><span class="how-n">1</span><div><strong>Open the download</strong><p>Double-click <code>OpenCourse-Notebook-mac-arm64.dmg</code> in your Downloads folder.</p></div></li>
+          <li class="oc-panel"><span class="how-n">2</span><div><strong>Drag it to Applications</strong><p>Drop the OpenCourse Notebook icon onto the Applications folder in the window that opens.</p></div></li>
+          <li class="oc-panel"><span class="how-n">3</span><div><strong>Open it</strong><p>Start OpenCourse Notebook from Applications or Spotlight{notebookRelease.unsigned ? <>, allow it once as <a href="#first-open">described above</a>,</> : ''} and choose a local user. Notebooks you already wrote in OpenCourse are there.</p></div></li>
+        </ol>
+      </section>
+    )}
+
+    {notebookRelease && notes && (
+      <section class="dl-section oc-reveal">
+        <div class="dl-section-head"><h2>What's new in {notebookRelease.version}</h2><a class="more-link" href={notebookRelease.url} rel="noopener noreferrer">On GitHub<Icon name="arrow-up-right" size={15} /></a></div>
+        <div class="oc-prose release-notes" set:html={notes} />
+      </section>
+    )}
+
+    <section class="dl-section oc-reveal">
+      <h2>Build it yourself</h2>
+      <p class="muted">OpenCourse Notebook is part of the OpenCourse repository, in <code>notebook/</code>. With Node 22 and the Xcode Command Line Tools:</p>
+      <div class="code-card">
+        <button type="button" class="oc-btn secondary sm copy" data-copy={build.map((line) => line.cmd).join('\n')}><Icon name="copy" size={14} /><span data-copy-label>Copy</span></button>
+        <pre><code>{build.map((line) => <span class="line"><span class="prompt">$</span> {line.cmd}{line.note && <span class="comment">{'  '}{line.note}</span>}{'\n'}</span>)}</code></pre>
+      </div>
+      <p class="muted">A development launch uses the same local data as OpenCourse Dev, and appears as OpenCourse Notebook Dev. <code>npm test</code> runs the unit tests. <code>npm run dist</code> builds an unsigned Mac app.</p>
+    </section>
+
+    <section class="dl-section dl-more oc-reveal">
+      <a class="oc-card oc-glow more-card" data-glow href="/download"><Icon name="download" /><div><strong>OpenCourse</strong><span>Courses, PDFs, exercises and Coach</span></div><Icon name="arrow-right" size={16} /></a>
+      <a class="oc-card oc-glow more-card" data-glow href="/docs/getting-started#personal-notebooks"><Icon name="book-open" /><div><strong>Notebooks in OpenCourse</strong><span>How personal notebooks work in the main app</span></div><Icon name="arrow-right" size={16} /></a>
+      <a class="oc-card oc-glow more-card" data-glow href={SITE.releasesUrl} rel="noopener noreferrer"><Icon name="git-branch" /><div><strong>Releases</strong><span>Notebook versions are tagged notebook-v</span></div><Icon name="arrow-up-right" size={16} /></a>
+    </section>
+  </div>
+</Base>

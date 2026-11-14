@@ -1,9 +1,13 @@
 # A tag notebook-v<version> builds OpenCourse Notebook and uploads
-# OpenCourse-Notebook-mac-arm64.dmg to a draft release. A maintainer writes the
-# notes and publishes it; publishing rebuilds opencourse.dev (site.yml), which
-# links to this asset on the newest notebook-v* release. The asset name must
-# stay OpenCourse-Notebook-mac-arm64.dmg. These tags do not match release.yml's
-# v* filter, and that workflow's tags do not match this one.
+# OpenCourse-Notebook-mac-arm64.dmg to that tag's draft release. A maintainer
+# writes the notes and publishes it; publishing rebuilds opencourse.dev
+# (site.yml), which links to this asset on the newest notebook-v* release. The
+# asset name must stay OpenCourse-Notebook-mac-arm64.dmg. These tags do not
+# match release.yml's v* filter, and that workflow's tags do not match this one.
+#
+# The DMG is uploaded with gh, not electron-builder --publish. The publisher
+# names its release v<version>, and a notebook at 0.1.0 would attach its disk
+# image to OpenCourse's v0.1.0 draft.
 #
 # Signing uses the same Apple secrets as the OpenCourse release. Without them
 # the build is ad-hoc signed, and the release says so between markers the
@@ -69,9 +73,8 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "OpenCourse Notebook ${GITHUB_REF_NAME#notebook-v}" --notes ""
           fi
 
-      - name: Build and upload to a draft release
+      - name: Build the disk image
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -79,12 +82,21 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
-            npx electron-builder --mac --arm64 --publish always \
+            npx electron-builder --mac --arm64 --publish never \
               -c.mac.identity="${APPLE_SIGNING_IDENTITY#Developer ID Application: }" -c.mac.notarize=true
           else
             unset CSC_LINK CSC_KEY_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_KEY_ID APPLE_API_ISSUER
-            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 --publish always -c.mac.identity=-
+            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 --publish never -c.mac.identity=-
           fi
+
+      - name: Upload to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            dist/OpenCourse-Notebook-mac-arm64.dmg \
+            dist/OpenCourse-Notebook-mac-arm64.dmg.blockmap \
+            --clobber
 
       - name: Say so on an unsigned release
         if: steps.signing.outputs.signed != 'true'

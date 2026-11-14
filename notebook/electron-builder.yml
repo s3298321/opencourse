@@ -32,10 +32,6 @@ dmg:
   # No version in the name. The site resolves the newest notebook-v* release
   # and downloads this file from it. OpenCourse's own DMG has another name.
   artifactName: OpenCourse-Notebook-mac-${arch}.${ext}
-# `electron-builder --publish always` (notebook-release.yml) uploads to a draft
-# release for the notebook-v* tag. A maintainer reviews the notes and publishes it.
-publish:
-  - provider: github
-    owner: s3298321
-    repo: opencourse
-    releaseType: draft
+# notebook-release.yml builds with --publish never and uploads the DMG with gh
+# onto the notebook-v* tag. electron-builder's publisher would name the release
+# v<version>, which is an OpenCourse tag.

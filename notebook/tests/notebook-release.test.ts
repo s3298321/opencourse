@@ -46,6 +46,11 @@ describe('notebook releases', () => {
 
   it('names the bundle and the DMG the release workflow publishes', () => {
     const builder = readFileSync(join(__dirname, '..', 'electron-builder.yml'), 'utf8')
+    const workflow = readFileSync(join(__dirname, '../../.github/workflows/notebook-release.yml'), 'utf8')
+    expect(workflow).toContain('--publish never')
+    expect(workflow).not.toContain('--publish always')
+    expect(workflow).toContain('gh release upload "$GITHUB_REF_NAME"')
+    expect(builder).not.toContain('provider: github')
     const pattern = /dmg:[\s\S]*?artifactName:\s*(\S+)/.exec(builder)?.[1]
     expect(pattern!.replace('${arch}', 'arm64').replace('${ext}', 'dmg')).toBe(RELEASE_ASSET)
     expect(builder).toContain('productName: OpenCourse Notebook')

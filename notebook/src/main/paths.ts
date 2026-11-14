@@ -39,16 +39,19 @@ export function logDbFile(): string {
 }
 
 /**
- * Updates of the app itself - main/updates.ts. Not per user either: every user
- * here runs the one copy of the app. updates.json says whether to check on its
+ * Updates of this app. They live in the notebook's own profile
+ * (Application Support/opencourse-notebook), not the shared OpenCourse data
+ * directory: a check, a download and the swap belong to this copy, and must
+ * not turn on or replace OpenCourse's. App-wide within that profile — every
+ * user here runs the same binary. updates.json says whether to check on its
  * own; updates/ holds a download in progress, the swap helper and its result.
  */
 export function appUpdatesFile(): string {
-  return join(dataRoot(), 'updates.json')
+  return join(app.getPath('userData'), 'updates.json')
 }
 
 export function appUpdatesDir(): string {
-  return join(dataRoot(), 'updates')
+  return join(app.getPath('userData'), 'updates')
 }
 
 /** Everything one user owns, in one deletable directory. */

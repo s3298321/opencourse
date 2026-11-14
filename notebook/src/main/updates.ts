@@ -8,9 +8,10 @@
  * check is one GET of GitHub's releases API; a download happens only when the
  * learner presses Install.
  *
- * App-wide, like the log: every user here runs the same copy. The renderer is
- * told where things stand (AppUpdateStatus) and can ask to check or install,
- * but never names a URL or a version - the release stays in this module.
+ * App-wide within this app's own profile: every user here runs the same copy,
+ * and the files stay out of OpenCourse's data directory. The renderer is told
+ * where things stand (AppUpdateStatus) and can ask to check or install, but
+ * never names a URL or a version - the release stays in this module.
  *
  * The network half follows favicons.ts: net.request with manual redirects,
  * every hop checked against core/updates/policy.ts before it is followed, no
@@ -24,6 +25,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, re
 import { dirname, join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { isLoopbackHost } from '../core/catalog/url'
+import { BRAND } from '../core/brand'
 import { releaseFeedUrl, selectRelease, type Release } from '../core/updates/release'
 import { allowedUpdateUrl, checkDue, CHECK_INTERVAL_MS, installTarget, installTargetMessage, isNewer, notWritable, type InstallTarget } from '../core/updates/policy'
 import type { AppUpdateInfo, AppUpdateStatus } from '../core/types'
@@ -36,6 +38,7 @@ import {
   bundleIdentity,
   canReplace,
   helperArgs,
+  isStagedBundleName,
   stageUpdate,
   UpdateInstallError,
   writeHelper,
@@ -159,7 +162,7 @@ function open(start: Hop, accept: string, onAbort: (abort: () => void) => void):
     })
     onAbort(() => request.abort())
     request.setHeader('Accept', accept)
-    request.setHeader('User-Agent', `OpenCourse/${app.getVersion()} (macOS)`)
+    request.setHeader('User-Agent', `OpenCourse-Notebook/${app.getVersion()} (macOS)`)
     request.on('redirect', (_status, _method, location) => {
       if (++hops > MAX_REDIRECTS || !allowedUpdateUrl(location, { loopback: start.loopback })) {
         request.abort()
@@ -378,7 +381,7 @@ export async function installAppUpdate(): Promise<AppUpdateInfo> {
   const work = (async () => {
     const dir = appUpdatesDir()
     mkdirSync(dir, { recursive: true })
-    const dmg = join(dir, `OpenCourse-${found.version}.dmg`)
+    const dmg = join(dir, `OpenCourse-Notebook-${found.version}.dmg`)
     const t0 = Date.now()
     try {
       set({ state: 'downloading', version: found.version, received: 0, total: found.asset.size })
@@ -484,7 +487,7 @@ function settleLastInstall(): void {
         state: 'error',
         version: result.version,
         message: result.reason === 'move-refused'
-          ? 'macOS did not let OpenCourse replace itself. Allow it under System Settings ▸ Privacy & Security ▸ App Management, or download the new version.'
+          ? `macOS did not let ${BRAND.displayName} replace itself. Allow it under System Settings ▸ Privacy & Security ▸ App Management, or download the new version.`
           : 'The update did not finish installing. This is still the version you had.'
       }
     }
@@ -495,7 +498,7 @@ function settleLastInstall(): void {
     rmSync(backupPathFor(here.bundle), { recursive: true, force: true })
     try {
       for (const name of readdirSync(dirname(here.bundle))) {
-        if (/^\.OpenCourse-\d+\.\d+\.\d+\.app$/.test(name)) rmSync(join(dirname(here.bundle), name), { recursive: true, force: true })
+        if (isStagedBundleName(name)) rmSync(join(dirname(here.bundle), name), { recursive: true, force: true })
       }
     } catch { /* A directory we cannot list holds nothing of ours. */ }
   }

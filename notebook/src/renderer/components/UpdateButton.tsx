@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import { BRAND } from '@core/brand'
 import type { AppUpdateStatus } from '@core/types'
 import Menu, { type MenuItem } from './Menu'
 import { formatDownloadSize, useAppUpdate } from './useAppUpdate'
@@ -22,15 +23,15 @@ export default function UpdateButton({ openSettings }: { openSettings?: () => vo
 
   const items: MenuItem[] = []
   if (status.state === 'available' && status.installable) {
-    items.push({ id: 'install', label: `Install OpenCourse ${status.version} and restart`, hint: formatDownloadSize(status.size), onSelect: () => void window.opencourse.installAppUpdate() })
+    items.push({ id: 'install', label: `Install ${BRAND.displayName} ${status.version} and restart`, hint: formatDownloadSize(status.size), onSelect: () => void window.opencourse.installAppUpdate() })
   } else if (status.state === 'available') {
-    items.push({ id: 'download', label: `Download OpenCourse ${status.version}`, onSelect: () => void window.opencourse.openExternal(info.downloadUrl) })
+    items.push({ id: 'download', label: `Download ${BRAND.displayName} ${status.version}`, onSelect: () => void window.opencourse.openExternal(info.downloadUrl) })
   } else if (status.state === 'blocked') {
-    items.push({ id: 'install', label: `Install OpenCourse ${status.version} and restart`, hint: formatDownloadSize(status.size), onSelect: () => void window.opencourse.installAppUpdate() })
+    items.push({ id: 'install', label: `Install ${BRAND.displayName} ${status.version} and restart`, hint: formatDownloadSize(status.size), onSelect: () => void window.opencourse.installAppUpdate() })
   } else if (status.state === 'ready') {
     items.push({ id: 'restart', label: 'Restart to update', onSelect: () => void window.opencourse.installAppUpdate() })
   } else if (status.state === 'error') {
-    items.push({ id: 'download', label: `Download OpenCourse ${status.version ?? ''}`.trim(), onSelect: () => void window.opencourse.openExternal(info.downloadUrl) })
+    items.push({ id: 'download', label: `Download ${BRAND.displayName} ${status.version ?? ''}`.trim(), onSelect: () => void window.opencourse.openExternal(info.downloadUrl) })
   }
   const notes = 'notesUrl' in status ? status.notesUrl : undefined
   if (notes) items.push({ id: 'notes', label: 'What’s new', onSelect: () => void window.opencourse.openExternal(notes) })
@@ -79,10 +80,10 @@ function chipLabel(status: AppUpdateStatus): string | null {
 
 function chipTitle(status: AppUpdateStatus): string {
   switch (status.state) {
-    case 'available': return status.installable ? `OpenCourse ${status.version} is available` : status.reason ?? `OpenCourse ${status.version} is available`
+    case 'available': return status.installable ? `${BRAND.displayName} ${status.version} is available` : status.reason ?? `${BRAND.displayName} ${status.version} is available`
     case 'blocked': return status.reason
     case 'error': return status.message
-    case 'ready': return `OpenCourse ${status.version} is ready to install`
-    default: return 'Updating OpenCourse'
+    case 'ready': return `${BRAND.displayName} ${status.version} is ready to install`
+    default: return `Updating ${BRAND.displayName}`
   }
 }

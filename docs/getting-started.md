@@ -111,6 +111,9 @@ Standalone notebooks also open in [OpenCourse Notebook](https://opencourse.dev/n
 a separate Mac app in this repository (`notebook/`). Create one there and it
 is the same notebook here. Course-linked notebooks, PDF-linked notebooks and
 Python notebooks stay in OpenCourse. The two apps can run at the same time.
+OpenCourse Notebook updates itself from **Settings ▸ Updates**, the same way
+OpenCourse does: checks are off until you turn them on, and it installs only
+its own `notebook-v` releases.
 
 Each notebook opens in its own window with a page list and a live Markdown
 editor. Pages save automatically. Paste or drop PNG, JPEG, WebP or GIF images;

@@ -145,7 +145,7 @@ export async function appUpdateChecks(win: BrowserWindow): Promise<Result[]> {
   await run('its menu installs in one press, and points at what is new and at Settings', `
     const panel = await wait('.menu-panel.update-menu');
     const items = [...panel.querySelectorAll('.menu-item')].map((b) => b.querySelector('.menu-item-label').textContent);
-    const expected = ['Install OpenCourse 9.9.9 and restart', 'What’s new', 'Update settings'];
+    const expected = ['Install OpenCourse Notebook 9.9.9 and restart', 'What’s new', 'Update settings'];
     if (items.join('|') !== expected.join('|')) throw new Error(items.join('|'));
     const hint = panel.querySelector('.menu-item-hint').textContent;
     if (hint !== '152 MB') throw new Error('size hint ' + hint);
@@ -157,7 +157,7 @@ export async function appUpdateChecks(win: BrowserWindow): Promise<Result[]> {
     await sleep(150);
     const box = section.getBoundingClientRect();
     if (box.top < 0 || box.top > window.innerHeight / 2) throw new Error('the section is at ' + Math.round(box.top) + 'px');
-    if (!/OpenCourse 9\\.9\\.9 is available/.test(section.textContent)) throw new Error(section.textContent.slice(0, 200));
+    if (!/OpenCourse Notebook 9\\.9\\.9 is available/.test(section.textContent)) throw new Error(section.textContent.slice(0, 200));
     if (!section.querySelector('.settings-update-install')) throw new Error('no Install and restart');
     if (section.querySelector('.settings-update-automatic').checked) throw new Error('automatic checks show as on');
     if (!chip()) throw new Error('the titlebar lost its button on Settings');

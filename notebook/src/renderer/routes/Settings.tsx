@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { backendReasoningEffortsFor, normalizeBackendReasoning } from '@core/coach/models'
 import { REASONING_LABELS } from '@core/sidechat/models'
+import { BRAND } from '@core/brand'
 import { PUBLIC_LINKS } from '@core/links'
 import type { AppInfo, AppLinks, AppUpdateInfo, CoachModel, ReasoningEffort, Session, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
@@ -31,7 +32,7 @@ const CATEGORIES: Array<{ id: SettingsSection; label: string }> = [
   { id: 'profile', label: 'Profile' }, { id: 'appearance', label: 'Appearance' },
   { id: 'pomodoro', label: 'Pomodoro' },
   { id: 'connections', label: 'Connections' }, { id: 'ai', label: 'AI & Chat' },
-  { id: 'about', label: 'About' }
+  { id: 'updates', label: 'Updates' }, { id: 'about', label: 'About' }
 ]
 const websiteLinks = (links: AppLinks): Array<{ label: string; href: string }> => [
   { label: 'Legal notice', href: links.legal },
@@ -342,7 +343,7 @@ function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
   return (
     <>
       <p className="meta">
-        This is OpenCourse {info.currentVersion}.
+        This is {BRAND.displayName} {info.currentVersion}.
         {info.checkedAt !== null && ` Last checked ${new Date(info.checkedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.`}
       </p>
       <label className="settings-check">
@@ -355,32 +356,32 @@ function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
         <span>Check for updates automatically</span>
       </label>
       <p className="meta">
-        For every OpenCourse user on this Mac account. A check asks GitHub, where OpenCourse is published, for the
-        latest version. While this is off, OpenCourse never does that on its own - only when you press the button.
+        For every {BRAND.displayName} user on this Mac account. A check asks GitHub, where {BRAND.displayName} is published, for the
+        latest version. While this is off, {BRAND.displayName} never does that on its own - only when you press the button.
       </p>
 
       <div className="settings-update-status" role="status">
         {status.state === 'current' && <p>You have the latest version.</p>}
         {status.state === 'available' && (
           <p>
-            <strong>OpenCourse {status.version} is available</strong> · {formatDownloadSize(status.size)}{notes}
+            <strong>{BRAND.displayName} {status.version} is available</strong> · {formatDownloadSize(status.size)}{notes}
             {!status.installable && status.reason && <span className="meta settings-update-reason">{status.reason}</span>}
           </p>
         )}
         {status.state === 'blocked' && (
           <p>
-            <strong>OpenCourse {status.version} is waiting</strong>{notes}
+            <strong>{BRAND.displayName} {status.version} is waiting</strong>{notes}
             <span className="meta settings-update-reason">{status.reason}</span>
           </p>
         )}
         {status.state === 'downloading' && (
           <>
-            <p>Downloading OpenCourse {status.version}…</p>
+            <p>Downloading {BRAND.displayName} {status.version}…</p>
             <progress className="settings-update-progress" value={status.received} max={status.total} />
           </>
         )}
         {status.state === 'verifying' && <p>Checking the download…</p>}
-        {status.state === 'ready' && <p><strong>OpenCourse {status.version} is ready.</strong> It is installed when OpenCourse restarts.</p>}
+        {status.state === 'ready' && <p><strong>{BRAND.displayName} {status.version} is ready.</strong> It is installed when {BRAND.displayName} restarts.</p>}
         {status.state === 'error' && <p className="import-note error">{status.message}</p>}
       </div>
 
@@ -390,7 +391,7 @@ function UpdatesBody({ info }: { info: AppUpdateInfo }): JSX.Element {
         ) : null}
         {status.state === 'ready' && <ActionButton icon="refresh" className="settings-update-install" onClick={install}>Restart to update</ActionButton>}
         {((status.state === 'available' && !status.installable) || (status.state === 'error' && status.version)) && (
-          <ActionButton icon="download" onClick={download}>Download OpenCourse {status.version}</ActionButton>
+          <ActionButton icon="download" onClick={download}>Download {BRAND.displayName} {status.version}</ActionButton>
         )}
         <ActionButton icon="refresh" className="secondary settings-update-check" disabled={busy || status.state === 'ready'} onClick={check}>
           {status.state === 'checking' ? 'Checking' : 'Check for updates'}

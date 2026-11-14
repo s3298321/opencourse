@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { APP_BUNDLE_NAME, backupPathFor, stagedPathFor } from '../src/main/update-install'
+import { APP_BUNDLE_NAME, backupPathFor, isStagedBundleName, stagedPathFor } from '../src/main/update-install'
 import { PUBLIC_LINKS } from '../src/core/links'
 import { parseRelease, RELEASE_ASSET, RELEASE_TAG_PREFIX, selectRelease } from '../src/core/updates/release'
 
@@ -55,5 +55,8 @@ describe('notebook releases', () => {
     expect(stagedPathFor('/Applications/OpenCourse Notebook.app', '0.1.0')).toBe('/Applications/.OpenCourseNotebook-0.1.0.app')
     expect(backupPathFor('/Applications/OpenCourse Notebook.app')).toBe('/Applications/.OpenCourseNotebook-previous.app')
     expect(stagedPathFor('/Applications/OpenCourse.app', '0.7.4')).not.toBe('/Applications/.OpenCourse-0.7.4.app')
+    expect(isStagedBundleName('.OpenCourseNotebook-0.1.0.app')).toBe(true)
+    expect(isStagedBundleName('.OpenCourse-0.7.4.app')).toBe(false)
+    expect(isStagedBundleName('.OpenCourseNotebook-previous.app')).toBe(false)
   })
 })

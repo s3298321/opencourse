@@ -4,6 +4,7 @@ import type { UserProfile } from '@core/types'
 import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
 import Menu from './Menu'
 import Brand from './Brand'
+import UpdateButton from './UpdateButton'
 import Pomodoro from './Pomodoro'
 import { screenOf, sectionOf, type Route } from '../routes'
 import type { Workspace } from '../workspaces'
@@ -99,6 +100,9 @@ export function TitleBarChrome({ back, user, navigate, route, actions, title, sh
       {back ? <div className="crumbs"><a role="button" tabIndex={0} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); back.onClick() } }} onClick={back.onClick}>← {back.label}</a></div> : title ? <strong className="titlebar-title">{title}</strong> : <Brand />}
       <div className="titlebar-left" ref={leftRef}>{showPomodoro && <Pomodoro key={user?.id} />}</div>
       <div className="titlebar-right" ref={controlsRef}>
+        <UpdateButton
+          openSettings={navigate && route ? () => navigate({ name: 'settings', from: screenOf(route), section: 'updates' }) : undefined}
+        />
         {actions}
         {navigate && section && (
           <div

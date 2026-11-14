@@ -49,6 +49,11 @@ export function backupPathFor(target: string): string {
   return join(dirname(target), '.OpenCourseNotebook-previous.app')
 }
 
+/** A staged bundle left beside the app by a swap that never finished. Not OpenCourse's `.OpenCourse-*.app`. */
+export function isStagedBundleName(name: string): boolean {
+  return /^\.OpenCourseNotebook-\d+\.\d+\.\d+\.app$/.test(name)
+}
+
 /**
  * Whether this process may replace `bundle`. Moving a directory to a new name
  * needs write access to its parent and to the directory itself (its `..`
@@ -159,7 +164,7 @@ export async function stageUpdate(dmg: string, target: string, expect: BundleIde
  * deleted here: the next launch does that, once it is the new version.
  */
 export const HELPER_SCRIPT = `#!/bin/sh
-# OpenCourse update helper. Written by the app, run once after it quits.
+# OpenCourse Notebook update helper. Written by the app, run once after it quits.
 pid="$1"; target="$2"; staged="$3"; backup="$4"; result="$5"; relaunch="$6"; version="$7"; tries="\${8:-300}"
 report() { printf '{"ok":%s,"reason":"%s","version":"%s"}\\n' "$1" "$2" "$version" > "$result"; }
 reopen() { if [ "$relaunch" = 1 ]; then /usr/bin/open "$target"; fi; }

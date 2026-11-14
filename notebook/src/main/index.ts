@@ -18,7 +18,7 @@ import { wantsMic } from './mic'
 import { registerProtocolHandler, registerSchemePrivileges } from './protocol'
 import { applyWindowLook, windowLookOptions } from './theme-window'
 import { devRun, isolatedRun } from './run-mode'
-import { quitVetoed, runPendingInstall } from './updates'
+import { quitVetoed, runPendingInstall, startUpdates } from './updates'
 
 // Must happen before the app is ready.
 // Long Responses streams can fail with ERR_QUIC_PROTOCOL_ERROR. Keep HTTPS on
@@ -237,6 +237,7 @@ app.whenReady().then(async () => {
   app.on('before-quit', closeDb)
 
   createWindow()
+  startUpdates()
   app.on('activate', () => {
     focusMainWindow()
   })

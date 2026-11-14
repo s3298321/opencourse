@@ -7,6 +7,9 @@ directories:
 files:
   - out/**
   - package.json
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
 asarUnpack:
   - '**/node_modules/node-pty/**'
 npmRebuild: false

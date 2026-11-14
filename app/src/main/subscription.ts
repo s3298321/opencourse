@@ -10,6 +10,7 @@ import type { SubscriptionStatus } from '../core/types'
 import { userDir } from './paths'
 import { currentUserId, requireUser } from './users'
 import { log } from './log'
+import { sendCallbackPage } from './subscription-callback'
 
 const subscriptionLog = log.child('subscription')
 
@@ -144,16 +145,19 @@ export async function connectSubscription(accountId?: string): Promise<Subscript
       server.on('request', (request, response) => {
         let url: URL
         try { url = new URL(request.url ?? '/', redirect) }
-        catch { response.writeHead(400).end('Invalid callback.'); return }
+        catch { sendCallbackPage(response, 'invalid'); return }
         if (request.method !== 'GET' || url.pathname !== '/callback') { response.writeHead(404).end(); return }
-        const fail = (message: string): void => { response.writeHead(400, { 'Content-Type': 'text/plain' }).end(message); reject(new Error(message)) }
+        const fail = (message: string, outcome: 'declined' | 'invalid' = 'invalid'): void => {
+          sendCallbackPage(response, outcome)
+          reject(new Error(message))
+        }
         if (url.searchParams.get('state') !== state) { fail('ChatGPT sign-in validation failed.'); return }
-        if (url.searchParams.has('error')) { fail('ChatGPT sign-in was declined.'); return }
+        if (url.searchParams.has('error')) { fail('ChatGPT sign-in was declined.', 'declined'); return }
         const clientId = url.searchParams.get('client_id') ?? returning?.clientId
         const code = url.searchParams.get('code')
         if (!clientId || clientId === 'dynamic_agent_client' || clientId.length > 200 || !code ||
           (returning && clientId !== returning.clientId)) { fail('ChatGPT registration was incomplete or did not match.'); return }
-        response.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }).end('Sign-in received. You can return to opencourse.')
+        sendCallbackPage(response, 'received')
         resolve({ code, clientId })
       })
     })

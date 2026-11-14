@@ -96,6 +96,9 @@ export interface ServerAISettings extends ServerAIDefaults {
   enabledModels?: string[] | null
   configured: boolean
   hint: string | null
+  transcription?: import('../transcription').TranscriptionConfig & { connection?: 'apiKey' }
+  idempotentChatCreation?: boolean
+  perChatTools?: boolean
   webSearch: boolean
   /** Null names a chat with its own model, at low reasoning when the model takes it. */
   title: ServerAIDefaults | null
@@ -108,6 +111,7 @@ export interface ServerAIModels {
   error?: string
 }
 export interface LearningChat {
+  tools?: import('../chat-tools').ChatTools
   id: string
   kind: ContentKind
   contentId: string
@@ -129,17 +133,21 @@ export interface LearningMessage {
   quote?: string
   model?: string
   reasoning?: ReasoningEffort | null
+  retryAttempt?: number
   activity?: { label: string; running: boolean } | null
   citations: { title: string; url?: string; start?: number; end?: number; page?: number; moduleId?: string; lessonId?: string }[]
 }
 export interface LearningChatView {
+  /** Desktop offline history, served from the local cache. */
+  offline?: boolean
   chat: LearningChat
   messages: LearningMessage[]
 }
 export interface LearningStreamEvent {
   id: number
   messageId: string
-  type: 'delta' | 'done' | 'activity'
+  type: 'delta' | 'done' | 'activity' | 'retry' | 'replace'
+  attempt?: number | null
   text?: string
   status?: LearningMessage['status']
 }

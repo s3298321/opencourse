@@ -1,3 +1,4 @@
+import { DISCARD_COURSE_CHAT_DETAIL } from '@core/course-document'
 import { useCoachContextBridge, useCoachContextProvider } from './coach/context'
 import DocumentOverview from './routes/DocumentOverview'
 import DocumentServerCatalog from './routes/DocumentServerCatalog'
@@ -94,14 +95,18 @@ export default function App(): JSX.Element {
     if (editor.current) await editor.current.flush().catch(() => {})
     // Settings and Logs open over the editor; its session waits underneath.
     if (next && screenOf(next).name === 'courseEditor' && (screenOf(next) as { courseId: string }).courseId === courseId) return true
-    const dirty = editorDirty.current || await window.opencourse.isCourseDraftDirty(courseId).catch(() => false)
-    const running = (await window.opencourse.getAuthoringRunState(courseId)).chatId !== null
-    if ((dirty || running) && !(await ask({
-      title: dirty ? 'Discard unsaved changes?' : 'Stop the assistant and leave?',
-      detail: [dirty ? 'Your edits to this course have not been saved. Discarding them leaves the course as it was last saved.' : '', running ? 'The assistant is still working. Leaving stops it.' : ''].filter(Boolean).join(' '),
-      confirmLabel: dirty ? 'Discard changes' : 'Stop and leave',
+    const exit = await window.opencourse.getCourseExitState(courseId)
+    const dirty = editorDirty.current || exit.dirty
+    if ((dirty || exit.losesChat || exit.running) && !(await ask({
+      title: dirty ? 'Discard unsaved changes?' : exit.losesChat ? 'Discard course chat?' : 'Stop the assistant and leave?',
+      detail: [
+        exit.losesChat ? DISCARD_COURSE_CHAT_DETAIL : '',
+        dirty ? 'Your edits to this course have not been saved.' : '',
+        exit.running ? 'The assistant is still working. Leaving stops it.' : ''
+      ].filter(Boolean).join(' '),
+      confirmLabel: dirty ? 'Discard changes' : exit.losesChat ? 'Discard chat' : 'Stop and leave',
       cancelLabel: 'Keep editing',
-      confirmIcon: dirty ? 'trash' : 'stop',
+      confirmIcon: dirty || exit.losesChat ? 'trash' : 'stop',
       cancelIcon: 'edit',
       danger: true
     }))) return false
@@ -151,7 +156,10 @@ export default function App(): JSX.Element {
   // (will-prevent-unload), because a page that is unloading cannot.
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent): void => {
-      if (editorDirty.current || notebook.current?.dirty()) { event.preventDefault(); event.returnValue = '' }
+      if (editorDirty.current || notebook.current?.dirty() || (editor.current && window.opencourse.windowWouldDiscardCourseChat())) {
+        event.preventDefault()
+        event.returnValue = ''
+      }
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)

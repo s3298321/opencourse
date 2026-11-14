@@ -1,12 +1,12 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import type { DragEvent, JSX } from 'react'
 import type { Block, CourseManifest, Lesson } from '@core/types'
-import { copyElement, deleteElement, editElement, insertLessonBlock, moveLessonBlock, newBlock, reorderElement } from '@core/course-editor'
+import { copyElement, deleteElement, editElement, insertLessonBlock, moveLessonBlock, reorderElement } from '@core/course-editor'
 import { newDraftRef } from '@core/course-document'
 import BlockTypeIcon, { blockTypeLabels } from '../components/BlockTypeIcon'
 import { EditorValidation, ElementFields } from './CourseEditorFields'
 
-export const elementKinds: Block['type'][] = ['markdown', 'python-cell', 'image', 'video', 'visualization', 'quiz', 'exercise']
+export const elementKinds: Block['type'][] = ['markdown', 'latex', 'python-cell', 'image', 'video', 'visualization', 'quiz', 'exercise']
 export type ElementDrag = { type: Block['type'] } | { id: string; lessonId: string }
 export function beginElementDrag(event: DragEvent, value: ElementDrag, start: (value: ElementDrag | null) => void): void {
   event.dataTransfer.setData('application/x-opencourse-element', JSON.stringify(value))
@@ -115,14 +115,6 @@ export default function CourseLessonWorkspace({ lesson, manifest, courseId, path
           <EditorValidation value={{ path: `${path}/blocks/${index}`, errors }}>
             <ElementFields element={block} manifest={manifest} courseId={courseId} set={fields => mutate(current => editElement(current, block.nodeId!, fields))} />
           </EditorValidation>
-          <details className="author-section"><summary>Change element type</summary>
-            <label className="author-action-field">Replacing the type clears this element’s content.
-              <select aria-label="Change block type" value={block.type} onChange={event => {
-                const replacement = newBlock(event.target.value as Block['type'], newDraftRef, lesson.blocks)
-                mutate(current => editElement(current, lesson.nodeId!, { blocks: lesson.blocks.map(entry => entry.nodeId === block.nodeId ? replacement : entry) })); onActiveElement(replacement.nodeId!)
-              }}>{elementKinds.map(type => <option value={type} key={type}>{blockTypeLabels[type]}</option>)}</select>
-            </label>
-          </details>
         </div>
       </article>
     </Fragment>)}

@@ -1,3 +1,4 @@
+import { quoteSelectionText } from '@core/quote-selection'
 import { readNotebookCells } from '@core/notebook/reading'
 import { useCoachContextProvider, selectedContent, contextExcerpt } from '../coach/context'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type JSX, type SetStateAction } from 'react'
@@ -67,7 +68,8 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
     const select = (event: MouseEvent): void => {
       if ((event.target as Element)?.closest('.ask-about')) return
       const selection = window.getSelection()
-      if (!selection?.rangeCount || !selection.toString().trim()) { setOffer(null); return }
+      const text = quoteSelectionText(selection)
+      if (!selection?.rangeCount || !text.trim()) { setOffer(null); return }
       const range = selection.getRangeAt(0), node = range.commonAncestorContainer
       const element = node instanceof Element ? node : node.parentElement
       if (element?.closest('.cm-editor')) return
@@ -77,7 +79,7 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
       const highlight = (value: Range | null): void => {
         if (typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined') { if (value) CSS.highlights.set(QUOTE_HIGHLIGHT, new Highlight(value)); else CSS.highlights.delete(QUOTE_HIGHLIGHT) }
       }
-      setOffer({ owner, from, text: selection.toString(), x: box.left + box.width / 2, y: box.top,
+      setOffer({ owner, from, text, x: box.left + box.width / 2, y: box.top,
         ...(from === 'notebook' ? { notebook: { cellId: element?.closest('[data-cell-id]')?.getAttribute('data-cell-id') ?? undefined } } : {}),
         mark: () => highlight(saved), unmark: () => highlight(null) })
     }
@@ -111,8 +113,6 @@ export default function Notebook({ courseId, user, navigate, route, chatOpen, se
         <div className="notebook-heading"><h1>Python notebook</h1><span className="spacer" /><span className="meta">{status?.kernel ?? 'stopped'} · {document.dirty ? 'Saving…' : 'Saved'}</span>
           <ActionButton icon="stop" className="secondary" disabled={status?.kernel === 'stopped' || status?.kernel === 'stopping'} onClick={() => stop()}>Stop kernel</ActionButton>
           <ActionButton icon="restart" className="secondary" disabled={status?.stage !== 'ready' || status?.kernel === 'stopping'} onClick={() => stop(true)}>Restart kernel</ActionButton></div>
-        <p className="meta">Cells share Python variables until you stop or restart the kernel. Installed packages stay in this course’s environment.</p>
-        <details className="notebook-help"><summary>Install a Python package</summary><p>Run this in a cell, replacing the package name:</p><pre>{'import subprocess, sys\nsubprocess.check_call([sys.executable, "-m", "pip", "install", "package-name"])'}</pre><p className="meta">Restart the kernel if an already imported package was upgraded.</p></details>
         {(error || document.error) && <p className="error">{error || document.error}</p>}
         {document.conflict && <div className="notebook-conflict"><ActionButton icon="save" onClick={() => document.resolve(true)}>Keep my edits</ActionButton><ActionButton icon="refresh" className="secondary" onClick={() => document.resolve(false)}>Reload saved notebook</ActionButton></div>}
         {document.cells.map((cell, index) => <div key={cell.id} className="notebook-cell-wrap">

@@ -22,7 +22,7 @@ import { requireProject } from './coach'
 import { hasCoachConversations, finishSession, insertSession, saveTurns, saveFragments, updateSessionMetadata, recordToolCall, selectSessionRow, selectSessionSummary } from './coachdb'
 import { listFiles } from './coachfiles'
 import { readKey } from './coachkey'
-import { holdMic } from './mic'
+import { holdMic, wantsMic } from './mic'
 import { createLiveSession, type LiveSessionConfig } from './openai'
 import { isLiveModelId } from '../core/coach/models'
 import type { CoachTranscriptFragment, CoachSessionMetadata, CoachEndOutcome } from '../core/types'
@@ -126,10 +126,11 @@ export async function startSession(sender: WebContents, projectId: string): Prom
   if (!key) return { status: 'no-key' }
 
   if (startingSession || live.size > 0) return { status: 'failed', message: 'End the current conversation before starting another coach.' }
+  if (wantsMic()) return { status: 'failed', message: 'Stop dictation before starting the coach.' }
   const releaseProject = holdCoachProject(projectId)
   startingSession = true
   let kept = false
-  const releaseMic = holdMic()
+  const releaseMic = holdMic(sender.id)
   try {
     const owner = requireUser()
     try {

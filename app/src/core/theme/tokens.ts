@@ -17,7 +17,8 @@ export const COLOR_TOKENS = [
   'chip-bg', 'chip-fg', 'ok-bg', 'ok-border', 'err-bg', 'err-border',
   'accent-ring', 'code-bg', 'bubble', 'bubble-border', 'composer-bg',
   'scrollbar', 'scrollbar-hover', 'chrome', 'glass', 'popover', 'overlay',
-  'shadow', 'hover-ring', 'editor-active-line', 'terminal-selection'
+  'shadow', 'hover-ring', 'editor-active-line', 'terminal-selection', 'sketch-background', 'sketch-brush',
+  'sketch-cursor-border', 'sketch-cursor-shadow'
 ] as const
 export type ColorToken = typeof COLOR_TOKENS[number]
 

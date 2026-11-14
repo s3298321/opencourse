@@ -53,7 +53,7 @@ export default function QuizBlockView({ courseId, block, attempt, onAnswered, pr
 
   return (
     <div className="block card quiz">
-      <Html className="question" inline source={block.question} />
+      <Html className="question" lesson source={block.question} />
 
       {block.kind === 'text' ? (
         <input
@@ -77,7 +77,7 @@ export default function QuizBlockView({ courseId, block, attempt, onAnswered, pr
               checked={selected.includes(option.id)}
               onChange={() => toggle(option.id)}
             />
-            <Html as="span" inline source={option.text} />
+            <Html as="span" className="quiz-choice-text" inline lesson source={option.text} />
           </label>
         ))
       )}
@@ -97,7 +97,7 @@ export default function QuizBlockView({ courseId, block, attempt, onAnswered, pr
         <div className={`feedback ${verdict.isCorrect ? 'ok' : 'err'}`}>
           <strong>{verdict.isCorrect ? 'Correct.' : 'Not quite.'}</strong>
           {verdict.explanation && (
-            <Html className="explanation" inline source={verdict.explanation} />
+            <Html className="explanation" lesson source={verdict.explanation} />
           )}
         </div>
       )}

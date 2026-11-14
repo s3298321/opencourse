@@ -18,6 +18,7 @@ vi.mock('node:fs', () => ({
 }))
 vi.mock('node:child_process', () => ({ execFile: fake.spawn, execFileSync: fake.spawn }))
 vi.mock('../src/main/db', () => ({ closeDb: vi.fn() }))
+vi.mock('../src/main/course-authoring', () => ({ windowWouldDiscardCourseChat: () => false }))
 vi.mock('../src/main/ipc', () => ({ registerIpc: vi.fn() }))
 vi.mock('../src/main/menu', () => ({ buildMenu: vi.fn() }))
 vi.mock('../src/main/mic', () => ({ wantsMic: () => false }))

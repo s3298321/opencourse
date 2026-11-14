@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AIModelSettings, AIProfile } from '../src/core/types'
 import { AIModelsSection } from '../src/renderer/components/AISettings'
+import TranscriptionSettings from '../src/renderer/components/TranscriptionSettings'
 
 let root: Root | undefined
 afterEach(async () => {
@@ -10,6 +11,27 @@ afterEach(async () => {
   root = undefined
   document.body.replaceChildren()
   vi.unstubAllGlobals()
+})
+
+it('shows transcription as a standard settings card with a single model picker', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const configure = vi.fn(async config => ({ config, configured: true }))
+  vi.stubGlobal('opencourse', { dictation: {
+    settings: async () => ({ config: { model: 'gpt-live-transcribe' }, configured: true }), configure
+  } })
+  const container = document.createElement('div')
+  root = createRoot(container)
+  await act(async () => root!.render(createElement(TranscriptionSettings, { version: 0 })))
+  expect(container.querySelector('.settings-section > h2')?.textContent).toBe('Transcription')
+  expect(container.querySelector('fieldset')).toBeNull()
+  expect(container.querySelectorAll('select')).toHaveLength(1)
+  const model = container.querySelector<HTMLSelectElement>('.settings-defaults select')!
+  await act(async () => {
+    model.value = 'gpt-realtime-whisper'
+    model.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  expect(configure).toHaveBeenCalledWith({ model: 'gpt-realtime-whisper' })
+  expect(model.value).toBe('gpt-realtime-whisper')
 })
 
 describe('allowed model bulk selection', () => {

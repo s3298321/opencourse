@@ -47,6 +47,7 @@ export default function Menu({
   heading,
   resetKey,
   triggerMode = 'click',
+  closeOnSelect = true,
   onClick,
   'aria-current': ariaCurrent,
   items
@@ -69,6 +70,7 @@ export default function Menu({
   resetKey?: unknown
   /** Context menus keep the trigger's ordinary click action. */
   triggerMode?: 'click' | 'contextmenu'
+  closeOnSelect?: boolean
   onClick?: () => void
   'aria-current'?: 'page'
   items: MenuItem[]
@@ -180,8 +182,9 @@ export default function Menu({
   }, [open])
 
   const choose = (item: MenuItem): void => {
-    if (item.disabled) return
-    close()
+    if (item.disabled || disabled) return
+    if (closeOnSelect) close()
+    else panel.current?.focus({ preventScroll: true })
     item.onSelect()
   }
 

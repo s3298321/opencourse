@@ -40,6 +40,19 @@ it('ignores duplicate and stale answers from other windows', () => {
   expect(timer.get().cycle.phase).toBe('idle')
 })
 
+it('honours a one-off length and ignores a length outside 1 second–180 minutes', () => {
+  const { timer } = setup()
+  expect(timer.command({ action: 'start', revision: 0, seconds: 12 * 60 }).cycle).toEqual({
+    phase: 'study', endsAt: 721_000, breakMinutes: 2
+  })
+  vi.advanceTimersByTime(12 * 60_000)
+  expect(timer.command({ action: 'break', revision: 2, seconds: 90 }).cycle).toEqual({ phase: 'break', endsAt: 811_000 })
+  vi.advanceTimersByTime(90_000)
+  expect(timer.command({ action: 'start', revision: 4, seconds: 1.5 }).cycle).toEqual({
+    phase: 'study', endsAt: 871_000, breakMinutes: 2
+  })
+})
+
 it('catches up on resume and rejects an action based on a deadline that passed during sleep', () => {
   const { timer, changed } = setup()
   timer.command({ action: 'start', revision: 0 })

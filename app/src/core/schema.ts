@@ -22,6 +22,7 @@ function describe(err: ErrorObject): string {
   const field = err.keyword === 'required' ? '/' + (err.params as { missingProperty: string }).missingProperty : ''
   const path = (err.instancePath + field) || '(root)'
   if (err.schemaPath.startsWith('#/allOf/0/then')) return `${path}: Python cells and notebooks require schema_version 1.7 or later`
+  if (err.schemaPath.startsWith('#/allOf/1/then')) return `${path}: LaTeX blocks require schema_version 1.9 or later`
   // The raw pattern means nothing to an author; say what a version looks like.
   if (err.instancePath === '/version' && err.keyword === 'pattern') return '/version: use three numbers, MAJOR.MINOR.PATCH, such as 1.2.0'
   if (err.keyword === 'enum' && err.instancePath.endsWith('/runtime/language')) return `${path}: Only Python exercises are supported`

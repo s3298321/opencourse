@@ -14,7 +14,7 @@ import { runtimeLabel } from '@core/toolchains'
 import { ratingLabels, reviewRecommendation } from '../../../../app/src/learning-ui/review-display'
 import { call } from '../lib/api'
 import { courseSummary, lessonDone, loadEnrolledCourse, resumeIndex, reviewCandidates, reviewSummary, type EnrolledCourse, type WebReviewCard } from '../lib/learning'
-import { renderInline, renderMarkdown } from '../lib/markdown'
+import { renderLessonText } from '../lib/markdown'
 import { Html } from '../components/Html'
 import { useTitle } from '../components/Bits'
 
@@ -74,7 +74,7 @@ export function LearningCoursePage() {
     void call('PUT', `/me/learning/course/${enc(id)}`, { version: update }).then(load).catch((e: Error) => setError(e.message)).finally(() => setBusy(false))
   }
   const remove = () => {
-    if (!confirm('Remove from My learning on all devices? Progress and chats are retained.')) return
+    if (!confirm('Remove from my courses on all devices? Progress and chats are retained.')) return
     setBusy(true)
     void call('DELETE', `/me/learning/course/${enc(id)}`).then(() => navigate('/learning')).catch((e: Error) => { setError(e.message); setBusy(false) })
   }
@@ -84,7 +84,7 @@ export function LearningCoursePage() {
       <Link className="back-link" to="/learning"><ArrowLeft aria-hidden /> My learning</Link>
       <div className="learning-course-actions">
         {update && <button className="oc-btn secondary sm" disabled={busy} onClick={updateCourse}><RefreshCw aria-hidden /> Update to {update}</button>}
-        <button className="oc-btn ghost sm" disabled={busy} onClick={remove}><Trash2 aria-hidden /> Remove from My learning</button>
+        <button className="oc-btn ghost sm" disabled={busy} onClick={remove}><Trash2 aria-hidden /> Remove from my courses</button>
       </div>
       <h1>{course.title}</h1>
       <p className="learning-course-meta">
@@ -94,7 +94,7 @@ export function LearningCoursePage() {
         {course.author ? ` · ${course.author}` : ''}
         {runtime ? ` · ${runtime}` : ''}
       </p>
-      {course.description && <Html className="oc-prose learning-course-description" html={renderMarkdown(course.description)} />}
+      {course.description && <Html className="oc-prose learning-course-description" html={renderLessonText(course.description)} />}
       {error && <p className="form-error" role="alert">{error}</p>}
 
       <section className="learning-course-summary" aria-label="Progress">
@@ -129,9 +129,9 @@ export function LearningCoursePage() {
       </section>
 
       {course.prerequisites && course.prerequisites.length > 0 && (
-        <section className="oc-panel learning-course-panel">
+        <section className="oc-panel learning-course-panel course-prerequisites">
           <h2>Before you start</h2>
-          <ul>{course.prerequisites.map((p, i) => <Html as="li" key={i} html={renderInline(p)} />)}</ul>
+          <ul>{course.prerequisites.map((p, i) => <Html as="li" key={i} html={renderLessonText(p, !p.includes('\n'))} />)}</ul>
         </section>
       )}
 
@@ -300,13 +300,13 @@ export function ReviewPage({kind='course'}:{kind?:'course'|'document'}) {
               <span className="review-label">Question</span>
               {card.state && card.state.due > new Date() && <span className="review-early">Early review</span>}
             </div>
-            <Html className="oc-prose" html={renderMarkdown(card.card.question)} />
+            <Html className="oc-prose" html={renderLessonText(card.card.question)} />
             {card.card.image && <img className="review-image" src={card.card.image.src} alt={card.card.image.alt ?? ''} />}
           </div>
           {answer !== null && (
             <div className="review-answer">
               <h2 className="review-label" ref={answerHeading} tabIndex={-1}>Answer</h2>
-              <Html className="oc-prose" html={renderMarkdown(answer)} />
+              <Html className="oc-prose" html={renderLessonText(answer)} />
             </div>
           )}
         </article>

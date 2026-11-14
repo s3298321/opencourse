@@ -7,13 +7,15 @@ import { PUBLIC_LINKS } from '@core/links'
 import type { AppInfo, AppLinks, AppUpdateInfo, CoachModel, ReasoningEffort, Session, UserProfile } from '@core/types'
 import TitleBar from '../components/TitleBar'
 import { AIModelsSection, SubscriptionSection } from '../components/AISettings'
+import TranscriptionSettings from '../components/TranscriptionSettings'
 import TitleGenerationSection from '../components/TitleGenerationSettings'
 import ThemeSection from '../components/ThemeSettings'
+import NotebookSketchSettings from '../components/NotebookSketchSettings'
 import PomodoroSettings from '../components/PomodoroSettings'
 import CoachVoicePicker from '../components/CoachVoicePicker'
 import CoachPromptSettings from '../components/CoachPromptSettings'
 import ServerSettings from '../components/ServerSettings'
-import ConnectionIcon from '../components/ConnectionIcon'
+import ConnectionIcon, { PROVIDER_LABELS } from '../components/ConnectionIcon'
 import { formatDownloadSize, useAppUpdate } from '../components/useAppUpdate'
 import type { Route, Screen, SettingsSection } from '../routes'
 import { FLOATING_COACH_BUTTON_CHANGED } from '../coach/CoachLauncher'
@@ -82,10 +84,10 @@ export default function Settings({ user, navigate, route, onSession, onSessionCh
   const content = (category: SettingsSection): JSX.Element => {
     switch (category) {
       case 'profile': return user ? <><NameSection user={user} onSession={onSession} /><DangerSection user={user} onSessionChanged={onSessionChanged} /></> : <p className="meta">Choose a user to edit their profile.</p>
-      case 'appearance': return <><ThemeSection />{user ? <><NotebookButtonSection /><CoachButtonSection /></> : <p className="meta">Choose a user to configure the notebooks button.</p>}</>
+      case 'appearance': return <><ThemeSection />{user ? <><NotebookButtonSection /><NotebookSketchSettings /><CoachButtonSection /></> : <p className="meta">Choose a user to configure the notebooks button.</p>}</>
       case 'pomodoro': return user ? <PomodoroSettings /> : <p className="meta">Choose a user to configure Pomodoro.</p>
       case 'connections': return <><KeySection onChanged={onKeyChanged} /><SubscriptionSection /></>
-      case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /></>
+      case 'ai': return <><WebSearchSection /><WebSearchSection authoring /><PlanDefaultSection /><AIModelsSection scope="chat" version={keyVersion} /><AIModelsSection scope="project" version={keyVersion} /><AIModelsSection scope="authoring" version={keyVersion} /><TitleGenerationSection version={keyVersion} /><TranscriptionSettings version={keyVersion} /></>
       case 'coach': return <><CoachDefaultsSection keyVersion={keyVersion} active={section === 'coach'} /><CoachPromptSettings /></>
       case 'servers': return <ServerSettings />
       case 'updates': return <UpdatesSection focus={section === 'updates'} />
@@ -255,7 +257,7 @@ function KeySection({ onChanged }: { onChanged: () => void }): JSX.Element {
 
   return (
     <section className={`settings-section${stored?.has ? ' settings-key-ready' : ''}`}>
-      <h2 className="settings-connection-heading"><ConnectionIcon provider="apiKey" />Your OpenAI key</h2>
+      <h2 className="settings-connection-heading"><ConnectionIcon provider="apiKey" />{PROVIDER_LABELS.apiKey}</h2>
       <div className={`settings-key-status${stored?.has ? ' ready' : ''}`} role="status">
         <span className="settings-key-badge">
           {stored?.has && <span aria-hidden="true">✓</span>}
@@ -483,7 +485,7 @@ export function WebSearchSection({ authoring = false }: { authoring?: boolean })
       </label>
       <p className="meta">
         {authoring ? 'Enabled by default. The assistant checks official documentation when teaching version-sensitive technology. Sources and verification notes stay in the authoring chat. ' : 'The model decides when a question needs it—a release date, a current version, or documentation the course or document does not quote. '}
-        Searches use this feature’s selected connection when supported. API-key searches add API charges; subscription searches use eligible plan usage.
+        This default applies to new chats. Searches use this feature’s selected connection when supported. API-key searches add API charges; subscription searches use eligible plan usage.
       </p>
       {error && <p className="import-note error">{error}</p>}
     </section>
@@ -723,4 +725,16 @@ function DangerSection({
       {error && <p className="import-note error">{error}</p>}
     </section>
   )
+}
+
+function PlanDefaultSection(): JSX.Element {
+  const [on, setOn] = useState<boolean | null>(null), [error, setError] = useState('')
+  useEffect(() => { void window.opencourse.getAuthoringPlanDefault().then(setOn).catch(e => setError(e.message)) }, [])
+  return <section className="settings-section"><h2>Course planning</h2>
+    <label className="settings-check"><input type="checkbox" checked={on === true} disabled={on === null} onChange={e => {
+      void window.opencourse.setAuthoringPlanDefault(e.target.checked).then(setOn).catch(e => setError(e.message))
+    }} />Plan new course chats</label>
+    <p className="meta">Ask about the learner and propose a course plan before creating content. You can change this in each chat.</p>
+    {error && <p className="import-note error">{error}</p>}
+  </section>
 }

@@ -14,7 +14,7 @@ vi.mock('../src/renderer/routes/CourseEditorFields', () => ({
 vi.mock('../src/renderer/routes/CourseEditorPreview', () => ({
   BlockPreview: ({ block }: { block: { content: string } }) => createElement('p', null, block.content),
   LessonPreview: ({ lesson }: { lesson: { title: string; blocks: { content: string }[] } }) => createElement('div', null, createElement('h1', null, lesson.title), ...lesson.blocks.map((block, i) => createElement('p', { key: i }, block.content))),
-  CourseCoverPreview: () => null, ProjectPreview: () => null,
+  CourseOverviewPreview: ({ manifest }: { manifest: { title: string } }) => createElement('h1', null, manifest.title), ProjectPreview: () => null,
   FlashcardPreview: ({ card }: { card: { question: string } }) => createElement('p', null, card.question)
 }))
 let root: Root | undefined
@@ -46,7 +46,7 @@ async function fixture(existingChats: string[] = [], saved = false) {
     listAuthoringChats: async () => structuredClone(chats), getAuthoringChat: vi.fn(async (id: string) => ({ chat: summary(id), messages: [] })),
     createAuthoringChat: vi.fn(async () => { const chat = summary(`chat-${chats.length}`); chats.push(chat); return chat }),
     deleteAuthoringChat: async () => {}, cancelAuthoringChat: async () => {}, setAuthoringChatModel: async (id: string) => summary(id), setAuthoringChatReasoning: async (id: string) => summary(id),
-    sendAuthoringMessage: send, stopCourseAuthoring: stop, getAuthoringRunState: async () => ({ chatId: null }),
+    sendAuthoringMessage: send, stopCourseAuthoring: stop, getAuthoringRunState: async () => ({ chatId: null, editing: false }),
     onAuthoringDraftChanged: subscribe('draft'), onAuthoringRunState: subscribe('run'),
     onAuthoringChatDelta: subscribe('delta'), onAuthoringChatDone: subscribe('done'), onAuthoringChatTitle: subscribe('title'), onAuthoringChatError: subscribe('error'), onAuthoringChatActivity: subscribe('activity'),
     onAIChanged: () => () => {}, listChatModels: async () => ({ models: [{ id: 'gpt-5.1', label: 'GPT' }], webSearch: false, connection: { provider: 'apiKey', ready: true } }),
@@ -57,7 +57,7 @@ async function fixture(existingChats: string[] = [], saved = false) {
   const register = vi.fn(), navigate = vi.fn(), onDirty = vi.fn()
   await act(async () => root!.render(createElement(CourseEditor, { courseId: 'demo', user: { id: 'author', name: 'Author' } as never, route: { name: 'courseEditor', courseId: 'demo' }, navigate, registerEditor: register, onDirty, ask: vi.fn(async () => true) })))
   const flush = async () => { await act(async () => { await register.mock.calls.filter(([handle]) => handle).at(-1)![0].flush() }) }
-  const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text)!
+  const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text && !b.closest('[inert], [hidden]'))!
   const emit = (name: string, ...args: unknown[]) => listeners[name]?.(...args as never[])
   const type = async (text: string) => { const input = container.querySelector<HTMLTextAreaElement>('.sidechat-input')!; await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, text); input.dispatchEvent(new Event('input', { bubbles: true })) }) }
   return { container, button, api, emit, type, send, stop, register, flush, onDirty, state: () => state }
@@ -95,7 +95,7 @@ describe('course editor AI mode', () => {
     expect(f.container.querySelector('[aria-label="Move card to lesson"]')).toBeNull()
     expect(f.container.querySelector('.outline-row.selected')?.getAttribute('aria-label')).toBe('Lesson')
     await f.flush()
-    expect(f.state().draft.manifest).toMatchObject({ schema_version: '1.8', version: '0.1.0' })
+    expect(f.state().draft.manifest).toMatchObject({ schema_version: '1.9', version: '0.1.0' })
     expect(f.state().draft.manifest.modules[0].lessons![0].blocks).toHaveLength(1)
     expect(f.state().draft.manifest.modules[0].lessons![0].flashcards).toHaveLength(1)
     await act(async () => [...f.container.querySelectorAll<HTMLButtonElement>('.lesson-flashcards button')].find(button => button.textContent === 'Duplicate')!.click())
@@ -212,17 +212,23 @@ describe('course editor AI mode', () => {
     const f = await fixture(); await act(async () => f.button('AI').click())
     await act(async () => f.container.querySelector<HTMLButtonElement>('[aria-label="Lesson"]')!.click())
     const next = structuredClone(f.state()); next.draft.manifest.modules[0].lessons![0].blocks[0] = { nodeId: 'block', type: 'markdown', slug: 'intro', content: 'AI-generated content' }; next.draft.draftVersion++
-    await act(async () => { f.emit('run', 'demo', { chatId: 'chat-0' }); f.emit('draft', 'demo', structuredClone(next)) })
+    await act(async () => f.emit('run', 'demo', { chatId: 'chat-0', editing: false }))
+    expect(f.container.querySelector('.author-save-state')?.textContent).toBe('Not saved yet')
+    await act(async () => { f.emit('run', 'demo', { chatId: 'chat-0', editing: true }); f.emit('draft', 'demo', structuredClone(next)) })
+    expect(f.container.querySelector('.author-save-state')?.textContent).toBe('Changes in progress...')
     expect(f.container.querySelector('.author-preview')?.textContent).toContain('AI-generated content')
     expect(f.button('Add module')).toBeUndefined(); expect(f.button('Save').disabled).toBe(true)
     await act(async () => f.button('Manual').click())
     expect(f.button('Add module').disabled).toBe(true)
     expect(f.container.querySelector<HTMLFieldSetElement>('fieldset')?.disabled).toBe(true)
+    next.draft.dirty = true
     next.draft.manifest.modules[0].lessons![0].blocks = []
-    await act(async () => { f.emit('draft', 'demo', structuredClone(next)); f.emit('run', 'demo', { chatId: null }) })
+    await act(async () => f.emit('draft', 'demo', structuredClone(next)))
+    expect(f.container.querySelector('.author-save-state')?.textContent).toBe('Changes in progress...')
+    await act(async () => f.emit('run', 'demo', { chatId: null, editing: false }))
     expect(f.container.querySelector('.outline-row.selected')?.textContent).toBe('▤Lesson')
     expect(f.button('Add module').disabled).toBe(false)
-    expect(f.container.querySelector('.author-header p[role="status"]')?.textContent).toBe('The assistant is done. Review its changes, then save.')
+    expect(f.container.querySelector('.author-save-state')?.textContent).toBe('Unsaved changes')
   })
   it('restores editor mode and tabs after reopening and stops a turn when the editor closes', async () => {
     const f = await fixture(); await act(async () => f.button('AI').click()); await f.type('Create a course')
@@ -243,7 +249,9 @@ describe('course editor saving', () => {
   it('shows unsaved changes until Save, and offers only the one action', async () => {
     const f = await fixture([], true)
     expect(f.api.setEditorActive).toHaveBeenCalledWith(true)
+    await act(async () => f.emit('run', 'demo', { chatId: 'chat-0', editing: false }))
     expect(saveState(f)).toBe('All changes saved')
+    await act(async () => f.emit('run', 'demo', { chatId: null, editing: false }))
     expect(f.button('Save').disabled).toBe(true)
     expect(f.button('Discard draft')).toBeUndefined()
     expect(f.button('Save & export ZIP')).toBeUndefined()
@@ -291,7 +299,7 @@ describe('manual lesson workspace', () => {
     await act(async () => f.button('Elements').click())
     expect(f.container.querySelector('.elements-palette [aria-label^="Add "]')).toBeNull()
     expect(f.container.querySelector('.lesson-drop-zone.append')?.textContent).toBe('Drag an element here')
-    for (const type of ['Text', 'Python cell', 'Image', 'Video', 'Visualization', 'Quiz', 'Exercise']) {
+    for (const type of ['Text', 'LaTeX formula', 'Python cell', 'Image', 'Video', 'Visualization', 'Quiz', 'Exercise']) {
       const transfer = await dragEvent(f.container.querySelector(`[aria-label="Drag ${type}"]`)!, 'dragstart')
       const target = f.container.querySelector('.lesson-drop-zone.append')!
       await dragEvent(target, 'dragover', transfer)
@@ -299,8 +307,8 @@ describe('manual lesson workspace', () => {
       await dragEvent(target, 'drop', transfer)
     }
     await f.flush()
-    expect(f.state().draft.manifest.modules[0].lessons![0].blocks.map(block => block.type)).toEqual(['markdown', 'markdown', 'python-cell', 'image', 'video', 'visualization', 'quiz', 'exercise'])
-    expect(f.container.querySelectorAll('.lesson-workspace > .lesson-element')).toHaveLength(8)
+    expect(f.state().draft.manifest.modules[0].lessons![0].blocks.map(block => block.type)).toEqual(['markdown', 'markdown', 'latex', 'python-cell', 'image', 'video', 'visualization', 'quiz', 'exercise'])
+    expect(f.container.querySelectorAll('.lesson-workspace > .lesson-element')).toHaveLength(9)
     expect(f.container.querySelector('.outline-row.selected')?.getAttribute('aria-label')).toBe('Lesson')
     expect(f.container.querySelector('[aria-label="Text: intro"]')).toBeNull()
     await act(async () => f.button('AI').click())

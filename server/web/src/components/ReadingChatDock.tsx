@@ -6,11 +6,12 @@ import { ReadingChat } from '../../../../app/src/learning-ui/ReadingChat'
 import { ChatIcon } from '../../../../app/src/learning-ui/ChatIcon'
 import { learningClient } from '../lib/learning'
 import { Html } from './Html'
-import { renderMarkdown } from '../lib/markdown'
+import { renderLessonText } from '../lib/markdown'
 
 export function ReadingChatDock({
   open,
   onOpenChange,
+  accountId,
   source,
   draftKey,
   quote,
@@ -20,6 +21,7 @@ export function ReadingChatDock({
   onSource?: (source: ReadingCitation) => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  accountId: string
   source: ContentRef
   draftKey: string
   quote: string
@@ -123,6 +125,7 @@ export function ReadingChatDock({
         {initialized && (
           <ReadingChat
             client={learningClient}
+            accountId={accountId}
             source={source}
             onSource={onSource}
             draftKey={draftKey}
@@ -131,7 +134,7 @@ export function ReadingChatDock({
             visible={open}
             onClose={close}
             settingsLink={<Link to="/settings">Open Settings</Link>}
-            renderAnswer={(text) => <Html className="oc-prose" html={renderMarkdown(text)} />}
+            renderAnswer={(text) => <Html className="oc-prose" html={renderLessonText(text)} />}
           />
         )}
       </div>

@@ -193,8 +193,9 @@ export function ElementFields({ element, manifest, courseId, set }: { element: O
     <NumberField label="Estimated minutes" name="estimated_minutes" value={element.estimated_minutes} onChange={(estimated_minutes) => set({ estimated_minutes })} />
   </>
   const block = element as Block
-  return <><h2>{block.type === 'markdown' ? 'Lesson text' : block.type.charAt(0).toUpperCase() + block.type.slice(1)}</h2>
+  return <><h2>{block.type === 'markdown' ? 'Lesson text' : block.type === 'latex' ? 'LaTeX formula' : block.type.charAt(0).toUpperCase() + block.type.slice(1)}</h2>
     <TextField label="Block slug" name="slug" value={block.slug} onChange={(slug) => set({ slug })} />
+    {block.type === 'latex' && <TextField multiline label="LaTeX source" name="content" value={block.content} onChange={(content) => set({ content })} />}
     {block.type === 'python-cell' && <Source label="Python code" name="content" language="python" docKey={block.nodeId!} value={block.content} onChange={(content) => set({ content })} />}
     {block.type === 'markdown' && <Markdown label="Markdown content" name="content" value={block.content} onChange={(content) => set({ content })} />}
     {(block.type === 'image' || block.type === 'video' || block.type === 'visualization') && <AttachmentField courseId={courseId} name="src" kind={block.type} value={block.src} onChange={(src) => set(block.type === 'image' ? { src, attribution: attachments.find(a => a.entry === src)?.attribution } : { src })} />}
@@ -226,14 +227,14 @@ export function ElementFields({ element, manifest, courseId, set }: { element: O
 
 function NotebookTemplates({ notebook, onChange, courseId }: { notebook?: CourseManifest['notebook']; onChange: (value: CourseManifest['notebook']) => void; courseId: string }): JSX.Element {
   const cells = notebook?.cells ?? []
-  return <details className="author-section"><summary>Python notebook starter cells</summary>
+  return <div className="author-section">
     <label><input type="checkbox" checked={notebook !== undefined} onChange={event => onChange(event.target.checked ? {} : undefined)} /> Enable Python notebook</label>
-    <p className="meta">Python lesson cells also enable the Python notebook. Starter cells are copied once when a learner starts the course and never run automatically.</p>
+    <p className="meta">Python lesson cells also enable the Python notebook.</p>
     {notebook && <>{cells.map((cell, index) => <div className="author-list-item" key={index}>
       <Source label={`Python notebook cell ${index + 1}`} name={`notebook/cells/${index}/content`} language="python" docKey={`${courseId}/notebook/${index}`} value={cell.content} onChange={content => onChange({ cells: cells.map((old, i) => i === index ? { content } : old) })} />
       <button className="ghost" disabled={index === 0} onClick={() => { const next = [...cells]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; onChange({ cells: next }) }}>Move up</button>
       <button className="ghost" disabled={index === cells.length - 1} onClick={() => { const next = [...cells]; [next[index + 1], next[index]] = [next[index]!, next[index + 1]!]; onChange({ cells: next }) }}>Move down</button>
       <button className="ghost" onClick={() => onChange({ cells: cells.filter((_, i) => i !== index) })}>Delete cell</button>
     </div>)}<button className="secondary" onClick={() => onChange({ cells: [...cells, { content: '' }] })}>Add starter cell</button></>}
-  </details>
+  </div>
 }

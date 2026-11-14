@@ -1,8 +1,10 @@
+import { TranscriptionModelPicker } from './TranscriptionModelPicker'
 import { useEffect, useState } from 'react'
 import type { ServerAIDefaults, ServerAIModels, ServerAISettings } from '../core/learning/types'
 import type { ChatModel, ReasoningEffort } from '../core/types'
 import { REASONING_LABELS, reasoningEffortsFor, webSearchFor } from '../core/sidechat/models'
 import type { LearningClient } from './client'
+import { PROVIDER_LABELS } from './ConnectionIcon'
 import './learning.css'
 
 /** A level the new model cannot take is dropped with the change, as the server would. */
@@ -13,6 +15,7 @@ const settingsValue = (settings: ServerAISettings) => JSON.stringify({
   model: settings.model,
   reasoning: settings.reasoning,
   webSearch: settings.webSearch,
+  transcription: settings.transcription,
   title: settings.title && { model: settings.title.model, reasoning: settings.title.reasoning },
   enabledModels: settings.enabledModels == null ? null : [...settings.enabledModels].sort()
 })
@@ -161,6 +164,7 @@ export function ConnectionSettings({
                   model: settings.model,
                   reasoning: settings.reasoning,
                   webSearch: settings.webSearch,
+                  transcription: settings.transcription && { model: settings.transcription.model, connection: 'apiKey' },
                   title: settings.title
                 })
               )
@@ -175,7 +179,7 @@ export function ConnectionSettings({
           </p>
           {!settings.enabled && <p>The server operator has not enabled encrypted credential storage.</p>}
           <label>
-            OpenAI API key
+            {PROVIDER_LABELS.apiKey}
             <input
               type="password"
               disabled={busy}
@@ -185,6 +189,12 @@ export function ConnectionSettings({
               placeholder={settings.configured ? 'Replace key' : 'sk-…'}
             />
           </label>
+          {settings.transcription && <fieldset>
+            <legend>Transcription</legend>
+            <p className="meta">Dictate into an empty chat message using your OpenAI API key.</p>
+            <TranscriptionModelPicker value={settings.transcription} disabled={busy || !settings.enabled}
+              change={transcription => setSettings({ ...settings, transcription })} />
+          </fieldset>}
           {ready && <>
             <fieldset>
               <legend>Study chat</legend>
@@ -203,7 +213,7 @@ export function ConnectionSettings({
                   checked={settings.webSearch}
                   onChange={(e) => setSettings({ ...settings, webSearch: e.target.checked })}
                 />
-                Allow web search
+                Enable web search in new chats
               </label>
               {settings.webSearch && !webSearchFor(settings.model, settings.reasoning) && (
                 <p className="meta">This model cannot search the web at this reasoning level, so it answers without searching.</p>

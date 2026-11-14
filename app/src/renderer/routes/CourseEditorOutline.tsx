@@ -25,9 +25,13 @@ export default function CourseEditorOutline({ manifest, selected, collapsed, man
       {row(module, 0)}
       {module.type !== 'project' && !collapsed.includes(module.nodeId!) && <>
         {module.lessons.map(lesson => <div key={lesson.nodeId}>{row(lesson, 1)}</div>)}
-        {manual && <button className="outline-add" disabled={locked} onClick={() => onAddLesson(module.nodeId!)}>+ Add lesson</button>}
+        <div className="outline-control-slot" inert={!manual}><div>
+          <button className="outline-add outline-manual-controls" disabled={locked} onClick={() => onAddLesson(module.nodeId!)}>+ Add lesson</button>
+        </div></div>
       </>}
     </div>)}
-    {manual && <div className="outline-bottom"><ActionButton icon="plus" className="secondary" disabled={locked} onClick={() => onAddModule()}>Add module</ActionButton><ActionButton icon="plus" className="secondary" disabled={locked} onClick={() => onAddModule(true)}>Add project</ActionButton></div>}
+    <div className="outline-control-slot" inert={!manual}><div>
+      <div className="outline-bottom outline-manual-controls"><ActionButton icon="plus" className="secondary" disabled={locked} onClick={() => onAddModule()}>Add module</ActionButton><ActionButton icon="plus" className="secondary" disabled={locked} onClick={() => onAddModule(true)}>Add project</ActionButton></div>
+    </div></div>
   </>
 }

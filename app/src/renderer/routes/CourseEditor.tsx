@@ -1,8 +1,9 @@
-import ActionButton from '../components/ActionButton'
+import type { PlanAction } from '@core/authoring/planning'
+import ActionButton, { Icon } from '../components/ActionButton'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { currentFormat, newDraftRef } from '@core/course-document'
-import type { AuthoringCourse } from '@core/course-document'
+import type { AuthoringCourse, AuthoringRunState } from '@core/course-document'
 import { useConversationPanel } from '../sidechat/useChat'
 import type { ChatTransport } from '../sidechat/useChat'
 import ChatPanel from '../components/ChatPanel'
@@ -13,16 +14,18 @@ import { availableBlockSlug } from '@core/block-slugs'
 import type { AuthoringTarget, ChatQuote, ChatSendResult, Block, CourseManifest, Flashcard, Lesson, Module, UserProfile } from '@core/types'
 import { copyElement, deleteElement, editElement, locateElement, reorderElement } from '@core/course-editor'
 import CourseEditorOutline from './CourseEditorOutline'
+import CourseEditorLayout from './CourseEditorLayout'
 import { CourseFields, ElementFields, EditorValidation, EditorAttachments } from './CourseEditorFields'
-import { BlockPreview, FlashcardPreview, LessonPreview, CourseCoverPreview, ProjectPreview } from './CourseEditorPreview'
+import { BlockPreview, FlashcardPreview, LessonPreview, CourseOverviewPreview, ProjectPreview } from './CourseEditorPreview'
 import type { PreviewEditing } from './CourseEditorPreview'
-import Html from '../components/Html'
 import TitleBar from '../components/TitleBar'
 import CourseLessonWorkspace, { ElementsPalette } from './CourseLessonWorkspace'
 import type { ElementDrag } from './CourseLessonWorkspace'
 import type { ConfirmRequest } from '../components/ConfirmDialog'
 import type { Route, Screen } from '../routes'
 import { useAuthoringMotion } from '../authoring/useAuthoringMotion'
+import { useActiveTheme } from '../theme/ThemeProvider'
+import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
 
 const uuid = newDraftRef
 function retainCollapsed(refs: string[], manifest: CourseManifest, map?: Record<string, string>): string[] {
@@ -61,6 +64,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
   ask: (request: ConfirmRequest) => Promise<boolean>
 }): JSX.Element {
   const active = useScreenActive()
+  const theme = useActiveTheme()
   const [data, setData] = useState<AuthoringCourse | null>(null)
   const [manifest, setManifest] = useState<CourseManifest | null>(null)
   const storageKey = `authoring:${user?.id ?? 'user'}:${courseId}`
@@ -72,16 +76,17 @@ export default function CourseEditor({ courseId, user, route, navigate, register
   })
   const [mode, setMode] = useState<'manual' | 'ai'>(() => readState().mode === 'ai' ? 'ai' : 'manual')
   const motion = useAuthoringMotion(manifest, selected, mode)
+  const manualOutline = mode === 'manual'
   const [chatInitialized, setChatInitialized] = useState(mode === 'ai')
   const previewAsk = usePreviewAsk(mode === 'ai', `${courseId}/${selected ?? 'overview'}`)
-  const [runChatId, setRunChatId] = useState<string | null>(null)
+  const [{ chatId: runChatId, editing }, setRunState] = useState<AuthoringRunState>({ chatId: null, editing: false })
   const selectedRef = useRef(selected); selectedRef.current = selected
   const runRef = useRef(runChatId); runRef.current = runChatId
-  const request = useRef<(id: string, text: string, quote?: ChatQuote) => Promise<ChatSendResult>>(async () => ({ status: 'failed', message: 'The draft is loading.' }))
+  const request = useRef<(id: string, text: string, quote?: ChatQuote, action?: PlanAction) => Promise<ChatSendResult>>(async () => ({ status: 'failed', message: 'The draft is loading.' }))
   const transport = useMemo<ChatTransport>(() => {
     const api = window.opencourse
     return { list: () => api.listAuthoringChats(courseId), get: api.getAuthoringChat, create: () => api.createAuthoringChat(courseId),
-      remove: api.deleteAuthoringChat, send: (id, text, quote) => request.current(id, text, quote), cancel: api.cancelAuthoringChat,
+      remove: api.deleteAuthoringChat, send: (id, text, quote, _review, action) => request.current(id, text, quote, action), cancel: api.cancelAuthoringChat,
       setModel: api.setAuthoringChatModel, setReasoning: api.setAuthoringChatReasoning, setProvider: api.setAuthoringChatProvider, onDelta: api.onAuthoringChatDelta,
       onDone: api.onAuthoringChatDone, onTitle: api.onAuthoringChatTitle, onError: api.onAuthoringChatError, onActivity: api.onAuthoringChatActivity }
   }, [courseId])
@@ -90,6 +95,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
 
   const [status, setStatus] = useState('')
   const [errors, setErrors] = useState<string[]>([])
+  const [validationDismissed, setValidationDismissed] = useState(false)
   const [busy, setBusy] = useState(false)
   // Whether main's session differs from the saved course. Edits not yet
   // pushed there are the other half of "unsaved" (see `unsaved` below).
@@ -97,6 +103,19 @@ export default function CourseEditor({ courseId, user, route, navigate, register
   const [conflict, setConflict] = useState(false)
   const saving = useRef(false)
   const [sidebarTab, setSidebarTab] = useState<'outline' | 'elements'>('outline')
+  const [sidebarChange, setSidebarChange] = useState<'tab' | 'mode'>()
+  const showElements = manualOutline && sidebarTab === 'elements'
+  const switchMode = (next: typeof mode): void => {
+    if (next === mode) return
+    if (next === 'ai') setChatInitialized(true)
+    setSidebarChange('mode')
+    setMode(next)
+  }
+  const switchTab = (next: typeof sidebarTab): void => {
+    if (next === sidebarTab) return
+    setSidebarChange('tab')
+    setSidebarTab(next)
+  }
   const [activeElement, setActiveElement] = useState<string | null>(null)
   const [drag, setDrag] = useState<ElementDrag | null>(null)
   const editingLocked = busy || runChatId !== null || conflict
@@ -130,7 +149,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
       const mapped = value ? result.document.nodeRefMap?.[value] ?? value : null
       return mapped && locateElement(result.draft.manifest, mapped) ? mapped : null
     })
-    setStatus(conflicted.current ? 'These unsaved edits are based on an older version of the course. Reload the latest to keep editing.' : result.document.manifest ? '' : 'A new course is added to your library when you first save it.')
+    setStatus(conflicted.current ? 'These unsaved edits are based on an older version of the course. Reload the latest to keep editing.' : '')
   }, [courseId])
   useEffect(() => { mounted.current = true; void load().catch((err) => setStatus(err.message)); return () => { mounted.current = false } }, [load])
   // A course added from a server is never changed in place by its learner:
@@ -181,13 +200,14 @@ export default function CourseEditor({ courseId, user, route, navigate, register
     }
   }, [registerEditor, flush, courseId])
   useEffect(() => {
+    let useInitialRunState = true
+    const applyRun = (state: AuthoringRunState) => { runRef.current = state.chatId; setRunState(state) }
     const offRun = window.opencourse.onAuthoringRunState((id, state) => {
       if (id !== courseId) return
-      const finished = runRef.current !== null && state.chatId === null
-      runRef.current = state.chatId; setRunChatId(state.chatId)
-      if (finished) setStatus('The assistant is done. Review its changes, then save.')
+      useInitialRunState = false
+      applyRun(state)
     })
-    void window.opencourse.getAuthoringRunState(courseId).then(state => { if (mounted.current) { runRef.current = state.chatId; setRunChatId(state.chatId) } }).catch(() => {})
+    void window.opencourse.getAuthoringRunState(courseId).then(state => { if (useInitialRunState) applyRun(state) }).catch(() => {})
     receiveRemote.current = (next, nodeRefMap) => {
       if (!mounted.current) return
       if (writing.current) { deferredRemote.current = { data: next, map: nodeRefMap }; return }
@@ -209,18 +229,18 @@ export default function CourseEditor({ courseId, user, route, navigate, register
         while (parent) { if (locateElement(next.draft.manifest, parent)) return parent; parent = old && locateElement(old, parent)?.parentId }
         return null
       })
-      setStatus(runRef.current ? 'The course assistant is editing…' : '')
+      setStatus('')
     }
     const offDraft = window.opencourse.onAuthoringDraftChanged((id, next, map) => { if (id === courseId) receiveRemote.current(next, map) })
-    return () => { offRun(); offDraft() }
+    return () => { useInitialRunState = false; offRun(); offDraft() }
   }, [courseId])
-  request.current = async (id, text, quote) => {
+  request.current = async (id, text, quote, action) => {
     if (sending.current || runRef.current || busy || conflicted.current) return { status: 'busy' }
     const snapshot = current.current, selectedId = selectedRef.current
     const location = snapshot && selectedId ? locateElement(snapshot, selectedId) : undefined
     const target: AuthoringTarget = location && selectedId ? { kind: location.kind === 'module' && 'type' in location.element && location.element.type === 'project' ? 'project' : location.kind, ref: selectedId } : { kind: 'overview' }
     sending.current = true
-    try { await flush(); return await window.opencourse.sendAuthoringMessage(id, text, target, version.current.revision, version.current.draft, quote) }
+    try { await flush(); return await window.opencourse.sendAuthoringMessage(id, text, target, version.current.revision, version.current.draft, quote, ...(action ? [action] as const : [])) }
     finally { sending.current = false }
   }
 
@@ -250,7 +270,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
         if (!window.confirm(`Save and delete ${preview.deleted.length} course elements?\n\n${names}${preview.deleted.length > 12 ? '\n…' : ''}\n\nTheir progress, ${preview.messages} attached messages, and ${preview.workspaces} learner workspaces will be permanently deleted.`)) return
         result = await window.opencourse.saveCourse(courseId, version.current.revision, version.current.draft, true)
       }
-      if (result.status === 'invalid') { setErrors(result.errors); setStatus('Fix the highlighted errors, then save again. Your edits are still here.'); return }
+      if (result.status === 'invalid') { setErrors(result.errors); setValidationDismissed(false); setStatus(''); return }
       if (result.status !== 'ok') { setStatus('The course changed in another window. Reload the latest before saving.'); conflicted.current = true; setConflict(true); return }
       if (result.copiedTo) {
         // The edits are a course of their own now; continue in its editor.
@@ -262,7 +282,7 @@ export default function CourseEditor({ courseId, user, route, navigate, register
       setCollapsed(value => [...new Set(value.map(ref => savedRefs?.[ref] ?? ref))])
       setSelected(value => value ? savedRefs?.[value] ?? value : null)
       setActiveElement(value => value ? savedRefs?.[value] ?? value : null)
-      await load(); setStatus('Saved. Progress on everything you kept is preserved.'); setErrors([])
+      await load(); setErrors([])
     } catch (err) { setStatus((err as Error).message) } finally { saving.current = false; setBusy(false) }
   }
   useEffect(() => {
@@ -315,45 +335,68 @@ export default function CourseEditor({ courseId, user, route, navigate, register
   // from the saved course. A course never saved has nothing to compare to.
   const unsaved = (manifest !== null && manifest !== persisted.current) || remoteDirty
   const neverSaved = data !== null && !data.document.manifest
+  const saveLabel = editing ? 'Changes in progress...'
+    : unsaved ? 'Unsaved changes'
+    : neverSaved ? 'Not saved yet' : 'All changes saved'
+  const showValidation = errors.length > 0 && !validationDismissed
   useEffect(() => { onDirty(unsaved) }, [onDirty, unsaved])
   const location = manifest && selected ? locateElement(manifest, selected) : undefined
   const previewEditing: PreviewEditing = {
     language: manifest?.runtime?.language, editable: mode === 'manual', locked: editingLocked,
-    onEdit: () => { setMode('manual') },
+    onEdit: () => switchMode('manual'),
     onChange: (ref, fields) => mutate(m => editElement(m, ref, fields))
   }
   const toggleCollapsed = (id: string): void => setCollapsed(value => value.includes(id) ? value.filter(ref => ref !== id) : [...value, id])
 
   return <>
     <TitleBar user={user} route={route} navigate={navigate} back={{ label: 'All courses', onClick: () => navigate({ name: 'library' }) }} />
-    <div className={`course-editor${mode === 'ai' ? ' ai-mode' : ''}`}>
-      <header className="author-header"><div>
-        <div className="author-title"><h1>{manifest?.title || 'Course editor'}</h1>{data && <span className={`author-save-state${unsaved ? ' unsaved' : ''}`} role="status" aria-live="polite">{unsaved ? 'Unsaved changes' : neverSaved ? 'Not saved yet' : 'All changes saved'}</span>}</div>
-        <p role="status" className="meta">{runChatId ? 'The course assistant is editing…' : status}{conflict && <> <button className="ghost author-reload" disabled={busy || runChatId !== null} onClick={() => void reloadLatest()}>Reload latest</button></>}</p>
-        <div className="author-mode" role="group" aria-label="Course editing mode"><button className={mode === 'manual' ? 'active' : ''} aria-pressed={mode === 'manual'} onClick={() => setMode('manual')}>Manual</button><button className={mode === 'ai' ? 'active' : ''} aria-pressed={mode === 'ai'} onClick={() => { setChatInitialized(true); setMode('ai') }}>AI</button></div>
-      </div><div className="actions">
-        <ActionButton icon="save" className="author-save" title="Save (⌘S)" disabled={editingLocked || !manifest || (!unsaved && !neverSaved)} onClick={() => void save()}>{busy ? 'Saving' : learnerCopy ? 'Save as local copy' : 'Save'}</ActionButton>
-      </div></header>
-      {errors.length > 0 && <div className="author-errors" role="alert"><strong>Course validation</strong>{errors.map((error) => <p key={error}>{error}</p>)}</div>}
-      {manifest && <EditorAttachments value={data?.document.attachments ?? []}><div className="author-layout">
-        <aside ref={motion.outlineRef} className="author-outline scroll">
-          {mode === 'manual' && <div className="author-sidebar-tabs" role="tablist" aria-label="Course sidebar">
+    <div className={`course-editor${mode === 'ai' ? ' ai-mode' : ''}`} data-panda={theme.id === WHITE_THEME_ID ? '' : undefined}>
+      <header className="author-header">
+        <div className="author-title">
+          <h1 title={manifest?.title}>{manifest?.title || 'Course editor'}</h1>
+        </div>
+        <div className="author-mode" role="group" aria-label="Course editing mode">
+          <button aria-pressed={mode === 'manual'} onClick={() => switchMode('manual')}>Manual</button>
+          <button aria-pressed={mode === 'ai'} onClick={() => switchMode('ai')}>AI</button>
+          <span className="author-mode-thumb" aria-hidden="true" />
+        </div>
+        <div className="actions">
+          {conflict && <button className="ghost author-reload" disabled={busy || runChatId !== null} onClick={() => void reloadLatest()}>Reload latest</button>}
+          <div className="author-save-controls">
+            {data && <span className={`author-save-state${editing || unsaved ? ' unsaved' : ''}`} role="status">{saveLabel}</span>}
+            <ActionButton icon="save" className="author-save" title="Save (⌘S)" disabled={editingLocked || !manifest || (!unsaved && !neverSaved)} onClick={() => void save()}>{busy ? 'Saving' : learnerCopy ? 'Save as local copy' : 'Save'}</ActionButton>
+          </div>
+        </div>
+        {(showValidation || status) && <div className="author-notice">
+          <div className="author-notice-body scroll">
+            {showValidation && <div className="author-errors" role="alert"><strong>Course validation</strong>{errors.map((error) => <p key={error}>{error}</p>)}</div>}
+            {status && <p role="status">{status}</p>}
+          </div>
+          <button type="button" className="ghost author-dismiss" aria-label="Dismiss notice" onClick={() => { setValidationDismissed(true); setStatus('') }}><Icon name="close" /></button>
+        </div>}
+      </header>
+      {manifest && <EditorAttachments value={data?.document.attachments ?? []}><CourseEditorLayout mode={mode} userId={user?.id ?? 'user'}>
+        <aside id="author-outline" className="author-outline" data-view={mode} data-tab={sidebarTab} data-change={sidebarChange}
+          data-enter-from={(sidebarChange === 'tab' ? showElements : mode === 'ai') ? 'right' : 'left'}>
+          <div className="author-sidebar-tabs outline-manual-controls" role="tablist" aria-label="Course sidebar" inert={!manualOutline}>
             {(['outline', 'elements'] as const).map(tab => <button key={tab} id={`author-tab-${tab}`} role="tab" aria-selected={sidebarTab === tab} aria-controls={`author-panel-${tab}`} tabIndex={sidebarTab === tab ? 0 : -1} onKeyDown={event => {
               if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
               event.preventDefault()
               const next = event.key === 'Home' ? 'outline' : event.key === 'End' ? 'elements' : tab === 'outline' ? 'elements' : 'outline'
-              setSidebarTab(next); document.getElementById(`author-tab-${next}`)?.focus()
-            }} onClick={() => setSidebarTab(tab)}>{tab === 'outline' ? 'Outline' : 'Elements'}</button>)}
-          </div>}
-          <div id="author-panel-outline" role={mode === 'manual' ? 'tabpanel' : undefined} aria-labelledby={mode === 'manual' ? 'author-tab-outline' : undefined} hidden={mode === 'manual' && sidebarTab !== 'outline'}>
-            <CourseEditorOutline manifest={manifest} selected={selected} collapsed={collapsed} manual={mode === 'manual'} locked={editingLocked}
-              onSelect={setSelected} onToggle={toggleCollapsed} onAddLesson={addLesson} onAddModule={addModule} />
+              switchTab(next); document.getElementById(`author-tab-${next}`)?.focus()
+            }} onClick={() => switchTab(tab)}>{tab === 'outline' ? 'Outline' : 'Elements'}</button>)}
           </div>
-          {mode === 'manual' && <div id="author-panel-elements" role="tabpanel" aria-labelledby="author-tab-elements" hidden={sidebarTab !== 'elements'}>
-            <ElementsPalette enabled={!editingLocked && location?.kind === 'lesson'} onDrag={setDrag} />
-          </div>}
+          <div className="author-sidebar-content">
+            <div id="author-panel-outline" ref={motion.outlineRef} className="author-tab-panel" role={manualOutline ? 'tabpanel' : undefined} aria-labelledby={manualOutline ? 'author-tab-outline' : undefined} inert={showElements}>
+              <CourseEditorOutline manifest={manifest} selected={selected} collapsed={collapsed} manual={manualOutline} locked={editingLocked}
+                onSelect={setSelected} onToggle={toggleCollapsed} onAddLesson={addLesson} onAddModule={addModule} />
+            </div>
+            <div id="author-panel-elements" className="author-tab-panel" role="tabpanel" aria-labelledby="author-tab-elements" inert={!showElements}>
+              <ElementsPalette enabled={!editingLocked && location?.kind === 'lesson'} onDrag={setDrag} />
+            </div>
+          </div>
         </aside>
-        <section hidden={mode === 'ai'} className="author-form scroll"><fieldset disabled={editingLocked} inert={editingLocked}>
+        <section hidden={mode === 'ai'} inert={mode === 'ai'} className="author-form scroll"><fieldset disabled={editingLocked} inert={editingLocked}>
           {location && selected && <div className="author-element-actions actions">
             <button className="ghost" disabled={location.index === 0} onClick={() => mutate((m) => reorderElement(m, selected, -1))}>↑ Move up</button><button className="ghost" disabled={location.index === location.siblings.length - 1} onClick={() => mutate((m) => reorderElement(m, selected, 1))}>↓ Move down</button>
             <button className="ghost" onClick={() => { const result = copyElement(current.current!, selected, uuid); mutate(() => result.manifest); setSelected(result.id) }}>Duplicate</button>
@@ -367,11 +410,16 @@ export default function CourseEditor({ courseId, user, route, navigate, register
             {location && selected ? <ElementFields key={selected} element={location.element} manifest={manifest} courseId={courseId} set={(fields) => mutate((m) => editElement(m, selected, fields))} /> : <CourseFields manifest={manifest} courseId={courseId} versionHint={origin?.role === 'publisher' ? `Last published as v${origin.version} on ${origin.serverName}. Publishing again needs a higher version.` : undefined} set={(fields) => mutate((m) => ({ ...m, ...fields }))} />}
           </EditorValidation>}
         </fieldset></section>
-        <AskProvider value={previewAsk.ask}><section ref={motion.previewRef} className="author-preview scroll" data-ask={mode === 'ai' ? 'preview' : undefined}><div className="author-preview-label" data-ask="none">Preview</div><div className="author-preview-part" data-authoring-preview-key={selected ?? 'overview'}>
-          {!location ? <><CourseCoverPreview courseId={courseId} path={manifest.cover_image} /><h1>{manifest.title}</h1>{manifest.description && <Html className="prose" source={manifest.description} />}</> : 'blocks' in location.element ? <LessonPreview key={selected} lesson={location.element} manifest={manifest} courseId={courseId} {...previewEditing} /> : 'project' in location.element ? <><h1>{location.element.title}</h1><ProjectPreview project={location.element.project} /></> : 'lessons' in location.element ? <><h1>{location.element.title}</h1>{location.element.lessons.map((lesson) => <p key={lesson.nodeId}>{lesson.title}</p>)}</> : 'answer' in location.element ? <FlashcardPreview key={selected} card={location.element as Flashcard} courseId={courseId} /> : <BlockPreview key={selected} block={location.element as Block} courseId={courseId} {...previewEditing} />}
-        </div></section></AskProvider>
-        {chatInitialized && <div className="author-chat-column" hidden={mode !== 'ai'}><ChatPanel variant="authoring" storageKey={storageKey} panel={{ ...panel, busy: runChatId ? new Set([...panel.busy, runChatId]) : panel.busy, sendBlocked: editingLocked || conflicted.current }} quote={previewAsk.quote} onQuoteUsed={previewAsk.clearQuote} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} /></div>}
-      </div></EditorAttachments>}
+        <AskProvider value={previewAsk.ask}><section id="author-preview" ref={motion.previewRef} className="author-preview scroll" data-ask={mode === 'ai' ? 'preview' : undefined}>
+          <div className="content-inner">
+            <div className="author-preview-label" data-ask="none">Preview</div>
+            <div className="author-preview-part" data-authoring-preview-key={selected ?? 'overview'}>
+              {!location ? <CourseOverviewPreview courseId={courseId} manifest={manifest} /> : 'blocks' in location.element ? <LessonPreview key={selected} lesson={location.element} manifest={manifest} courseId={courseId} {...previewEditing} /> : 'project' in location.element ? <><h1>{location.element.title}</h1><ProjectPreview project={location.element.project} /></> : 'lessons' in location.element ? <><h1>{location.element.title}</h1>{location.element.lessons.map((lesson) => <p key={lesson.nodeId}>{lesson.title}</p>)}</> : 'answer' in location.element ? <FlashcardPreview key={selected} card={location.element as Flashcard} courseId={courseId} /> : <BlockPreview key={selected} block={location.element as Block} courseId={courseId} {...previewEditing} />}
+            </div>
+          </div>
+        </section></AskProvider>
+        {chatInitialized && <div id="author-chat" className="author-chat-column" hidden={mode !== 'ai'} inert={mode !== 'ai'}><ChatPanel visible={mode === 'ai'} variant="authoring" storageKey={storageKey} panel={{ ...panel, busy: runChatId ? new Set([...panel.busy, runChatId]) : panel.busy, sendBlocked: editingLocked || conflicted.current }} quote={previewAsk.quote} onQuoteUsed={previewAsk.clearQuote} onAddKey={() => navigate({ name: 'settings', from: route, section: 'connections' })} /></div>}
+      </CourseEditorLayout></EditorAttachments>}
     </div>
     <PreviewAskOffer offer={previewAsk.selection} attach={previewAsk.ask.attach} />
   </>

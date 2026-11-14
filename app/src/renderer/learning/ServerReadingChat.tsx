@@ -47,8 +47,8 @@ export function ServerReadingChat({ client, source, draftKey, localId, visible =
   localId: string
 }) {
   const screenActive = useScreenActive() && visible
-  const reading = useReadingTabs(client, source, `opencourse:reading-draft:${draftKey}`)
   const [settings, setSettings] = useState<ServerAISettings | null>(null)
+  const reading = useReadingTabs(client, source, `opencourse:reading-draft:${draftKey}`, settings?.perChatTools ? settings.webSearch : undefined, settings?.idempotentChatCreation)
   const [connectionError, setConnectionError] = useState('')
   useEffect(() => {
     if (!screenActive) return
@@ -58,7 +58,7 @@ export function ServerReadingChat({ client, source, draftKey, localId, visible =
         const next = await client.request<ServerAISettings>('/me/ai')
         if (alive) { setSettings(next); setConnectionError('') }
       } catch (error) {
-        if (alive) { setSettings(null); setConnectionError((error as Error).message) }
+        if (alive) setConnectionError((error as Error).message)
       }
     }
     void refresh()
@@ -67,7 +67,7 @@ export function ServerReadingChat({ client, source, draftKey, localId, visible =
     return () => { alive = false; clearInterval(timer); window.removeEventListener('focus', refresh) }
   }, [client, screenActive])
   const summary = (chat: LearningChat): PanelSummary => ({
-    id: chat.id, title: chat.title, createdAt: chat.createdAt, updatedAt: chat.lastMessageAt ?? chat.createdAt,
+    id: chat.id, tools: chat.id === reading.active ? reading.tools ?? chat.tools : chat.tools, title: chat.title, createdAt: chat.createdAt, updatedAt: chat.lastMessageAt ?? chat.createdAt,
     messages: chat.messages ?? 0, lastMessageAt: chat.lastMessageAt, historyLabel: 'Conversation',
     model: settings?.model ?? '', reasoning: settings?.reasoning ?? null, provider: 'apiKey'
   })
@@ -84,8 +84,9 @@ export function ServerReadingChat({ client, source, draftKey, localId, visible =
     thread: { chat: tabs.find(chat => chat.id === reading.active)!, messages: (reading.view?.messages ?? [])
       .flatMap((message, seq) => message.status === 'running' ? [] : [serverMessage(message, seq, source, localId)]) },
     streaming: running?.text ?? (reading.busy ? '' : null), busy,
-    error: reading.error || connectionError || null,
-    models: [], webSearch: settings?.webSearch ?? false, ready,
+    retryAttempt: reading.retryAttempt,
+    error: reading.error || (!settings && !reading.retryAttempt ? connectionError : null) || null,
+    models: [], webSearch: reading.tools?.webSearch ?? settings?.webSearch ?? false, setTools: reading.setTools, ready,
     connectionLoading: !settings && !connectionError,
     provider: 'apiKey', defaultProvider: 'apiKey', connections: {},
     connection: { provider: 'apiKey', ready, message: connectionError || (settings?.enabled === false
@@ -102,6 +103,7 @@ export function ServerReadingChat({ client, source, draftKey, localId, visible =
   return <ScreenActivityProvider value={screenActive}><ChatPanel
     {...props} visible={visible} variant={source.kind === 'course' ? 'lesson' : 'document'} panel={panel}
     flashcards={{proposals: (reading.view?.messages ?? []).flatMap(m => m.flashcardProposals ?? []), decide: (id,action,cardId) => client.request<FlashcardProposal>(`/learning/chats/${reading.active}/flashcards/${id}`,'POST',{action:`${action}-card`,cardId})}}
+    serverDictation={{ localId, available: ready && !!settings?.transcription }}
     composer={{ text: reading.text, setText: reading.setText }} sourceIcons={noSourceIcons}
   /></ScreenActivityProvider>
 }

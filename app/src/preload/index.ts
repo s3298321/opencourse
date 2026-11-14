@@ -1,11 +1,15 @@
+import type { ChatRecoveryEvent } from '../core/chat-network'
+import type { ChatTools, ChatToolScope } from '../core/chat-tools'
+import type { PlanAction, QuestionProgress, QuestionStep } from '../core/authoring/planning'
 import type { ReviewTarget, FlashcardProposal } from '../core/personal-cards'
+import type { Sketch, SketchSettings, SketchColors } from '../core/writing-notebooks/sketch'
 import type { NotebookAssociation, WritingNotebook, WritingNotebookHit, WritingNotebookPage, WritingNotebookSaveResult, WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
 import type { ReadingSource } from '../core/documents/types'
 import type { CoachPrompts } from '../core/types'
 import type { CellTarget, CellRunRequest, NotebookDocument, NotebookEvent, NotebookSaveResult, NotebookStatus, CellExecution } from '../core/notebook/types'
 import type { AppInfo, AppLinks, AppUpdateInfo, AuthoringTarget, ChatSummary, ChatThread } from '../core/types'
 import type { DocumentChatSummary, DocumentChatThread, DocumentImportResult, DocumentSearch, DocumentSummary, DocumentView } from '../core/documents/types'
-import type { AuthoringCourse, CourseDraft, SaveCourseResult, SavePreview } from '../core/course-document'
+import type { AuthoringCourse, AuthoringRunState, CourseDraft, SaveCourseResult, SavePreview } from '../core/course-document'
 import type { AttachmentKind, AttachmentUpload } from '../main/course-authoring'
 import type { CourseManifest } from '../core/types'
 import type { ReviewAnswer, ReviewCount, ReviewRating, ReviewSession, ReviewSummary } from '../core/types'
@@ -87,6 +91,12 @@ export type { NavAction }
 
 const api = {
   writing: {
+    readSketch: (id: string, asset: string): Promise<Sketch> => ipcRenderer.invoke('writing:readSketch', id, asset),
+    saveSketch: (id: string, asset: string, model: Sketch, colors: SketchColors): Promise<void> => ipcRenderer.invoke('writing:saveSketch', id, asset, model, colors),
+    sketchSettings: (): Promise<SketchSettings> => ipcRenderer.invoke('writing:sketchSettings'),
+    recordSketchShortcut: (recording: boolean): void => ipcRenderer.send('writing:recordSketchShortcut', recording),
+    setSketchSettings: (value: SketchSettings): Promise<void> => ipcRenderer.invoke('writing:setSketchSettings', value),
+    onSketchSettings: (fn: (value: SketchSettings) => void) => subscribe('writing:sketchSettingsChanged', fn),
     mainReady: (): void => ipcRenderer.send('writing:mainReady'),
     ready: (): void => ipcRenderer.send('writing:ready'),
     list: (): Promise<WritingNotebook[]> => ipcRenderer.invoke('writing:list'),
@@ -192,6 +202,13 @@ const api = {
   switchUser: (id: string): Promise<UserProfile> => ipcRenderer.invoke('users:switch', id),
   deleteUser: (id: string): Promise<Session> => ipcRenderer.invoke('users:delete', id),
 
+  setChatTools: (scope: ChatToolScope, id: string, tools: ChatTools): Promise<ChatTools> => ipcRenderer.invoke('chat:setTools', scope, id, tools),
+  onChatRecovery: (handler: (id: string, event: ChatRecoveryEvent) => void): (() => void) => subscribe('chat:recovery', handler),
+  onChatToolsChanged: (handler: (id: string) => void): (() => void) => subscribe('chat:toolsChanged', handler),
+  getAuthoringPlanDefault: (): Promise<boolean> => ipcRenderer.invoke('authoringChat:planDefault'),
+  setAuthoringPlanDefault: (on: boolean): Promise<boolean> => ipcRenderer.invoke('authoringChat:setPlanDefault', on),
+  advanceAuthoringQuestion: (id: string, step: QuestionStep): Promise<QuestionProgress> => ipcRenderer.invoke('authoringChat:advanceQuestion', id, step),
+  rejectAuthoringPlan: (id: string, decision: string): Promise<void> => ipcRenderer.invoke('authoringChat:rejectPlan', id, decision),
   listAuthoringChats: (courseId: string): Promise<ChatSummary[]> => ipcRenderer.invoke('authoringChat:list', courseId),
   getAuthoringChat: (id: string): Promise<ChatThread> => ipcRenderer.invoke('authoringChat:get', id),
   createAuthoringChat: (courseId: string): Promise<ChatSummary> => ipcRenderer.invoke('authoringChat:create', courseId),
@@ -201,11 +218,11 @@ const api = {
   setAuthoringChatReasoning: (id: string, reasoning: ReasoningEffort | null): Promise<ChatSummary> => ipcRenderer.invoke('authoringChat:reasoning', id, reasoning),
   /** This conversation's own connection; null follows Settings' default again. */
   setAuthoringChatProvider: (id: string, provider: AIProvider | null): Promise<ChatSummary> => ipcRenderer.invoke('authoringChat:provider', id, provider),
-  sendAuthoringMessage: (id: string, text: string, target: AuthoringTarget, revision: number, draftVersion: number, quote?: ChatQuote): Promise<ChatSendResult> => ipcRenderer.invoke('authoringChat:send', id, text, target, revision, draftVersion, quote),
-  getAuthoringRunState: (courseId: string): Promise<{ chatId: string | null }> => ipcRenderer.invoke('authoring:runState', courseId),
+  sendAuthoringMessage: (id: string, text: string, target: AuthoringTarget, revision: number, draftVersion: number, quote?: ChatQuote, action?: PlanAction): Promise<ChatSendResult> => ipcRenderer.invoke('authoringChat:send', id, text, target, revision, draftVersion, quote, action),
+  getAuthoringRunState: (courseId: string): Promise<AuthoringRunState> => ipcRenderer.invoke('authoring:runState', courseId),
   stopCourseAuthoring: (courseId: string): Promise<void> => ipcRenderer.invoke('authoring:stop', courseId),
   onAuthoringDraftChanged: (handler: (courseId: string, data: AuthoringCourse, nodeRefMap?: Record<string, string>) => void): (() => void) => subscribe('authoring:draftChanged', handler),
-  onAuthoringRunState: (handler: (courseId: string, state: { chatId: string | null }) => void): (() => void) => subscribe('authoring:runState', handler),
+  onAuthoringRunState: (handler: (courseId: string, state: AuthoringRunState) => void): (() => void) => subscribe('authoring:runState', handler),
   onAuthoringChatDelta: (handler: (id: string, chunk: string) => void): (() => void) => subscribe('authoringChat:delta', handler),
   onAuthoringChatDone: (handler: (id: string) => void): (() => void) => subscribe('authoringChat:done', handler),
   onAuthoringChatTitle: (handler: (id: string, title: string) => void): (() => void) => subscribe('authoringChat:title', handler),
@@ -220,6 +237,8 @@ const api = {
   /** Drops the editor's unsaved edits; a course never saved is removed. */
   discardCourseDraft: (courseId: string): Promise<{ removed: boolean }> => ipcRenderer.invoke('authoring:discard', courseId),
   /** Whether main holds unsaved edits for this course - for leaving an editor that is not mounted. */
+  getCourseExitState: (courseId: string): Promise<{ dirty: boolean; losesChat: boolean; running: boolean }> => ipcRenderer.invoke('authoring:exitState', courseId),
+  windowWouldDiscardCourseChat: (): boolean => ipcRenderer.sendSync('authoring:windowChatLoss'),
   isCourseDraftDirty: (courseId: string): Promise<boolean> => ipcRenderer.invoke('authoring:dirty', courseId),
   /** Enables Course ▸ Save Course (⌘S) while an editor is open. */
   setEditorActive: (active: boolean): Promise<void> => ipcRenderer.invoke('menu:editorActive', active),
@@ -437,6 +456,14 @@ const api = {
   getAIModelSettings: (scope: AIScope, provider?: AIProvider, refresh = false): Promise<AIModelSettings> => ipcRenderer.invoke('ai:settings', scope, provider, refresh),
   setAIProvider: (scope: AIScope, provider: AIProvider): Promise<void> => ipcRenderer.invoke('ai:provider', scope, provider),
   setAIProfile: (scope: AIScope, provider: AIProvider, profile: AIProfile): Promise<void> => ipcRenderer.invoke('ai:profile', scope, provider, profile),
+  dictation: {
+    settings: (): Promise<{config: import('../core/transcription').TranscriptionConfig; configured: boolean}> => ipcRenderer.invoke('dictation:settings'),
+    configure: (config: import('../core/transcription').TranscriptionConfig): Promise<{config: typeof config; configured: boolean}> => ipcRenderer.invoke('dictation:configure', config),
+    begin: (id: string, localId?: string): Promise<void> => ipcRenderer.invoke('dictation:begin', id, localId),
+    connect: (id: string, sdp: string): Promise<{answerSdp: string}> => ipcRenderer.invoke('dictation:connect', id, sdp),
+    end: (id: string): Promise<void> => ipcRenderer.invoke('dictation:end', id),
+    onEnded: (handler: (id: string) => void): (() => void) => subscribe('dictation:ended', handler)
+  },
   getTitleGenerationSettings: (provider?: AIProvider, refresh = false): Promise<TitleGenerationSettings> => ipcRenderer.invoke('ai:titleSettings', provider, refresh),
   setTitleGenerationSettings: (config: TitleGenerationConfig | null): Promise<void> => ipcRenderer.invoke('ai:setTitleSettings', config),
   onAIChanged: (handler: () => void): (() => void) => subscribe('ai:changed', handler),
@@ -484,6 +511,7 @@ const api = {
   learningPreference: (id:string,name:'readingScale'|'pdfZoom',value?:number):Promise<{value?:number}|null> => ipcRenderer.invoke('learning:preference',id,name,value),
   learningStatus: (): Promise<Record<string,{state:string;message?:string;lastSynced?:string}>> => ipcRenderer.invoke('learning:status'),
   syncLearning: (id?: string): Promise<Record<string,{state:string;message?:string;lastSynced?:string}>> => ipcRenderer.invoke('learning:sync',id),
+  learningChatRequest: <T>(id:string,path:string,method:'GET'|'POST'|'PUT'|'DELETE',body?:unknown):Promise<{ value:T } | { connectionError:string }> => ipcRenderer.invoke('learning:chatRequest',id,path,method,body),
   learningRequest: <T = unknown>(id:string,path:string,method:'GET'|'POST'|'PUT'|'DELETE'='GET',body?:unknown):Promise<T> => ipcRenderer.invoke('learning:request',id,path,method,body),
   learningBinding: (id:string):Promise<{draftKey:string;connectionId:string;source:import('../core/learning/types').ContentRef;connected:boolean}|null> => ipcRenderer.invoke('learning:binding',id),
   enrollLearning: (id:string,kind:'course'|'document',contentId:string,version?:string):Promise<{courseId:string;title:string;version:string}> => ipcRenderer.invoke('learning:enroll',id,kind,contentId,version),

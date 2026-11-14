@@ -343,7 +343,7 @@ it('shows authoring web availability and keeps consulted sources distinct, safe 
     researchSources: [{ url: 'https://docs.python.org/', title: 'Duplicate' }, { url: 'https://peps.python.org/', title: 'PEPs' }, { url: 'javascript:alert(1)', title: 'Unsafe' }] }]
   panel.thread = { ...panel.thread! }
   await render()
-  expect(container.querySelector('[aria-label="Can search the web"]')).not.toBeNull()
+  expect(container.querySelector('[aria-label^="Chat tools: Web search"]')).not.toBeNull()
   const consulted = container.querySelector<HTMLDetailsElement>('[aria-label="Other research sources"]')!
   expect(consulted.open).toBe(false)
   expect(consulted.querySelector('summary')?.textContent).toBe('Other research sources (1)')
@@ -353,4 +353,23 @@ it('shows authoring web availability and keeps consulted sources distinct, safe 
   expect(cited.querySelector('.chat-sources-label')?.textContent).toBe('Cited sources')
   expect(cited.textContent).toContain('Python')
   expect(container.innerHTML).not.toContain('javascript:')
+})
+
+it('offers decisions only for the current printed revision and hides them immediately during a follow-up', async () => {
+  variant = 'authoring'; panel.busy = new Set(); panel.streaming = null
+  const one = {text:'# Initial',revision:1,hash:'one',target:{kind:'overview' as const},courseId:'course',courseRevision:1,draftVersion:0,sourceHash:'draft',decisionId:'first'}
+  const two = {...one,text:'# Revised',revision:2,hash:'two',decisionId:'second'}
+  const base = panel.thread!
+  panel.thread = {chat:{...base.chat,tools:{webSearch:true,plan:true},planning:{status:'ready',revision:2,published:two}}, messages:[one,two].map((plan,seq)=>({seq,role:'assistant',text:plan.text,at:'now',planning:{plan}}))}
+  await render()
+  const decisions = () => [...container.querySelectorAll<HTMLButtonElement>('.plan-actions button')]
+  expect(decisions().map(b=>b.textContent)).toEqual(['Accept plan','Reject plan'])
+  await act(async () => decisions()[0].click())
+  expect(panel.send).toHaveBeenCalledWith('Accept plan and create this course.',undefined,false,{kind:'accept',decisionId:'second'})
+  panel.busy = new Set([base.chat.id]); await render()
+  expect(decisions()).toHaveLength(0)
+  panel.busy = new Set(); panel.thread = {...panel.thread,chat:{...panel.thread.chat,planning:{...panel.thread.chat.planning!,status:'discussing'}}}
+  await render()
+  expect(decisions()).toHaveLength(0)
+  expect(container.textContent).toContain('# Revised')
 })

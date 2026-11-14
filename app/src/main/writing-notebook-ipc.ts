@@ -5,9 +5,12 @@ import { randomUUID } from 'node:crypto'
 import * as notebooks from './writing-notebooks'
 import * as chat from './writing-notebook-chat'
 import { selectWritingNotebookChat } from './writing-notebook-chatdb'
-import { assertNotebookWindow, openWritingNotebook, registerWritingWindowIpc } from './writing-notebook-windows'
+import { assertNotebookWindow, notebookWindowIdentity, openWritingNotebook, registerWritingWindowIpc } from './writing-notebook-windows'
 import { currentUserId, requireUser } from './users'
 import { MAX_IMAGE_BYTES, validateImage } from './image-import'
+import { readNotebookSketch, saveNotebookSketch } from './writing-notebook-sketch'
+import { readPreferences, writePreferences } from './preferences'
+import { sketchSettings, validSketchSize, validShortcut, type SketchSettings } from '../core/writing-notebooks/sketch'
 import { whenSenderGone } from './senders'
 
 export function registerWritingNotebookIpc(): void {
@@ -23,6 +26,28 @@ export function registerWritingNotebookIpc(): void {
   for (const [name, handler] of Object.entries(handlers)) ipcMain.handle(`writing:${name}`, (event, ...args: unknown[]) => {
     requireUser(); assertNotebookWindow(event.sender, ['list', 'search', 'create', 'association', 'open'].includes(name) ? undefined : args[0] as string)
     return (handler as (...args: unknown[]) => unknown)(...args)
+  })
+  for (const [name, handler] of Object.entries({ readSketch: readNotebookSketch, saveSketch: saveNotebookSketch })) {
+    ipcMain.handle(`writing:${name}`, (event, id: string, ...args: unknown[]) => {
+      if (!notebookWindowIdentity(event.sender)) throw new Error('Open the notebook to access its sketches.')
+      assertNotebookWindow(event.sender, id)
+      return (handler as (id: string, ...args: unknown[]) => unknown)(id, ...args)
+    })
+  }
+  // Let the recorder receive reserved combinations so Settings can explain the conflict.
+  ipcMain.on('writing:recordSketchShortcut', (event, recording: boolean) => {
+    if (typeof recording === 'boolean') event.sender.setIgnoreMenuShortcuts(recording)
+  })
+  ipcMain.handle('writing:sketchSettings', event => {
+    requireUser(); assertNotebookWindow(event.sender)
+    return sketchSettings(readPreferences().notebookSketch)
+  })
+  ipcMain.handle('writing:setSketchSettings', (event, value: SketchSettings) => {
+    requireUser(); assertNotebookWindow(event.sender)
+    if (!validSketchSize(value?.width) || !validSketchSize(value?.height) || !validShortcut(value?.shortcut)) throw new Error('Invalid notebook sketch settings.')
+    const normalized = sketchSettings(value)
+    writePreferences({ ...readPreferences(), notebookSketch: normalized })
+    for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('writing:sketchSettingsChanged', normalized)
   })
   ipcMain.handle('writing:image', async (event, id: string, bytes: Uint8Array) => {
     assertNotebookWindow(event.sender, id); notebooks.getWritingNotebook(id)

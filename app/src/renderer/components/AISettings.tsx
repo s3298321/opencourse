@@ -32,7 +32,7 @@ export function SubscriptionSection(): JSX.Element {
   }
   const active = status?.accounts.find(account => account.id === status.activeId)
   return <section className="settings-section settings-subscription">
-    <h2 className="settings-connection-heading"><ConnectionIcon provider="chatgpt" />ChatGPT subscription</h2>
+    <h2 className="settings-connection-heading"><ConnectionIcon provider="chatgpt" />{PROVIDER_LABELS.chatgpt}</h2>
     <p className="meta">Use your ChatGPT plan for course and document Ask, the project assistant, and course creation. Coach needs an OpenAI API key. Choose your ChatGPT workspace during browser sign-in.</p>
     <p role="status">{status === null ? 'Loading…' : active?.connected ? `Connected: ${active.label}` : 'No subscription connected.'}</p>
     {!!status?.accounts.length && <label className="settings-row"><span>Account / workspace registration</span>
@@ -106,9 +106,9 @@ export function AIModelsSection({ scope, version }: { scope: AIScope; version: n
   return <section className={`settings-section settings-ai-${scope}`}>
     <h2>{title}</h2>
     <p className="meta">Settings for {purpose}. Defaults apply to new conversations and connection switches.</p>
-    <div className="settings-row"><span>Connection type</span><Tooltip label={PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}>
+    <div className="settings-row"><span>Default connection type</span><Tooltip label={PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}>
       <Menu className={`settings-ai-provider-${scope} settings-connection-picker`} align="left" disabled={busy || !settings}
-        ariaLabel={`${title} connection: ${PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}`}
+        ariaLabel={`Default connection type for ${title}: ${PROVIDER_LABELS[settings?.selectedProvider ?? 'apiKey']}`}
         label={<ConnectionLabel provider={settings?.selectedProvider ?? 'apiKey'} />}
         items={(['apiKey', 'chatgpt'] as const).map(value => ({ id: value, label: PROVIDER_LABELS[value], icon: <ConnectionIcon provider={value} />,
           checked: settings?.selectedProvider === value, onSelect: () => void selected(value) }))} />

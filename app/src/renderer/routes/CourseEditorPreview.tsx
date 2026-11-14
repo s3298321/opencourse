@@ -1,11 +1,13 @@
 import ActionButton from '../components/ActionButton'
 import { useEffect, useId, useState } from 'react'
 import type { JSX } from 'react'
-import type { Block, CourseManifest, ExerciseBlock, Flashcard, Lesson, ProjectDefinition } from '@core/types'
+import type { Block, CourseManifest, ExerciseBlock, Flashcard, Lesson } from '@core/types'
 import { assetUrl } from '@core/manifest'
 import { getToolchain, hasToolchain } from '@core/toolchains'
 import Html from '../components/Html'
+import CoursePrerequisites from '../components/CoursePrerequisites'
 import LessonHeader from '../components/LessonHeader'
+import Formula from '../blocks/Formula'
 import MarkdownBlock from '../blocks/Markdown'
 import { ImageBlockView, VideoBlockView } from '../blocks/Media'
 import Visualization from '../blocks/Visualization'
@@ -87,6 +89,7 @@ export function BlockPreview({ block, courseId, ...editing }: PreviewEditing & {
   const poster = useAuthoringAsset(courseId, block.type === 'video' ? block.poster : undefined)
   switch (block.type) {
     case 'python-cell': return <div className="python-cell panel"><p className="meta">Python cell · Preview only</p><pre>{block.content}</pre></div>
+    case 'latex': return <Formula content={block.content} />
     case 'markdown': return <MarkdownBlock content={block.content} />
     case 'image': return src ? <ImageBlockView block={{ ...block, src }} /> : <p className="meta">Upload an image to preview it.</p>
     case 'video': return src ? <VideoBlockView block={{ ...block, src, poster }} /> : <p className="meta">Upload a video to preview it.</p>
@@ -110,19 +113,21 @@ export function FlashcardPreview({ card, courseId }: { card: Flashcard; courseId
   const src = useAuthoringAsset(courseId, card.image?.src)
   useEffect(() => setRevealed(false), [card.question, card.answer, card.image?.src])
   return <div className="flashcard-preview panel">
-    <span className="review-label">Flashcard · {card.id}</span><Html className="prose" source={card.question} />
+    <span className="review-label">Flashcard · {card.id}</span><Html className="prose" lesson source={card.question} />
     {src && <img className="review-image" src={src} alt={card.image?.alt ?? ''} />}
     <ActionButton icon="eye" className="secondary" onClick={() => setRevealed(value => !value)}>{revealed ? 'Hide answer' : 'Reveal answer'}</ActionButton>
-    {revealed && <div className="review-answer"><Html className="prose" source={card.answer} /></div>}
+    {revealed && <div className="review-answer"><Html className="prose" lesson source={card.answer} /></div>}
     <p className="meta">Preview only · Does not change review progress</p>
   </div>
 }
 
-export function ProjectPreview({ project }: { project: ProjectDefinition }): JSX.Element {
+export function CourseOverviewPreview({ courseId, manifest }: { courseId: string; manifest: CourseManifest }) {
   return <>
-    {!!project.objectives?.length && <ul>{project.objectives.map((o, i) => <li key={i}>{o}</li>)}</ul>}
-    <Html className="prose" source={project.definition} />
-    <h2>Requirements</h2><ol>{project.requirements.map((r) => <li key={r.nodeId}><Html source={r.description} /></li>)}</ol>
-    <h2>Deliverables</h2>{project.deliverables.map((d) => <div className="panel" key={d.nodeId}><h3>{d.title}</h3><Html source={d.description} />{d.paths?.map((p) => <p key={p}><code>{p}</code></p>)}<ul>{d.acceptance_criteria.map((c, i) => <li key={i}><Html source={c} /></li>)}</ul></div>)}
+    <CourseCoverPreview courseId={courseId} path={manifest.cover_image} />
+    <h1>{manifest.title}</h1>
+    {manifest.description && <Html className="prose course-description-markdown" lesson source={manifest.description} />}
+    <CoursePrerequisites items={manifest.prerequisites} />
   </>
 }
+
+export { default as ProjectPreview } from '../components/ProjectBrief'

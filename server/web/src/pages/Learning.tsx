@@ -1,3 +1,4 @@
+import { quoteSelectionText } from '@core/quote-selection'
 import { WebDocumentReviewControls } from '../components/PersonalCards'
 import { useCallback, useEffect, useLayoutEffect, useState, useRef, type RefObject } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
@@ -7,12 +8,14 @@ import { exerciseLanguage, getToolchain } from '@core/toolchains'
 import { call } from '../lib/api'
 import { server } from '../lib/boot'
 import { useAccount } from '../lib/session'
+import ProjectDetails from '../../../../app/src/learning-ui/ProjectDetails'
 import ReadingSize from '../../../../app/src/learning-ui/ReadingSize'
 import { normalizeReadingScale } from '@core/reading-scale'
 import { CourseOutline } from '../components/CourseOutline'
 import { ReadingChatDock } from '../components/ReadingChatDock'
 import { Html } from '../components/Html'
-import { renderMarkdown, plainText } from '../lib/markdown'
+import { renderFormula } from '@core/formula'
+import { renderMarkdown, renderLessonText, plainText } from '../lib/markdown'
 import { PdfReader } from './PdfReader'
 import { ExerciseCard, ExerciseWorkspace } from '../components/Exercise'
 import {
@@ -131,13 +134,13 @@ export function MyLearning() {
                     <button
                       className="oc-btn ghost sm"
                       onClick={() => {
-                        if (confirm(`Remove “${e.title}” from My learning on all devices? Progress and chats are retained.`))
+                        if (confirm(`Remove “${e.title}” from my documents on all devices? Progress and chats are retained.`))
                           void call('DELETE', `/me/learning/document/${encodeURIComponent(e.id)}`)
                             .then(refresh)
                             .catch((err) => setError(err.message))
                       }}
                     >
-                      <Trash2 aria-hidden /> Remove
+                      <Trash2 aria-hidden /> Remove from my documents
                     </button>
                   </div>
                 )}
@@ -528,6 +531,19 @@ export function WebLearning() {
         ? module?.lessons.find((l) => l.slug === item.lessonId)
         : null,
     open = current?.blocks.find((b): b is ExerciseBlock => b.type === 'exercise' && b.id === exercise)
+  const firstBlock = current?.blocks[0]
+  const firstHeading = firstBlock?.type === 'markdown'
+    ? /^#{1,6}\s+(.+?)(?:\s+#+)?(?:\n|$)/.exec(firstBlock.content.trimStart())
+    : null
+  const repeatedTitle = firstHeading && firstHeading[1].trim() === item?.title?.trim() ? firstHeading[0] : ''
+  const objectives = (module?.type === 'project' ? module.project.objectives : current?.objectives) ?? []
+  // When the title moves above the objectives, show the rest of its Markdown below them.
+  let blocks = current?.blocks ?? []
+  if (objectives.length && repeatedTitle && firstBlock?.type === 'markdown') {
+    const content = firstBlock.content.trimStart().slice(repeatedTitle.length)
+    blocks = blocks.slice(1)
+    if (content.trim()) blocks = [{ ...firstBlock, content }, ...blocks]
+  }
   const exercises: ExerciseControls = {
     done: (b) => Boolean((state.fields[`exercise:${b.id}`]?.value as { completedAt?: string } | null)?.completedAt),
     started: (b) => typeof state.fields[`code:${b.id}`]?.value === 'string',
@@ -599,6 +615,7 @@ export function WebLearning() {
                 brief={
                   <ExerciseCard
                     block={open}
+                    base={`/learn/course/${id}/${source.version}`}
                     mode="brief"
                     done={exercises.done(open)}
                     started
@@ -612,20 +629,23 @@ export function WebLearning() {
             {course && !open && (
               <>
                 <div className="reader-content">
-                  {!(
-                    current?.blocks[0]?.type === 'markdown' &&
-                    /^#{1,6}\s+(.+?)(?:\s+#+)?(?:\n|$)/.exec(current.blocks[0].content.trimStart())?.[1]?.trim() ===
-                      item?.title?.trim()
-                  ) && <h2 className="lesson-title">{item?.title}</h2>}
+                  {(!repeatedTitle || objectives.length > 0) && <h2 className="lesson-title">{item?.title}</h2>}
+                  {objectives.length > 0 && <section className="oc-panel lesson-objectives">
+                    <h3>{module?.type === 'project' ? 'What you will practice' : 'By the end of this lesson you can'}</h3>
+                    <ul>{objectives.map((objective, i) => <Html as="li" key={i} html={renderLessonText(objective)} />)}</ul>
+                  </section>}
                   {module?.type === 'project' ? (
                     <>
-                      <Html className="oc-prose" html={renderMarkdown(module.project.definition ?? '')} />
+                      <Html className="project-definition oc-prose lesson-prose" html={renderLessonText(module.project.definition ?? '')} />
+                      <ProjectDetails project={module.project} cardClassName="oc-panel" renderText={(source, inline = false) =>
+                        <Html className={inline ? undefined : 'oc-prose lesson-prose'} as={inline ? 'span' : 'div'} html={renderLessonText(source, inline)} />
+                      } />
                       <AppRequired />
                     </>
                   ) : (
                     current && (
                       <>
-                        {current.blocks.map((b) => (
+                        {blocks.map((b) => (
                           <LearningBlock
                             key={b.slug}
                             block={b}
@@ -689,7 +709,7 @@ export function WebLearning() {
             onChange={(scale) => void action('preference:readingScale', scale)}
           />
         )}
-        <ReadingChatDock
+        {account && <ReadingChatDock accountId={account.id}
           key={`${kind}:${id}:${source.version}`}
           open={chatOpen}
           onOpenChange={setChatOpen}
@@ -704,7 +724,7 @@ export function WebLearning() {
               if (index >= 0) go(index)
             }
           }}
-        />
+        />}
       </div>
       <AskAboutOffer
         reader={reader}
@@ -737,7 +757,7 @@ function AskAboutOffer({ reader, onAsk }: { reader: RefObject<HTMLElement | null
     }
     const update = () => {
       const selection = window.getSelection()
-      const text = selection?.toString().trim() ?? ''
+      const text = quoteSelectionText(selection).trim()
       const root = reader.current
       if (!selection || !text || text.length > 8000 || selection.rangeCount === 0 || !root) return setOffer(null)
       const range = selection.getRangeAt(0)
@@ -852,8 +872,10 @@ function LearningBlock({
   exercises: ExerciseControls
 }) {
   switch (b.type) {
+    case 'latex':
+      return <Html className="oc-prose lesson-prose" html={renderFormula(b.content)} />
     case 'markdown':
-      return <Html className="oc-prose lesson-prose" html={renderMarkdown(b.content)} />
+      return <Html className="oc-prose lesson-prose" html={renderLessonText(b.content)} />
     case 'image':
       return <img src={b.src} alt={b.alt ?? ''} />
     case 'video':
@@ -878,6 +900,7 @@ function LearningBlock({
       return (
         <ExerciseCard
           block={b}
+          base={base}
           done={exercises.done(b)}
           started={exercises.started(b)}
           onOpen={() => exercises.open(b)}
@@ -909,7 +932,7 @@ function WebQuiz({ quiz, base, onSaved }: { quiz: QuizBlock; base: string; onSav
       }}
     >
       <span className="oc-eyebrow">Knowledge check</span>
-      <Html className="oc-prose" html={renderMarkdown(quiz.question)} />
+      <Html className="oc-prose" html={renderLessonText(quiz.question)} />
       {quiz.kind === 'text' ? (
         <input aria-label="Your answer" value={submitted[0] ?? ''} onChange={(e) => setSubmitted([e.target.value])} />
       ) : (
@@ -929,7 +952,7 @@ function WebQuiz({ quiz, base, onSaved }: { quiz: QuizBlock; base: string; onSav
                 )
               }
             />
-            {o.text}
+            <Html as="span" className="quiz-choice-text" html={renderLessonText(o.text, true)} />
           </label>
         ))
       )}
@@ -940,7 +963,7 @@ function WebQuiz({ quiz, base, onSaved }: { quiz: QuizBlock; base: string; onSav
       {result && (
         <>
           <p>{result.isCorrect ? 'Correct' : 'Try again'}</p>
-          {result.explanation && <Html html={renderMarkdown(result.explanation)} />}
+          {result.explanation && <Html className="oc-prose explanation" html={renderLessonText(result.explanation)} />}
         </>
       )}
     </form>

@@ -15,6 +15,9 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import type { ActiveTheme } from '@core/types'
+import { darkChromeCss } from '@core/theme/dark-chrome'
+import { WHITE_THEME_ID } from '@core/theme/builtin-ids'
+import { followTitleTooltips } from '../components/title-tooltips'
 import { scaleAlpha } from '@core/theme/assets'
 import { announceThemeApplied } from './events'
 
@@ -145,7 +148,12 @@ export function ThemeProvider({ children }: { children: ReactNode }): JSX.Elemen
     const off = window.opencourse.onThemeChanged(() => void refresh())
     return () => { live = false; off() }
   }, [])
-  return <ThemeContext.Provider value={state}>{children}</ThemeContext.Provider>
+  const panda = state.active.id === WHITE_THEME_ID
+  useEffect(() => { if (panda) return followTitleTooltips() }, [panda])
+  return <ThemeContext.Provider value={state}>
+    {panda && <style>{darkChromeCss}</style>}
+    {children}
+  </ThemeContext.Provider>
 }
 
 export function useActiveTheme(): ActiveTheme {

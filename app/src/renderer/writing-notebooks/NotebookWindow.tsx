@@ -15,7 +15,6 @@ import { useConversationPanel, type ChatTransport } from '../sidechat/useChat'
 import { usePreviewAsk, PreviewAskOffer } from '../sidechat/usePreviewAsk'
 import type { AskOffer } from '../ask-context'
 import MarkdownEditor, { type MarkdownEditorHandle } from './MarkdownEditor'
-import { darkChromeCss } from '@core/theme/dark-chrome'
 import { TitleBarChrome } from '../components/TitleBar'
 import { useActiveTheme } from '../theme/ThemeProvider'
 const api = () => window.opencourse.writing
@@ -57,6 +56,7 @@ function NotebookContent({ id }: { id: string }) {
           setNotebook(notebook => notebook ? { ...notebook, pages: notebook.pages.map(page => page.id === snapshot.id ? { ...page, title: current.current?.id === snapshot.id ? current.current.title.trim() || 'Untitled page' : title } : page) } : notebook)
         }
         if (snapshot.markdown === saved.current) continue
+        await editor.current?.flushSketches(snapshot.markdown)
         const result = await api().save(id, snapshot.id, snapshot.revision, snapshot.markdown)
         if (!result.ok) { conflictRef.current = true; setConflict(result.page); throw new Error('This page changed elsewhere. Choose which version to keep.') }
         if (current.current?.id === snapshot.id) { current.current.revision = result.page.revision; saved.current = snapshot.markdown }
@@ -102,7 +102,7 @@ function NotebookContent({ id }: { id: string }) {
       send: async (chatId, text, quoted) => { const pageId = current.current!.id; await flush(); return chat.send(chatId, text, quoted, pageId) } }
   }, [id, flush])
   const storageKey = `writing:${id}`
-  const panel = useConversationPanel(transport, 'chat', notebook?.chatOpen ?? false, storageKey)
+  const panel = useConversationPanel(transport, 'chat', notebook?.chatOpen ?? false, storageKey, 'writing-notebook')
   const answerAsk = usePreviewAsk(true, page?.id ?? '', false)
   useEffect(() => { if (!quote) answerAsk.clearQuote() }, [quote, answerAsk.clearQuote])
   const update = useCallback(async (patch: Parameters<ReturnType<typeof api>['update']>[1]) => { const next = await api().update(id, patch); setNotebook(next) }, [id])
@@ -135,7 +135,6 @@ function NotebookContent({ id }: { id: string }) {
   const index = notebook.pages.findIndex(p => p.id === page.id)
   const reorder = (direction: number) => action(async () => { const ids = notebook.pages.map(p => p.id); [ids[index], ids[index + direction]] = [ids[index + direction]!, ids[index]!]; setNotebook(await api().reorder(id, ids)) })
   return <div className="app writing-window" data-default-theme={theme.id === null ? '' : undefined} style={{ '--reading-scale': notebook.textScale } as CSSProperties}>
-    <style>{darkChromeCss}</style>
     <TitleBarChrome title={notebook.title} showPomodoro actions={<ChatToggle open={notebook.chatOpen} onClick={toggleChat} subject="notebook" />} />
     <div className="body lesson-body writing-body">
       <aside className="sidebar writing-sidebar">
@@ -153,13 +152,12 @@ function NotebookContent({ id }: { id: string }) {
           onBlur={() => { changeTitle(current.current?.title.trim() || 'Untitled page'); void flush().catch(() => {}) }}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
+            if (event.key === 'Enter') { event.preventDefault(); editor.current?.focusAtStart() }
             if (event.key === 'Escape') { event.preventDefault(); changeTitle(titleBeforeEdit.current); event.currentTarget.blur() }
           }}
         /></h1><span className="meta" role="status">{status}</span><Menu label="•••" ariaLabel="Notebook options" heading="Notebook options" panelClassName="writing-options-menu" items={[
           { id: 'line-numbers', label: 'Line numbers', checked: notebook.showLineNumbers ?? false, checkType: 'checkbox', hint: notebook.showLineNumbers ? 'On' : 'Off', onSelect: () => { void update({ showLineNumbers: !notebook.showLineNumbers }).catch(e => setError(e.message)) } },
-          { id: 'wide', label: 'Wide text', checked: notebook.textLayout !== 'thin', onSelect: () => { void update({ textLayout: 'wide' }).catch(e => setError(e.message)) } },
-          { id: 'thin', label: 'Thin text', checked: notebook.textLayout === 'thin', onSelect: () => { void update({ textLayout: 'thin' }).catch(e => setError(e.message)) } },
+          { id: 'wide', label: 'Wide text', checked: notebook.textLayout !== 'thin', checkType: 'checkbox', hint: notebook.textLayout !== 'thin' ? 'On' : 'Off', onSelect: () => { void update({ textLayout: notebook.textLayout !== 'thin' ? 'thin' : 'wide' }).catch(e => setError(e.message)) } },
           ...(index > 0 ? [{ id: 'up', label: 'Move up', onSelect: () => reorder(-1) }] : []),
           ...(index < notebook.pages.length - 1 ? [{ id: 'down', label: 'Move down', onSelect: () => reorder(1) }] : []),
           ...(notebook.pages.length > 1 ? [{ id: 'delete', label: 'Delete page', danger: true, onSelect: () => deletePage(page.id, page.title) }] : [])

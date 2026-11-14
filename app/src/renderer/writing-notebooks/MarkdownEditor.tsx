@@ -1,12 +1,15 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { Compartment, EditorState, RangeSet, StateEffect, StateField, type Range } from '@codemirror/state'
 import { Decoration, EditorView, GutterMarker, WidgetType, keymap, lineNumberMarkers, lineNumbers, type DecorationSet } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab, undo } from '@codemirror/commands'
 import { syntaxTree } from '@codemirror/language'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import type { AskOffer } from '../ask-context'
+import { DEFAULT_SKETCH, sketchLine } from '@core/writing-notebooks/sketch'
+import { SketchAssets } from './sketch-assets'
+import { sketchExtensions, sketchKeymap, dismissSketch } from './sketch-editor'
 import { onThemeApplied } from '../theme/events'
 const parser = new MarkdownIt({ html: false, linkify: false })
 class HeadingNumber extends GutterMarker {
@@ -57,6 +60,7 @@ function livePreview(notebookId: string) {
     syntaxTree(state).iterate({ enter(node) {
       const { name, from, to } = node, source = state.doc.sliceString(from, to), editing = active(from, to)
       if (name === 'Table' && !editing) { decorations.push(Decoration.replace({ widget: new Preview(parser.render(source)), block: true }).range(from, to)); return false }
+      if (name === 'Image' && sketchLine.test(source) && state.doc.lineAt(from).text === source) return false
       if (name === 'Image' && !editing) {
         const match = source.match(/^!\[([^\]]*)\]\((assets\/[0-9a-f-]+\.(?:png|jpg|webp|gif))(?:\s+"[^"]*")?\)$/i)
         if (match) { decorations.push(Decoration.replace({ widget: new ImagePreview(`opencourse://writing-notebooks/${notebookId}/${match[2]}`, match[1]!) }).range(from, to)); return false }
@@ -85,14 +89,22 @@ function livePreview(notebookId: string) {
   }
   return StateField.define<DecorationSet>({ create: build, update: (value, tr) => tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? build(tr.state) : value, provide: field => EditorView.decorations.from(field) })
 }
-export interface MarkdownEditorHandle { waitForImages: () => Promise<void>; focus: () => void; clearSelection: () => void }
+export interface MarkdownEditorHandle { waitForImages: () => Promise<void>; flushSketches: (markdown: string) => Promise<void>; focusAtStart: () => void; clearSelection: () => void }
 interface Props { notebookId: string; initial: string; showLineNumbers?: boolean; textLayout?: 'wide' | 'thin'; onChange: (text: string) => void; onOffer: (offer: AskOffer | null) => void; onError: (error: string) => void; onSave: () => void }
 export default forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(props, ref) {
   const host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null), callbacks = useRef(props), images = useRef(new Set<Promise<void>>())
   const numberGutter = useRef(new Compartment())
+  const sketchAssets = useRef<SketchAssets | null>(null)
   callbacks.current = props
   useImperativeHandle(ref, () => ({
-    waitForImages: async () => { await Promise.all([...images.current]) }, focus: () => view.current?.focus(),
+    waitForImages: async () => { await Promise.all([...images.current]) },
+    flushSketches: async markdown => { await sketchAssets.current?.flush(markdown) },
+    focusAtStart: () => {
+      const editor = view.current
+      if (!editor) return
+      editor.focus()
+      editor.dispatch({ selection: { anchor: 0 }, scrollIntoView: true })
+    },
     clearSelection: () => {
       const editor = view.current
       if (editor) editor.dispatch({ selection: { anchor: editor.state.selection.main.head } })
@@ -101,6 +113,8 @@ export default forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(p
   }), [])
   useEffect(() => {
     const owner = {}, notebookId = props.notebookId
+    const assets = new SketchAssets(notebookId), shortcut = new Compartment()
+    sketchAssets.current = assets
     let alive = true
     const insertImages = (files: File[], position: number, editor: EditorView) => {
       const tracking = new Compartment()
@@ -127,7 +141,7 @@ export default forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(p
         mark: () => {}, unmark: () => {} })
     }
     const editor = new EditorView({ parent: host.current!, state: EditorState.create({ doc: props.initial, extensions: [
-      markdown({ base: markdownLanguage, completeHTMLTags: false }), history(), keymap.of([{ key: 'Mod-s', run: () => { callbacks.current.onSave(); return true } }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+      markdown({ base: markdownLanguage, completeHTMLTags: false }), history(), shortcut.of(sketchKeymap(DEFAULT_SKETCH, assets)), sketchExtensions(assets, () => callbacks.current.onSave()), keymap.of([{ key: 'Mod-s', run: () => { callbacks.current.onSave(); return true } }, ...defaultKeymap, ...historyKeymap, { mac: 'Ctrl-z', run: undo }, indentWithTab]),
       EditorView.lineWrapping, numberGutter.current.of(props.showLineNumbers ? notebookLineNumbers : []), livePreview(notebookId), EditorView.contentAttributes.of({ 'aria-label': 'Notebook page', spellcheck: 'true' }),
       EditorView.updateListener.of(update => { if (update.docChanged) callbacks.current.onChange(update.state.doc.toString()); if (update.selectionSet && update.view.hasFocus) select(update.view) }),
       EditorView.domEventHandlers({
@@ -138,7 +152,32 @@ export default forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(p
       })
     ] }) })
     view.current = editor
-    return () => { alive = false; editor.destroy(); view.current = null }
+    const outside = (event: Event) => dismissSketch(editor, event.target)
+    const copy = () => { const { from, to } = editor.state.selection.main
+      const text = from === to ? editor.state.doc.lineAt(from).text : editor.state.sliceDoc(from, to)
+      void assets.flush(text).catch(e => callbacks.current.onError(e.message))
+    }
+    document.addEventListener('pointerdown', outside, true)
+    document.addEventListener('focusin', outside, true)
+    editor.dom.addEventListener('copy', copy, true)
+    editor.dom.addEventListener('cut', copy, true)
+    const api = window.opencourse?.writing
+    let settingsChanged = false
+    const off = api?.onSketchSettings?.(settings => {
+      settingsChanged = true
+      editor.dispatch({ effects: shortcut.reconfigure(sketchKeymap(settings, assets)) })
+    })
+    void api?.sketchSettings?.().then(settings => {
+      if (alive && !settingsChanged) editor.dispatch({ effects: shortcut.reconfigure(sketchKeymap(settings, assets)) })
+    }).catch(e => { if (alive) callbacks.current.onError(e.message) })
+    return () => {
+      alive = false; off?.()
+      document.removeEventListener('pointerdown', outside, true)
+      document.removeEventListener('focusin', outside, true)
+      editor.dom.removeEventListener('copy', copy, true)
+      editor.dom.removeEventListener('cut', copy, true)
+      editor.destroy(); view.current = null; sketchAssets.current = null
+    }
   }, [props.notebookId])
   useEffect(() => {
     view.current?.dispatch({ effects: numberGutter.current.reconfigure(props.showLineNumbers ? notebookLineNumbers : []) })

@@ -39,10 +39,11 @@ function jwt(): string {
 function tokens() { return { access_token: `subscription-access-${++serial}`, refresh_token: `subscription-refresh-${serial}`,
   id_token: jwt(), token_type: 'Bearer', expires_in: lifetime, scope: 'openid offline_access resource.invoke chatgpt.tokens.use.direct' } }
 const response = (body: unknown, status = 200) => ({ ok: status < 300, status, text: async () => JSON.stringify(body) })
-function callback(url: URL, override: Record<string, string> = {}): void {
+function callback(url: URL, override: Record<string, string> = {}) {
   const params = new URLSearchParams({ state: invalidState ? 'invalid-state' : url.searchParams.get('state')!, code: 'code-one', client_id: clientId, ...override })
   const res = { writeHead: vi.fn(), end: vi.fn() }; res.writeHead.mockReturnValue(res)
   mock.servers.at(-1)!.emit('request', { method: 'GET', url: `/callback?${params}` }, res)
+  return res
 }
 async function opened(): Promise<URL> {
   for (let n = 0; n < 100; n++) {
@@ -73,6 +74,25 @@ beforeEach(() => {
 afterAll(() => { releaseSubscriptionSession(); rmSync(root, { recursive: true, force: true }) })
 
 describe('subscription session lifecycle', () => {
+  it.each([
+    [{}, 200, 'Sign-in received'],
+    [{ error: 'access_denied' }, 400, 'Sign-in declined'],
+    [{ state: 'invalid-state' }, 400, 'Couldn’t verify sign-in']
+  ] as const)('serves a branded callback for %j without including credentials', async (params, status, heading) => {
+    automaticCallback = false
+    const login = connectSubscription()
+    const url = await opened()
+    const res = callback(url, { ...params, code: 'private-callback-code' })
+    if (status === 200) await login
+    else await expect(login).rejects.toThrow()
+    expect(res.writeHead).toHaveBeenCalledWith(status, expect.objectContaining({
+      'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'
+    }))
+    const html = res.end.mock.calls[0][0] as string
+    expect(html).toContain(`<title>${heading} · OpenCourse</title>`)
+    expect(html).not.toContain('private-callback-code')
+    expect(html).not.toContain(url.searchParams.get('state'))
+  })
   it('uses dynamic registration, PKCE and a stable host, encrypts credentials, and exposes no tokens', async () => {
     await connectSubscription()
     const url = new URL(mock.browser.mock.calls[0][0])

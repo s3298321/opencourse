@@ -21,19 +21,21 @@ import { useMarkdown } from '../markdown-context'
 export default function Html({
   source,
   inline = false,
+  lesson = false,
   as: Tag = 'div',
   className
 }: {
   source: string
   /** Inline markdown: no wrapping <p>, for text that sits inside a sentence. */
   inline?: boolean
+  lesson?: boolean
   as?: 'div' | 'span' | 'li' | 'p'
   className?: string
 }): JSX.Element {
   const md = useMarkdown()
   const html = useMemo(
-    () => ({ __html: inline ? md.renderInline(source) : md.render(source) }),
-    [md, source, inline]
+    () => ({ __html: inline ? md.renderInline(source, lesson) : md.render(source, lesson) }),
+    [md, source, inline, lesson]
   )
   return <Tag {...(className ? { className } : {})} dangerouslySetInnerHTML={html} />
 }

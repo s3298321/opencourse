@@ -128,3 +128,27 @@ describe('personal writing notebooks', () => {
   })
 })
 const { requireUser: awaitUser } = await import('../src/main/users')
+
+it('round trips sketch geometry and colors without overwriting a saved page version', async () => {
+  const { readNotebookSketch, saveNotebookSketch } = await import('../src/main/writing-notebook-sketch')
+  const { darkSketchColors } = await import('../src/core/writing-notebooks/sketch')
+  const notebook = notes.createWritingNotebook('Sketches'), id = notebook.id
+  const first = `assets/${crypto.randomUUID()}.sketch.svg`, copy = `assets/${crypto.randomUUID()}.sketch.svg`
+  const points = [[50, 70], [400, 200]]
+  const model = { version: 1, width: 450, height: 300, marks: ['brush', 'circle', 'rectangle', 'arrow'].map((kind, i) => ({ kind, width: i + 1, points })) }
+  saveNotebookSketch(id, first, model, darkSketchColors)
+  write(id, `![Sketch](${first})`)
+  const resized = { ...model, width: 120 }
+  saveNotebookSketch(id, copy, resized, darkSketchColors)
+  saveNotebookSketch(id, copy, resized, darkSketchColors)
+  expect(readNotebookSketch(id, copy)).toEqual(resized)
+  expect(() => saveNotebookSketch(id, first, resized, darkSketchColors)).toThrow('already exists')
+  expect(notes.saveWritingPage(id, notebook.selectedPageId, 0, `![Sketch](${copy})`).ok).toBe(false)
+  expect(readNotebookSketch(id, first)).toEqual(model)
+  const svg = readFileSync(notes.writingNotebookAsset(id, first.slice(7))!, 'utf8')
+  expect(svg).toContain('stroke="#ffffff"')
+  expect(svg).toContain('<circle')
+  expect(() => saveNotebookSketch(id, '../other.svg', model, darkSketchColors)).toThrow()
+  expect(() => saveNotebookSketch(id, copy, { ...model, marks: [{ kind: 'brush', width: 2, points: [[NaN, 0]] }] }, darkSketchColors)).toThrow()
+  expect(() => saveNotebookSketch(id, copy, model, { ...darkSketchColors, brush: 'url(http://example.com)' })).toThrow()
+})

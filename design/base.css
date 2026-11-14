@@ -1,3 +1,5 @@
+@import "./markdown-tables.css";
+
 /* The shared primitives of OpenCourse on the web: the catalog server's web app
    and opencourse.dev both build on these, so a button, a chip or a card looks
    the same on both and the same as in the app. Every class is `oc-` prefixed:
@@ -86,7 +88,7 @@ code, kbd, pre, samp { font-family: var(--font-mono); }
 .oc-btn:disabled, .oc-btn[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
 .oc-btn svg { width: 1.05em; height: 1.05em; flex: none; }
 .oc-btn.secondary { --btn-bg: var(--chip-bg); --btn-fg: var(--fg); border-color: var(--border); }
-.oc-btn.secondary:hover:not(:disabled) { border-color: var(--line-strong); background: var(--raised); box-shadow: none; }
+.oc-btn.secondary:hover:not(:disabled) { border-color: var(--line-strong); background: var(--card); box-shadow: none; }
 .oc-btn.ghost { --btn-bg: transparent; --btn-fg: var(--fg); font-weight: 500; }
 .oc-btn.ghost:hover:not(:disabled) { background: var(--sheen); box-shadow: none; }
 .oc-btn.danger { --btn-bg: var(--err-bg); --btn-fg: var(--err); border-color: var(--err-border); }
@@ -272,15 +274,15 @@ code, kbd, pre, samp { font-family: var(--font-mono); }
 }
 .oc-prose pre {
   background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 0.95rem 1.1rem; overflow-x: auto; line-height: 1.55;
+  padding: 0.95rem 1.1rem; overflow: auto hidden; line-height: 1.55;
 }
 .oc-prose pre code { background: none; border: 0; padding: 0; font-size: 0.84rem; }
 .oc-prose blockquote {
   margin: 1rem 0; padding: 0.55rem 1rem; border-left: 3px solid var(--accent);
   background: var(--chip-bg); border-radius: 0 6px 6px 0; color: var(--chip-fg);
 }
-.oc-prose table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; font-size: 0.9rem; }
-.oc-prose th, .oc-prose td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+.oc-prose table { font-size: 0.9rem; }
+.oc-prose th, .oc-prose td { padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
 .oc-prose th { background: var(--chip-bg); font-weight: 600; }
 .oc-prose tr:nth-child(even) td { background: rgba(255, 255, 255, 0.015); }
 .oc-prose img { max-width: 100%; border-radius: 6px; }

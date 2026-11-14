@@ -1,3 +1,4 @@
+import { planDirectory } from './authoring-plan'
 import { importedAttachments } from './assets'
 /** App-local authoring documents, recoverable cross-store commits, and legacy adoption. */
 import { closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -114,6 +115,11 @@ export function recoverCourseOperation(courseId: string, userId = requireUser())
 
 export function commitCourseOperation(document: CourseDocument | null, progress: CourseProgress | null, courseId: string, cleanupPaths: string[], mutate: Parameters<typeof tx>[0], options: { packageSwap?: boolean } = {}): void {
   const userId = requireUser()
+  if (cleanupPaths.includes(courseDirectory(courseId))) {
+    const chats = db().prepare('SELECT c.id FROM authoring_chats c JOIN authoring_plans p ON p.chat_id=c.id WHERE c.course_id=?').all(courseId) as {id: string}[]
+    // Remove plan files before their course directory, which holds the recovery journal.
+    cleanupPaths = [...chats.map(c => planDirectory(c.id)), ...cleanupPaths]
+  }
   for (const path of cleanupPaths) {
     const rel = relative(userDir(userId), path)
     if (rel.startsWith('/') || rel.split(/[\\/]/).includes('..')) throw new Error('Invalid cleanup ownership.')

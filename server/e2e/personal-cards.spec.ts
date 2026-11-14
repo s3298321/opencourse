@@ -1,5 +1,5 @@
 import type { LearningState } from '@core/learning/types'
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -7,19 +7,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { makeZip } from '../../app/tests/helpers/zip'
 import { tmpdir } from 'node:os'
 import { proposeCards } from '../../app/src/main/personal-card-store'
-import { createSession } from '../src/auth/sessions'
-
-// These journeys exercise cards, not sign-in. Seed real sessions so the shared
-// server's production login rate limit does not depend on the suite's size.
-async function signInFixture(page: Page, username: string): Promise<string> {
-  const d = new DatabaseSync(join(process.env.OPENCOURSE_E2E_DATA!, 'server.db'))
-  try {
-    const account = String(d.prepare('SELECT id FROM accounts WHERE username=?').get(username)!.id)
-    const webToken = createSession(d, account, { kind: 'web' })
-    await page.context().addCookies([{ name: 'ocs_session', value: webToken, url: process.env.OPENCOURSE_E2E_URL!, httpOnly: true, sameSite: 'Lax' }])
-    return createSession(d, account, { kind: 'app' })
-  } finally { d.close() }
-}
+import { signInFixture } from './sign-in-fixture'
 
 test('approve personal cards in chat, review immediately, and delete through the question-only popup',async({page})=>{
   const errors:string[]=[]
@@ -113,7 +101,7 @@ test('document cards enable review, return to the originating screen, and disapp
       const account = String(d.prepare('SELECT id FROM accounts WHERE username=?').get('lin')!.id), message = randomUUID(), at = new Date().toISOString()
       d.prepare("INSERT INTO learning_messages(id,chat_id,role,text,status,at) VALUES(?,?,'user','Remember this PDF','complete',?)").run(randomUUID(), chat.id, at)
       d.prepare("INSERT INTO learning_messages(id,chat_id,role,text,status,at) VALUES(?,?,'assistant','Approve the preview below.','complete',?)").run(message, chat.id, at)
-      proposeCards(d, account, 'server', chat.id, message, 'document-fixture', { kind: 'document', id }, 'Personal card PDF', [{ question: 'What does a closure retain?', answer: 'Its lexical environment.' }])
+      proposeCards(d, account, 'server', chat.id, message, 'document-fixture', { kind: 'document', id }, 'Personal card PDF', [{ question: 'What does the closure $f$ retain?', answer: 'Its lexical environment. If it captures $a$, it can compute\n\n$$f(x) = x + a$$' }])
     } finally { d.close() }
     await page.reload()
     await page.getByRole('button', { name: 'Open reading chat' }).click()
@@ -123,8 +111,11 @@ test('document cards enable review, return to the originating screen, and disapp
     await panel.getByRole('button', { name: 'Add', exact: true }).click()
     await expect(panel.getByRole('region', { name: 'Flashcard preview' })).toContainText('1 card saved')
     await page.getByRole('link', { name: 'Review', exact: true }).click()
+    await expect(page.locator('.review-question .course-inline-formula math annotation')).toHaveText('f')
+    await expect(page.locator('.review-answer')).toHaveCount(0)
     await page.getByRole('button', { name: /Reveal answer/ }).click()
-    await expect(page.locator('.review-answer')).toContainText('Its lexical environment.')
+    await expect(page.locator('.review-answer .course-inline-formula math annotation')).toHaveText('a')
+    await expect(page.locator('.review-answer math[display="block"] annotation')).toHaveText('f(x) = x + a')
     await page.getByRole('button', { name: 'Good', exact: true }).click()
     await page.getByRole('button', { name: 'Back to document', exact: true }).last().click()
     await expect(page).toHaveURL(new RegExp(`/learn/document/${id}$`))
@@ -143,7 +134,7 @@ test('document cards enable review, return to the originating screen, and disapp
     await expect(count).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(dialog).toBeVisible()
-    await dialog.getByRole('button', { name: 'Delete card: What does a closure retain?' }).click()
+    await dialog.getByRole('button', { name: 'Delete card: What does the closure $f$ retain?' }).click()
     await expect(page.getByRole('link', { name: 'Review', exact: true })).toHaveCount(0)
     await page.goto(`/learn/document/${id}`)
     await expect(page.getByLabel('PDF page 1')).toBeVisible()

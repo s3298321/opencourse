@@ -1,9 +1,14 @@
+import { getChatTools, initializeChatTools, storeChatTools } from './chat-tools'
+import type { ChatTools } from '../core/chat-tools'
 import type { ImageSearchResult } from '../core/types'
 import { authoringInstructions } from '../core/authoring/prompt'
 import { normalizeResearchSources, researchSourcesFromOutput, unsupportedAuthoringSearch, normalizeImageResults, imageResultsFromOutput, unsupportedImageSearch, type ResearchSource, type ResearchSnapshot } from '../core/authoring/research'
 import { normalizeCitations } from '../core/sidechat/citations'
 import { webSearchFor } from '../core/sidechat/models'
-import { getAuthoringWebSearch } from './preferences'
+import { rmSync } from 'node:fs'
+import { planningInstructions, PLANNING_TOOLS, PLANNING_READ_TOOLS, type PlanAction, type PlanningMessage, type PlanningState, type QuestionStep } from '../core/authoring/planning'
+import { answerText, partialQuestionAnswers, saveQuestionStep, discuss, planDirectory, planSourceHash, planningState, readPlan, runPlanTool, setPlanningState } from './authoring-plan'
+import { authoringEvents } from './authoring-state'
 import { app, type WebContents } from 'electron'
 import type { AIProvider, AuthoringTarget, ChatCitation, ChatQuote, ChatSendResult, ChatSummary, ReasoningEffort } from '../core/types'
 import { newChatId } from '../core/sidechat/ids'
@@ -17,8 +22,8 @@ import { getAuthoringCourse, noteAuthoringChat } from './course-authoring'
 import { readDocument } from './course-store'
 import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
 import { currentUserId, requireUser } from './users'
-import { db } from './db'
-import { streamChat } from './openai'
+import { db, tx } from './db'
+import { chatRetryNotice, streamChatRound } from './resilient-chat'
 import { runAuthoringTool } from './authoring-tools'
 import { beginAuthoringTurn, authoringRunState } from './authoring-state'
 import { appendAuthoringMessage, insertAuthoringChat, pinAuthoringChatProvider, recordAuthoringTool, selectAuthoringChat, selectAuthoringChats, selectAuthoringMessages, updateAuthoringChat } from './authoring-chatdb'
@@ -37,6 +42,7 @@ function requireChat(id: string): ChatSummary {
   return chatConfig(chat)
 }
 function chatConfig(chat: ChatSummary): ChatSummary {
+  chat = { ...chat, tools: getChatTools('authoring', chat.id), planning: planningState(chat.id) }
   const snapshot = running.get(chat.id)?.chat
   return snapshot ? { ...chat, model: snapshot.model, reasoning: snapshot.reasoning, provider: snapshot.provider } : conversationConfig('authoring', chat)
 }
@@ -45,7 +51,7 @@ export function getAuthoringChat(id: string) { return { chat: requireChat(id), m
 export function createAuthoringChat(courseId: string): ChatSummary {
   readDocument(courseId)
   const at = new Date().toISOString(), chat = { id: newChatId(), courseId, ...newAIConversation('authoring'), createdAt: at, updatedAt: at }
-  insertAuthoringChat(chat); return requireChat(chat.id)
+  insertAuthoringChat(chat); initializeChatTools('authoring', chat.id); return requireChat(chat.id)
 }
 export function cancelAuthoringChat(id: string): void {
   cancelChatTitles('authoring', { chatId: id })
@@ -56,7 +62,7 @@ export function cancelAllAuthoringChats(provider?: AIProvider): void {
   cancelChatTitles('authoring', provider ? { provider } : {})
   for (const [id, run] of [...running]) if (!provider || run.chat.provider === provider) cancelAuthoringChat(id)
 }
-export function deleteAuthoringChat(id: string): void { requireChat(id); cancelAuthoringChat(id); db().prepare('DELETE FROM authoring_chats WHERE id=?').run(id) }
+export function deleteAuthoringChat(id: string): void { requireChat(id); cancelAuthoringChat(id); rmSync(planDirectory(id), { recursive: true, force: true }); db().prepare('DELETE FROM authoring_chats WHERE id=?').run(id) }
 export function setAuthoringChatModel(id: string, model: string): ChatSummary {
   if (running.has(id)) throw new Error('Wait for this response before changing its model.')
   const chat = requireChat(id); validateConversationModel('authoring', model, undefined, chat.pinnedProvider)
@@ -78,17 +84,44 @@ export function setAuthoringChatProvider(id: string, provider: AIProvider | null
 }
 app.on('before-quit', () => cancelAllAuthoringChats())
 
-export async function sendAuthoringMessage(sender: WebContents, id: string, text: string, target: AuthoringTarget, expectedRevision: number, expectedDraftVersion: number, quote?: ChatQuote): Promise<ChatSendResult> {
+export async function sendAuthoringMessage(sender: WebContents, id: string, text: string, target: AuthoringTarget, expectedRevision: number, expectedDraftVersion: number, quote?: ChatQuote, action?: PlanAction): Promise<ChatSendResult> {
   let chat = requireChat(id)
   const owner = requireUser(), database = db()
   if (authoringRunState(chat.courseId).chatId) return { status: 'busy' }
-  const asked = String(text ?? '').trim().slice(0, MAX_MESSAGE_CHARS)
+  const state = planningState(id), published = state.published
+  const planning = chat.tools?.plan === true && action?.kind !== 'accept'
+  if (action && (!chat.tools?.plan || !['answer','accept'].includes(action.kind))) return { status: 'failed', message: 'Plan mode is no longer active.' }
+  if (action?.kind === 'accept') {
+    if (state.status !== 'ready' || !published || published.decisionId !== action.decisionId || published.revision !== state.revision || published.hash !== state.hash) return { status: 'failed', message: 'This plan is no longer ready to accept.' }
+    try { if (readPlan(id, state) !== published.text) throw new Error('Present the current plan again.') } catch (e) { discuss(id); authoringEvents.emit('chat', id); return { status: 'failed', message: (e as Error).message } }
+    target = published.target; expectedRevision = published.courseRevision; expectedDraftVersion = published.draftVersion
+    text = 'Accept plan and create this course.'
+  } else if (action?.kind === 'answer') {
+    try { text = answerText(state, action.response, action.revision) } catch (e) { return { status: 'failed', message: (e as Error).message } }
+  }
+  const selectedTarget = target
+  if (planning && state.target) target = state.target
+  const asked = action?.kind === 'answer' ? text : String(text ?? '').trim().slice(0, MAX_MESSAGE_CHARS)
   if (!asked) return { status: 'failed', message: 'There is nothing to ask.' }
+  if (planning && !action && (state.status === 'ready' || state.status === 'awaiting-answers')) {
+    tx(() => { preserveQuestionProgress(id, state); discuss(id) })
+    authoringEvents.emit('chat', id)
+  }
   const authoring = getAuthoringCourse(chat.courseId)
+  if (action?.kind === 'accept' && (published?.courseId !== chat.courseId || published.sourceHash !== planSourceHash(authoring) || authoring.document.revision !== expectedRevision || authoring.draft.draftVersion !== expectedDraftVersion)) {
+    discuss(id); authoringEvents.emit('chat', id)
+    return { status: 'failed', message: 'The course changed after this plan was printed. Ask the assistant to review the current draft and present the plan again.' }
+  }
   if (authoring.document.revision !== expectedRevision || authoring.draft.draftVersion !== expectedDraftVersion || authoring.draft.baseRevision !== expectedRevision) return { status: 'failed', message: 'The draft changed in another window. Reload it before asking the assistant.' }
   let context: ReturnType<typeof authoringContext>
   try { context = authoringContext(authoring.draft.manifest, target, expectedDraftVersion) }
-  catch (error) { return { status: 'failed', message: (error as Error).message } }
+  catch (error) {
+    if (!planning || !state.target) return { status: 'failed', message: (error as Error).message }
+    // The original element was deleted. Replan against the current selection.
+    target = selectedTarget
+    try { context = authoringContext(authoring.draft.manifest, target, expectedDraftVersion) }
+    catch (e) { return { status: 'failed', message: (e as Error).message } }
+  }
   // A chat used while editing follows the edits if they are saved as a local copy.
   noteAuthoringChat(chat.courseId, id)
   const controller = new AbortController()
@@ -98,6 +131,7 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   let citations: ChatCitation[] = []
   let researchSources: ResearchSource[] = []
   let imageResults: ImageSearchResult[] = []
+  let interaction: PlanningMessage | undefined
   let answered = '', finalized = false, seq = -1
   let release = () => {}, unbindLost = () => {}, timer: ReturnType<typeof setTimeout> | undefined
   const push = (channel: string, ...args: unknown[]) => { if (!sender.isDestroyed()) sender.send(channel, id, ...args) }
@@ -107,7 +141,22 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     finalized = true; clearTimeout(timer); running.delete(id)
     unbindLost()
     try {
-      if (currentUserId() === owner && selectAuthoringChat(id, database) && (answered || researchSources.length || imageResults.length)) appendAuthoringMessage(id, { role: 'assistant', text: answered, status, citations: normalizeCitations(citations), researchSources: normalizeResearchSources(researchSources), imageResults: normalizeImageResults(imageResults), generation: { model: chat.model, provider: chat.provider!, reasoning: chat.reasoning }, at: new Date().toISOString() }, database)
+      if (currentUserId() === owner && selectAuthoringChat(id, database) && (answered || interaction || researchSources.length || imageResults.length)) tx(() => {
+        const delivery = status === 'complete' ? interaction : undefined
+        let body = answered
+        if (delivery) {
+          const s = planningState(id)
+          if (delivery.questions) {
+            setPlanningState(id, { ...s, status: 'awaiting-answers', questions: delivery.questions })
+            body = answered
+          } else if (delivery.plan) {
+            setPlanningState(id, { ...s, status: 'ready', published: delivery.plan, questions: undefined })
+            body = [answered, delivery.plan.text].filter(Boolean).join('\n\n')
+          }
+        }
+        appendAuthoringMessage(id, { role: 'assistant', text: body, status, planning: delivery, citations: normalizeCitations(citations), researchSources: normalizeResearchSources(researchSources), imageResults: normalizeImageResults(imageResults), generation: { model: chat.model, provider: chat.provider!, reasoning: chat.reasoning }, at: new Date().toISOString() }, database)
+      })
+      authoringEvents.emit('chat', id)
     } catch (failure) { error ??= (failure as Error).message }
     finally { release() }
     const outcome = { model: chat.model, provider: chat.provider ?? 'apiKey', reasoning: chat.reasoning ?? null, ms: Date.now() - started, chars: answered.length, toolCalls }
@@ -117,19 +166,25 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     if (error) {
       const message = isOpenAIOverload(error)
         ? `${OPENAI_OVERLOADED} Completed draft changes are preserved. Retry continues from the current draft.`
-        : error.includes('net::ERR_QUIC_PROTOCOL_ERROR')
-        ? 'The connection to OpenAI broke (net::ERR_QUIC_PROTOCOL_ERROR). Completed changes remain in this editor. Send another message to continue, or save your changes before closing or restarting the app.'
         : error
       push('authoringChat:error', scrubSecrets(message))
     } else push('authoringChat:done')
   }
-  let token: symbol
-  try { const lease = beginAuthoringTurn(chat.courseId, id, lost); token = lease.token; release = lease.release }
+  let lease: ReturnType<typeof beginAuthoringTurn>
+  try { lease = beginAuthoringTurn(chat.courseId, id, lost) }
   catch (error) { return { status: 'failed', message: (error as Error).message } }
+  const { token, markEditing } = lease
+  release = lease.release
   running.set(id, { chat, controller, finish })
+  if (planning && !action) {
+    try {
+      setPlanningState(id, { ...state, target, status: 'discussing', questions: undefined })
+      authoringEvents.emit('chat', id)
+    } catch (e) { finish('failed', (e as Error).message); return { status: 'failed', message: (e as Error).message } }
+  }
   unbindLost = whenSenderGone(sender, lost)
   let key: string
-  try { ({ chat, key } = await prepareAIRequest('authoring', chat, controller.signal)) }
+  try { ({ chat, key } = await prepareAIRequest('authoring', chat, controller.signal, chatRetryNotice(sender, id))) }
   catch (error) {
     if (!controller.signal.aborted) logger.warn('The connection was not ready for an authoring turn', { provider: chat.provider ?? 'apiKey', message: (error as Error).message })
     finish(controller.signal.aborted ? 'stopped' : 'failed')
@@ -142,15 +197,32 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   const quoted = typeof quote?.text === 'string' ? quote.text.trim().slice(0, MAX_QUOTE_CHARS) : ''
   const quoteSource = quote?.from === 'answer' ? 'answer' as const : 'preview' as const
   try {
-    updateAuthoringChat(id, chat.model, chat.reasoning, chat.provider)
-    appendAuthoringMessage(id, { role: 'context', text: JSON.stringify(context), authoring: metadata, at }, database)
-    seq = appendAuthoringMessage(id, { role: 'user', text: asked, authoring: metadata, ...(quoted ? { quote: { text: quoted, from: quoteSource } } : {}), at }, database)
+    tx(() => {
+      if (action?.kind === 'answer') setPlanningState(id, { ...state, target, status: 'discussing', questions: undefined })
+      if (action?.kind === 'accept') {
+        const s = planningState(id)
+        if (s.status !== 'ready' || s.published?.decisionId !== action.decisionId) throw new Error('This plan is no longer current.')
+        readPlan(id, s)
+        storeChatTools('authoring', id, { webSearch: !!chat.tools?.webSearch, plan: false })
+        setPlanningState(id, { ...s, status: 'accepted' })
+      }
+      updateAuthoringChat(id, chat.model, chat.reasoning, chat.provider)
+      appendAuthoringMessage(id, { role: 'context', text: JSON.stringify(context), authoring: metadata, at }, database)
+      seq = appendAuthoringMessage(id, { role: 'user', text: asked, authoring: metadata, ...(action ? { planning: action.kind === 'answer' ? { answers: action.response } : { decision: 'accepted' as const, decisionId: action.decisionId } } : {}), ...(quoted ? { quote: { text: quoted, from: quoteSource } } : {}), at }, database)
+    })
+    authoringEvents.emit('chat', id)
   } catch (error) { finish('failed', (error as Error).message); return { status: 'failed', message: (error as Error).message } }
-  let search = getAuthoringWebSearch() && webSearchFor(chat.model, chat.reasoning)
-  let imageSearch = search
+  let search = chat.tools?.webSearch === true && webSearchFor(chat.model, chat.reasoning)
+  let imageSearch = search && !planning
+  const tools = planning ? [...AUTHORING_TOOLS.filter(t => PLANNING_READ_TOOLS.has(t.name)), ...PLANNING_TOOLS] : AUTHORING_TOOLS
+  const instructions = () => planning ? planningInstructions(search) : authoringInstructions(search, imageSearch)
+  const binding = planning ? { courseId: chat.courseId, target, courseRevision: expectedRevision, draftVersion: expectedDraftVersion, sourceHash: planSourceHash(authoring) } : undefined
+  const currentPlan = planningState(id)
+  const planContext = planning ? `\nWorking plan revision: ${currentPlan.revision}. Use read_plan for its current contents.` :
+    currentPlan.status === 'accepted' && currentPlan.published && (action?.kind === 'accept' || asked === RETRY_INTERRUPTED_REQUEST) ? `\nImplement the accepted course plan below in the current draft. Preserve completed work.\n${currentPlan.published.text}` : ''
   const contextText = `[Authoring context for the following user message]\n${JSON.stringify(context)}\nCurrent date (UTC): ${at.slice(0, 10)}`
-  const turnContext: ResponseInput = { role: 'user', content: contextText }
-  const input: ResponseInput[] = [{ role: 'system', content: authoringInstructions(search) }]
+  const turnContext: ResponseInput = { role: 'user', content: contextText + planContext }
+  const input: ResponseInput[] = [{ role: 'system', content: instructions() }]
   const kept: ResponseInput[] = []
   let available = 120000
   let history: ReturnType<typeof selectAuthoringMessages>
@@ -162,13 +234,15 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
       if (available < 85) break
       kept.unshift({ role: 'user', content: '[Earlier editor selection; retrieve current content with authoring tools.]' }); available -= 85; continue
     }
-    let content = message.role === 'context' ? contextText : message.quote ? `${message.quote.from === 'answer' ? 'Quoted earlier answer' : 'Quoted course preview passage'}:\n${message.quote.text}\n\n${message.text}` : `${message.text}${message.researchSources?.length ? `\n[Previously consulted sources; not proof of current verification]\n${JSON.stringify(normalizeResearchSources(message.researchSources))}` : ''}`
+    let content = message.role === 'context' ? contextText + planContext : message.quote ? `${message.quote.from === 'answer' ? 'Quoted earlier answer' : 'Quoted course preview passage'}:\n${message.quote.text}\n\n${message.text}` : `${message.text}${message.researchSources?.length ? `\n[Previously consulted sources; not proof of current verification]\n${JSON.stringify(normalizeResearchSources(message.researchSources))}` : ''}`
+    if (planning && message.planning?.plan) content = `[Course plan revision ${message.planning.plan.revision} was printed here. Use read_plan to inspect the current working document.]`
+    if (message.planning?.questions) content += '\nPlanning questions: ' + JSON.stringify(message.planning.questions.questions)
     if (message.imageResults?.length) content += `\n[Previously retrieved images; untrusted references, not proof of reuse terms]\n${JSON.stringify(normalizeImageResults(message.imageResults))}`
     if (content.length > available && kept.length) break
     available -= content.length; kept.unshift({ role: message.role === 'assistant' ? 'assistant' : 'user', content })
   }
   input.push(...kept)
-  if (!kept.some(item => 'content' in item && item.content === contextText)) input.splice(Math.max(1, input.length - 1), 0, turnContext)
+  if (!kept.some(item => 'content' in item && item.content === contextText + planContext)) input.splice(Math.max(1, input.length - 1), 0, turnContext)
   try {
     if (asked === RETRY_INTERRUPTED_REQUEST) {
       // Older selection snapshots are omitted above. Recover the original target
@@ -196,10 +270,11 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
   setImmediate(() => { void (async () => {
     try {
       const ask = () => runChatAgent({ input, signal: controller.signal,
-        session: { mode: 'authoring', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider!, key, tools: AUTHORING_TOOLS, webSearch: search, imageSearch, sourceVersion: expectedRevision,
+        session: { mode: 'authoring', chatId: id, turnSeq: seq, model: chat.model, provider: chat.provider!, key, tools, webSearch: search, imageSearch, sourceVersion: expectedRevision,
           context: [turnContext],
           valid: () => !finalized && readDocument(chat.courseId).revision === expectedRevision },
-        readOnly: name => ['get_course_format', 'read_course', 'list_course_elements', 'list_assets', 'read_asset', 'validate_course'].includes(name),
+        shouldYield: () => !!interaction,
+        readOnly: name => PLANNING_READ_TOOLS.has(name),
         cacheKey: (name, args) => ['get_course_format', 'read_course', 'list_course_elements', 'list_assets', 'read_asset'].includes(name)
           ? JSON.stringify([name, args, getAuthoringCourse(chat.courseId).draft.draftVersion]) : undefined,
         limits: { rounds: 64, calls: 256 },
@@ -215,8 +290,13 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
             researchSources = normalizeResearchSources([...previousSources, ...snapshot.sources])
             imageResults = normalizeImageResults([...previousImages, ...(snapshot.images ?? [])])
           }
-          const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input: items, tools: AUTHORING_TOOLS,
-            toolNamespace: { name: 'authoring', description: 'Create and edit this course draft and its supporting assets.' },
+          const result = await streamChatRound(sender, id, () => {
+            answered = answered.slice(0, begin)
+            first = true
+            citations = previousCitations; researchSources = previousSources; imageResults = previousImages
+            return answered
+          }, { key, provider: chat.provider, model: chat.model, modelContext, input: items, tools,
+            toolNamespace: { name: 'authoring', description: planning ? 'Inspect this course, interview its learner, and maintain its working plan.' : 'Create and edit this course draft and its supporting assets.' },
             webSearch: search, imageSearch,
             onSearch: event => { if (!finalized) { searched = true; push('authoringChat:activity', event.state === 'running' ? 'Searching the web…' : 'Finished web research') } },
             onResearch: collect,
@@ -234,8 +314,14 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
           if (readDocument(chat.courseId).revision !== expectedRevision) throw new Error('The saved course changed.')
           push('authoringChat:activity', name.replace(/_/g, ' '))
           toolCalls++
+          const editsCourse = !planning && !PLANNING_READ_TOOLS.has(name) && AUTHORING_TOOLS.some(tool => tool.name === name)
           let output: string
-          try { output = await runAuthoringTool(chat.courseId, name, args, token, controller.signal) }
+          if (editsCourse) markEditing()
+          try {
+            output = binding && !PLANNING_READ_TOOLS.has(name)
+              ? runPlanTool(id, name, args, binding, m => { interaction = m })
+              : await runAuthoringTool(chat.courseId, name, args, token, controller.signal)
+          }
           catch (error) { logger.warn('An authoring tool failed', { tool: name, error }); throw error }
           if (!finalized && currentUserId() === owner) recordAuthoringTool(database, id, seq, callId, name, args, output)
           return output
@@ -245,21 +331,21 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
         const text = 'Web research is unavailable for this turn. Current documentation has not been verified.'
         answered = text; push('authoringChat:delta', text)
       }
-      if (!search) notice()
+      if (!search && !planning) notice()
       let result: Awaited<ReturnType<typeof ask>>
       try { result = await ask() }
       catch (error) {
         if (!search || finalized || controller.signal.aborted || requests !== 1 || toolCalls || answered || searched || researchSources.length || imageResults.length) throw error
         if (imageSearch && unsupportedImageSearch(error)) {
           imageSearch = false
-          input[0] = { role: 'system', content: authoringInstructions(true, false) }
+          input[0] = { role: 'system', content: instructions() }
           answered = 'Image search is unavailable for this connection. Continuing with text research and generated visuals.\n\n'
           push('authoringChat:delta', answered)
           result = await ask()
         } else {
           if (!unsupportedAuthoringSearch(error)) throw error
           search = false; imageSearch = false
-          input[0] = { role: 'system', content: authoringInstructions(false) }
+          input[0] = { role: 'system', content: instructions() }
           notice()
           logger.warn('Authoring model does not support web search; continuing without it')
           result = await ask()
@@ -269,4 +355,43 @@ export async function sendAuthoringMessage(sender: WebContents, id: string, text
     } catch (error) { finish(controller.signal.aborted ? 'stopped' : 'failed', controller.signal.aborted ? undefined : (error as Error).message) }
   })() })
   return { status: 'ok', seq }
+}
+
+/** An ordinary reply or leaving Plan mode ends the interview. Keep the answers the user already confirmed. */
+function preserveQuestionProgress(id: string, state: PlanningState): void {
+  const partial = partialQuestionAnswers(state)
+  if (!partial) return
+  appendAuthoringMessage(id, { role: 'user', text: partial.text, planning: { answers: partial.response }, at: new Date().toISOString() })
+  db().prepare("DELETE FROM text_chat_state WHERE mode='authoring' AND chat_id=?").run(id)
+}
+
+export function advanceAuthoringQuestion(id: string, step: QuestionStep) {
+  const chat = requireChat(id)
+  if (!chat.tools?.plan || authoringRunState(chat.courseId).chatId) throw new Error('The planning interview is unavailable.')
+  const progress = saveQuestionStep(id, step)
+  authoringEvents.emit('chat', id)
+  return progress
+}
+
+export function configureAuthoringTools(id: string, options: ChatTools): ChatTools {
+  const chat = requireChat(id)
+  if (authoringRunState(chat.courseId).chatId) throw new Error('Wait for the current response before changing tools.')
+  const next = tx(() => {
+    const next = storeChatTools('authoring', id, options)
+    if (next.plan !== chat.tools?.plan) {
+      db().prepare("DELETE FROM text_chat_state WHERE mode='authoring' AND chat_id=?").run(id)
+      const s = planningState(id)
+      if (!next.plan) preserveQuestionProgress(id, s)
+      if (s.target || s.revision || s.questions) setPlanningState(id, { ...s, status: next.plan ? 'discussing' : 'rejected', questions: undefined })
+      if (!next.plan && (s.published || s.questions || s.revision)) appendAuthoringMessage(id, { role: 'user', text: s.status === 'ready' ? 'Rejected this course plan.' : 'Left Plan mode without creating the course.', planning: { decision: 'rejected', ...(s.status === 'ready' ? { decisionId: s.published?.decisionId } : {}) }, at: new Date().toISOString() })
+    }
+    return next
+  })
+  authoringEvents.emit('chat', id)
+  return next
+}
+export function rejectAuthoringPlan(id: string, decisionId: string): void {
+  const chat = requireChat(id), s = planningState(id)
+  if (!chat.tools?.plan || s.status !== 'ready' || s.published?.decisionId !== decisionId) throw new Error('This plan is no longer ready for review.')
+  configureAuthoringTools(id, { webSearch: chat.tools.webSearch, plan: false })
 }

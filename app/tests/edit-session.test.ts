@@ -26,7 +26,7 @@ vi.mock('../src/main/openai', () => ({ streamChat: vi.fn() }))
 const { createUser } = await import('../src/main/users')
 const { closeDb, db } = await import('../src/main/db')
 const { listCourses, reloadCourses } = await import('../src/main/courses')
-const { createCourse, discardCourseDraft, getAuthoringCourse, isEditSessionDirty, openEditSession, releaseEditSessions, saveCourse, saveDraft, uploadCourseAttachmentPath } = await import('../src/main/course-authoring')
+const { createCourse, discardCourseDraft, getAuthoringCourse, isEditSessionDirty, openEditSession, hasDiscardableCourseChat, windowWouldDiscardCourseChat, releaseEditSessions, saveCourse, saveDraft, uploadCourseAttachmentPath } = await import('../src/main/course-authoring')
 const { atomicJSON, courseDirectory, ensureCourseStorage, packageDirectory, readDocument } = await import('../src/main/course-store')
 const { editSession, removeEditSession, SESSION_JOURNAL } = await import('../src/main/edit-sessions')
 const { beginAuthoringTurn } = await import('../src/main/authoring-state')
@@ -143,6 +143,33 @@ describe('a new course', () => {
     ensureCourseStorage()
     expect(existsSync(courseDirectory(second))).toBe(false)
     expect(db().prepare('SELECT COUNT(*) AS n FROM library_courses WHERE id=?').get(second)).toMatchObject({ n: 0 })
+  })
+
+  it('warns about chat loss only while a never-saved course has a conversation to discard', async () => {
+    const { appendAuthoringMessage } = await import('../src/main/authoring-chatdb')
+    const { deleteAuthoringChat } = await import('../src/main/authoring-chat')
+    const id = createCourse().document.courseId
+    openEditSession(id, 7)
+    const chat = createAuthoringChat(id)
+    expect(hasDiscardableCourseChat(id)).toBe(false)
+    const message = { role: 'user' as const, text: 'Plan a drawing course', at: new Date().toISOString() }
+    appendAuthoringMessage(chat.id, message)
+    expect(isEditSessionDirty(id)).toBe(false)
+    expect(hasDiscardableCourseChat(id)).toBe(true)
+    expect(windowWouldDiscardCourseChat(7)).toBe(true)
+    openEditSession(id, 8)
+    expect(windowWouldDiscardCourseChat(7)).toBe(false)
+    releaseEditSessions(8)
+    expect(windowWouldDiscardCourseChat(7)).toBe(true)
+    deleteAuthoringChat(chat.id)
+    expect(hasDiscardableCourseChat(id)).toBe(false)
+
+    const kept = createAuthoringChat(id)
+    appendAuthoringMessage(kept.id, message)
+    const draft = edit(id, m => Object.assign(m, identifyManifest(projectCourse(), randomUUID)))
+    expect(await saveCourse(id, 0, draft.draftVersion)).toMatchObject({ status: 'ok' })
+    expect(hasDiscardableCourseChat(id)).toBe(false)
+    expect(windowWouldDiscardCourseChat(7)).toBe(false)
   })
 
   it('goes away with the window that was creating it', () => {

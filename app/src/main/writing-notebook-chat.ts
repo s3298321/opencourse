@@ -1,3 +1,5 @@
+import { getChatTools, initializeChatTools, storeChatTools } from './chat-tools'
+import type { ChatTools } from '../core/chat-tools'
 import { db } from './db'
 import { attachCardProposals } from './personal-card-store'
 import { flashcardTools, flashcardToolNotice, createFlashcardPreview } from './personal-cards'
@@ -16,9 +18,8 @@ import { conversationConfig, conversationModelContext, conversationReasoning, ne
 import { appendWritingNotebookMessage, configureWritingNotebookChat, deleteWritingNotebookChatRow, insertWritingNotebookChat, selectWritingNotebookChat, selectWritingNotebookChats, selectWritingNotebookMessages } from './writing-notebook-chatdb'
 import { writingNotebookEvents, getWritingNotebook, getWritingPage } from './writing-notebooks'
 import { writingReadingTools, runWritingReadingTool, notebookSnapshot } from './writing-notebook-reading'
-import { readPreferences } from './preferences'
 import { currentUserId, requireUser } from './users'
-import { streamChat } from './openai'
+import { chatRetryNotice, streamChatRound } from './resilient-chat'
 import { whenSenderGone } from './senders'
 import { cancelChatTitles, generateChatTitle } from './chattitles'
 import { iconsFor } from './favicons'
@@ -44,6 +45,7 @@ function requireChat(id: string): WritingNotebookChatSummary {
   return chatConfig(chat)
 }
 function chatConfig(chat: WritingNotebookChatSummary): WritingNotebookChatSummary {
+  chat = { ...chat, tools: getChatTools('writing-notebook', chat.id) }
   const snapshot = inflight.get(chat.id)?.chat
   return snapshot ? { ...chat, model: snapshot.model, reasoning: snapshot.reasoning, provider: snapshot.provider } : conversationConfig('chat', chat)
 }
@@ -59,6 +61,7 @@ export function createWritingNotebookChat(notebookId: string, page: string): Wri
   const at = new Date().toISOString()
   const id = newChatId()
   insertWritingNotebookChat({ id, notebookId, startedOn: page, ...newAIConversation('chat'), title: '', messages: 0, createdAt: at, updatedAt: at })
+  initializeChatTools('writing-notebook', id)
   return requireChat(id)
 }
 function mutableChat(id: string): WritingNotebookChatSummary {
@@ -106,7 +109,7 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
   const valid = (): boolean => currentUserId() === owner && !!selectWritingNotebookChat(id)
   const unbind = whenSenderGone(sender, () => cancelWritingNotebookChat(id))
   let key: string
-  try { ({ chat, key } = await prepareAIRequest('chat', chat, controller.signal)) }
+  try { ({ chat, key } = await prepareAIRequest('chat', chat, controller.signal, chatRetryNotice(sender, id))) }
   catch (error) {
     inflight.delete(id); unbind()
     return { status: 'connection-required', provider: chat.provider ?? 'apiKey', message: scrubSecrets((error as Error).message) }
@@ -144,7 +147,7 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
     const timer = setTimeout(() => finish('failed', 'Notebook chat timed out. Ask a more focused question.'), 18 * 60_000)
     timer.unref(); entry.stop = () => finish('stopped')
     void generateChatTitle({ scope: 'writing-notebook', notebookId: document.id, chatId: id, owner, sender, key, provider: chat.provider ?? 'apiKey', model: chat.model, reasoningEfforts: conversationReasoning('chat', chat.model, chat.pinnedProvider) })
-    const webSearch = readPreferences().webSearch === true && webSearchFor(chat.model, chat.reasoning)
+    const webSearch = chat.tools?.webSearch === true && webSearchFor(chat.model, chat.reasoning)
     const instructions = `You are a helpful writing and learning companion beside a personal Markdown notebook in OpenCourse. The current saved page is supplied as context. Answer questions about it and use read-only tools for other pages or associated material. You cannot edit the notebook. Embedded image markup is not image analysis. ${READING_TOOL_INSTRUCTIONS}\n${webSearch ? 'Web search is available when external facts are needed; distinguish web information from notebook sources.' : 'You cannot search the web.'}\nWrite clear, concise Markdown.`
     const budget = { chars: 0, signal: controller.signal }
     const modelContext = conversationModelContext(chat.provider ?? 'apiKey', chat.model)
@@ -158,7 +161,11 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
           stream: async input => {
             const begin = answered.length
             let first = true
-            const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input, tools, toolNamespace: { name: 'notebook', description: 'Learning tools and retrieval from notebook pages and associated material.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
+            const result = await streamChatRound(sender, id, () => {
+              answered = answered.slice(0, begin)
+              first = true
+              return answered
+            }, { key, provider: chat.provider, model: chat.model, modelContext, input, tools, toolNamespace: { name: 'notebook', description: 'Learning tools and retrieval from notebook pages and associated material.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
               onSearch: () => push('activity', 'Searching the web…'), onDelta: chunk => {
                 if (finalized || !valid()) return
                 const delta = first && answered ? `\n\n${chunk}` : chunk; first = false
@@ -191,4 +198,10 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
   } catch (error) {
     controller.abort(); inflight.delete(id); unbind(); throw error
   }
+}
+
+export function configureNotebookTools(id: string, options: ChatTools): ChatTools {
+  if (inflight.has(id)) throw new Error('Wait for the current response before changing tools.')
+  requireChat(id)
+  return storeChatTools('writing-notebook', id, options)
 }

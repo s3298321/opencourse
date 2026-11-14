@@ -1,3 +1,14 @@
+.sidechat-scroll, .learning-messages {
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+:is(.sidechat-scroll, .learning-messages) .course-inline-formula {
+  display: inline-block;
+  max-width: 100%;
+  overflow: auto hidden;
+  vertical-align: middle;
+}
+
 .menu-trigger:where(.shared-menu) {
   display: flex; align-items: center; gap: 0.4rem;
   background: none; color: var(--accent); border: 0;
@@ -38,10 +49,94 @@
 .shared-menu .menu-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shared-menu .menu-item-hint { color: var(--muted); font-size: 0.74rem; }
 .shared-menu .menu-item-icon { display: inline-flex; align-self: center; flex: none; }
+.shared-menu:not(.chat-tools-menu, .writing-options-menu) > .menu-item.checked::after {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 0.95em;
+  height: 0.95em;
+  background-color: #c4c4cc;
+  mask: url('../renderer/assets/done-mark.svg') center / contain no-repeat;
+}
+:is(.chat-menu, .learning-chat-menu) > .menu-item + .menu-item { margin-block-start: 4px; }
+.chat-tools-menu .menu-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  row-gap: 0.2rem;
+}
+.chat-tools-menu .menu-item-hint { grid-column: 1 / -1; grid-row: 2; }
+/* Screen readers get the state from aria-checked. */
+.chat-tools-menu .menu-item::after {
+  content: 'Off' / '';
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.chat-tools-menu .menu-item[aria-checked='true']::after { content: 'On' / ''; color: var(--accent); }
+.chat-tools-spacer { flex: 1; }
+.chat-active-tools {
+  position: relative;
+  flex: 1 1 0%;
+  min-width: 4em;
+  margin-inline: 0.3rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chat-tools-row, .chat-tools-ruler { display: flex; align-items: center; column-gap: 0.4rem; }
+.chat-tools-ruler { position: absolute; top: 0; left: 0; width: max-content; visibility: hidden; pointer-events: none; }
+.chat-tool-name { display: inline-flex; align-items: center; gap: 0.2rem; flex: none; }
+.chat-tool-name svg, .chat-tools-row > svg, .chat-tools-count { flex: none; }
+.chat-tools-row .chat-tool-name:last-of-type,
+.chat-tools-row .chat-tool-name:has(+ .chat-tools-count) { min-width: 0; flex-shrink: 1; }
+.chat-tool-name > span { overflow: hidden; text-overflow: ellipsis; }
+.chat-tools-count { font-variant-numeric: tabular-nums; }
 .shared-menu .menu-heading {
   padding: 0.3rem 0.55rem 0.2rem;
   color: var(--muted); font-size: 0.7rem; font-weight: 600;
   letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+/* Keep the frosted surface stationary while the history rows scroll. */
+.chat-history-overlay {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  max-height: 40%;
+  border-bottom: 1px solid var(--border);
+}
+/* Clip only the shadow, so the frosted panel and its controls still paint normally. */
+.chat-history-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 -1px;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 0.2);
+  clip-path: inset(100% 0 -48px);
+}
+.chat-history-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: rgb(from var(--popover) r g b / 88%);
+  background-image: var(--popover-image, none);
+  background-size: var(--popover-image-size, auto);
+  background-position: var(--popover-image-position, 0 0);
+  background-repeat: var(--popover-image-repeat, repeat);
+  -webkit-backdrop-filter: blur(36px);
+  backdrop-filter: blur(36px);
+}
+.chat-history-list { position: relative; overflow-y: auto; overscroll-behavior: contain; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .chat-history-overlay::before { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 
 /* Where an answer leans on a web page: a small numbered pill, the same number
@@ -187,3 +282,5 @@
 
 @keyframes chat-rise { from { opacity: 0; transform: translateY(4px) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .sidechat-quote { animation: none; } }
+
+.chat-network-warning { margin-block: 0.4rem; padding: 0.45rem 0.65rem; color: var(--fg); background-color: var(--chip-bg); border-inline-start: 2px solid var(--muted); border-radius: 4px; font-size: 0.8rem; }

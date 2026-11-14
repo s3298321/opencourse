@@ -1,3 +1,5 @@
+import { getChatTools, initializeChatTools, storeChatTools } from './chat-tools'
+import type { ChatTools } from '../core/chat-tools'
 import { db } from './db'
 import { attachCardProposals } from './personal-card-store'
 import { flashcardTools, flashcardToolNotice, createFlashcardPreview } from './personal-cards'
@@ -15,9 +17,8 @@ import { conversationConfig, conversationModelContext, conversationReasoning, ne
 import { appendDocumentMessage, configureDocumentChat, deleteDocumentChatRow, insertDocumentChat, selectDocumentChat, selectDocumentChats, selectDocumentMessages } from './document-chatdb'
 import { documentEvents, getDocument } from './documents'
 import { runDocumentReadingTool } from './document-reading'
-import { readPreferences } from './preferences'
 import { currentUserId, requireUser } from './users'
-import { streamChat } from './openai'
+import { chatRetryNotice, streamChatRound } from './resilient-chat'
 import { whenSenderGone } from './senders'
 import { cancelChatTitles, generateChatTitle } from './chattitles'
 import { iconsFor } from './favicons'
@@ -44,6 +45,7 @@ function requireChat(id: string): DocumentChatSummary {
   return chatConfig(chat)
 }
 function chatConfig(chat: DocumentChatSummary): DocumentChatSummary {
+  chat = { ...chat, tools: getChatTools('document', chat.id) }
   const snapshot = inflight.get(chat.id)?.chat
   return snapshot ? { ...chat, model: snapshot.model, reasoning: snapshot.reasoning, provider: snapshot.provider } : conversationConfig('chat', chat)
 }
@@ -60,6 +62,7 @@ export function createDocumentChat(documentId: string, page: number): DocumentCh
   const at = new Date().toISOString()
   const id = newChatId()
   insertDocumentChat({ id, documentId, startedOn: page, ...newAIConversation('chat'), title: '', messages: 0, createdAt: at, updatedAt: at })
+  initializeChatTools('document', id)
   return requireChat(id)
 }
 function mutableChat(id: string): DocumentChatSummary {
@@ -104,7 +107,7 @@ export async function sendDocumentMessage(sender: WebContents, id: string, text:
   const valid = (): boolean => currentUserId() === owner && !!selectDocumentChat(id)
   const unbind = whenSenderGone(sender, () => cancelDocumentChat(id))
   let key: string
-  try { ({ chat, key } = await prepareAIRequest('chat', chat, controller.signal)) }
+  try { ({ chat, key } = await prepareAIRequest('chat', chat, controller.signal, chatRetryNotice(sender, id))) }
   catch (error) {
     inflight.delete(id); unbind()
     return { status: 'connection-required', provider: chat.provider ?? 'apiKey', message: scrubSecrets((error as Error).message) }
@@ -141,7 +144,7 @@ export async function sendDocumentMessage(sender: WebContents, id: string, text:
     const timer = setTimeout(() => finish('failed', 'Document Ask timed out. Ask a more focused question.'), 18 * 60_000)
     timer.unref(); entry.stop = () => finish('stopped')
     void generateChatTitle({ scope: 'document', documentId: document.id, chatId: id, owner, sender, key, provider: chat.provider ?? 'apiKey', model: chat.model, reasoningEfforts: conversationReasoning('chat', chat.model, chat.pinnedProvider) })
-    const webSearch = readPreferences().webSearch === true && webSearchFor(chat.model, chat.reasoning)
+    const webSearch = chat.tools?.webSearch === true && webSearchFor(chat.model, chat.reasoning)
     const instructions = `You are a helpful reading companion beside a local PDF in OpenCourse. Explain the document using its vocabulary. Answer the selected passage when quoted; expand only when asked. You receive the document identity and reading position, not its full text. ${READING_TOOL_INSTRUCTIONS}\n${webSearch ? 'Web search is available only when current external facts are needed. Distinguish web information from the document.' : 'You cannot search the web.'}\nWrite clear, concise markdown.`
     const budget = { chars: 0, signal: controller.signal }
     const modelContext = conversationModelContext(chat.provider ?? 'apiKey', chat.model)
@@ -156,7 +159,11 @@ export async function sendDocumentMessage(sender: WebContents, id: string, text:
           stream: async input => {
             const begin = answered.length
             let first = true
-            const result = await streamChat({ key, provider: chat.provider, model: chat.model, modelContext, input, tools: chatTools, toolNamespace: { name: 'document', description: 'Learning tools and retrieval from the current local PDF.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
+            const result = await streamChatRound(sender, id, () => {
+              answered = answered.slice(0, begin)
+              first = true
+              return answered
+            }, { key, provider: chat.provider, model: chat.model, modelContext, input, tools: chatTools, toolNamespace: { name: 'document', description: 'Learning tools and retrieval from the current local PDF.' }, webSearch, ...(chat.reasoning ? { reasoning: chat.reasoning } : {}), signal: controller.signal,
               onSearch: () => push('activity', 'Searching the web…'), onDelta: chunk => {
                 if (finalized || !valid()) return
                 const delta = first && answered ? `\n\n${chunk}` : chunk; first = false
@@ -191,3 +198,9 @@ export async function sendDocumentMessage(sender: WebContents, id: string, text:
   }
 }
 
+
+export function configureDocumentTools(id: string, options: ChatTools): ChatTools {
+  if (inflight.has(id)) throw new Error('Wait for the current response before changing tools.')
+  requireChat(id)
+  return storeChatTools('document', id, options)
+}

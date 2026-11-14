@@ -42,8 +42,8 @@ describe('document presentation removal', () => {
   it.each([false, true])('confirms and removes the appropriate local/server document (server: %s)', async (server) => {
     if (server) doc.origin = { connectionId: 'srv', name: 'Catalog', version: '1.0.0', remoteId: 'remote' }
     await render()
-    const label = server ? 'Remove from My learning' : 'Delete document'
-    expect(button(server ? 'Delete document' : 'Remove from My learning')).toBeUndefined()
+    const label = server ? 'Remove from my documents' : 'Delete document'
+    expect(button(server ? 'Delete document' : 'Remove from my documents')).toBeUndefined()
     confirm.mockReturnValue(false)
     await act(async () => button(label).click())
     expect(removeDocument).not.toHaveBeenCalled()
@@ -73,11 +73,11 @@ describe('document presentation removal', () => {
     expect(button('Delete document').disabled).toBe(false)
   })
 
-  it('keeps the download when removal from My learning fails', async () => {
+  it('keeps the download when removal from my documents fails', async () => {
     doc.origin = { connectionId: 'srv', name: 'Catalog', version: '1.0.0', remoteId: 'remote' }
     leaveServerDocument.mockResolvedValue({ ok: false, message: 'Server unavailable' })
     await render()
-    await act(async () => button('Remove from My learning').click())
+    await act(async () => button('Remove from my documents').click())
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('Server unavailable')
     expect(removeLearningDownload).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()

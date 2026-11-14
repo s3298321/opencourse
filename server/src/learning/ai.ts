@@ -1,3 +1,7 @@
+import { isTranscriptionConfig, type TranscriptionConfig } from '@core/transcription'
+import { negotiateTranscription, validTranscriptionOffer } from '@core/transcription-session'
+import { InterruptedConnection, withNetworkRetries } from '@core/network-retry'
+import { validateChatTools } from '@core/chat-tools'
 import { FLASHCARD_TOOL, FLASHCARD_INSTRUCTIONS, validateFlashcards } from '@core/personal-cards'
 import { proposeCards, proposalsFor, getProposal, resolveProposal, putPersonalCard } from '../../../app/src/main/personal-card-store'
 import { publishPersonalCard } from './personal-cards'
@@ -28,19 +32,22 @@ import { CHAT_MODELS, filterChatModels, isReasoningEffort, reasoningEffortsFor, 
 import { normalizeChatTitle, TITLE_INSTRUCTIONS } from '@core/sidechat/title'
 import type { Ctx } from '../context'
 import { requireAccount } from '../auth/routes'
-import { badRequest, conflict, notFound, tooMany, forbidden } from '../errors'
+import { ApiError, badRequest, conflict, notFound, tooMany, forbidden } from '../errors'
 import { tx } from '../db'
 import { contentRecord, readCourse } from './content'
 import { change } from './sync'
 import { reference } from './routes'
 import { RateLimiter } from '../ratelimit'
 
+function checkedChatTools(value: unknown) {
+  try { return validateChatTools(value) } catch { throw badRequest('invalid_tools', 'Choose valid reading chat tools.') }
+}
 function chatView(ctx: Ctx, account: string, id: string): LearningChatView {
   const row = ctx.db.prepare('SELECT * FROM learning_chats WHERE id=? AND account_id=?').get(id, account) as
     Record<string, unknown> | undefined
   if (!row) throw notFound()
   const chat: LearningChat = {
-    id,
+    id, tools: { webSearch: Boolean(row.web_search) },
     kind: row.kind as LearningChat['kind'],
     contentId: String(row.content_id),
     version: String(row.version),
@@ -62,6 +69,7 @@ function chatView(ctx: Ctx, account: string, id: string): LearningChatView {
     quote: r.quote ? String(r.quote) : undefined,
     model: r.model ? String(r.model) : undefined,
     reasoning: r.reasoning as ReasoningEffort | null,
+    retryAttempt: r.status === 'running' && r.retry_attempt ? Number(r.retry_attempt) : undefined,
     activity: r.activity ? JSON.parse(String(r.activity)) : null,
     flashcardProposals: proposalsFor(ctx.db, account, 'server', id, String(r.id)),
     citations: JSON.parse(String(r.citations))
@@ -126,7 +134,8 @@ export async function responseStream(
   body: unknown,
   signal: AbortSignal,
   delta: (text: string) => void,
-  activity?: (label: string, running: boolean) => void
+  activity?: (label: string, running: boolean) => void,
+  connected?: () => void
 ): Promise<ProviderItem[]> {
   const response = await (ctx.aiFetch ?? fetch)('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -135,6 +144,10 @@ export async function responseStream(
     signal,
     redirect: 'error'
   })
+  if ([502, 503, 504].includes(response.status)) {
+    await response.body?.cancel()
+    throw new InterruptedConnection('The AI service is temporarily unreachable.')
+  }
   if (!response.ok || !response.body)
     throw new Error(
       response.status === 429
@@ -143,6 +156,7 @@ export async function responseStream(
           ? 'OpenAI rejected this server’s API key. Reconfigure it in Settings.'
           : 'OpenAI could not complete this request.'
     )
+  connected?.()
   const reader = response.body.getReader(),
     decoder = new TextDecoder()
   let buffer = '',
@@ -150,7 +164,7 @@ export async function responseStream(
     completed = false,
     output: ProviderItem[] = []
   try {
-    for (;;) {
+    while (!completed) {
       const { done, value } = await reader.read()
       if (done) break
       bytes += value.byteLength
@@ -180,7 +194,7 @@ export async function responseStream(
           throw new Error('OpenAI interrupted this answer. Try again.')
       }
     }
-    if (!completed) throw new Error('The AI stream ended before completion.')
+    if (!completed) throw new InterruptedConnection('The AI stream ended before completion.')
     return output
   } finally {
     await reader.cancel().catch(() => {})
@@ -202,6 +216,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
     active = new Map<string, { account: string; controller: AbortController; done: Promise<void> }>(),
     naming = new Map<string, { account: string; controller: AbortController; done: Promise<void> }>(),
     limits = new RateLimiter(30, 60000),
+    dictationStarts = new RateLimiter(20, 60000),
     listing = new RateLimiter(20, 60000)
   if (ctx.config.aiEncryptionKeys) keyring(ctx)
   const interrupted = d
@@ -209,7 +224,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       "SELECT DISTINCT c.account_id,c.id FROM learning_messages m JOIN learning_chats c ON c.id=m.chat_id WHERE m.status='running'"
     )
     .all() as { account_id: string; id: string }[]
-  d.exec("UPDATE learning_messages SET status='interrupted' WHERE status='running'")
+  d.exec("UPDATE learning_messages SET status='interrupted', retry_attempt=NULL WHERE status='running'")
   for (const row of interrupted) change(ctx, row.account_id, 'chat', row.id, chatView(ctx, row.account_id, row.id))
   app.addHook('onClose', async () => {
     const all = [...active.values(), ...naming.values()]
@@ -237,26 +252,28 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       signal = AbortSignal.any([controller.signal, AbortSignal.timeout(45000)])
     const done = (async () => {
       try {
-        let text = ''
-        await responseStream(
-          ctx,
-          key,
-          {
-            model: defaults.model,
-            store: false,
-            stream: true,
-            max_output_tokens: 2048,
-            ...(defaults.reasoning ? { reasoning: { effort: defaults.reasoning } } : {}),
-            instructions: TITLE_INSTRUCTIONS,
-            input: [{ role: 'user', content: JSON.stringify({ prompt: prompt.text.slice(0, 4000) }) }]
-          },
-          signal,
-          (delta) => {
-            text += delta
-            if (text.length > 2000) throw new Error('AI response exceeded its size limit.')
-          }
-        )
-        const title = normalizeChatTitle(text)
+        const title = await withNetworkRetries(async () => {
+          let text = ''
+          await responseStream(
+            ctx,
+            key,
+            {
+              model: defaults.model,
+              store: false,
+              stream: true,
+              max_output_tokens: 2048,
+              ...(defaults.reasoning ? { reasoning: { effort: defaults.reasoning } } : {}),
+              instructions: TITLE_INSTRUCTIONS,
+              input: [{ role: 'user', content: JSON.stringify({ prompt: prompt.text.slice(0, 4000) }) }]
+            },
+            signal,
+            (delta) => {
+              text += delta
+              if (text.length > 2000) throw new Error('AI response exceeded its size limit.')
+            }
+          )
+          return normalizeChatTitle(text)
+        }, signal, () => {})
         if (!title || signal.aborted) return
         const saved = d
           .prepare('UPDATE learning_chats SET generated_title=? WHERE id=? AND account_id=? AND generated_title IS NULL')
@@ -273,6 +290,24 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
     naming.set(chatId, { account, controller, done })
   }
   app.get('/api/v1/me/ai', async (req) => aiSettings(ctx, requireAccount(req).id))
+  app.post('/api/v1/me/ai/transcription/session', { bodyLimit: 70000 }, async (req, reply) => {
+    const account = requireAccount(req).id
+    const offer = req.body as { sdp?: unknown; account?: unknown } | null
+    if (offer?.account !== account) throw conflict('account_changed', 'The signed-in account changed. Reopen the chat.')
+    const sdp = offer.sdp
+    if (!validTranscriptionOffer(sdp)) throw badRequest('invalid_offer', 'Invalid microphone connection offer.')
+    const settings = aiSettings(ctx, account)
+    if (!settings.enabled || !settings.configured || !settings.transcription)
+      throw conflict('dictation_disabled', 'Add an OpenAI API key in server Settings to dictate.')
+    if (!dictationStarts.hit(account)) throw tooMany('Please wait before starting dictation again.')
+    const key = readAIKey(ctx, account)
+    reply.header('Cache-Control', 'no-store')
+    try {
+      return await negotiateTranscription(key, settings.transcription, sdp, ctx.aiFetch ?? fetch)
+    } catch (error) {
+      throw new ApiError(502, 'dictation_unavailable', (error as Error).message)
+    }
+  })
   app.get('/api/v1/me/ai/models', async (req): Promise<ServerAIModels> => {
     const account = requireAccount(req).id,
       settings = aiSettings(ctx, account)
@@ -289,6 +324,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.put('/api/v1/me/ai', async (req) => {
     const account = requireAccount(req).id,
       body = req.body as {
+        transcription?: TranscriptionConfig
         key?: string
         enabledModels?: string[] | null
         model?: string
@@ -300,6 +336,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       level = (value: unknown) => value === null || isReasoningEffort(value)
     if (
       !body ||
+      (body.transcription !== undefined && !isTranscriptionConfig(body.transcription)) ||
       (body.enabledModels !== undefined && body.enabledModels !== null && (!Array.isArray(body.enabledModels) || body.enabledModels.length > 500 || body.enabledModels.some(id => !model(id)))) ||
       (body.model !== undefined && !model(body.model)) ||
       (body.reasoning !== undefined && !level(body.reasoning)) ||
@@ -335,6 +372,8 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       title?.model ?? null,
       title ? fittedReasoning(title.model, title.reasoning) : null
     )
+    if (body.transcription) d.prepare('UPDATE learning_ai SET transcription_model=? WHERE account_id=?')
+      .run(body.transcription.model, account)
     d.prepare('UPDATE learning_ai SET enabled_models=? WHERE account_id=?').run(enabledModels === null ? null : JSON.stringify([...new Set(enabledModels)]), account)
     if (body.key) {
       d.prepare('UPDATE learning_ai SET secret=?,hint=? WHERE account_id=?').run(encrypted, body.key.slice(-4), account)
@@ -365,16 +404,23 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.post('/api/v1/learning/chats', async (req) => {
     const account = requireAccount(req).id,
       ref = reference(req.body)
-    const content = contentRecord(ctx, account, ref),
-      id = randomUUID()
-    d.prepare('INSERT INTO learning_chats(id,account_id,kind,content_id,version,title,created_at) VALUES(?,?,?,?,?,?,?)').run(
+    const content = contentRecord(ctx, account, ref)
+    const requestId = (req.body as { requestId?: unknown }).requestId
+    if (requestId !== undefined && (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(requestId)))
+      throw badRequest('invalid_request_id', 'Invalid chat creation request.')
+    const id = requestId ? createHash('sha256').update(JSON.stringify(['new-chat', account, ref.kind, ref.id, ref.version, requestId])).digest('hex') : randomUUID()
+    if (requestId && d.prepare('SELECT 1 FROM learning_chats WHERE id=? AND account_id=?').get(id, account))
+      return chatView(ctx, account, id)
+    const options = (req.body as {tools?: unknown}).tools
+    const webSearch = options === undefined ? aiSettings(ctx, account).webSearch : checkedChatTools(options).webSearch
+    d.prepare('INSERT INTO learning_chats(id,account_id,kind,content_id,version,title,created_at,web_search) VALUES(?,?,?,?,?,?,?,?)').run(
       id,
       account,
       ref.kind,
       ref.id,
       ref.version,
       content.title,
-      new Date().toISOString()
+      new Date().toISOString(), Number(webSearch)
     )
     const view = chatView(ctx, account, id)
     change(ctx, account, 'chat', id, view)
@@ -383,7 +429,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.post('/api/v1/learning/chats/import', { bodyLimit: 2 * 1024 ** 2 }, async (req) => {
     if (req.via === 'web') throw forbidden('desktop_only', 'Legacy chat import is available in the desktop app.')
     const account = requireAccount(req).id,
-      body = req.body as { importId: string; title: string; messages: { role: string; text: string; at: string }[] },
+      body = req.body as { importId: string; title: string; tools?: unknown; messages: { role: string; text: string; at: string }[] },
       ref = reference(req.body)
     contentRecord(ctx, account, ref)
     if (
@@ -402,17 +448,18 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       )
     )
       throw badRequest('invalid_import', 'Invalid reading history.')
+    const webSearch = body.tools === undefined ? aiSettings(ctx, account).webSearch : checkedChatTools(body.tools).webSearch
     const id = createHash('sha256').update(`${account}:${ref.kind}:${ref.id}:${body.importId}`).digest('hex')
     tx(d, () => {
       if (d.prepare('SELECT 1 FROM learning_chats WHERE id=?').get(id)) return
-      d.prepare('INSERT INTO learning_chats(id,account_id,kind,content_id,version,title,created_at) VALUES(?,?,?,?,?,?,?)').run(
+      d.prepare('INSERT INTO learning_chats(id,account_id,kind,content_id,version,title,created_at,web_search) VALUES(?,?,?,?,?,?,?,?)').run(
         id,
         account,
         ref.kind,
         ref.id,
         ref.version,
         body.title,
-        body.messages[0]?.at ?? new Date().toISOString()
+        body.messages[0]?.at ?? new Date().toISOString(), Number(webSearch)
       )
       for (const [i, m] of body.messages.entries())
         d.prepare(
@@ -425,6 +472,18 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.get('/api/v1/learning/chats/:id', async (req) =>
     chatView(ctx, requireAccount(req).id, (req.params as { id: string }).id)
   )
+  app.put('/api/v1/learning/chats/:id/tools', async req => {
+    const account = requireAccount(req).id, { id } = req.params as {id: string}
+    chatView(ctx, account, id)
+    if (active.has(id)) throw conflict('answering', 'Wait for the current response before changing tools.')
+    const tools = checkedChatTools(req.body)
+    return tx(d, () => {
+      d.prepare('UPDATE learning_chats SET web_search=? WHERE id=? AND account_id=?').run(Number(tools.webSearch), id, account)
+      const view = chatView(ctx, account, id)
+      change(ctx, account, 'chat', id, view)
+      return view
+    })
+  })
   app.delete('/api/v1/learning/chats/:id', async (req) => {
     const account = requireAccount(req).id,
       { id } = req.params as { id: string }
@@ -520,7 +579,10 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
       d.prepare('INSERT INTO learning_stream(message_id,event) VALUES(?,?)').run(messageId, JSON.stringify({ type: 'activity', messageId }))
     }
     const startedAt = Date.now()
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(answerTimeoutMs(settings.reasoning))])
+    const timeout = new AbortController()
+    const startDeadline = () => setTimeout(() => timeout.abort(), answerTimeoutMs(settings.reasoning)).unref()
+    let deadline = startDeadline()
+    const signal = AbortSignal.any([controller.signal, timeout.signal])
     // A reasoning model's items go back in the next round; with `store: false`
     // they only can as encrypted content.
     const thinks = reasoningEffortsFor(settings.model).length > 0
@@ -529,7 +591,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
         sources: ReadingSource[] = [],
         budget = { chars: 0, signal }
       let status: LearningMessage['status'] = 'complete',
-        answerChars = 0
+        answerText = ''
       try {
         const course = ref.kind === 'course' ? await readCourse(ctx, account, ref) : null
         const history = chatView(ctx, account, id)
@@ -548,43 +610,55 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
         for (let round = 0; round < 6; round++) {
           signal.throwIfAborted()
           contentRecord(ctx, account, ref)
-          const roundStart = answerChars
-          const output = await responseStream(
-            ctx,
-            key,
-            {
-              model: settings.model,
-              store: false,
-              stream: true,
-              max_output_tokens: thinks ? 16384 : 8192,
-              ...(thinks ? { include: ['reasoning.encrypted_content'] } : {}),
-              ...(settings.reasoning ? { reasoning: { effort: settings.reasoning } } : {}),
-              instructions: `You are a helpful learning tutor. ${READING_TOOL_INSTRUCTIONS} ${FLASHCARD_INSTRUCTIONS}`,
-              input,
-              tools: [
-                ...(ref.kind === 'course' ? COURSE_TOOLS : DOCUMENT_TOOLS), FLASHCARD_TOOL,
-                ...(settings.webSearch && webSearchFor(settings.model, settings.reasoning)
-                  ? [{ type: 'web_search' }]
-                  : [])
-              ]
-            },
-            signal,
-            (text) => {
+          const beforeRound = answerText
+          const roundStart = beforeRound.length
+          const request = {
+            model: settings.model,
+            store: false,
+            stream: true,
+            max_output_tokens: thinks ? 16384 : 8192,
+            ...(thinks ? { include: ['reasoning.encrypted_content'] } : {}),
+            ...(settings.reasoning ? { reasoning: { effort: settings.reasoning } } : {}),
+            instructions: `You are a helpful learning tutor. ${READING_TOOL_INSTRUCTIONS} ${FLASHCARD_INSTRUCTIONS}`,
+            input,
+            tools: [
+              ...(ref.kind === 'course' ? COURSE_TOOLS : DOCUMENT_TOOLS), FLASHCARD_TOOL,
+              ...(view.chat.tools?.webSearch && webSearchFor(settings.model, settings.reasoning)
+                ? [{ type: 'web_search' }]
+                : [])
+            ]
+          }
+          const output = await withNetworkRetries(async (retrying, connected) => {
+            signal.throwIfAborted()
+            if (retrying) deadline = startDeadline()
+            contentRecord(ctx, account, ref)
+            if (!d.prepare('SELECT 1 FROM sessions WHERE id=?').get(req.sessionId ?? '')) throw new Error('Session ended.')
+            // Keep the last partial reply until its replacement produces text
+            // or completes a tool-only round.
+            function replacePartial() {
+              if (!retrying) return
+              retrying = false
+              answerText = beforeRound
+              d.prepare('UPDATE learning_messages SET text=?,activity=NULL WHERE id=?').run(beforeRound, messageId)
+              d.prepare('INSERT INTO learning_stream(message_id,event) VALUES(?,?)').run(messageId, JSON.stringify({ type: 'replace', messageId, text: beforeRound }))
+            }
+            const output = await responseStream(ctx, key, request, signal, (text) => {
               signal.throwIfAborted()
               contentRecord(ctx, account, ref)
-              if (!d.prepare('SELECT 1 FROM sessions WHERE id=?').get(req.sessionId ?? ''))
-                throw new Error('Session ended.')
-              answerChars += text.length
-              if (answerChars > 64000) throw new Error('AI response exceeded its size limit.')
-              d.prepare("UPDATE learning_messages SET activity=json_set(activity,'$.running',json('false')) WHERE id=? AND activity IS NOT NULL").run(messageId)
-              d.prepare('UPDATE learning_messages SET text=text||? WHERE id=?').run(text, messageId)
-              d.prepare('INSERT INTO learning_stream(message_id,event) VALUES(?,?)').run(
-                messageId,
-                JSON.stringify({ type: 'delta', messageId, text })
-              )
-            },
-            activity
-          )
+              if (!d.prepare('SELECT 1 FROM sessions WHERE id=?').get(req.sessionId ?? '')) throw new Error('Session ended.')
+              replacePartial()
+              answerText += text
+              if (answerText.length > 64000) throw new Error('AI response exceeded its size limit.')
+              d.prepare("UPDATE learning_messages SET activity=json_set(activity,'$.running',json('false')),text=text||? WHERE id=?").run(text, messageId)
+              d.prepare('INSERT INTO learning_stream(message_id,event) VALUES(?,?)').run(messageId, JSON.stringify({ type: 'delta', messageId, text }))
+            }, activity, connected)
+            replacePartial()
+            return output
+          }, signal, attempt => {
+            if (attempt !== null) clearTimeout(deadline)
+            d.prepare('UPDATE learning_messages SET retry_attempt=? WHERE id=?').run(attempt, messageId)
+            d.prepare('INSERT INTO learning_stream(message_id,event) VALUES(?,?)').run(messageId, JSON.stringify({ type: 'retry', messageId, attempt }))
+          })
           input.push(...output.filter((item) => item.type !== 'reasoning' || item.encrypted_content))
           for (const item of output)
             for (const part of item.content ?? [])
@@ -696,6 +770,7 @@ export function registerAIRoutes(app: FastifyInstance, ctx: Ctx): void {
           change(ctx, account, 'chat', id, chatView(ctx, account, id))
           if (status === 'complete') nameChat(account, id, key, titleDefaults(settings))
         } finally {
+          clearTimeout(deadline)
           active.delete(id)
           app.log.info(
             { accountId: account, chatId: id, status, durationMs: Date.now() - startedAt },

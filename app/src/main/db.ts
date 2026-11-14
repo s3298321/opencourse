@@ -1,3 +1,4 @@
+import { readPreferences } from './preferences'
 /**
  * The app's databases: their files, their pragmas, their migrations.
  *
@@ -38,7 +39,7 @@ import { requireUser } from './users'
 import { log } from './log'
 
 /** Bumped by every migration step below; tests pin against it rather than a literal. */
-export const SCHEMA_VERSION = 29
+export const SCHEMA_VERSION = 30
 
 /** Coach: a project, its sessions, and what was said and done in them. */
 const SCHEMA_V1 = `
@@ -373,6 +374,16 @@ function migrate(d: DatabaseSync): void {
 
     d.exec('CREATE TABLE IF NOT EXISTS personal_card_inbox (server_id TEXT, account_id TEXT, id TEXT, payload TEXT NOT NULL, PRIMARY KEY(server_id,account_id,id))')
     d.exec('CREATE TABLE IF NOT EXISTS personal_card_bootstrap (server_id TEXT, account_id TEXT, kind TEXT, content_id TEXT, PRIMARY KEY(server_id,account_id,kind,content_id))')
+  }
+  if (from < 30) {
+    d.exec(`CREATE TABLE IF NOT EXISTS chat_tools (scope TEXT NOT NULL, chat_id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,chat_id));
+      CREATE TABLE IF NOT EXISTS authoring_plans (chat_id TEXT PRIMARY KEY REFERENCES authoring_chats(id) ON DELETE CASCADE, payload TEXT NOT NULL);`)
+    const prefs = readPreferences()
+    for (const [scope, table] of [['chat','chats'], ['project','course_project_chats'], ['document','document_chats'], ['writing-notebook','writing_notebook_chats'], ['authoring','authoring_chats']]) {
+      const options = { webSearch: scope === 'authoring' ? prefs.authoringWebSearch !== false : scope === 'project' ? false : prefs.webSearch === true, ...(scope === 'authoring' ? { plan: false } : {}) }
+      d.prepare(`INSERT OR IGNORE INTO chat_tools SELECT ?,id,? FROM ${table}`).run(scope, JSON.stringify(options))
+      d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_delete_tools AFTER DELETE ON ${table} BEGIN DELETE FROM chat_tools WHERE scope='${scope}' AND chat_id=old.id; END;`)
+    }
   }
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }

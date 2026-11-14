@@ -13,24 +13,27 @@ import type { ExerciseBlock } from '@core/types'
 import type { LearningField } from '@core/learning/types'
 import { MAX_EXERCISE_CODE } from '@core/learning/types'
 import { Html } from './Html'
-import { renderMarkdown } from '../lib/markdown'
+import { call } from '../lib/api'
+import { renderLessonText } from '../lib/markdown'
 import { server } from '../lib/boot'
 
 /**
  * An exercise, as the app shows it. `lesson` is the card in the lesson; `brief`
  * is the same exercise beside the editor, without what the editor already has -
  * the button that opens it and the starter code, which is the buffer itself.
- * Hints, the solution and how it is checked never reach the browser.
+ * Hints are requested when opened. The solution and checks stay on the server.
  */
 export function ExerciseCard({
   block,
+  base,
   mode = 'lesson',
   done,
   started,
   onOpen,
   onToggleDone
 }: {
-  block: ExerciseBlock
+  block: ExerciseBlock & { hintCount?: number }
+  base: string
   mode?: 'lesson' | 'brief'
   done: boolean
   started: boolean
@@ -41,7 +44,7 @@ export function ExerciseCard({
   return (
     <div className={brief ? 'web-exercise exercise-brief' : 'oc-panel learning-card web-exercise'}>
       <h3>Exercise: {block.title}</h3>
-      <Html className="oc-prose prompt" html={renderMarkdown(block.prompt)} />
+      <Html className="oc-prose prompt" html={renderLessonText(block.prompt)} />
       {!brief && block.starter_code && (
         <details>
           <summary>Starter code</summary>
@@ -50,6 +53,11 @@ export function ExerciseCard({
           </pre>
         </details>
       )}
+      {block.verification_instructions && <div className="verify">
+        <strong>How to verify:</strong>
+        <Html className="oc-prose" html={renderLessonText(block.verification_instructions)} />
+      </div>}
+      {!!block.hintCount && <ExerciseHints key={`${base}/${block.id}`} count={block.hintCount} path={`${base}/exercises/${encodeURIComponent(block.id)}/hints`} />}
       <div className="exercise-actions">
         {!brief && onOpen && (
           <button className="oc-btn" onClick={onOpen}>
@@ -66,6 +74,26 @@ export function ExerciseCard({
       </div>
     </div>
   )
+}
+
+function ExerciseHints({ count, path }: { count: number; path: string }) {
+  const [open, setOpen] = useState(false)
+  const [hints, setHints] = useState<string[] | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (!open || hints) return
+    const controller = new AbortController()
+    setError('')
+    void call<{ hints: string[] }>('GET', path, undefined, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setHints(result.hints) })
+      .catch((e: Error) => { if (!controller.signal.aborted) setError(e.message) })
+    return () => controller.abort()
+  }, [open, hints, path])
+  return <details onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>Hints ({count})</summary>
+    {hints ? <ul>{hints.map((hint, i) => <Html key={i} as="li" className="oc-prose" html={renderLessonText(hint)} />)}</ul>
+      : error ? <p role="alert">{error} Reopen hints to try again.</p> : open && <p role="status">Loading hints…</p>}
+  </details>
 }
 
 // CodeMirror and its language modes are most of a megabyte: fetched when a

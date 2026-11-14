@@ -17,7 +17,7 @@ export function LocalFlashcardPreviews({ chatId }: { chatId: string }) {
     window.addEventListener('focus',refresh)
     return () => { alive=false;unsubscribe();window.removeEventListener('focus',refresh) }
   },[chatId])
-  return <>{proposals.map(p => <FlashcardPreview key={p.id} proposal={p} decide={window.opencourse.decideFlashcardProposal} renderText={text => <Html className="prose" source={text} />} />)}</>
+  return <>{proposals.map(p => <FlashcardPreview key={p.id} proposal={p} decide={window.opencourse.decideFlashcardProposal} renderText={text => <Html className="prose" lesson source={text} />} />)}</>
 }
 export function LocalPersonalCardManager({ target,count }: { target: ReviewTarget; count: number }) {
   return <PersonalCardManager count={count} load={() => window.opencourse.listPersonalCards(target)} remove={id => window.opencourse.deletePersonalCard(target,id)} />

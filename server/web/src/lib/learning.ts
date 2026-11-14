@@ -1,17 +1,25 @@
-import { call } from './api'
+import { InterruptedConnection } from '@core/network-retry'
+import { ApiError, call } from './api'
 import type { LearningClient } from '../../../../app/src/learning-ui/client'
 import type { LearningState } from '@core/learning/types'
 import type { CourseView, LearnerFlashcard, ReviewSummary } from '@core/types'
 import { deserializeCard, summarizeReview, type ReviewCandidate, type StoredCard } from '@core/review'
 export const learningClient: LearningClient = {
-  request: (path, method = 'GET', body) => call(method, path, body),
+  async request<T>(path: string, method: 'GET'|'POST'|'PUT'|'DELETE' = 'GET', body?: unknown) {
+    try { return await call<T>(method, path, body) }
+    catch (error) {
+      if (error instanceof ApiError && [0, 502, 503, 504].includes(error.status)) throw new InterruptedConnection(error.message)
+      throw error
+    }
+  },
   events: (id, refresh) => {
     const events = new EventSource(`/api/v1/learning/chats/${id}/events`)
     events.onmessage = (event) => {
       refresh()
       if (JSON.parse(event.data).type === 'done') events.close()
     }
-    events.onerror = () => events.close()
+    // A fresh chat snapshot can catch up even if the event stream is down.
+    events.onerror = () => { events.close(); refresh() }
     return () => events.close()
   }
 }

@@ -704,11 +704,12 @@ const SCRIPT = `(async () => {
     assert(menu.bottom <= under.top + 1, 'the menu is not above the icon: ' + Math.round(menu.bottom) + ' > ' + Math.round(under.top))
     assert(/this chat uses/i.test(panel.querySelector('.menu-heading')?.textContent ?? ''), 'the menu does not say what it chooses')
     const items = [...panel.querySelectorAll('.menu-item')]
-    assert(items.map((b) => b.querySelector('.menu-item-label').textContent).join('|') === 'OpenAI API key|ChatGPT subscription', 'the menu offers ' + items.map((b) => b.textContent).join('|'))
+    assert(items.map((b) => b.querySelector('.menu-item-label').textContent).join('|') === 'API Key|Subscription', 'the menu offers ' + items.map((b) => b.textContent).join('|'))
     const checked = items.filter((b) => b.getAttribute('aria-checked') === 'true')
     assert(checked.length === 1, checked.length + ' connections are ticked')
     const other = items.find((b) => b.getAttribute('aria-checked') !== 'true')
-    assert(checked[0].textContent.includes('Default'), 'the ticked connection is not marked as the default')
+    assert(!items.some((b) => b.textContent.includes('Default')), 'the menu labels a default connection')
+    const initialLabel = checked[0].querySelector('.menu-item-label').textContent
     const otherLabel = other.querySelector('.menu-item-label').textContent
     other.click()
     await until(() => !document.querySelector('.connection-menu') && trigger().getAttribute('aria-label').includes(otherLabel), 'the icon to show ' + otherLabel)
@@ -735,7 +736,7 @@ const SCRIPT = `(async () => {
     // Put the draft back on the default for the checks after this one.
     trigger().click()
     const again = await waitFor('.menu-panel.connection-menu')
-    ;[...again.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Default')).click()
+    ;[...again.querySelectorAll('.menu-item')].find((b) => b.querySelector('.menu-item-label').textContent === initialLabel).click()
     await until(() => !trigger().getAttribute('aria-label').includes(otherLabel), 'the icon to come back to the default')
     return 'menu above, ' + otherLabel + ' for this chat only, default ' + before
   })
@@ -2221,6 +2222,17 @@ async function projectChecks(win: BrowserWindow): Promise<Result[]> {
     document.querySelector('.project-row').click();
     for (let n=0; n<100 && !document.querySelector('.project-directory'); n++) await sleep(50);
     if (!/Build a course outline/.test(document.querySelector('.project-brief h1')?.textContent)) throw new Error('Project brief missing');
+    const definition = document.querySelector('.project-brief .project-definition');
+    if (definition?.querySelector('.course-inline-formula annotation')?.textContent !== 'T' ||
+        !definition.querySelector('math[display="block"] mfrac')) throw new Error('Project definition equations did not render');
+    const objectiveMath = [...document.querySelectorAll('.project-brief .objectives li math annotation')].map(el => el.textContent);
+    if (objectiveMath.join('|') !== 'T|t_1 + t_2 + t_3 = T') throw new Error('Project objective equations did not render');
+    const outline = document.querySelector('.project-deliverables .panel');
+    if (document.querySelector('.project-requirements math annotation')?.textContent !== 't_i' ||
+        outline?.querySelector('h3 math annotation')?.textContent !== 'T' ||
+        outline?.querySelector('.prose p .course-inline-formula annotation')?.textContent !== 'T' ||
+        outline?.querySelector('li math[display="block"] annotation')?.textContent !== 't_1 + t_2 + t_3 = T' ||
+        outline?.querySelector('.project-paths code')?.textContent !== 'OUTLINE.md') throw new Error('Project requirements or deliverables did not render');
     if (!/Design rationale/.test(document.querySelector('.project-deliverables')?.textContent)) throw new Error('Deliverables missing');
     if (!/Project assistant/.test(document.querySelector('.sidechat-head')?.textContent)) throw new Error('Project chat missing');
     return 'Requirements, deliverables and shared chat rendered';
@@ -2337,7 +2349,7 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
       if(!/Simulated account/.test(document.querySelector('.settings-subscription').textContent))throw new Error('Connection not displayed');
       const projectBefore=await window.fixtureAPI.getAIModelSettings('project','apiKey');
       document.querySelector('.settings-ai-configure-chat').click();
-      const types=await wait('.menu-panel'); [...types.querySelectorAll('.menu-item')].find(b=>/ChatGPT subscription/.test(b.textContent)).click();
+      const types=await wait('.menu-panel'); [...types.querySelectorAll('.menu-item')].find(b=>/Subscription/.test(b.textContent)).click();
       for(let n=0;n<100 && !document.querySelector('.settings-ai-chat .settings-default-chat-model option[value="gpt-5.3-codex"]');n++)await sleep(25);
       if(!document.querySelector('.settings-ai-chat .settings-default-chat-model option[value="gpt-5.3-codex"]'))throw new Error('Codex model excluded from subscription catalog');
       const subscription=await window.fixtureAPI.getAIModelSettings('chat','chatgpt');
@@ -2351,15 +2363,15 @@ async function subscriptionChecks(win: BrowserWindow): Promise<Result[]> {
       if((await window.fixtureAPI.hasOpenAIKey()).has)throw new Error('Subscription requires an API key');
       document.querySelector('.titlebar .crumbs a').click(); await wait('.lesson-head h1'); await wait('.titlebar .chat-chip');
       if(document.querySelector('.titlebar .chat-chip').getAttribute('aria-pressed') !== 'true')document.querySelector('.titlebar .chat-chip').click();
-      for(let n=0;n<100 && !/ChatGPT subscription/.test(document.querySelector('.sidechat-connection')?.getAttribute('aria-label'));n++)await sleep(25);
+      for(let n=0;n<100 && !/Subscription/.test(document.querySelector('.sidechat-connection')?.getAttribute('aria-label'));n++)await sleep(25);
       const indicator=await wait('.sidechat-connection');
-      if(!/ChatGPT subscription/.test(indicator?.getAttribute('aria-label')) || !indicator.querySelector('svg'))throw new Error('Composer connection icon stale');
+      if(!/Subscription/.test(indicator?.getAttribute('aria-label')) || !indicator.querySelector('svg'))throw new Error('Composer connection icon stale');
       // The icon is a menu of this chat's connection now; it ticks the default the chat follows.
-      if(!/ChatGPT subscription/.test(indicator.getAttribute('title')||''))throw new Error('Composer connection title stale');
+      if(!/Subscription/.test(indicator.getAttribute('title')||''))throw new Error('Composer connection title stale');
       indicator.click(); const connections=await wait('.menu-panel.connection-menu');
       const selectedConnection=()=>connections.querySelector('.menu-item[aria-checked="true"]')?.textContent||'';
-      for(let n=0;n<100 && !(/ChatGPT subscription/.test(selectedConnection()) && /Default/.test(selectedConnection()));n++)await sleep(25);
-      if(!/ChatGPT subscription/.test(selectedConnection())||!/Default/.test(selectedConnection()))throw new Error('Composer connection menu stale: '+connections.textContent+'; selected default: '+(await window.fixtureAPI.getAIModelSettings('chat')).selectedProvider);
+      for(let n=0;n<100 && !/Subscription/.test(selectedConnection());n++)await sleep(25);
+      if(!/Subscription/.test(selectedConnection()))throw new Error('Composer connection menu stale: '+connections.textContent+'; selected default: '+(await window.fixtureAPI.getAIModelSettings('chat')).selectedProvider);
       connections.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); await sleep(100);
       return 'Four profiles; editing preserves routing; mixed providers reflected in composer';
     })()`)
@@ -2692,7 +2704,17 @@ export async function runSmoke(win: BrowserWindow): Promise<void> {
         throw new Error('Test user picker did not load');
       })()`)
       await win.webContents.executeJavaScript(FIXTURE_API)
-      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { project: projectChecks, coach: floatingCoachChecks, writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
+      const suites: Record<string, (win: BrowserWindow) => Promise<Result[]>> = { planning: async win => {
+        const restore = mockSmokeModels()
+        try { const { planningSmoke } = await import('./planning-smoke'); return await planningSmoke(win, () => connectSmokeAPI(win)) }
+        finally { restore() }
+      }, dictation: async win => {
+        const restore = mockSmokeModels()
+        try {
+          const { dictationSmoke } = await import('./dictation-smoke')
+          return await dictationSmoke(win, () => connectSmokeAPI(win))
+        } finally { restore() }
+      }, project: projectChecks, coach: floatingCoachChecks, writing: writingNotebookChecks, notebook: notebookChecks, editor: editorSmoke, reading: readingSizeChecks, updates: appUpdateChecks, workspaces: workspaceChecks, documents: documentsChecks, servers: serverHealthChecks }
       const unknown = only.filter((name) => !suites[name])
       if (unknown.length) throw new Error('no smoke suite called ' + unknown.join(', ') + '; there are ' + Object.keys(suites).join(', '))
       const results: Result[] = []

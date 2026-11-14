@@ -14,7 +14,7 @@ afterEach(async () => {
 
 async function fixture(scope: 'chat' | 'project', listChatModels?: () => Promise<ChatPickerModels>) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  const summary = (id: string): PanelSummary => ({ id, title: id === 'new' ? '' : 'Existing conversation', model: 'gpt-5.1', provider: 'apiKey', reasoning: null, courseId: 'demo', messages: 0, createdAt: 'now', updatedAt: 'now' })
+  const summary = (id: string): PanelSummary => ({ id, tools: {webSearch:false}, title: id === 'new' ? '' : 'Existing conversation', model: 'gpt-5.1', provider: 'apiKey', reasoning: null, courseId: 'demo', messages: 0, createdAt: 'now', updatedAt: 'now' })
   let chats = [summary('old'), summary('other')]
   const stored = new Map<string, number>()
   const create = vi.fn(async () => { const chat = summary('new'); chats = [chat, ...chats]; return chat })
@@ -25,6 +25,7 @@ async function fixture(scope: 'chat' | 'project', listChatModels?: () => Promise
   const send = vi.fn(async (id: string): Promise<ChatSendResult> => { stored.set(id, (stored.get(id) ?? 0) + 1); return { status: 'ok' } as ChatSendResult })
   const prefix = scope === 'chat' ? 'Chat' : 'ProjectChat'
   const api: Record<string, unknown> = {
+    setChatTools: async (_scope: string, id: string, tools: {webSearch:boolean}) => configure(id, { tools }).tools!,
     listChatModels: listChatModels ?? (async () => ({ models: [{ id: 'gpt-5.1', label: 'GPT-5.1' }, { id: 'gpt-5.2', label: 'GPT-5.2', reasoningEfforts: ['low', 'high'] }],
       defaults: { model: 'gpt-5.1', reasoning: null }, webSearch: false, connection: { provider: 'apiKey', ready: true } })),
     onAIChanged: () => () => {}
@@ -65,6 +66,20 @@ describe.each(['chat', 'project'] as const)('%s tab lifecycle', scope => {
     expect(f.create).not.toHaveBeenCalled()
     expect(f.panel().chats.map(chat => chat.id)).toEqual(['old', 'other'])
     expect(f.remove).not.toHaveBeenCalled()
+  })
+  it('remembers each draft tab’s web choice and persists it on the first send', async () => {
+    const f = await fixture(scope)
+    await act(async () => f.panel().startNew())
+    const first = f.panel().activeId!
+    await act(async () => f.panel().setTools!({webSearch:true}))
+    await act(async () => f.panel().startNew())
+    expect(f.panel().webSearch).toBe(false)
+    await act(async () => f.panel().setActive(first))
+    expect(f.panel().webSearch).toBe(true)
+    expect(f.create).not.toHaveBeenCalled()
+    await act(async () => { expect(await f.panel().send('Research this')).toBe(true) })
+    expect(f.chats().find(c=>c.id==='new')?.tools).toEqual({webSearch:true})
+    expect(f.chats().find(c=>c.id==='old')?.tools).toEqual({webSearch:false})
   })
   it('starts new tabs as drafts too, and closing one leaves no trace', async () => {
     const f = await fixture(scope)

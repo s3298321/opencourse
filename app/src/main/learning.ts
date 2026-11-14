@@ -1,3 +1,4 @@
+import { getChatTools } from './chat-tools'
 import { receivePersonalCard, applyPersonalInbox } from './personal-card-sync'
 import { PERSONAL_CARD_CAPABILITY, type PersonalCard } from '../core/personal-cards'
 import { log } from './log'
@@ -194,7 +195,7 @@ export async function learningRequest<T = unknown>(
             .map((v) => v.chat)
         } as T
       const view = views.find((v) => url.pathname === `/learning/chats/${v.chat.id}`)
-      if (view) return view as T
+      if (view) return { ...view, offline: true } as T
     }
     throw error
   }
@@ -378,6 +379,7 @@ export async function syncServer(connection: string, force = false): Promise<voi
               id: b.remote_id,
               version: b.version,
               importId: `legacy:${chat.id}`,
+              tools: getChatTools('chat', chat.id),
               title: chat.title.slice(0, 300),
               messages: reading
             },

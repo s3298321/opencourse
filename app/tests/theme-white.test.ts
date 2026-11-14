@@ -6,12 +6,12 @@ import { normalizeTheme } from '@core/theme/normalize'
 import white from '../resources/themes/white/theme.json'
 import { darkChrome, darkChromeBackground } from '@core/theme/dark-chrome'
 
-describe('built-in White palette', () => {
-  it('uses a readable Dark titlebar palette without changing White content colors', () => {
+describe('built-in Panda palette', () => {
+  it('uses a readable dark titlebar palette without changing Panda content colors', () => {
     const background = parseColor(darkChromeBackground)!
     expect(contrast(parseColor(darkChrome.values['--fg'])!, background)).toBeGreaterThanOrEqual(4.5)
     expect(contrast(parseColor(darkChrome.values['--muted'])!, background)).toBeGreaterThanOrEqual(4.5)
-    expect(compiledWhiteTheme.values['--bg']).toBe('#ffffff')
+    expect(compiledWhiteTheme.values['--bg']).toBe('#faf8f5')
     for (const palette of [darkChrome.reducedTransparency, { ...darkChrome.reducedTransparency, ...darkChrome.increasedContrast }]) {
       const values = { ...darkChrome.values, ...palette }
       expect(contrast(parseColor(values['--fg'])!, parseColor(values['--chrome'])!)).toBeGreaterThanOrEqual(4.5)
@@ -26,7 +26,7 @@ describe('built-in White palette', () => {
     expect(compiledWhiteTheme.logo).toBeNull()
     expect(compiledWhiteTheme.faces).toEqual([])
     expect(compiledWhiteTheme.values).toMatchObject({
-      '--bg': '#ffffff', '--color-scheme': 'light',
+      '--bg': '#faf8f5', '--color-scheme': 'light',
       '--ui-line-height': '1.55', '--heading-weight': '700',
       '--brand-weight': '600', '--brand-letter-spacing': '-0.025em'
     })

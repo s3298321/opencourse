@@ -42,7 +42,7 @@ export default function ExerciseBlockView({
   return (
     <div className={brief ? 'exercise exercise-brief' : 'block card exercise'}>
       <h3>Exercise: {block.title}</h3>
-      <Html className="prompt" source={block.prompt} />
+      <Html className="prompt" lesson source={block.prompt} />
 
       {starterFiles ?? (!brief && block.starter_code && (
         <details>
@@ -54,8 +54,8 @@ export default function ExerciseBlockView({
       ))}
 
       <div className="verify">
-        <strong>How to verify:</strong>{' '}
-        <Html as="span" inline source={block.verification_instructions} />
+        <strong>How to verify:</strong>
+        <Html lesson source={block.verification_instructions} />
       </div>
 
       {block.hints && block.hints.length > 0 && (
@@ -63,7 +63,7 @@ export default function ExerciseBlockView({
           <summary>Hints ({block.hints.length})</summary>
           <ul>
             {block.hints.map((hint, i) => (
-              <Html as="li" key={i} inline source={hint} />
+              <Html as="li" key={i} lesson source={hint} />
             ))}
           </ul>
         </details>

@@ -15,7 +15,7 @@ const app = stylesheetBlocks()
 const web = stylesheetBlocks(readFileSync(join(DESIGN, 'tokens.css'), 'utf8'))
 
 /** The tokens the web's primitives are built from; renaming one away must be deliberate. */
-const REQUIRED = ['--fg', '--muted', '--bg', '--card', '--raised', '--accent', '--accent-fg', '--border', '--selected',
+const REQUIRED = ['--fg', '--muted', '--bg', '--card', '--accent', '--accent-fg', '--border', '--selected',
   '--selected-edge', '--ok', '--err', '--chip-bg', '--chip-fg', '--ok-bg', '--ok-border', '--err-bg', '--err-border',
   '--accent-ring', '--code-bg', '--popover', '--hover-ring', '--shadow-rgb', '--ease', '--font-ui', '--font-mono',
   '--brand-weight', '--brand-letter-spacing', '--scrollbar', '--scrollbar-hover']

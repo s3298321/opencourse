@@ -1,3 +1,4 @@
+import { quoteSelectionText } from '@core/quote-selection'
 import { useCoachContextProvider, selectedContent, contextExcerpt } from '../coach/context'
 import { useLearningPreference } from '../learning/useLearningPreference'
 import { RemoteReading } from '../learning/RemoteReading'
@@ -236,7 +237,7 @@ export default function LessonView({
       // nothing - which is why pressing it appeared to do nothing at all.
       if ((event.target as HTMLElement | null)?.closest?.('.ask-about')) return
       const found = window.getSelection()
-      const text = found?.toString().trim() ?? ''
+      const text = quoteSelectionText(found).trim()
       if (!found || !text || found.rangeCount === 0) return setSelection(null)
       const range = found.getRangeAt(0)
       const node = range.commonAncestorContainer

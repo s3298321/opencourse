@@ -28,6 +28,8 @@ function blockText(block: Block): string | null {
   switch (block.type) {
     case 'python-cell':
       return `[Python cell]\n\n\`\`\`python\n${block.content}\n\`\`\``
+    case 'latex':
+      return `[LaTeX formula] ${block.content}`
     case 'markdown':
       return block.content
     case 'image':

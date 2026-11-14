@@ -11,6 +11,8 @@ export interface ProjectAgentOptions {
   readOnly?: (name: string) => boolean
   /** Only provide a key when the handler can establish source freshness. */
   cacheKey?: (name: string, args: unknown) => string | undefined
+  /** A tool published an interaction that needs a user response. */
+  shouldYield?: () => boolean
   checkpoint?: (input: ResponseInput[]) => void
 }
 
@@ -27,7 +29,7 @@ export function compactInput(input: ResponseInput[], instructions: ResponseInput
   return [...instructions, ...tail.slice(0, 1), ...required, ...tail.slice(1)]
 }
 
-export async function runTextAgent(options: ProjectAgentOptions): Promise<{ stopped: boolean }> {
+export async function runTextAgent(options: ProjectAgentOptions): Promise<{ stopped: boolean; yielded?: boolean }> {
   let input = [...options.input]
   const instructions = options.input.filter(item => 'role' in item && (item.role === 'system' || item.role === 'developer'))
   const seen = new Map<string, { signature: string; result: Promise<string> }>()
@@ -100,7 +102,8 @@ export async function runTextAgent(options: ProjectAgentOptions): Promise<{ stop
       }
     } else {
       for (const item of requested) {
-        results.push(await execute(item))
+        if (options.shouldYield?.()) results.push({ type: 'function_call_output', call_id: item.call_id, output: '{"skipped":"Waiting for user input."}' })
+        else results.push(await execute(item))
         if (options.signal.aborted) return { stopped: true }
       }
     }
@@ -111,6 +114,7 @@ export async function runTextAgent(options: ProjectAgentOptions): Promise<{ stop
       resultIds.add(i.call_id); return true
     })], instructions)
     options.checkpoint?.(input)
+    if (options.shouldYield?.()) return { stopped: false, yielded: true }
   }
   throw new Error('The assistant reached its reasoning-round limit. Completed work is preserved; send another message to continue.')
 }

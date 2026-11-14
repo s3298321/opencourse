@@ -29,8 +29,12 @@ describe('validateManifest', () => {
     m.schema_version = '1.0'
     delete m.notebook
     m.modules = (m.modules as { type?: string }[]).filter((mod) => mod.type !== 'project')
-    for (const module of m.modules as { lessons: { flashcards?: unknown; blocks: { type: string }[] }[] }[]) for (const lesson of module.lessons) { delete lesson.flashcards; lesson.blocks = lesson.blocks.filter(block => block.type !== 'python-cell') }
+    for (const module of m.modules as { lessons: { flashcards?: unknown; blocks: { type: string }[] }[] }[]) for (const lesson of module.lessons) { delete lesson.flashcards; lesson.blocks = lesson.blocks.filter(block => block.type !== 'python-cell' && block.type !== 'latex') }
     expect(validateManifest(m)).toEqual([])
+  })
+
+  it('requires format 1.9 for the example’s LaTeX block', () => {
+    expect(validateManifest({ ...example(), schema_version: '1.8' }).join(' ')).toContain('LaTeX blocks require schema_version 1.9')
   })
 
   it('rejects an unknown schema version', () => {

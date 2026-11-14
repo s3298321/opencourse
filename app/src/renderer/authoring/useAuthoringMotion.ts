@@ -18,7 +18,7 @@ function changedOutline(before: CourseManifest, after: CourseManifest): Set<stri
 }
 
 export function useAuthoringMotion(manifest: CourseManifest | null, selected: string | null, mode: 'manual' | 'ai') {
-  const previewRef = useRef<HTMLElement>(null), outlineRef = useRef<HTMLElement>(null)
+  const previewRef = useRef<HTMLElement>(null), outlineRef = useRef<HTMLDivElement>(null)
   const pending = useRef<{ snapshot: MotionSnapshot; changed: Set<string>; selected: string | null } | null>(null)
   const clear = useRef<(() => void) | null>(null)
   const state = useRef({ mode, selected }); state.current = { mode, selected }

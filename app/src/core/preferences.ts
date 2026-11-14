@@ -9,7 +9,9 @@ import type { ChatDefaults, Preferences } from './types'
 import { aiSettings, isAIProvider, validModelId } from './ai'
 import { DEFAULT_READING_SCALE, normalizeReadingScale } from './reading-scale'
 import { isBuiltinThemeId } from './theme/builtin-ids'
+import { sketchSettings } from './writing-notebooks/sketch'
 import { normalizePomodoroSettings } from './pomodoro'
+import { isTranscriptionConfig } from './transcription'
 import { normalizeCoachPrompts } from './coach/prompt-defaults'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -51,6 +53,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   const readingScale = normalizeReadingScale(values['readingScale'])
   const kept: Preferences = {
     ...(values.defaultCoachPrompts && typeof values.defaultCoachPrompts === 'object' ? { defaultCoachPrompts: normalizeCoachPrompts(values.defaultCoachPrompts) } : {}),
+    ...(values.notebookSketch && typeof values.notebookSketch === 'object' ? { notebookSketch: sketchSettings(values.notebookSketch) } : {}),
     ...(values.pomodoro && typeof values.pomodoro === 'object' ? { pomodoro: normalizePomodoroSettings(values.pomodoro) } : {}),
     ...(chatModels ? { chatModels } : {}),
     ...(preferred ? { defaultChatModel: preferred } : {}),
@@ -65,6 +68,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     ...(values.defaultCoachBackendReasoning !== undefined ? { defaultCoachBackendReasoning: normalizeBackendReasoning(typeof values.defaultCoachBackendModel === 'string' ? values.defaultCoachBackendModel : BACKEND_MODEL, values.defaultCoachBackendReasoning) } : {}),
     ...(['zed', 'vscode', 'cursor', 'sublime'].includes(String(projectEditor)) ? { projectEditor: String(projectEditor) } : {}),
     ...(webSearch ? { webSearch } : {}),
+    ...(typeof values.authoringPlan === 'boolean' ? { authoringPlan: values.authoringPlan } : {}),
     ...(typeof values.authoringWebSearch === 'boolean' ? { authoringWebSearch: values.authoringWebSearch } : {}),
     ...(values['coachAllowDelete'] === true ? { coachAllowDelete: true } : {}),
     ...(typeof theme === 'string' && (UUID.test(theme) || isBuiltinThemeId(theme)) ? { theme } : {}),
@@ -74,6 +78,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     ...(typeof values.floatingNotebookButton === 'boolean' ? { floatingNotebookButton: values.floatingNotebookButton } : {})
   }
   if (values['ai'] && typeof values['ai'] === 'object') kept.ai = aiSettings({ ...kept, ai: values['ai'] as Preferences['ai'] })
+  if (isTranscriptionConfig(values.transcription)) kept.transcription = { model: values.transcription.model }
   const title = values['titleGeneration'] as Partial<NonNullable<Preferences['titleGeneration']>> | undefined
   if (title && isAIProvider(title.provider) && validModelId(title.model) && (title.reasoning === null || isReasoningEffort(title.reasoning))) {
     kept.titleGeneration = { provider: title.provider, model: title.model, reasoning: title.reasoning }

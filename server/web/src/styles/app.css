@@ -1,3 +1,6 @@
+@import "../../../../app/src/learning-ui/formula.css";
+@import '../../../../design/empty-art.css';
+
 /* The catalog server's web app. Built on design/ (tokens, base, motion) - the
    app's own palette, controls and motion - and adds only what its pages need.
    Never set scrollbar-width or scrollbar-color (see design/base.css). */
@@ -57,7 +60,7 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
   color: var(--fg); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
   transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
 }
-.user-chip:hover, .user-chip[aria-expanded='true'] { border-color: var(--line-strong); background: var(--raised); }
+.user-chip:hover, .user-chip[aria-expanded='true'] { border-color: var(--line-strong); background: var(--card); }
 .user-chip-caret { width: 14px; height: 14px; color: var(--muted); transition: transform var(--dur) var(--ease); }
 .user-chip[aria-expanded='true'] .user-chip-caret { transform: rotate(180deg); }
 .avatar {
@@ -156,7 +159,6 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .back-link:hover { color: var(--fg); gap: 0.5rem; }
 .back-link svg { width: 15px; height: 15px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.75rem; padding: 4rem 1rem; }
-.empty-art { position: relative; width: 96px; height: 80px; margin-bottom: 0.75rem; }
 .empty-state h2 { font-size: var(--text-xl); }
 .empty-text { color: var(--muted); max-width: 520px; }
 .empty-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin-top: 0.75rem; }
@@ -193,12 +195,6 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .sparkles > :nth-child(6) { top: 48%; left: 92%; width: 11px; height: 11px; }
 .sparkles > :nth-child(7) { top: 80%; left: 40%; width: 8px; height: 8px; }
 .sparkles > :nth-child(8) { top: 38%; left: 3%; width: 8px; height: 8px; }
-/* The sparkle emoji's own trio, held close: one large star low on the left,
-   a smaller one up and to its right, the smallest tucked under that. */
-.empty-art .sparkles > .oc-sparkle { translate: -50% -50%; }
-.empty-art .sparkles > :nth-child(1) { top: 58%; left: 38%; width: 34px; height: 34px; }
-.empty-art .sparkles > :nth-child(2) { top: 24%; left: 72%; width: 16px; height: 16px; }
-.empty-art .sparkles > :nth-child(3) { top: 80%; left: 76%; width: 10px; height: 10px; }
 /* ---------- covers ---------- */
 .cover { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: var(--chip-bg); }
 .cover img { width: 100%; height: 100%; object-fit: cover; transition: transform 600ms var(--ease); }
@@ -290,7 +286,8 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .count-list li { display: inline-flex; align-items: center; gap: 0.35rem; }
 .count-list svg { width: 14px; height: 14px; }
 .prereqs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
-.prereqs li { display: flex; gap: 0.6rem; align-items: baseline; }
+.prereqs .prereq-text { min-width: 0; flex: 1; }
+.prereqs > li { display: flex; gap: 0.6rem; align-items: baseline; }
 .prereqs .oc-sparkle { width: 11px; height: 11px; transform: translateY(1px); }
 .outline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .outline-module { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); overflow: hidden; transition: border-color var(--dur) ease; interpolate-size: allow-keywords; }
@@ -589,13 +586,20 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 .web-reading input[type=checkbox], .web-reading input[type=radio] { accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
 .reader-content { padding: clamp(1.25rem, 3vw, 2.5rem); font-size: calc(1rem * var(--reading-scale, 1)); line-height: 1.75; }
 .lesson-title { font-size: 1.7em; line-height: 1.25; letter-spacing: -.03em; margin-bottom: 1rem; }
+.lesson-objectives { padding: .9em 1.25em; margin-bottom: 1.5em; }
+.lesson-objectives h3 { margin: 0 0 .4em; font-size: .85em; color: var(--muted); }
+.lesson-objectives ul { margin: 0; padding-inline-start: 1.25em; list-style: disc; }
+.reader-content .project-requirements, .reader-content .project-deliverables { margin-block: 1.5em; }
+.reader-content .project-deliverables .oc-panel { margin-block: 1em; }
+.reader-content .project-paths { display: flex; flex-wrap: wrap; gap: .5em; margin-top: .5em; }
+.reader-content .project-paths code { overflow-wrap: anywhere; }
 .lesson-prose { font-size: inherit; }
 .lesson-prose h1 { font-size: 1.8em; }
 .lesson-prose h2 { font-size: 1.4em; }
 .lesson-prose h3 { font-size: 1.15em; }
 .reader-content > .lesson-prose + .lesson-prose { margin-top: 1.5rem; }
 .web-reading img, .web-reading video { max-width: 100%; height: auto; border-radius: var(--radius); }
-.web-reading pre { overflow: auto; padding: 1rem; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.web-reading pre { overflow: auto hidden; padding: 1rem; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius); }
 .learning-visualization { margin: 1.75rem 0; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
 .learning-visualization figcaption { display: flex; align-items: center; gap: .5rem; padding: .65rem 1rem; font-size: .75rem; color: var(--muted); background: var(--card); }
 .learning-visualization figcaption svg { width: 14px; height: 14px; }
@@ -605,7 +609,7 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 /* "Ask about this" over a highlighted passage: fixed to the viewport, under the site header. */
 .ask-about {
   position: fixed; z-index: 30; transform: translate(-50%, calc(-100% - 8px));
-  padding: 0.3rem 0.7rem; font: 600 0.76rem/1.3 var(--font-sans); white-space: nowrap;
+  padding: 0.3625rem 0.7rem 0.2375rem; font: 600 0.76rem/1.3 var(--font-sans); white-space: nowrap;
   color: var(--accent-fg); background: var(--accent); border: 0; border-radius: 999px; cursor: pointer;
   box-shadow: var(--shadow-md);
 }
@@ -850,6 +854,8 @@ code { font-size: 0.86em; background: var(--chip-bg); border: 1px solid var(--li
 /* Exercises, as the app shows them: a card in the lesson, and a workspace with
    the brief beside the editor (app/src/renderer/styles.css, .workbench). */
 .web-exercise h3 { margin: 0; font-size: calc(1.05rem * var(--reading-scale, 1)); }
+.web-exercise .verify .oc-prose > :first-child { margin-top: .25em; }
+.web-exercise .verify .oc-prose > :last-child { margin-bottom: 0; }
 .web-exercise .prompt { font-size: inherit; }
 .web-exercise details summary { cursor: pointer; color: var(--accent); font-size: calc(.92rem * var(--reading-scale, 1)); }
 .web-exercise details pre { margin-top: .6rem; font-size: calc(.85rem * var(--reading-scale, 1)); }

@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { Lesson } from '@core/types'
+import Objectives from './Objectives'
 
 export default function LessonHeader({ lesson, index, total }: { lesson: Omit<Lesson, 'flashcards'>; index: number; total: number }): JSX.Element {
   return <>
@@ -7,9 +8,6 @@ export default function LessonHeader({ lesson, index, total }: { lesson: Omit<Le
       <div className="meta">Lesson {index + 1} of {total}{lesson.estimated_minutes ? ` · ${lesson.estimated_minutes} minutes` : ''}</div>
       <h1>{lesson.title}</h1>
     </div>
-    {!!lesson.objectives?.length && <div className="objectives">
-      <h2>By the end of this lesson you can</h2>
-      <ul>{lesson.objectives.map((objective, i) => <li key={i}>{objective}</li>)}</ul>
-    </div>}
+    <Objectives title="By the end of this lesson you can" objectives={lesson.objectives} />
   </>
 }

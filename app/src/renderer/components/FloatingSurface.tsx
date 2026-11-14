@@ -39,7 +39,7 @@ export default function FloatingSurface({ name, label, open, onOpenChange, icon,
   return <div ref={root} className={`writing-launcher ${name}-floating${open ? ' expanded' : ''}${active ? ' conversation-active' : ''}`} style={{ height: open ? height : 56, '--floating-audio-level': active && Number.isFinite(activityLevel) ? Math.max(0, Math.min(1, activityLevel)) : 0 } as CSSProperties} onKeyDown={event => {
     if (open && event.key === 'Escape') { event.stopPropagation(); close() }
     if (open && ['ArrowDown', 'ArrowUp'].includes(event.key) && ((event.target as HTMLElement).matches('input[type=search]') || (event.target as HTMLElement).closest('.writing-launcher-results'))) {
-      const buttons = [...panel.current!.querySelectorAll<HTMLButtonElement>('.writing-launcher-results button:not(:disabled)')]
+      const buttons = [...panel.current!.querySelectorAll<HTMLButtonElement>('.writing-launcher-results button:not(:disabled):not([inert] *)')]
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
       const next = event.key === 'ArrowDown' ? (index + 1) % buttons.length : (index <= 0 ? buttons.length - 1 : index - 1)
       if (buttons[next]) { event.preventDefault(); buttons[next].focus() }

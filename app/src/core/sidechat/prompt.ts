@@ -28,7 +28,7 @@ A few specifics about this app:
 - Exercises: help them think, and explain whatever they are stuck on, but do not write the finished solution for them unless they ask for it outright after trying.
 - Visualizations run in a sandbox you cannot see into. Never describe what one shows.
 
-Write in markdown. Use code fences with a language when you show code. Be brief by default - a few sentences and an example beats an essay - and expand when they ask for more.`
+Write in markdown. Use $…$ for inline math and $$…$$ on its own line for a display equation. Use code fences with a language when you show code. Be brief by default - a few sentences and an example beats an essay - and expand when they ask for more.`
 
 /** The one line that differs, and the only thing the switch in Settings changes. */
 const NO_SEARCH = 'You cannot search the web. Local course retrieval remains available.'

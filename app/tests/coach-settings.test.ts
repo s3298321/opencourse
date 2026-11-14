@@ -68,6 +68,10 @@ it('offers all 31 voices and previews the candidate without saving it', async ()
   const voice = container.querySelector<HTMLSelectElement>('.settings-default-coach-voice')!
   expect([...voice.options].map(option => option.value)).toEqual(VOICES)
   expect(voice.options.length).toBe(31)
+  expect([...voice.options].map(option => option.label)).toEqual(expect.arrayContaining([
+    'Brise · French', 'Sillage · French', 'Marin · English', 'Bossa · Brazilian Portuguese',
+    'Flitz · German', 'Nira · Hindi', 'Harema · Japanese', 'Noeul · Korean'
+  ]))
   await act(async () => { voice.value = 'brise'; voice.dispatchEvent(new Event('change', { bubbles: true })) })
   await act(async () => container.querySelector<HTMLButtonElement>('.settings-preview-coach-voice')!.click())
   expect(preview.start).toHaveBeenCalledWith('brise')

@@ -1,3 +1,5 @@
+import { DISCARD_COURSE_CHAT_DETAIL } from '../core/course-document'
+import { windowWouldDiscardCourseChat } from './course-authoring'
 import { configureNotebookWindows, registerMainWindow, closeWritingWindows, focusMainWindow } from './writing-notebook-windows'
 import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron'
 import { mkdtempSync } from 'node:fs'
@@ -83,9 +85,9 @@ app.on('second-instance', () => {
  * Deny by default. Electron hands geolocation, notifications, MIDI and display
  * capture to any renderer that asks for them; this app needs none of that. It
  * needs fullscreen, for the visualization button, and audio capture - and audio
- * only while a coaching session is actually live (see main/mic.ts).
+ * only while this window holds a coaching or dictation lease (see main/mic.ts).
  */
-function allowPermission(permission: string, details?: unknown): boolean {
+function allowPermission(permission: string, details: unknown, sender?: number): boolean {
   if (permission === 'fullscreen') return true
   if (permission !== 'media') return false
 
@@ -98,7 +100,7 @@ function allowPermission(permission: string, details?: unknown): boolean {
     : typeof d.mediaType === 'string'
       ? [d.mediaType]
       : []
-  return types.length > 0 && types.every((t) => t === 'audio') && wantsMic()
+  return sender !== undefined && types.length > 0 && types.every((t) => t === 'audio') && wantsMic(sender)
 }
 
 function createWindow(notebookId?: string): BrowserWindow {
@@ -138,13 +140,14 @@ function createWindow(notebookId?: string): BrowserWindow {
   // have nobody to answer, so they always discard.
   win.webContents.on('will-prevent-unload', (event) => {
     if (isolatedRun) { event.preventDefault(); return }
+    const losesChat = windowWouldDiscardCourseChat(win.webContents.id)
     const choice = dialog.showMessageBoxSync(win, {
       type: 'warning',
-      buttons: ['Discard changes', 'Keep editing'],
+      buttons: [losesChat ? 'Discard and leave' : 'Discard changes', 'Keep editing'],
       defaultId: 1,
       cancelId: 1,
-      message: 'Discard unsaved changes?',
-      detail: 'Your latest edits have not been saved. Discarding them keeps the last saved version.'
+      message: losesChat ? 'Discard this unsaved course?' : 'Discard unsaved changes?',
+      detail: losesChat ? DISCARD_COURSE_CHAT_DETAIL : 'Your latest edits have not been saved. Discarding them keeps the last saved version.'
     })
     if (choice === 0) event.preventDefault()
     // Kept editing: if this quit was an update's restart, it is not one any
@@ -220,13 +223,13 @@ app.whenReady().then(async () => {
   })
 
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
-    callback(allowPermission(permission, details))
+    callback(allowPermission(permission, details, details.isMainFrame ? _wc.id : undefined))
   })
   // The synchronous path, which is what getUserMedia consults in a sandboxed
   // renderer. Without it Chromium can refuse without ever asking, which reads
   // like a bug in the app rather than the policy decision it is.
   session.defaultSession.setPermissionCheckHandler((_wc, permission, _origin, details) =>
-    allowPermission(permission, details)
+    allowPermission(permission, details, _wc && details.isMainFrame ? _wc.id : undefined)
   )
 
   // The one database handle the app holds, released the way pty.ts releases shells.

@@ -1,3 +1,5 @@
+import type { PlanAction } from '@core/authoring/planning'
+import type { ChatTools, ChatToolScope } from '@core/chat-tools'
 /**
  * Everything the side chat panel knows, so the panel itself is just markup.
  *
@@ -38,7 +40,7 @@ export const isDraft = (id: string | null | undefined): boolean => !!id?.startsW
 
 export type PanelSummary = Omit<ChatSummary, 'startedIn' | 'courseId'> & { courseId?: string; documentId?: string; startedIn?: ChatLessonRef | null; historyLabel?: string }
 export interface PanelThread { chat: PanelSummary; messages: ChatMessage[] }
-interface PendingMessage { chat: PanelSummary; message: ChatMessage; afterSeq: number }
+interface PendingMessage { planAction?: boolean; chat: PanelSummary; message: ChatMessage; afterSeq: number }
 export interface ChatPanel {
   chats: PanelSummary[]
   tabs: PanelSummary[]
@@ -51,6 +53,8 @@ export interface ChatPanel {
   models: ChatModel[]
   /** Whether Settings lets a question search the web. The model decides whether it does. */
   webSearch: boolean
+  setTools?: (tools: ChatTools) => Promise<void>
+  rejectPlan?: (decisionId: string) => Promise<void>
   ready: boolean
   /** The saved connections and their available models are still being checked. */
   connectionLoading: boolean
@@ -65,6 +69,7 @@ export interface ChatPanel {
   activity: string | null
   /** True from a tool call until the model speaks again: the call is still running. */
   toolRunning: boolean
+  retryAttempt?: number
   /** Remote chats follow their server account's AI settings. */
   settingsManagedBy?: string
   sendBlocked?: boolean
@@ -76,7 +81,7 @@ export interface ChatPanel {
   resume: () => Promise<void>
   refreshHistory?: () => Promise<void>
   remove: (id: string) => Promise<void>
-  send: (text: string, quote?: ChatQuote, review?: boolean) => Promise<boolean>
+  send: (text: string, quote?: ChatQuote, review?: boolean, action?: PlanAction) => Promise<boolean>
   /** Explicit continuation of an overloaded turn, using freshly loaded history. */
   retry?: () => Promise<boolean>
   stop: () => void
@@ -92,7 +97,7 @@ export interface ChatTransport {
   get: (id: string) => Promise<PanelThread | null>
   create: () => Promise<PanelSummary>
   remove: (id: string) => Promise<void>
-  send: (id: string, text: string, quote?: ChatQuote, review?: boolean) => Promise<ChatSendResult>
+  send: (id: string, text: string, quote?: ChatQuote, review?: boolean, action?: PlanAction) => Promise<ChatSendResult>
   cancel: (id: string) => Promise<void>
   setModel: (id: string, model: string) => Promise<PanelSummary>
   setReasoning: (id: string, reasoning: ReasoningEffort | null) => Promise<PanelSummary>
@@ -133,8 +138,9 @@ export function useChatPanel(courseId: string, lesson?: ChatLessonRef, projectMo
   return useConversationPanel(transport, projectModuleSlug ? 'project' : 'chat', visible)
 }
 
-export function useConversationPanel(transport: ChatTransport, scope: AIScope, visible = true, storageKey?: string): ChatPanel {
+export function useConversationPanel(transport: ChatTransport, scope: AIScope, visible = true, storageKey?: string, toolScope: ChatToolScope = scope): ChatPanel {
   const [activity, setActivity] = useState<string | null>(null)
+  const [retryAttempts, setRetryAttempts] = useState<ReadonlyMap<string, number>>(new Map())
   const [toolRunning, setToolRunning] = useState(false)
   const [chats, setChats] = useState<PanelSummary[]>([])
   // Restore only after the course's chat list validates saved IDs. Never load
@@ -161,6 +167,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   const [unlisted, setUnlisted] = useState<ReadonlyMap<string, PanelSummary>>(new Map())
   const unlistedRef = useRef(unlisted)
   const defaults = useRef<ChatDefaults & { provider: AIProvider }>({ model: '', reasoning: null, provider: 'apiKey' })
+  const toolDefaults = useRef<ChatTools | undefined>(undefined)
   const sending = useRef(false)
   const retrying = useRef(false)
   const [pendingMessages, setPendingMessages] = useState<ReadonlyMap<string, PendingMessage>>(new Map())
@@ -184,18 +191,22 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   }, [])
   const draftOf = useCallback((id: string, config?: Partial<PanelSummary>): PanelSummary => {
     const at = new Date().toISOString()
-    return { id, courseId: '', title: '', messages: 0, createdAt: at, updatedAt: at, ...defaults.current, ...config }
+    return { id, courseId: '', title: '', messages: 0, createdAt: at, updatedAt: at, ...defaults.current, tools: toolDefaults.current, ...config }
   }, [])
 
+  const threadReads = useRef(new Map<string, number>())
   const loadThread = useCallback(async (id: string): Promise<void> => {
     if (isDraft(id)) return
+    const request = (threadReads.current.get(id) ?? 0) + 1
+    threadReads.current.set(id, request)
     try {
       const next = await transport.get(id)
+      if (threadReads.current.get(id) !== request) return
       const pending = pendingRef.current.get(id)
       if (next) {
         setChats(current => current.map(chat => chat.id === id ? next.chat : chat))
         keepUnlisted(current => { if (current.has(id)) current.set(id, next.chat) })
-        if (pending && next.messages.some(message => message.role === 'user' && message.seq > pending.afterSeq && message.text === pending.message.text)) keepPending(messages => messages.delete(id))
+        if (pending && next.messages.some(message => message.role === 'user' && message.seq > pending.afterSeq && (pending.planAction || message.text === pending.message.text))) keepPending(messages => messages.delete(id))
       }
       if (activeRef.current === id) setThread(next)
     } catch (err) { if (activeRef.current === id) setError((err as Error).message) }
@@ -220,9 +231,12 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
       // What main would give a chat created now. A draft keeps a model it was
       // given only while its connection still offers that model, as a stored chat does.
       defaults.current = { ...(result.defaults ?? { model: '', reasoning: null }), provider }
+      toolDefaults.current = { webSearch: result.webSearch, ...(scope === 'authoring' ? { plan: result.planDefault !== false } : {}) }
       keepUnlisted(next => {
-        for (const [id, chat] of next) {
+        for (const [id, original] of next) {
           if (!isDraft(id)) continue
+          const chat = original.tools ? original : { ...original, tools: toolDefaults.current }
+          next.set(id, chat)
           const own = chat.pinnedProvider ?? provider
           const list = lists[own]
           if (chat.model && chat.provider === own && list?.models.some(m => m.id === chat.model)) continue
@@ -240,6 +254,9 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   }, [scope, refreshList, loadThread, keepUnlisted])
 
   useEffect(() => { if (visible) void refreshKey().catch((error: Error) => setError(error.message)) }, [visible, refreshKey, version])
+  useEffect(() => window.opencourse.onChatToolsChanged?.(id => {
+    if (activeRef.current === id) void loadThread(id)
+  }), [loadThread])
   useEffect(() => window.opencourse.onAIChanged(() => setVersion(value => value + 1)), [])
   useEffect(() => { void refreshList(); if (activeRef.current) void loadThread(activeRef.current) }, [version, refreshList, loadThread])
 
@@ -278,11 +295,29 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
 
   /* --- the stream ------------------------------------------------------- */
   useEffect(() => {
+    function setRetry(chatId: string, attempt: number | null) {
+      setRetryAttempts(current => {
+        if (attempt === null && !current.has(chatId)) return current
+        const next = new Map(current)
+        if (attempt === null) next.delete(chatId)
+        else next.set(chatId, attempt)
+        return next
+      })
+    }
+    const offRecovery = window.opencourse.onChatRecovery?.((id, event) => {
+      if (!buffers.current.has(id)) return
+      if (event.kind === 'retry') setRetry(id, event.attempt)
+      else {
+        buffers.current.set(id, event.text)
+        if (activeRef.current === id) { setStreaming(event.text); setActivity(null); setToolRunning(false) }
+      }
+    })
     const offDelta = transport.onDelta((chatId, chunk) => {
       buffers.current.set(chatId, (buffers.current.get(chatId) ?? '') + chunk)
       if (activeRef.current === chatId) setToolRunning(false)
     })
     const offDone = transport.onDone((chatId) => {
+      setRetry(chatId, null)
       buffers.current.delete(chatId)
       if (activeRef.current === chatId) { setActivity(null); setToolRunning(false) }
       setBusy((current) => {
@@ -295,6 +330,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
       void refreshList()
     })
     const offError = transport.onError((chatId, message) => {
+      setRetry(chatId, null)
       buffers.current.delete(chatId)
       if (activeRef.current === chatId) { setActivity(null); setToolRunning(false) }
       setBusy((current) => {
@@ -321,6 +357,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     return () => {
       offTitle()
       offActivity()
+      offRecovery?.()
       offDelta()
       offDone()
       offError()
@@ -416,13 +453,16 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   const materialize = useCallback(async (draft: PanelSummary): Promise<PanelSummary> => {
     let chat = await transport.create()
     try {
+      if (draft.tools && chat.tools && (draft.tools.webSearch !== chat.tools?.webSearch || draft.tools.plan !== chat.tools?.plan)) {
+        chat = { ...chat, tools: await window.opencourse.setChatTools(toolScope, chat.id, draft.tools) }
+      }
       if (draft.pinnedProvider) chat = await transport.setProvider(chat.id, draft.pinnedProvider)
       if (draft.model && draft.model !== chat.model) chat = await transport.setModel(chat.id, draft.model)
       if (draft.reasoning !== chat.reasoning) chat = await transport.setReasoning(chat.id, draft.reasoning)
     } catch (err) { await transport.remove(chat.id).catch(() => {}); throw err }
     replaceTab(draft.id, chat)
     return chat
-  }, [transport, replaceTab])
+  }, [transport, replaceTab, toolScope])
 
   /** A first message main refused leaves nothing behind: the chat goes, the draft comes back. */
   const unmaterialize = useCallback(async (chat: string, draft: PanelSummary): Promise<void> => {
@@ -434,7 +474,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
   }, [transport, replaceTab])
 
   const send = useCallback(
-    async (text: string, quote?: ChatQuote, review = false): Promise<boolean> => {
+    async (text: string, quote?: ChatQuote, review = false, action?: PlanAction): Promise<boolean> => {
       text = (review ? REVIEW_REQUEST : text).trim().slice(0, MAX_MESSAGE_CHARS)
       if (!activeId || sending.current || buffers.current.has(activeId) || !text) return false
       setError(null)
@@ -445,7 +485,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
       let sendingId = activeId
       const afterSeq = thread?.chat.id === activeId ? thread.messages.at(-1)?.seq ?? -1 : -1
       const optimistic: PendingMessage = {
-        chat: summary, afterSeq,
+        chat: summary, afterSeq, planAction: !!action,
         message: { role: 'user', text, seq: afterSeq + 1, at: new Date().toISOString(), ...(quote ? { quote } : {}) }
       }
       // Show the question and its title before creating a chat, flushing edits,
@@ -472,9 +512,9 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
         }
         const undo = async (): Promise<void> => { if (draft) await unmaterialize(sendingId, draft) }
         let result
-        try { result = await transport.send(sendingId, text, quote, review) }
+        try { result = action ? await transport.send(sendingId, text, quote, review, action) : await transport.send(sendingId, text, quote, review) }
         catch (err) { clearPending(); await undo(); setError((err as Error).message); return false }
-        if (result.status !== 'ok') { clearPending(); await undo() }
+        if (result.status !== 'ok') { clearPending(); await undo(); if (!draft) await loadThread(sendingId) }
         if (result.status === 'connection-required') {
           await refreshKey()
           setError(result.message)
@@ -617,7 +657,17 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     busy,
     error,
     models,
-    webSearch,
+    webSearch: shown?.chat.tools?.webSearch ?? webSearch,
+    setTools: async tools => {
+      if (!activeId || busy.has(activeId)) return
+      if (isDraft(activeId)) { keepUnlisted(next => { const d = next.get(activeId); if (d) next.set(activeId, { ...d, tools }) }); return }
+      try { await window.opencourse.setChatTools(toolScope, activeId, tools); await loadThread(activeId) }
+      catch (e) { setError((e as Error).message) }
+    },
+    rejectPlan: scope === 'authoring' && activeId ? async decision => {
+      try { await window.opencourse.rejectAuthoringPlan(activeId, decision); await loadThread(activeId) }
+      catch (e) { setError((e as Error).message); await loadThread(activeId) }
+    } : undefined,
     ready: connection.ready,
     connectionLoading,
     provider: activeProvider,
@@ -627,6 +677,7 @@ export function useConversationPanel(transport: ChatTransport, scope: AIScope, v
     loading,
     activity,
     toolRunning,
+    retryAttempt: activeId ? retryAttempts.get(activeId) : undefined,
     setActive: open,
     open,
     close,

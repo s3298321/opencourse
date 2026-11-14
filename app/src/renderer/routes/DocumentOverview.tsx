@@ -10,6 +10,7 @@ import type { DocumentPublication } from '../../main/document-publish'
 import type { DocumentPublishPreview } from '../../main/document-catalog'
 import TitleBar from '../components/TitleBar'
 import CourseDescription from '../components/CourseDescription'
+import OverviewTags from '../components/OverviewTags'
 import { documentSize } from '../learning/DocumentCatalog'
 import type { Route, Screen } from '../routes'
 
@@ -58,7 +59,7 @@ export default function DocumentOverview({ documentId, user, navigate, route }: 
   const openAt = (page: number): void => { void window.opencourse.setDocumentPage(documentId, page).catch(() => {}).finally(() => navigate({ name: 'document', documentId })) }
   const remove = async (): Promise<void> => {
     const message = doc.origin
-      ? `Remove “${doc.title}” from My learning on ${doc.origin.name}? Every device and the server’s website stop listing it, and its download is removed from this device. Your progress and chats are kept.`
+      ? `Remove “${doc.title}” from my documents on ${doc.origin.name}? Every device and the server’s website stop listing it, and its download is removed from this device. Your progress and chats are kept.`
       : `Delete “${doc.title}” and its chats from this library? The original PDF is kept.`
     if (!window.confirm(message)) return
     setRemoving(true); setError(null)
@@ -82,7 +83,7 @@ export default function DocumentOverview({ documentId, user, navigate, route }: 
         <div className="detail document-detail">
           <DocumentServerPanel document={doc} meta={meta} navigate={navigate} onChanged={load}
             actions={!doc.origin && <ActionButton icon="edit" className="secondary" onClick={() => setEditing((value) => !value)}>{editing ? 'Close overview' : 'Edit overview'}</ActionButton>}
-            trailingActions={<ActionButton icon={doc.origin ? 'close' : 'trash'} className={doc.origin ? 'secondary' : 'secondary danger'} disabled={removing} onClick={() => void remove()}>{doc.origin ? 'Remove from My learning' : 'Delete document'}</ActionButton>} />
+            trailingActions={<ActionButton icon={doc.origin ? 'close' : 'trash'} className={doc.origin ? 'secondary' : 'secondary danger'} disabled={removing} onClick={() => void remove()}>{doc.origin ? 'Remove from my documents' : 'Delete document'}</ActionButton>} />
           {cover && <img className="catalog-detail-cover" src={cover} alt="" />}
           <h1>{doc.title}</h1>
           <DocumentReviewControls documentId={documentId} navigate={navigate} from={route} />
@@ -90,7 +91,7 @@ export default function DocumentOverview({ documentId, user, navigate, route }: 
             PDF · {doc.pages === 1 ? '1 page' : `${doc.pages} pages`} · {documentSize(doc.bytes)}
             {doc.status === 'indexing' ? ' · Building search index…' : doc.status === 'error' ? ' · Text index unavailable' : doc.searchablePages === 0 ? ' · Image-only PDF' : ''}
           </div>
-          {meta.tags.length > 0 && <div className="course-card-tags">{meta.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>}
+          <OverviewTags tags={meta.tags} />
           {meta.description && <CourseDescription key={`${documentId}:${meta.version}`} source={meta.description} />}
           {error && <p className="import-note error" role="alert">{error}</p>}
           {note && <p className="import-note" role="status">{note}</p>}

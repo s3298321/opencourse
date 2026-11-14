@@ -1,12 +1,16 @@
+import { useDictation, DictationButton } from './useDictation'
+import { networkRetryWarning } from '../core/chat-network'
+import ActiveChatTools from './ActiveChatTools'
+import ChatToolsMenu from './ChatToolsMenu'
 import { FlashcardPreview } from './PersonalCards'
 import type { FlashcardProposal } from '../core/personal-cards'
 import { useEffect, useLayoutEffect, useState, useRef, type ReactNode } from 'react'
 import type { ContentRef, ServerAISettings, ServerAIModels } from '../core/learning/types'
 import type { LearningClient } from './client'
 import './learning.css'
-import { REASONING_LABELS, reasoningEffortsFor } from '../core/sidechat/models'
+import { REASONING_LABELS, reasoningEffortsFor, webSearchFor } from '../core/sidechat/models'
 import Menu from './Menu'
-import ConnectionIcon from './ConnectionIcon'
+import ConnectionIcon, { PROVIDER_LABELS } from './ConnectionIcon'
 import { ReadingMessage, Thinking, type ReadingCitation } from './ReadingMessage'
 import { ChatIcon } from './ChatIcon'
 import { useReadingTabs } from './useReadingTabs'
@@ -14,6 +18,7 @@ import ChatTabTitle from './ChatTabTitle'
 
 function ReadingChatPanel({
   client,
+  accountId,
   source,
   quote,
   onQuoteUsed,
@@ -30,16 +35,17 @@ function ReadingChatPanel({
   settingsLink?: ReactNode
   renderAnswer?: (text: string) => ReactNode
   draftKey?: string
+  accountId: string
   client: LearningClient
   source: ContentRef
   quote?: string
   onQuoteUsed?: () => void
 }) {
   const storageKey = `opencourse:reading-draft:${draftKey ?? `${source.kind}:${source.id}`}`
-  const panel = useReadingTabs(client, source, storageKey)
+  const [settings, setSettings] = useState<ServerAISettings | null>(null)
+  const panel = useReadingTabs(client, source, storageKey, settings?.perChatTools ? settings.webSearch : undefined, settings?.idempotentChatCreation)
   const { chats, view, text, setText, error, setError, busy, answering } = panel
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [settings, setSettings] = useState<ServerAISettings | null>(null)
   const [catalog, setCatalog] = useState<ServerAIModels | null>(null)
   const configured = settings ? settings.configured && settings.enabled : null
   const modelChoices = (catalog?.models ?? []).filter(m => settings?.enabledModels == null || settings.enabledModels.includes(m.id))
@@ -48,6 +54,8 @@ function ReadingChatPanel({
   const chosen = saved && (settings?.enabledModels == null || settings.enabledModels.includes(saved.model)) ? saved : settings
   const model = chosen?.model ?? ''
   const reasoning = chosen?.reasoning ?? null
+  const chatTools = panel.tools ?? { webSearch: settings?.webSearch ?? false }
+  const supportsWeb = !!model && webSearchFor(model, reasoning)
   const efforts = reasoningEffortsFor(model)
   const modelEnabled = !!model && (settings?.enabledModels == null || settings.enabledModels.includes(model))
   useEffect(() => {
@@ -57,6 +65,11 @@ function ReadingChatPanel({
     return () => { alive = false }
   }, [client, configured, settings?.hint])
   const field = useRef<HTMLTextAreaElement>(null)
+  const canDictate = visible && configured === true && modelEnabled && !!settings?.transcription &&
+    !busy && !answering && !panel.sending && !panel.loading
+  const voice = useDictation({ connect: (_id, sdp) =>
+    client.request('/me/ai/transcription/session', 'POST', { sdp, account: accountId })
+  }, canDictate, panel.active, 12000, setText, field)
   const transcript = useRef<HTMLDivElement>(null)
   const tabList = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -88,7 +101,7 @@ function ReadingChatPanel({
   useEffect(() => {
     if (visible && following.current && transcript.current)
       transcript.current.scrollTop = transcript.current.scrollHeight
-  }, [view, visible])
+  }, [view, visible, panel.retryAttempt])
   useEffect(() => {
     let alive = true
     const refresh = () =>
@@ -108,7 +121,7 @@ function ReadingChatPanel({
     }
   }, [client])
   async function send() {
-    if (configured !== true || !modelEnabled) return
+    if (voice.locked() || configured !== true || !modelEnabled) return
     following.current = true
     if (await panel.send(quote, text, { model, reasoning })) onQuoteUsed?.()
   }
@@ -212,33 +225,35 @@ function ReadingChatPanel({
       </div>
       <div className="learning-chat-transcript">
         {historyOpen && (
-          <div className="learning-chat-history" id="reading-chat-history" aria-label="Conversation history">
-            {chats.length === 0 && <p className="learning-chat-history-empty">No conversations yet.</p>}
-            {chats.map((chat) => (
-              <div className="learning-chat-history-row" key={chat.id}>
-                <button type="button" className="learning-chat-history-open" onClick={() => select(chat.id)}>
-                  <span>{chat.title || 'A new chat'}</span>
-                  <small>
-                    Conversation
-                    {chat.messages !== undefined ? ` · ${chat.messages} message${chat.messages === 1 ? '' : 's'}` : ''}
-                    {' · '}
-                    {new Date(chat.lastMessageAt ?? chat.createdAt).toLocaleString()}
-                  </small>
-                </button>
-                <button
-                  type="button"
-                  className="learning-chat-tab-close"
-                  aria-label={`Delete chat: ${chat.title || 'A new chat'}`}
-                  title="Delete this chat for good"
-                  disabled={panel.sending}
-                  onClick={() => {
-                    if (window.confirm('Delete this chat? This cannot be undone.')) void panel.remove(chat.id)
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+          <div className="learning-chat-history chat-history-overlay" id="reading-chat-history" aria-label="Conversation history">
+            <div className="chat-history-list">
+              {chats.length === 0 && <p className="learning-chat-history-empty">No conversations yet.</p>}
+              {chats.map((chat) => (
+                <div className="learning-chat-history-row" key={chat.id}>
+                  <button type="button" className="learning-chat-history-open" onClick={() => select(chat.id)}>
+                    <span>{chat.title || 'A new chat'}</span>
+                    <small>
+                      Conversation
+                      {chat.messages !== undefined ? ` · ${chat.messages} message${chat.messages === 1 ? '' : 's'}` : ''}
+                      {' · '}
+                      {new Date(chat.lastMessageAt ?? chat.createdAt).toLocaleString()}
+                    </small>
+                  </button>
+                  <button
+                    type="button"
+                    className="learning-chat-tab-close"
+                    aria-label={`Delete chat: ${chat.title || 'A new chat'}`}
+                    title="Delete this chat for good"
+                    disabled={panel.sending}
+                    onClick={() => {
+                      if (window.confirm('Delete this chat? This cannot be undone.')) void panel.remove(chat.id)
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {configured === false && (
@@ -266,10 +281,11 @@ function ReadingChatPanel({
               <p>Ask about this {source.kind === 'course' ? 'lesson' : 'document'}.</p>
             </div>
           )}
-          {view?.messages.map((m) => <div key={m.id}><ReadingMessage message={m} renderAnswer={renderAnswer} onSource={onSource} />
+          {view?.messages.map((m) => <div key={m.id}><ReadingMessage hideActivity={!!panel.retryAttempt} message={m} renderAnswer={renderAnswer} onSource={onSource} />
             {m.flashcardProposals?.map(p => <FlashcardPreview key={p.id} proposal={p} renderText={renderAnswer} decide={(proposal,action,cardId) => client.request<FlashcardProposal>(`/learning/chats/${view.chat.id}/flashcards/${proposal}`,'POST',{action:`${action}-card`,cardId})} />)}
           </div>)}
           {busy && !answering && <Thinking />}
+          {panel.retryAttempt && <div className="chat-network-warning" role="status">{networkRetryWarning(panel.retryAttempt)}</div>}
 
         </div>
       </div>
@@ -280,7 +296,8 @@ function ReadingChatPanel({
           void send()
         }}
       >
-        <div className="learning-chat-box">
+        {voice.notice && <p className="meta" role="status">{voice.notice}</p>}
+        <div className="learning-chat-box" data-dictation={voice.phase} data-speaking={voice.speaking}>
           {quote && (
             <div className="sidechat-quote">
               <div className="sidechat-quote-head">
@@ -308,6 +325,7 @@ function ReadingChatPanel({
             }
             value={text}
             maxLength={12000}
+            readOnly={voice.phase !== 'idle'}
             onChange={(e) => {
               setText(e.target.value)
             }}
@@ -320,7 +338,8 @@ function ReadingChatPanel({
             }}
           />
           <div className="learning-chat-actions">
-            <span className="learning-chat-connection" role="img" aria-label="OpenAI API key" title="OpenAI API key · managed in Settings"><ConnectionIcon provider="apiKey" /></span>
+            <span className="learning-chat-connection" role="img" aria-label={PROVIDER_LABELS.apiKey} title={`${PROVIDER_LABELS.apiKey} · managed in Settings`}><ConnectionIcon provider="apiKey" /></span>
+            <ChatToolsMenu tools={chatTools} change={panel.setTools} supportsWeb={supportsWeb} busy={busy || answering || panel.loading} active={visible} resetKey={panel.active} />
             {configured && modelEnabled && <>
               <Menu className="learning-chat-picker learning-chat-model" panelClassName="learning-chat-menu" screenActive={visible} resetKey={panel.active}
                 label={<span className="learning-chat-picker-label">{model}</span>} ariaLabel="Model for this chat" title="Which model answers" align="left" side="above" disabled={busy || answering}
@@ -331,15 +350,16 @@ function ReadingChatPanel({
               {!!efforts.length && <Menu className="learning-chat-picker learning-chat-reasoning" panelClassName="learning-chat-menu" screenActive={visible} resetKey={panel.active}
                 label={<><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 1.9a4.2 4.2 0 0 0-2.55 7.55c.45.35.7.85.7 1.4v.6h3.7v-.6c0-.55.25-1.05.7-1.4A4.2 4.2 0 0 0 8 1.9ZM6.4 13.9h3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg><span className="learning-chat-picker-label">{reasoning ? REASONING_LABELS[reasoning] : 'Default'}</span></>}
                 ariaLabel="Reasoning for this chat" title="How hard it thinks before answering" align="left" side="above" disabled={busy || answering}
-                items={[{ id: 'default', label: 'Default', hint: "the model’s own", checked: reasoning === null, onSelect: () => panel.setSelection({ model, reasoning: null }) },
+                items={[{ id: 'default', label: 'Default', checked: reasoning === null, onSelect: () => panel.setSelection({ model, reasoning: null }) },
                   ...efforts.map(effort => ({ id: effort, label: REASONING_LABELS[effort], checked: effort === reasoning, onSelect: () => panel.setSelection({ model, reasoning: effort }) }))]} />}
             </>}
             {configured && !modelEnabled && <span className="learning-chat-picker-label">Enable a model in Settings</span>}
+            <ActiveChatTools tools={chatTools} supportsWeb={supportsWeb} />
             {answering ? (
               <button
                 type="button"
                 className="learning-chat-send"
-                aria-label="Stop"
+                aria-label="Stop response"
                 title="Stop response"
                 onClick={() =>
                   void client
@@ -351,8 +371,11 @@ function ReadingChatPanel({
                   <rect x="5" y="5" width="10" height="10" rx="2" fill="currentColor" stroke="none" />
                 </svg>
               </button>
+            ) : voice.phase !== 'idle' || (canDictate && !text.trim()) ? (
+              <DictationButton state={voice} className="learning-chat-send" />
             ) : (
               <button
+                type="submit"
                 className="learning-chat-send"
                 aria-label="Send"
                 title="Send message"
@@ -372,5 +395,5 @@ function ReadingChatPanel({
 
 // Replacing an account/content binding unmounts all in-flight UI state.
 export function ReadingChat(props: Parameters<typeof ReadingChatPanel>[0]) {
-  return <ReadingChatPanel key={`${props.draftKey ?? ''}:${props.source.kind}:${props.source.id}`} {...props} />
+  return <ReadingChatPanel key={`${props.accountId}:${props.draftKey ?? ''}:${props.source.kind}:${props.source.id}`} {...props} />
 }

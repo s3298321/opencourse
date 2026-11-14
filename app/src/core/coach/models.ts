@@ -33,13 +33,22 @@ export function filterBackendModels(ids: readonly string[]): CoachModel[] {
 // Add snapshots only after verifying their Live protocol compatibility.
 export const LIVE_MODELS: readonly CoachModel[] = [{ id: DEFAULT_MODEL, label: DEFAULT_MODEL }]
 export const WEB_SEARCH_MODEL = 'gpt-5-mini'
-/** Built-in GPT-Live voices: https://developers.openai.com/api/reference/resources/live/methods/create */
-export const VOICES: readonly string[] = [
-  'alloy', 'ash', 'ballad', 'beacon', 'bossa', 'brise', 'cedar', 'cinder',
-  'coral', 'delta', 'echo', 'flitz', 'gleam', 'harema', 'juni', 'marin',
-  'meridian', 'nira', 'noeul', 'nuri', 'quartz', 'ripple', 'sage', 'shida',
-  'shimmer', 'sillage', 'stone', 'tempo', 'verse', 'vesper', 'willow'
-]
+/** Preview languages for GPT-Live voices: https://developers.openai.com/api/docs/guides/live-conversations#voice-options */
+export const VOICE_LANGUAGES = {
+  alloy: 'English', ash: 'English', ballad: 'English', beacon: 'English',
+  bossa: 'Brazilian Portuguese', brise: 'French', cedar: 'English', cinder: 'English',
+  coral: 'English', delta: 'English', echo: 'English', flitz: 'German',
+  gleam: 'English', harema: 'Japanese', juni: 'German', marin: 'English',
+  meridian: 'English', nira: 'Hindi', noeul: 'Korean', nuri: 'German',
+  quartz: 'English', ripple: 'English', sage: 'English', shida: 'Japanese',
+  shimmer: 'English', sillage: 'French', stone: 'English', tempo: 'Brazilian Portuguese',
+  verse: 'English', vesper: 'English', willow: 'English'
+} as const
+export type CoachVoice = keyof typeof VOICE_LANGUAGES
+export const VOICES: readonly string[] = Object.keys(VOICE_LANGUAGES)
+export function isCoachVoice(voice: string): voice is CoachVoice {
+  return Object.hasOwn(VOICE_LANGUAGES, voice)
+}
 export const DEFAULT_VOICE = 'marin'
 
 export function isLiveModelId(id: string): boolean {

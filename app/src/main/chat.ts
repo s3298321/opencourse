@@ -1,3 +1,6 @@
+import { chatRetryNotice, streamChatRound } from './resilient-chat'
+import { getChatTools, initializeChatTools, storeChatTools } from './chat-tools'
+import type { ChatTools } from '../core/chat-tools'
 import { db } from './db'
 import { attachCardProposals } from './personal-card-store'
 import { flashcardTools, flashcardToolNotice, createFlashcardPreview } from './personal-cards'
@@ -74,7 +77,7 @@ import {
 import { readKey } from './coachkey'
 import { getCourse } from './courses'
 import { iconsFor } from './favicons'
-import { OpenAIError, listChatModels, streamChat, type ChatSearchEvent } from './openai'
+import { OpenAIError, listChatModels, type ChatSearchEvent } from './openai'
 import { readPreferences, writePreferences } from './preferences'
 import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
 import { aiPickerModels, getAIModelSettings, notifyAIChanged } from './ai'
@@ -158,6 +161,7 @@ function requireChat(chatId: string): ChatSummary {
 }
 
 function chatConfig(chat: ChatSummary): ChatSummary {
+  chat = { ...chat, tools: getChatTools('chat', chat.id) }
   const snapshot = inflight.get(chat.id)?.chat
   const configured = snapshot ? { ...chat, model: snapshot.model, reasoning: snapshot.reasoning, provider: snapshot.provider } : conversationConfig('chat', chat)
   const course = getCourse(chat.courseId)
@@ -210,6 +214,7 @@ export function createChat(courseId: string, target: ChatContextRef, model?: str
     startedInNotebook: notebook,
     at: new Date().toISOString()
   })
+  initializeChatTools('chat', id)
   return requireChat(id)
 }
 
@@ -427,7 +432,7 @@ export async function sendChatMessage(
   watchSender(sender)
   preparing.set(chatId, { controller: preparation, senderId: sender.id, provider: chat.provider ?? 'apiKey' })
   const logger = log.child('chat', { userId: owner, data: { chatId, courseId: chat.courseId } })
-  try { ({ chat, key } = await prepareAIRequest('chat', chat, preparation.signal)) }
+  try { ({ chat, key } = await prepareAIRequest('chat', chat, preparation.signal, chatRetryNotice(sender, chatId))) }
   catch (error) {
     if (preparation.signal.aborted) return { status: 'failed', message: 'Message stopped before sending.' }
     logger.warn('The connection was not ready for a question', { provider: chat.provider ?? 'apiKey', message: (error as Error).message })
@@ -500,7 +505,7 @@ export async function sendChatMessage(
 
   // Search is offered when Settings allows it and the model can take it; the
   // model then decides, question by question, whether to use it.
-  const webSearch = readPreferences().webSearch === true && webSearchFor(chat.model, chat.reasoning)
+  const webSearch = chat.tools?.webSearch === true && webSearchFor(chat.model, chat.reasoning)
 
   void (async () => {
     const budget = { chars: 0, signal: controller.signal }
@@ -518,7 +523,11 @@ export async function sendChatMessage(
         stream: async input => {
           const begin = answered.length
           let first = true
-          const result = await streamChat({
+          const result = await streamChatRound(sender, chatId, () => {
+            answered = answered.slice(0, begin)
+            first = true
+            return answered
+          }, {
         key,
         provider: chat.provider,
         model: chat.model,
@@ -563,7 +572,7 @@ export async function sendChatMessage(
       return { text: answered, aborted: result.stopped, citations }
     }
     try {
-      let result: Awaited<ReturnType<typeof streamChat>>
+      let result: Awaited<ReturnType<typeof streamChatRound>>
       try {
         result = await ask(webSearch)
       } catch (err) {
@@ -615,4 +624,10 @@ export async function sendChatMessage(
   })()
 
   return { status: 'ok', seq }
+}
+
+export function configureChatTools(id: string, options: ChatTools): ChatTools {
+  if (isAnswering(id)) throw new Error('Wait for the current response before changing tools.')
+  requireChat(id)
+  return storeChatTools('chat', id, options)
 }

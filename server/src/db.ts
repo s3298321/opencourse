@@ -13,7 +13,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 10
 
 export const SCHEMA_V1 = `
 CREATE TABLE accounts (
@@ -213,6 +213,12 @@ function migrate(d: Db): void {
         DELETE FROM flashcard_proposals WHERE owner=old.id;
       END;`)
     }
+    if (from < 7) d.exec(`ALTER TABLE learning_chats ADD COLUMN web_search INTEGER NOT NULL DEFAULT 0;
+      UPDATE learning_chats SET web_search=COALESCE((SELECT web_search FROM learning_ai WHERE account_id=learning_chats.account_id),0)`)
+    if (from < 8) d.exec('ALTER TABLE learning_messages ADD COLUMN retry_attempt INTEGER')
+    if (from < 9) d.exec(`ALTER TABLE learning_ai ADD COLUMN transcription_connection TEXT NOT NULL DEFAULT 'apiKey';
+      ALTER TABLE learning_ai ADD COLUMN transcription_model TEXT NOT NULL DEFAULT 'gpt-live-transcribe'`)
+    if (from < 10) d.exec('ALTER TABLE learning_ai DROP COLUMN transcription_connection')
     d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
   })
 }

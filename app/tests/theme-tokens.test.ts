@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { INHERITING_PROPERTIES, THEME_PROPERTIES } from '@core/theme/tokens'
 import { STYLES, stylesheetBlocks } from './helpers/theme-css'
 
-const css = readFileSync(STYLES, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const notebookStyles = join(__dirname, '..', 'src', 'renderer', 'writing-notebooks', 'writing-notebooks.css')
+const css = [STYLES, notebookStyles].map(path => readFileSync(path, 'utf8')).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')
 const workbench = readFileSync(join(__dirname, '..', 'src', 'renderer', 'workbench', 'theme.ts'), 'utf8')
 
 describe('theme properties', () => {
@@ -36,7 +37,7 @@ describe('theme properties', () => {
 
   it('are the only custom properties a region rule paints with', () => {
     // Every background declaration on a themed region goes through a token.
-    for (const selector of ['.titlebar', '.sidebar', '.sidechat', '.content-glass', '.menu-panel, .search-panel']) {
+    for (const selector of ['.titlebar', '.sidebar', '.sidechat', '.content-glass', '.menu-panel, .search-panel, .author-notice', '.menu-panel, .tooltip', '.search-panel, .author-notice']) {
       const rule = new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)
       expect(rule, selector).not.toBeNull()
       const backgrounds = rule![1]!.split(';').filter((part) => /^\s*background(?:-color|-image)?\s*:/.test(part))

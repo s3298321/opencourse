@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -12,6 +12,7 @@ import { readNotebookSketch, saveNotebookSketch } from './writing-notebook-sketc
 import { readPreferences, writePreferences } from './preferences'
 import { sketchSettings, validSketchSize, validShortcut, type SketchSettings } from '../core/writing-notebooks/sketch'
 import { whenSenderGone } from './senders'
+import { resolveWritingTreePath } from './writing-notebook-tree'
 
 export function registerWritingNotebookIpc(): void {
   registerWritingWindowIpc()
@@ -21,6 +22,10 @@ export function registerWritingNotebookIpc(): void {
     association: notebooks.resolveNotebookAssociation, get: notebooks.getWritingNotebook, page: notebooks.getWritingPage,
     update: notebooks.updateWritingNotebook, save: notebooks.saveWritingPage, addPage: notebooks.addWritingPage,
     renamePage: notebooks.renameWritingPage, reorder: notebooks.reorderWritingPages, deletePage: notebooks.deleteWritingPage,
+    createFolder: notebooks.createWritingFolder, deleteFolder: notebooks.deleteWritingFolder, deleteFile: notebooks.deleteWritingFile,
+    move: notebooks.moveWritingEntry,
+    // Reveal resolves the caller's relative path inside the notebook tree in main; '' is the tree root.
+    reveal: (id: string, path: string) => shell.showItemInFolder(resolveWritingTreePath(id, path)),
     delete: notebooks.deleteWritingNotebook, open: openWritingNotebook
   }
   for (const [name, handler] of Object.entries(handlers)) ipcMain.handle(`writing:${name}`, (event, ...args: unknown[]) => {
@@ -60,6 +65,17 @@ export function registerWritingNotebookIpc(): void {
       const directory = join(notebooks.writingNotebookDirectory(id), 'assets'); mkdirSync(directory, { recursive: true })
       const name = `${randomUUID()}.${extension}`; writeFileSync(join(directory, name), bytes, { flag: 'wx' }); return `assets/${name}`
     } finally { off() }
+  })
+  // The native picker runs in main; the renderer only sees the chosen path, and
+  // create re-validates it. A user switch during the dialog invalidates the pick.
+  ipcMain.handle('writing:pickFolder', async event => {
+    const owner = requireUser(); assertNotebookWindow(event.sender)
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = { title: 'Choose a notebook folder', buttonLabel: 'Choose', properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> }
+    const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+    if (requireUser() !== owner) throw new Error('The selected user changed.')
+    if (picked.canceled || !picked.filePaths[0]) return null
+    return picked.filePaths[0]
   })
   const chatHandlers = {
     list: chat.listWritingNotebookChats, get: chat.getWritingNotebookChat, create: chat.createWritingNotebookChat, remove: chat.deleteWritingNotebookChat,

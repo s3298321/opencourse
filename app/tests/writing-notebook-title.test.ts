@@ -17,6 +17,7 @@ const contextReply = vi.fn()
 let root: Root, container: HTMLDivElement, notebook: WritingNotebook
 let pages: Record<string, WritingNotebookPage>, flushRequest: (request: string) => void
 const rename = vi.fn(), flushed = vi.fn(), deletePage = vi.fn(), remove = vi.fn()
+const syncTree = () => { notebook.tree = notebook.pages.map(page => ({ kind: 'page' as const, id: page.id, title: page.title, path: `${page.id}.json` })) }
 const title = () => container.querySelector<HTMLInputElement>('[aria-label="Page title"]')!
 const bodyEditor = () => EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!
 const changeBody = (text: string) => {
@@ -36,24 +37,27 @@ beforeEach(async () => {
   Element.prototype.getAnimations = () => []
   rename.mockReset(); flushed.mockReset(); deletePage.mockReset(); remove.mockReset()
   notebook = { id: 'notebook', version: 1, title: 'Fixed notebook', pages: [{ id: 'one', title: 'First page' }, { id: 'two', title: 'Second page' }], selectedPageId: 'one', textScale: 1, chatOpen: false, createdAt: '', updatedAt: '', lastAccessedAt: '' }
+  syncTree()
   pages = Object.fromEntries(notebook.pages.map(page => [page.id, { ...page, markdown: 'Body', revision: 0, updatedAt: '' }]))
   pages.two!.markdown = ''
   rename.mockImplementation(async (_id: string, pageId: string, name: string) => {
     notebook.pages.find(page => page.id === pageId)!.title = name
     pages[pageId]!.title = name
+    syncTree()
     return structuredClone(notebook)
   })
   deletePage.mockImplementation(async (_id: string, pageId: string) => {
     notebook.pages = notebook.pages.filter(page => page.id !== pageId)
     delete pages[pageId]
     if (notebook.selectedPageId === pageId) notebook.selectedPageId = notebook.pages[0]!.id
+    syncTree()
     return structuredClone(notebook)
   })
   Object.defineProperty(window, 'opencourse', { configurable: true, value: { getPomodoroState: async () => ({ revision: 0, cycle: { phase: 'idle' } }), getPomodoroSettings: async () => ({ studyMinutes: 40, breakMinutes: 5 }), onPomodoroChanged: () => () => {}, onCoachContextRequest: (handler: typeof contextRequest) => { contextRequest = handler; return () => {} }, replyCoachContext: contextReply, writing: {
-    get: async () => structuredClone(notebook), page: async (_id: string, pageId: string) => structuredClone(pages[pageId]),
-    update: async (_id: string, patch: Partial<WritingNotebook>) => { Object.assign(notebook, patch); return structuredClone(notebook) },
+    get: async () => { syncTree(); return structuredClone(notebook) }, page: async (_id: string, pageId: string) => structuredClone(pages[pageId]),
+    update: async (_id: string, patch: Partial<WritingNotebook>) => { Object.assign(notebook, patch); syncTree(); return structuredClone(notebook) },
     renamePage: rename, deletePage, remove, chat: {}, ready: () => {}, flushed,
-    onSelectPage: () => () => {}, onFlush: (callback: typeof flushRequest) => { flushRequest = callback; return () => {} }, onSave: () => () => {}, onResume: () => () => {},
+    onSelectPage: () => () => {}, onFlush: (callback: typeof flushRequest) => { flushRequest = callback; return () => {} }, onSave: () => () => {}, onResume: () => () => {}, onChanged: () => () => {},
   } } })
   container = document.body.appendChild(document.createElement('div')); root = createRoot(container)
   await act(async () => { root.render(h(NotebookWindow, { id: 'notebook' })) })
@@ -122,10 +126,11 @@ it('deletes the right-clicked page only after confirmation and protects the fina
   expect(lastPageDelete.disabled).toBe(true)
   expect(lastPageDelete.textContent).toContain('Keep at least one page')
 })
-it('puts notebook deletion below New page and dismisses the context menu outside', async () => {
+it('puts notebook deletion below the create buttons and dismisses the context menu outside', async () => {
   expect(container.querySelector('[aria-label="Notebook actions"]')).toBeNull()
   const button = container.querySelector('.writing-delete-notebook') as HTMLButtonElement
-  expect(button.previousElementSibling?.classList.contains('writing-new-page')).toBe(true)
+  expect(button.previousElementSibling?.classList.contains('writing-new-folder')).toBe(true)
+  expect(button.previousElementSibling?.previousElementSibling?.classList.contains('writing-new-page')).toBe(true)
   await act(async () => { container.querySelector('.writing-page-link')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 120 })) })
   await act(async () => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
   expect(document.querySelector('[role="menu"]')).toBeNull()

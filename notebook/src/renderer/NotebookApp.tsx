@@ -112,6 +112,6 @@ function EmptyNotebook({ user, navigate, creating, error, onCreate, onClose, onC
         </div>
       </div>
     </div>
-    {creating && <TitleDialog heading="New notebook" submitLabel="Create" onClose={onClose} onSubmit={async title => { const notebook = await window.opencourse.writing.create(title); onCreated(notebook.id) }} />}
+    {creating && <TitleDialog heading="New notebook" submitLabel="Create" pickFolder={() => window.opencourse.writing.pickFolder()} onClose={onClose} onSubmit={async (title, folder) => { const notebook = await window.opencourse.writing.create(title, undefined, folder); onCreated(notebook.id) }} />}
   </div>
 }

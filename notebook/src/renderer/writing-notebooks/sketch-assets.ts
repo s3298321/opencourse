@@ -1,4 +1,4 @@
-import { darkSketchColors, sketchAssetPattern, type Sketch, type SketchColors } from '@core/writing-notebooks/sketch'
+import { darkSketchColors, sketchReferences, type Sketch, type SketchColors } from '@core/writing-notebooks/sketch'
 
 export function currentSketchColors(): SketchColors {
   const css = getComputedStyle(document.documentElement)
@@ -50,7 +50,6 @@ export class SketchAssets {
   }
   async flush(markdown: string): Promise<void> {
     if (!this.drafts.size) return
-    const refs = new Set(markdown.match(new RegExp(sketchAssetPattern, 'g')))
-    await Promise.all([...refs].map(asset => this.persist(asset)))
+    await Promise.all([...sketchReferences(markdown)].map(asset => this.persist(asset)))
   }
 }

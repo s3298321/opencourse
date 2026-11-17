@@ -1,8 +1,9 @@
 /** Isolated Electron smoke: real windows, native typing, and persisted notebook files. */
 import { requireUser } from './users'
 import { BrowserWindow } from 'electron'
-import { writeFileSync } from 'node:fs'
-import { getWritingNotebook, getWritingPage, listWritingNotebooks, saveWritingPage, createWritingNotebook, updateWritingNotebook } from './writing-notebooks'
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { getWritingNotebook, getWritingPage, listWritingNotebooks, saveWritingPage, createWritingNotebook, updateWritingNotebook, deleteWritingNotebook, writingNotebookDirectory } from './writing-notebooks'
 import { openWritingNotebook, closeWritingWindows, notebookWindowIdentity } from './writing-notebook-windows'
 import { join } from 'node:path'
 import { specResourcesDir } from './paths'
@@ -59,6 +60,67 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     if (!page.markdown.includes('**bold**')) throw new Error('Markdown source was not retained')
     writeFileSync('/tmp/opencourse-writing-editor.png', (await notebookWindow.webContents.capturePage()).toPNG())
     return 'Formatted editor retains original Markdown and restores pages'
+  })
+  await run('pages organize into folders: create, select, drag, context menus, foreign files, delete', async () => {
+    const dir = writingNotebookDirectory(id)
+    // A new folder from the bottom button, named inline.
+    await js(notebookWindow, `document.querySelector('.writing-new-folder').click(); (await wait('input[aria-label="New folder name"]')).focus();`)
+    await notebookWindow.webContents.insertText('Research')
+    await js(notebookWindow, `document.querySelector('input[aria-label="New folder name"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      await until(()=>document.querySelector('.writing-tree-row.folder'),'Folder row missing');`)
+    // Clicking the folder selects it (the create buttons follow) and wraps it; the folder icon unwraps.
+    await js(notebookWindow, `const folder=document.querySelector('.writing-tree-row.folder');
+      folder.querySelector('.menu-trigger').click(); await pause(200);
+      assert(folder.classList.contains('selected'),'Folder did not select');
+      folder.querySelector('.writing-tree-toggle').click(); await pause(200);
+      document.querySelector('.writing-new-page').click(); await until(()=>document.querySelectorAll('.writing-page-link').length===3,'Page in folder missing');`)
+    let notebook = getWritingNotebook(id)
+    let research = notebook.tree?.find(node => node.kind === 'folder' && node.name === 'Research')
+    if (!research || research.kind !== 'folder' || !research.children.some(node => node.kind === 'page' && node.id === notebook.selectedPageId)) throw new Error('New page was not created in the selected folder')
+    // The folder context menu offers creation, reveal and delete.
+    await js(notebookWindow, `const folder=document.querySelector('.writing-tree-row.folder');
+      folder.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:120}));
+      const panel=await wait('.menu-panel');
+      const labels=[...panel.querySelectorAll('.menu-item')].map(b=>b.textContent);
+      assert(labels.includes('New page here')&&labels.includes('New folder here')&&labels.includes('Reveal in Finder')&&labels.includes('Delete folder'),'Folder context menu incomplete: '+labels);
+      panel.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`)
+    // Drag a root page into the folder.
+    await js(notebookWindow, `const rows=[...document.querySelectorAll('.writing-tree-row.page')];
+      const source=rows[rows.length-1].querySelector('button'), dt=new DataTransfer();
+      source.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:dt}));
+      const folder=document.querySelector('.writing-tree-row.folder');
+      folder.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:dt}));
+      folder.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt}));`)
+    await new Promise(resolve => setTimeout(resolve, 600))
+    notebook = getWritingNotebook(id)
+    research = notebook.tree?.find(node => node.kind === 'folder' && node.name === 'Research')
+    if (!research || research.kind !== 'folder' || research.children.filter(node => node.kind === 'page').length !== 2) throw new Error('Dragged page did not land in the folder')
+    // A foreign file dropped in by Finder is visible, inert on click, deletable from its menu.
+    writeFileSync(join(dir, 'pages', 'Research', 'data.csv'), 'a,b')
+    await js(notebookWindow, `const file=await wait('.writing-tree-row.file');
+      assert(file.textContent.includes('data.csv'),'Foreign file not visible');
+      file.querySelector('.menu-trigger').click(); await pause(200);`)
+    if (getWritingNotebook(id).selectedPageId !== notebook.selectedPageId) throw new Error('Clicking a foreign file opened something')
+    await js(notebookWindow, `const file=document.querySelector('.writing-tree-row.file');
+      file.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:160}));
+      const panel=await wait('.menu-panel');
+      const labels=[...panel.querySelectorAll('.menu-item')].map(b=>b.textContent);
+      assert(labels.includes('Delete file')&&labels.includes('Reveal in Finder'),'File context menu incomplete: '+labels);
+      [...panel.querySelectorAll('.menu-item')].find(b=>b.textContent.includes('Delete file')).click();
+      (await wait('.dialog-confirm')).click();`)
+    await new Promise(resolve => setTimeout(resolve, 400))
+    if (existsSync(join(dir, 'pages', 'Research', 'data.csv'))) throw new Error('Foreign file was not deleted')
+    // Deleting the folder removes its pages, keeps the last root page and its content.
+    await js(notebookWindow, `const folder=document.querySelector('.writing-tree-row.folder');
+      folder.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:120}));
+      const panel=await wait('.menu-panel');
+      [...panel.querySelectorAll('.menu-item')].find(b=>b.textContent.includes('Delete folder')).click();
+      (await wait('.dialog-confirm')).click();
+      await until(()=>document.querySelectorAll('.writing-page-link').length===1,'Folder delete did not remove its pages');
+      assert(document.querySelector('.cm-content').textContent.includes('Heading'),'Remaining page lost its content');`)
+    notebook = getWritingNotebook(id)
+    if (notebook.pages.length !== 1 || existsSync(join(dir, 'pages', 'Research'))) throw new Error('Folder deletion left pages or files behind')
+    return 'Inline folder creation, selection-aware buttons, drag move, context menus, foreign file lifecycle, folder delete'
   })
   await run('chat toggle reuses the slide animation and quote survives composer focus', async () => {
     await js(notebookWindow, `const content=await wait('.cm-content'); content.focus();`)
@@ -134,6 +196,23 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     const second = BrowserWindow.getAllWindows().find(w => notebookWindowIdentity(w.webContents)?.notebookId === other.id)!
     await js(second, `await wait('.cm-content')`)
     return 'One window per notebook, multiple notebooks supported'
+  })
+  await run('custom folder notebooks live outside the library and delete without touching user files', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'opencourse-writing-folder-'))
+    writeFileSync(join(folder, 'user-file.txt'), 'keep me')
+    const notebook = createWritingNotebook('Custom folder', undefined, folder)
+    if (writingNotebookDirectory(notebook.id) !== realpathSync(folder)) throw new Error('Notebook did not adopt the chosen folder')
+    if (!listWritingNotebooks().some(n => n.id === notebook.id)) throw new Error('Custom folder notebook missing from the library')
+    await openWritingNotebook(notebook.id)
+    const custom = BrowserWindow.getAllWindows().find(w => notebookWindowIdentity(w.webContents)?.notebookId === notebook.id)!
+    await js(custom, `await wait('.cm-content')`)
+    const page = getWritingPage(notebook.id, notebook.selectedPageId)
+    saveWritingPage(notebook.id, page.id, page.revision, 'Saved in a custom folder')
+    if (!existsSync(join(folder, 'pages', `${page.id}.json`))) throw new Error('Page file missing from the chosen folder')
+    deleteWritingNotebook(notebook.id)
+    if (!existsSync(join(folder, 'user-file.txt')) || existsSync(join(folder, 'notebook.json'))) throw new Error('Custom folder deletion touched user files or left notebook files')
+    rmSync(folder, { recursive: true, force: true })
+    return 'Chosen folder adopted, page saved there, deletion kept unrelated files'
   })
   await run('conflicting saves block close until explicitly resolved', async () => {
     const notebook = getWritingNotebook(id), page = getWritingPage(id, notebook.selectedPageId)

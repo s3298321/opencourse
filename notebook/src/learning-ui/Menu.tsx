@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { JSX, ReactNode } from 'react'
+import type { DragEvent, JSX, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface MenuItem {
@@ -48,6 +48,9 @@ export default function Menu({
   resetKey,
   triggerMode = 'click',
   closeOnSelect = true,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
   onClick,
   'aria-current': ariaCurrent,
   items
@@ -71,6 +74,10 @@ export default function Menu({
   /** Context menus keep the trigger's ordinary click action. */
   triggerMode?: 'click' | 'contextmenu'
   closeOnSelect?: boolean
+  /** The trigger can act as a drag source (the notebook page tree moves rows). */
+  draggable?: boolean
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void
+  onDragEnd?: (event: DragEvent<HTMLButtonElement>) => void
   onClick?: () => void
   'aria-current'?: 'page'
   items: MenuItem[]
@@ -233,6 +240,9 @@ export default function Menu({
         aria-current={ariaCurrent}
         aria-haspopup="menu"
         aria-expanded={open}
+        draggable={draggable || undefined}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         onClick={() => { if (triggerMode === 'contextmenu') { close(false); onClick?.() } else if (open) close(); else show() }}
         onContextMenu={event => {
           if (triggerMode !== 'contextmenu' || disabled) return

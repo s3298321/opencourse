@@ -1,6 +1,6 @@
 {
   "name": "opencourse-notebook",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCourse Notebook — standalone notebooks that share local data with OpenCourse",
   "main": "./out/main/index.js",
   "author": "OpenCourse",

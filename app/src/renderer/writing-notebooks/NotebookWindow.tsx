@@ -15,6 +15,8 @@ import { useConversationPanel, type ChatTransport } from '../sidechat/useChat'
 import { usePreviewAsk, PreviewAskOffer } from '../sidechat/usePreviewAsk'
 import type { AskOffer } from '../ask-context'
 import MarkdownEditor, { type MarkdownEditorHandle } from './MarkdownEditor'
+import PageTree, { type PageTreeActions } from './PageTree'
+import { findPageNode, pagesUnder, retitlePageNode, treeParent } from '@core/writing-notebooks/tree'
 import { TitleBarChrome } from '../components/TitleBar'
 import { useActiveTheme } from '../theme/ThemeProvider'
 const api = () => window.opencourse.writing
@@ -25,6 +27,7 @@ function NotebookContent({ id }: { id: string }) {
   const [offer, setOffer] = useState<AskOffer | null>(null), [quote, setQuote] = useState<ChatQuote | null>(null)
   const [confirmation, setConfirmation] = useState<{ request: ConfirmRequest; resolve: (yes: boolean) => void } | null>(null)
   const [conflict, setConflict] = useState<WritingNotebookPage | null>(null)
+  const [selectedFolder, setSelectedFolder] = useState(''), [draftFolder, setDraftFolder] = useState<{ parent: string } | null>(null)
   const editor = useRef<MarkdownEditorHandle>(null), current = useRef<WritingNotebookPage | null>(null), saved = useRef(''), timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTitle = useRef(''), titleBeforeEdit = useRef('')
   useCoachContextBridge()
@@ -53,7 +56,11 @@ function NotebookContent({ id }: { id: string }) {
         if (title !== savedTitle.current) {
           await api().renamePage(id, snapshot.id, title)
           savedTitle.current = title
-          setNotebook(notebook => notebook ? { ...notebook, pages: notebook.pages.map(page => page.id === snapshot.id ? { ...page, title: current.current?.id === snapshot.id ? current.current.title.trim() || 'Untitled page' : title } : page) } : notebook)
+          setNotebook(notebook => {
+            if (!notebook) return notebook
+            const nextTitle = current.current?.id === snapshot.id ? current.current.title.trim() || 'Untitled page' : title
+            return { ...notebook, pages: notebook.pages.map(page => page.id === snapshot.id ? { ...page, title: nextTitle } : page), tree: retitlePageNode(notebook.tree ?? [], snapshot.id, nextTitle) }
+          })
         }
         if (snapshot.markdown === saved.current) continue
         await editor.current?.flushSketches(snapshot.markdown)
@@ -72,13 +79,21 @@ function NotebookContent({ id }: { id: string }) {
     setOffer(null); setQuote(value => value?.from === 'answer' ? value : null); setStatus('Saved'); setError('')
   }, [id])
   useEffect(() => { void api().get(id).then(value => load(value)).catch(e => setError(e.message)); return () => { if (timer.current) clearTimeout(timer.current) } }, [id, load])
+  // Finder edits and other windows reach this one through the same changed event.
+  useEffect(() => api().onChanged(changedId => {
+    if (changedId !== id) return
+    void api().get(id).then(next => {
+      setNotebook(next)
+      if (current.current && !next.pages.some(p => p.id === current.current!.id)) void load(next)
+    }).catch(() => {})
+  }), [id, load])
   const change = useCallback((markdown: string) => { if (!current.current) return; current.current.markdown = markdown; setStatus('Saving…'); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => { void flush().catch(() => {}) }, 500) }, [flush])
   const changeTitle = (title: string) => {
     const value = current.current
     if (!value) return
     value.title = title
     setPage(page => page?.id === value.id ? { ...page, title } : page)
-    setNotebook(notebook => notebook ? { ...notebook, pages: notebook.pages.map(page => page.id === value.id ? { ...page, title: title.trim() || 'Untitled page' } : page) } : notebook)
+    setNotebook(notebook => notebook ? { ...notebook, pages: notebook.pages.map(page => page.id === value.id ? { ...page, title: title.trim() || 'Untitled page' } : page), tree: retitlePageNode(notebook.tree ?? [], value.id, title.trim() || 'Untitled page') } : notebook)
     setStatus('Saving…')
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => { void flush().catch(() => {}) }, 500)
@@ -124,6 +139,48 @@ function NotebookContent({ id }: { id: string }) {
       })
     })
   }
+  const commitFolder = (name: string) => {
+    const parent = draftFolder?.parent ?? ''
+    setDraftFolder(null)
+    action(async () => { setNotebook(await api().createFolder(id, parent, name)) })
+  }
+  const treeActions: PageTreeActions = {
+    openPage: pageId => { void selectPage(pageId) },
+    selectFolder: setSelectedFolder,
+    newPage: folder => action(async () => { await load(await api().addPage(id, undefined, folder)) }),
+    newFolder: parent => { setSelectedFolder(parent); setDraftFolder({ parent }) },
+    deletePage,
+    deleteFolder: (path, name, pageCount) => {
+      const pages = pageCount ? ` with ${pageCount} page${pageCount === 1 ? '' : 's'} inside it` : ''
+      void confirm('Delete this folder?', `“${name}” will be deleted${pages}. Any other files inside it will be deleted too. Existing conversations will be kept.`).then(yes => {
+        if (yes) action(async () => {
+          const next = await api().deleteFolder(id, path)
+          if (current.current && !next.pages.some(p => p.id === current.current!.id)) await load(next)
+          else setNotebook(next)
+        })
+      })
+    },
+    deleteFile: (path, name) => {
+      void confirm('Delete this file?', `“${name}” will be deleted from the notebook.`).then(yes => {
+        if (yes) action(async () => { setNotebook(await api().deleteFile(id, path)) })
+      })
+    },
+    reveal: path => { void api().reveal(id, path).catch(e => setError(e.message)) },
+    move: (source, targetFolder) => action(async () => { setNotebook(await api().move(id, source, targetFolder)) }),
+    dropPage: (pageId, targetFolder, anchor) => action(async () => {
+      if (!notebook) return
+      const node = findPageNode(notebook.tree ?? [], pageId)
+      let next = notebook
+      if (node && treeParent(node.path) !== targetFolder) next = await api().move(id, node.path, targetFolder)
+      const ids = next.pages.map(p => p.id).filter(value => value !== pageId)
+      if (anchor) { const at = ids.indexOf(anchor.pageId); ids.splice(at < 0 ? ids.length : at + (anchor.after ? 1 : 0), 0, pageId) }
+      else {
+        const last = pagesUnder(next.tree ?? [], targetFolder).filter(p => p.id !== pageId).at(-1)
+        if (last) ids.splice(ids.indexOf(last.id) + 1, 0, pageId); else ids.push(pageId)
+      }
+      setNotebook(await api().reorder(id, ids))
+    })
+  }
   const source = (ref: ReadingSource) => { if (ref.kind === 'writing-notebook' && ref.notebookId === id) void selectPage(ref.pageId); else void api().source(ref).catch(e => setError(e.message)) }
   const resetConflict = (keep: boolean) => {
     if (!conflict || !current.current) return
@@ -132,18 +189,26 @@ function NotebookContent({ id }: { id: string }) {
     else void flush().catch(() => {})
   }
   if (!notebook || !page) return <div className="empty">{error || 'Opening notebook…'}</div>
-  const index = notebook.pages.findIndex(p => p.id === page.id)
-  const reorder = (direction: number) => action(async () => { const ids = notebook.pages.map(p => p.id); [ids[index], ids[index + direction]] = [ids[index + direction]!, ids[index]!]; setNotebook(await api().reorder(id, ids)) })
+  // Move up/down stay inside the page's own folder.
+  const folderOf = (pageId: string) => treeParent(findPageNode(notebook.tree ?? [], pageId)?.path ?? '')
+  const siblings = notebook.pages.filter(p => folderOf(p.id) === folderOf(page.id))
+  const index = siblings.findIndex(p => p.id === page.id)
+  const reorder = (direction: number) => action(async () => {
+    const ids = notebook.pages.map(p => p.id)
+    const a = ids.indexOf(siblings[index]!.id), b = ids.indexOf(siblings[index + direction]!.id)
+    ;[ids[a], ids[b]] = [ids[b]!, ids[a]!]
+    setNotebook(await api().reorder(id, ids))
+  })
   return <div className="app writing-window" data-default-theme={theme.id === null ? '' : undefined} style={{ '--reading-scale': notebook.textScale } as CSSProperties}>
     <TitleBarChrome title={notebook.title} showPomodoro actions={<ChatToggle open={notebook.chatOpen} onClick={toggleChat} subject="notebook" />} />
     <div className="body lesson-body writing-body">
       <aside className="sidebar writing-sidebar">
         {notebook.association && <p className="writing-association">{notebook.association.title}{notebook.associationAvailable === false && <span> · Source unavailable</span>}</p>}
-        <nav aria-label="Notebook pages">{notebook.pages.map(p => <Menu key={p.id} label={<span>{p.title}</span>} triggerMode="contextmenu" className={`sidebar-notebook-link writing-page-link${p.id === page.id ? ' current' : ''}`} aria-current={p.id === page.id ? 'page' : undefined} disabled={busy} onClick={() => void selectPage(p.id)} resetKey={page.id} items={[
-          { id: 'delete', label: 'Delete page', danger: true, disabled: notebook.pages.length === 1, hint: notebook.pages.length === 1 ? 'Keep at least one page' : undefined, onSelect: () => deletePage(p.id, p.title) }
-        ]} />)}</nav>
-        <button className="writing-new-page action-button secondary" disabled={busy} onClick={() => action(async () => { await load(await api().addPage(id)) })}>＋ New page</button>
-        <ActionButton icon="trash" className="writing-delete-notebook ghost" disabled={busy} onClick={() => { void confirm('Delete this notebook?', 'Its pages, images, and conversations will be deleted.').then(yes => { if (yes) action(async () => { await api().remove(id) }) }) }}>Delete notebook</ActionButton>
+        <PageTree notebook={notebook} currentPageId={page.id} selectedFolder={selectedFolder} busy={busy}
+          draftFolder={draftFolder} onDraftCommit={commitFolder} onDraftCancel={() => setDraftFolder(null)} actions={treeActions} />
+        <button className="writing-new-page action-button secondary" disabled={busy} onClick={() => treeActions.newPage(selectedFolder)}>＋ New page</button>
+        <button className="writing-new-folder action-button secondary" disabled={busy} onClick={() => treeActions.newFolder(selectedFolder)}>＋ New folder</button>
+        <ActionButton icon="trash" className="writing-delete-notebook ghost" disabled={busy} onClick={() => { void confirm('Delete this notebook?', 'Its pages, files, images, and conversations will be deleted.').then(yes => { if (yes) action(async () => { await api().remove(id) }) }) }}>Delete notebook</ActionButton>
       </aside>
       <main className="writing-page" data-layout={notebook.textLayout ?? 'wide'} inert={busy}>
         <div className="writing-page-heading"><h1><input className="writing-page-title" type="text" aria-label="Page title" placeholder="Untitled page" value={page.title} maxLength={200}
@@ -159,7 +224,7 @@ function NotebookContent({ id }: { id: string }) {
           { id: 'line-numbers', label: 'Line numbers', checked: notebook.showLineNumbers ?? false, checkType: 'checkbox', hint: notebook.showLineNumbers ? 'On' : 'Off', onSelect: () => { void update({ showLineNumbers: !notebook.showLineNumbers }).catch(e => setError(e.message)) } },
           { id: 'wide', label: 'Wide text', checked: notebook.textLayout !== 'thin', checkType: 'checkbox', hint: notebook.textLayout !== 'thin' ? 'On' : 'Off', onSelect: () => { void update({ textLayout: notebook.textLayout !== 'thin' ? 'thin' : 'wide' }).catch(e => setError(e.message)) } },
           ...(index > 0 ? [{ id: 'up', label: 'Move up', onSelect: () => reorder(-1) }] : []),
-          ...(index < notebook.pages.length - 1 ? [{ id: 'down', label: 'Move down', onSelect: () => reorder(1) }] : []),
+          ...(index < siblings.length - 1 ? [{ id: 'down', label: 'Move down', onSelect: () => reorder(1) }] : []),
           ...(notebook.pages.length > 1 ? [{ id: 'delete', label: 'Delete page', danger: true, onSelect: () => deletePage(page.id, page.title) }] : [])
         ]} /></div>
         {error && <div className="writing-error" role="alert"><span>{error}</span>{!conflict && <button onClick={() => void flush().catch(() => {})}>Retry save</button>}</div>}

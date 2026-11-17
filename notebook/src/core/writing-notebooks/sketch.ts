@@ -28,6 +28,11 @@ export const sketchAssetPattern = 'assets/' + uuid + '\\.sketch\\.svg'
 export const sketchAsset = new RegExp('^' + sketchAssetPattern + '$')
 export const sketchLine = new RegExp('^!\\[[^\\]\\n]*\\]\\((' + sketchAssetPattern + ')\\)$')
 
+/** Every sketch reference in a Markdown text, as `assets/<uuid>.sketch.svg` paths. */
+export function sketchReferences(markdown: string): Set<string> {
+  return new Set(markdown.match(new RegExp(sketchAssetPattern, 'g')) ?? [])
+}
+
 /** Reconstruct only supported numeric geometry before generating any markup. */
 export function validateSketch(value: unknown): Sketch {
   const invalid = () => { throw new Error('Invalid or oversized notebook sketch.') }

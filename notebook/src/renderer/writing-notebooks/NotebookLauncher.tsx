@@ -74,6 +74,6 @@ export default function NotebookLauncher({ route, userId }: { route: Route; user
         {error && <p className="error" role="alert">{error}</p>}{loading && <p className="meta">Searching…</p>}
         <div className="writing-launcher-results">{query.trim() ? hits.map(row) : <>{associated.length > 0 && <><h3>For {association?.title}</h3><div className="writing-associated">{associated.map(row)}</div></>}<h3>Recent</h3>{recent.map(row)}</>}{!loading && !hits.length && <p className="meta">{query.trim() ? 'No notebooks found.' : 'Your notebooks will appear here.'}</p>}</div>
     </FloatingSurface>
-    {creating?.initial !== undefined && <TitleDialog heading="New notebook" initial={creating.initial} submitLabel="Create" detail={creating.association ? `Associated with ${creating.association.title}` : undefined} onClose={() => setCreating(null)} onSubmit={async title => { const notebook = await window.opencourse.writing.create(title, creating.association); await window.opencourse.writing.open(notebook.id) }} />}
+    {creating?.initial !== undefined && <TitleDialog heading="New notebook" initial={creating.initial} submitLabel="Create" detail={creating.association ? `Associated with ${creating.association.title}` : undefined} pickFolder={() => window.opencourse.writing.pickFolder()} onClose={() => setCreating(null)} onSubmit={async (title, folder) => { const notebook = await window.opencourse.writing.create(title, creating.association, folder); await window.opencourse.writing.open(notebook.id) }} />}
   </>
 }

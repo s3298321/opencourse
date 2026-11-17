@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { isStandaloneNotebook } from '../core/writing-notebooks/standalone'
 import { currentUserId, requireUser } from './users'
 import { getWritingNotebook, touchWritingNotebook, updateWritingNotebook, writingNotebookEvents } from './writing-notebooks'
+import { pruneNotebookSketches } from './writing-notebook-sketch'
 import type { ReadingSource } from '../core/documents/types'
 interface Entry { window: BrowserWindow; owner: string; notebookId: string; closing: boolean; ready: boolean; preparing?: boolean; page?: string; flushes: string[] }
 const windows = new Map<number, Entry>()
@@ -13,8 +14,11 @@ const mainMessages: { channel: string; payload: unknown; owner: string | null }[
 const pending = new Map<string, { sender: number; resolve: (ok: boolean) => void }>()
 export function configureNotebookWindows(create: typeof factory): void { factory = create }
 function releaseWindow(id: number): void {
+  const entry = windows.get(id)
   windows.delete(id)
   for (const [, request] of pending) if (request.sender === id) request.resolve(true)
+  // The editor and its undo history are gone; unreferenced sketch versions can go too.
+  if (entry && entry.owner === currentUserId()) { try { pruneNotebookSketches(entry.notebookId) } catch { /* Deleted notebook; cleanup is best-effort. */ } }
 }
 export function registerMainWindow(window: BrowserWindow): void {
   mainWindow = window
@@ -68,6 +72,7 @@ export async function openWritingNotebook(id: string, pageId?: string): Promise<
   if (!isStandaloneNotebook(notebook)) throw new Error('This notebook is linked to OpenCourse content and stays in OpenCourse.')
   if (pageId && !notebook.pages.some(p => p.id === pageId)) throw new Error('This notebook page no longer exists.')
   if (pageId) updateWritingNotebook(id, { selectedPageId: pageId })
+  try { pruneNotebookSketches(id) } catch { /* Cleanup is best-effort. */ }
   touchWritingNotebook(id)
   const window = focusMainWindow()
   window.webContents.send('writing:openNotebook', id, pageId)
@@ -83,7 +88,10 @@ export function registerWritingWindowIpc(): void {
     const owner = currentUserId()
     if (!owner || typeof notebookId !== 'string') return
     if (mainWindow?.webContents.id === event.sender.id) {
-      const entry = windows.get(event.sender.id) ?? { window: mainWindow, owner, notebookId, closing: false, ready: false, flushes: [] }
+      const previous = windows.get(event.sender.id)
+      // Switching notebooks in place leaves the old editor behind; clean its sketches.
+      if (previous && previous.owner === owner && previous.notebookId !== notebookId) { try { pruneNotebookSketches(previous.notebookId) } catch { /* Cleanup is best-effort. */ } }
+      const entry = previous ?? { window: mainWindow, owner, notebookId, closing: false, ready: false, flushes: [] }
       entry.owner = owner
       entry.notebookId = notebookId
       entry.ready = true

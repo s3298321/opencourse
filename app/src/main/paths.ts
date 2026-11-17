@@ -170,3 +170,6 @@ export function courseProjectStateDir(id: string, courseId: string): string {
 
 /** Personal Markdown notebooks, independent of course Python environments. */
 export function userWritingNotebooksDir(id: string): string { return join(userDir(id), 'writing-notebooks') }
+
+/** Registry of notebooks the user placed in a folder of their own choosing. */
+export function userWritingNotebookLocationsFile(id: string): string { return join(userDir(id), 'writing-notebook-locations.json') }

@@ -9,7 +9,15 @@ export interface WritingNotebook extends WritingNotebookSummary {
   version: 1; pages: { id: string; title: string }[]; selectedPageId: string
   textScale: number; chatOpen: boolean; bounds?: { x: number; y: number; width: number; height: number }
   showLineNumbers?: boolean; textLayout?: 'wide' | 'thin'
+  /** Derived from the on-disk folder tree on every read; never written to notebook.json. */
+  tree?: WritingTreeNode[]
 }
+/** A node of the notebook's page tree. Folders and foreign files are identified by their
+ *  relative path inside the tree root; pages keep their UUID identity wherever they sit. */
+export type WritingTreeNode =
+  | { kind: 'folder'; name: string; path: string; children: WritingTreeNode[] }
+  | { kind: 'page'; id: string; title: string; path: string }
+  | { kind: 'file'; name: string; path: string }
 export interface WritingNotebookHit { notebook: WritingNotebookSummary; pageId?: string; pageTitle?: string; excerpt?: string; rank: number }
 export type WritingNotebookSaveResult = { ok: true; page: WritingNotebookPage } | { ok: false; page: WritingNotebookPage }
 export interface WritingNotebookChatSummary extends Omit<ChatSummary, 'courseId' | 'startedIn'> { notebookId: string; startedOn: string }

@@ -115,11 +115,18 @@ OpenCourse Notebook updates itself from **Settings ▸ Updates**, the same way
 OpenCourse does: checks are off until you turn them on, and it installs only
 its own `notebook-v` releases.
 
-Each notebook opens in its own window with a page list and a live Markdown
+Each notebook opens in its own window with a page tree and a live Markdown
 editor. Pages save automatically. Paste or drop PNG, JPEG, WebP or GIF images;
-rename and reorder pages from the sidebar. Highlight text and choose **Ask
-about this** to chat about it. The conversation continues across pages, can
-read other pages and linked material, and never edits your notebook.
+rename pages from the sidebar. The tree works like a file browser: create
+folders and subfolders with **＋ New folder**, wrap and unwrap them with the
+chevron, and drag pages, folders and files to move them. Click a folder to
+select it — **＋ New page** and **＋ New folder** create inside the selection.
+Right-click any item for creation, delete and **Reveal in Finder**. On disk the
+tree is a `pages` folder inside the notebook folder; other files you put there
+stay visible (with their extension) and can be moved or deleted, but not
+opened. Highlight text and choose **Ask about this** to chat about it. The
+conversation continues across pages, can read other pages and linked material,
+and never edits your notebook.
 
 Press **⌘E** on a notebook page to insert a sketch. An empty line becomes the
 sketch line. On a line with text, the sketch appears below it. Draw freehand or

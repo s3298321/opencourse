@@ -4,6 +4,7 @@ import { getCourse } from './courses'
 import { getDocument } from './documents'
 import { currentUserId, requireUser } from './users'
 import { getWritingNotebook, touchWritingNotebook, updateWritingNotebook, writingNotebookEvents } from './writing-notebooks'
+import { pruneNotebookSketches } from './writing-notebook-sketch'
 import type { ReadingSource } from '../core/documents/types'
 interface Entry { window: BrowserWindow; owner: string; notebookId: string; closing: boolean; ready: boolean; preparing?: boolean; page?: string; flushes: string[] }
 const windows = new Map<number, Entry>()
@@ -59,6 +60,7 @@ export async function openWritingNotebook(id: string, pageId?: string): Promise<
     return
   }
   if (pageId) updateWritingNotebook(id, { selectedPageId: pageId })
+  try { pruneNotebookSketches(id) } catch { /* Cleanup is best-effort. */ }
   const window = factory(id), entry: Entry = { window, owner, notebookId: id, closing: false, ready: false, flushes: [] }
   windows.set(window.webContents.id, entry)
   window.setTitle(notebook.title)
@@ -85,7 +87,11 @@ export async function openWritingNotebook(id: string, pageId?: string): Promise<
       entry.closing = true; window.close()
     })
   })
-  window.once('closed', () => { for (const [key, value] of windows) if (value === entry) windows.delete(key) })
+  window.once('closed', () => {
+    for (const [key, value] of windows) if (value === entry) windows.delete(key)
+    // The editor and its undo history are gone; unreferenced sketch versions can go too.
+    if (entry.owner === currentUserId()) { try { pruneNotebookSketches(entry.notebookId) } catch { /* Deleted notebook; cleanup is best-effort. */ } }
+  })
   touchWritingNotebook(id)
 }
 export function registerWritingWindowIpc(): void {

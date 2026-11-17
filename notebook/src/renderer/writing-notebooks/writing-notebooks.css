@@ -46,6 +46,13 @@
 .dialog.writing-title-dialog h2 { margin-bottom: 16px; }
 .writing-title-dialog input[type=text] { display: block; width: 100%; min-width: 0; background: var(--card); }
 .writing-title-dialog input::placeholder { color: var(--muted); opacity: 1; }
+.writing-title-dialog .writing-folder-choice { display: flex; align-items: center; gap: 8px; margin-top: 12px; min-width: 0; }
+.writing-title-dialog .writing-folder-choice > .action-button { flex: none; }
+.writing-title-dialog .writing-folder-label { font-size: 13px; color: var(--muted); }
+.writing-title-dialog .writing-folder-path { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.writing-title-dialog .writing-folder-path-text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.writing-title-dialog .writing-folder-clear { flex: none; width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%; background: var(--card); color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+.writing-title-dialog .writing-folder-clear:hover:not(:disabled) { color: var(--fg); background: var(--selected); }
 .writing-title-dialog .actions { margin-top: 16px; }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .dialog-backdrop.writing-dialog-backdrop { backdrop-filter: none; }
@@ -58,7 +65,39 @@
 .writing-notebook-switch-menu .menu-item + .menu-item { margin-top: 6px; }
 .writing-sidebar nav { overflow: auto; flex: 1; }
 .writing-page-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Page tree: folders wrap, unwrap and select; rows drag between folders.
+   Hover is a flat wash of the theme's own text colour, never glass, and the
+   open page keeps a stronger one. A selected folder is state, not a highlight:
+   the create buttons follow it, and clicking the empty pane below the rows
+   clears it back to the root. The nav bleeds into the sidebar's side padding
+   and each row's side borders carry the same tint, so a wash runs edge to edge. */
+.writing-sidebar nav { width: calc(100% + 20px); margin-inline: -10px; padding-inline: 10px; }
+.writing-tree.drop-root { background: var(--chip-bg); }
+.writing-tree-row { --tree-tint: transparent; display: flex; align-items: center; gap: 2px; margin-inline: -10px; border-inline: 10px solid var(--tree-tint); background: var(--tree-tint); background-clip: padding-box; transition: background-color 140ms ease, border-color 140ms ease; }
+.writing-tree-row:hover { --tree-tint: color-mix(in srgb, var(--fg) 7%, transparent); }
+.writing-tree-row.page.current { --tree-tint: color-mix(in srgb, var(--fg) 13%, transparent); }
+.writing-tree-row.drop-target { --tree-tint: var(--chip-bg); box-shadow: inset 0 0 0 1px var(--muted); }
+/* The row owns the wash, so the link inside stays plain in every theme and
+   accessibility variant - Bond and Panda alike, whose tokens colour the mix. */
+.writing-sidebar .writing-tree .menu-trigger:not(:disabled):hover,
+.writing-sidebar .writing-tree .menu-trigger.open,
+.writing-sidebar .writing-tree .sidebar-notebook-link.current { background: none; box-shadow: none; backdrop-filter: none; }
+.writing-tree-toggle { flex: none; display: grid; place-items: center; width: 16px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.writing-tree-toggle svg { width: 16px; height: 16px; }
+.writing-tree-toggle:hover { color: var(--fg); }
+.writing-tree-icon { flex: none; width: 16px; height: 16px; color: var(--muted); }
+.writing-page-link.current .writing-tree-icon { color: var(--fg); }
+/* One text column for folders, pages and files: the folder's 16px toggle plus
+   the row's 2px gap matches an icon inside the label, and every row's type is
+   the same size. */
+.writing-tree .menu-trigger { gap: 2px; }
+.writing-tree .writing-page-link.menu-trigger { font-size: 13px; }
+.writing-tree-label.menu-trigger { flex: 1; min-width: 0; justify-content: flex-start; margin: 0; padding: 0.3rem 0.5rem; color: var(--fg); font-size: 13px; font-weight: 400; text-align: left; }
+.writing-tree-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.writing-file-label span { color: var(--muted); }
+.writing-tree-row.draft input { flex: 1; min-width: 0; height: 26px; padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .writing-new-page { margin-top: 12px; }
+.writing-new-folder { margin-top: 6px; }
 .writing-delete-notebook { margin-top: 6px; }
 .writing-association { padding: 0 8px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .writing-page { --writing-text-width: 630px; flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; background: var(--bg); }
@@ -129,7 +168,7 @@
 .writing-body .lesson-chat-host > .sidechat { min-width: 0; max-width: 100%; }
 @media (max-width: 800px) { .writing-body { --writing-sidebar-width: 165px; } }
 @media (prefers-reduced-motion: reduce) {
-  .writing-launcher, .writing-launcher-panel, .writing-launcher .writing-launcher-toggle, .writing-body .lesson-chat-host { transition: none; }
+  .writing-launcher, .writing-launcher-panel, .writing-launcher .writing-launcher-toggle, .writing-body .lesson-chat-host, .writing-tree-row { transition: none; }
 }
 .writing-page-heading .spacer { flex: 1; }
 .writing-launcher-row { color: var(--fg); }

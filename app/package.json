@@ -1,7 +1,7 @@
 {
   "name": "opencourse",
-  "version": "0.7.4",
-  "description": "OpenCourse \u2014 courses on any subject, on the desktop, with runnable exercises",
+  "version": "0.7.5",
+  "description": "OpenCourse — courses on any subject, on the desktop, with runnable exercises",
   "main": "./out/main/index.js",
   "author": "OpenCourse",
   "license": "MIT",

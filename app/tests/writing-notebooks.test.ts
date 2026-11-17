@@ -1,7 +1,7 @@
 // @vitest-environment node
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 const root = mkdtempSync(join(tmpdir(), 'opencourse-writing-'))
 let directory = root
@@ -74,7 +74,7 @@ describe('personal writing notebooks', () => {
   it('rebuilds stale indexes after an interrupted save and keeps association labels when sources disappear', () => {
     const notebook = notes.createWritingNotebook('Linked', association)
     expect(notebook.association?.title).toBe('Course A')
-    const file = join(notes.writingNotebookDirectory(notebook.id), `${notebook.selectedPageId}.json`)
+    const file = join(notes.writingNotebookDirectory(notebook.id), 'pages', `${notebook.selectedPageId}.json`)
     const page = JSON.parse(readFileSync(file, 'utf8')); page.markdown = 'unindexed recovery'; page.revision++; writeFileSync(file, JSON.stringify(page))
     expect(notes.searchWritingNotebooks('recovery')[0]?.notebook.id).toBe(notebook.id)
     source.available = false
@@ -126,6 +126,88 @@ describe('personal writing notebooks', () => {
     expect(() => notes.getWritingNotebook('../outside')).toThrow('Invalid notebook identity')
     expect(notes.writingNotebookAsset(notebook.id, '../../secret')).toBeNull()
   })
+  it('creates a notebook in a chosen folder and keeps it listed, searchable, and savable', () => {
+    const folder = realpathSync(mkdtempSync(join(root, 'opencourse-custom-')))
+    const notebook = notes.createWritingNotebook('Chosen home', undefined, folder)
+    expect(notes.writingNotebookDirectory(notebook.id)).toBe(folder)
+    expect(existsSync(join(folder, 'notebook.json'))).toBe(true)
+    expect(notes.listWritingNotebooks().map(n => n.id)).toContain(notebook.id)
+    write(notebook.id, 'A chosen folder note')
+    expect(notes.searchWritingNotebooks('chosen folder').map(h => h.notebook.id)).toEqual([notebook.id])
+    closeDb()
+    expect(notes.getWritingPage(notebook.id, notebook.selectedPageId).markdown).toBe('A chosen folder note')
+  })
+  it('treats an absent or empty folder choice as the default location', () => {
+    for (const choice of [undefined, null, '']) {
+      const notebook = notes.createWritingNotebook('Default home', undefined, choice)
+      expect(notes.writingNotebookDirectory(notebook.id).startsWith(directory)).toBe(true)
+    }
+  })
+  it('accepts a non-empty folder and deletes only notebook-owned files from it', () => {
+    const folder = realpathSync(mkdtempSync(join(root, 'opencourse-custom-')))
+    writeFileSync(join(folder, 'user-file.txt'), 'keep me')
+    const notebook = notes.createWritingNotebook('Shared folder', undefined, folder)
+    notes.addWritingPage(notebook.id, 'Extra')
+    mkdirSync(join(folder, 'assets'))
+    const asset = `${crypto.randomUUID()}.png`
+    writeFileSync(join(folder, 'assets', asset), Buffer.from([137, 80, 78, 71]))
+    expect(notes.writingNotebookAsset(notebook.id, asset)).toBe(join(folder, 'assets', asset))
+    notes.deleteWritingNotebook(notebook.id)
+    expect(existsSync(folder)).toBe(true)
+    expect(readFileSync(join(folder, 'user-file.txt'), 'utf8')).toBe('keep me')
+    expect(existsSync(join(folder, 'notebook.json'))).toBe(false)
+    expect(existsSync(join(folder, 'pages'))).toBe(false)
+    expect(existsSync(join(folder, 'assets'))).toBe(false)
+    expect(notes.listWritingNotebooks()).toEqual([])
+    expect(db().prepare('SELECT * FROM writing_notebook_index').all()).toEqual([])
+  })
+  it('rejects unsafe folder choices', () => {
+    const inside = join(directory, 'inside'); mkdirSync(inside)
+    expect(() => notes.createWritingNotebook('Inside', undefined, inside)).toThrow('outside the OpenCourse data directory')
+    expect(() => notes.createWritingNotebook('Relative', undefined, 'relative/path')).toThrow('Choose a folder')
+    expect(() => notes.createWritingNotebook('Missing', undefined, join(root, 'opencourse-missing'))).toThrow('no longer exists')
+    const file = join(root, 'opencourse-file.txt'); writeFileSync(file, 'x')
+    expect(() => notes.createWritingNotebook('File', undefined, file)).toThrow('not a folder')
+    const folder = realpathSync(mkdtempSync(join(root, 'opencourse-custom-')))
+    const first = notes.createWritingNotebook('First', undefined, folder)
+    expect(() => notes.createWritingNotebook('Again', undefined, folder)).toThrow('already a notebook')
+    const metadata = readFileSync(join(folder, 'notebook.json'))
+    rmSync(join(folder, 'notebook.json'))
+    expect(() => notes.createWritingNotebook('Again', undefined, folder)).toThrow('already belongs to another notebook')
+    writeFileSync(join(folder, 'notebook.json'), metadata)
+    const child = join(folder, 'child'); mkdirSync(child)
+    expect(() => notes.createWritingNotebook('Child', undefined, child)).toThrow('overlaps')
+    expect(() => notes.createWritingNotebook('Parent', undefined, dirname(folder))).toThrow('overlaps')
+    expect(notes.listWritingNotebooks().map(n => n.id)).toEqual([first.id])
+  })
+  it('skips a missing custom folder and recovers when it returns', () => {
+    const folder = realpathSync(mkdtempSync(join(root, 'opencourse-custom-')))
+    const notebook = notes.createWritingNotebook('Traveling', undefined, folder)
+    const at = new Date().toISOString()
+    chats.insertWritingNotebookChat({ id: 'chat-travel', notebookId: notebook.id, startedOn: notebook.selectedPageId, model: 'test', reasoning: null, provider: 'apiKey', title: '', messages: 0, createdAt: at, updatedAt: at })
+    const away = `${folder}-away`
+    renameSync(folder, away)
+    expect(notes.listWritingNotebooks()).toEqual([])
+    expect(() => notes.getWritingNotebook(notebook.id)).toThrow('unavailable')
+    expect(notes.searchWritingNotebooks('traveling')).toEqual([])
+    expect(chats.selectWritingNotebookChat('chat-travel')).not.toBeNull()
+    renameSync(away, folder)
+    expect(notes.listWritingNotebooks().map(n => n.id)).toEqual([notebook.id])
+    expect(notes.getWritingNotebook(notebook.id).title).toBe('Traveling')
+    expect(notes.searchWritingNotebooks('traveling').map(h => h.notebook.id)).toEqual([notebook.id])
+  })
+  it('keeps custom folders private to their user', () => {
+    const folder = realpathSync(mkdtempSync(join(root, 'opencourse-custom-')))
+    const notebook = notes.createWritingNotebook('Mine', undefined, folder)
+    const session = awaitUser()
+    createUser('Another writer')
+    expect(notes.listWritingNotebooks()).toEqual([])
+    const otherFolder = realpathSync(mkdtempSync(join(root, 'opencourse-custom-')))
+    const other = notes.createWritingNotebook('Theirs', undefined, otherFolder)
+    expect(notes.listWritingNotebooks().map(n => n.id)).toEqual([other.id])
+    switchUser(session)
+    expect(notes.listWritingNotebooks().map(n => n.id)).toEqual([notebook.id])
+  })
 })
 const { requireUser: awaitUser } = await import('../src/main/users')
 
@@ -151,4 +233,33 @@ it('round trips sketch geometry and colors without overwriting a saved page vers
   expect(() => saveNotebookSketch(id, '../other.svg', model, darkSketchColors)).toThrow()
   expect(() => saveNotebookSketch(id, copy, { ...model, marks: [{ kind: 'brush', width: 2, points: [[NaN, 0]] }] }, darkSketchColors)).toThrow()
   expect(() => saveNotebookSketch(id, copy, model, { ...darkSketchColors, brush: 'url(http://example.com)' })).toThrow()
+})
+
+it('prunes sketch versions no saved page references, once past the grace period', async () => {
+  const { pruneNotebookSketches, saveNotebookSketch } = await import('../src/main/writing-notebook-sketch')
+  const { darkSketchColors } = await import('../src/core/writing-notebooks/sketch')
+  const notebook = notes.createWritingNotebook('Pruning'), id = notebook.id
+  pruneNotebookSketches(id) // No assets directory yet.
+  const model = { version: 1, width: 450, height: 300, marks: [{ kind: 'brush', width: 2, points: [[10, 10], [100, 100]] }] }
+  const asset = () => `assets/${crypto.randomUUID()}.sketch.svg`
+  const kept = asset(), dropped = asset(), fresh = asset(), otherPage = asset()
+  for (const ref of [kept, dropped, fresh, otherPage]) saveNotebookSketch(id, ref, model, darkSketchColors)
+  write(id, `![Sketch](${kept})`)
+  const second = notes.addWritingPage(id, 'Second')
+  expect(notes.saveWritingPage(id, second.selectedPageId, 0, `![Sketch](${otherPage})`).ok).toBe(true)
+  const assets = join(notes.writingNotebookDirectory(id), 'assets')
+  const aged = new Date(Date.now() - 25 * 60 * 60 * 1000)
+  const age = (name: string) => utimesSync(join(assets, name), aged, aged)
+  age(kept.slice(7)); age(dropped.slice(7)); age(otherPage.slice(7))
+  const temp = `${dropped.slice(7)}.${crypto.randomUUID()}.tmp`
+  writeFileSync(join(assets, temp), 'partial write'); age(temp)
+  const photo = `${crypto.randomUUID()}.png`
+  writeFileSync(join(assets, photo), Buffer.from([137, 80, 78, 71])); age(photo)
+  pruneNotebookSketches(id)
+  expect(existsSync(join(assets, kept.slice(7)))).toBe(true) // Referenced by the first page.
+  expect(existsSync(join(assets, otherPage.slice(7)))).toBe(true) // Referenced by another page.
+  expect(existsSync(join(assets, fresh.slice(7)))).toBe(true) // Unreferenced, but inside the grace period.
+  expect(existsSync(join(assets, photo))).toBe(true) // Not a sketch.
+  expect(existsSync(join(assets, dropped.slice(7)))).toBe(false)
+  expect(existsSync(join(assets, temp))).toBe(false)
 })

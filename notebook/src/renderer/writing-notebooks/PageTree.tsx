@@ -16,10 +16,14 @@ export interface PageTreeActions {
   reveal: (path: string) => void
   move: (source: string, targetFolder: string) => void
   dropPage: (pageId: string, targetFolder: string, anchor: { pageId: string; after: boolean } | null) => void
+  importFiles: (folder: string, files: File[]) => void
 }
 
 type Dragged = { path: string; kind: 'folder' | 'page' | 'file'; pageId?: string }
 type DropHint = { kind: 'folder'; path: string } | { kind: 'page'; id: string }
+
+/** Files dragged in from outside (Finder, browser downloads, screenshots) carry the 'Files' type and no internal drag. */
+const droppedFiles = (event: DragEvent): File[] => event.dataTransfer?.types?.includes('Files') ? [...(event.dataTransfer.files ?? [])] : []
 
 /** A foreign file's icon, guessed from its extension; unknown types get a plain sheet. */
 function fileIcon(name: string): ActionIcon {
@@ -39,7 +43,9 @@ function fileIcon(name: string): ActionIcon {
  * any other file visible but not openable. Folders select (the create buttons
  * below the tree follow the selection), wrap and unwrap, and accept drops;
  * clicking the empty pane below the rows clears the selection back to the
- * root. Pages also reorder by dropping above or below a sibling.
+ * root. Pages also reorder by dropping above or below a sibling. Files dragged
+ * in from outside the app (Finder, downloads, screenshots) are copied into the
+ * folder under the pointer, or into the root when dropped below the rows.
  */
 export default function PageTree({ notebook, currentPageId, selectedFolder, busy, draftFolder, onDraftCommit, onDraftCancel, actions }: {
   notebook: WritingNotebook
@@ -67,14 +73,28 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   // A folder never drops into itself or its own subtree.
   const canDrop = (folder: string) => { const dragging = draggingRef.current; return Boolean(dragging) && !(dragging!.kind === 'folder' && (folder === dragging!.path || folder.startsWith(dragging!.path + '/'))) }
   const overFolder = (event: DragEvent, folder: string) => {
-    if (!draggingRef.current) return
+    if (!draggingRef.current) {
+      // A foreign file is copied into the folder, never moved.
+      if (!droppedFiles(event).length) return
+      event.preventDefault(); event.stopPropagation()
+      event.dataTransfer.dropEffect = 'copy'
+      setDropHint({ kind: 'folder', path: folder })
+      return
+    }
     if (!canDrop(folder)) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
     event.dataTransfer.dropEffect = 'move'
     setDropHint({ kind: 'folder', path: folder })
   }
   const dropOnFolder = (event: DragEvent, folder: string) => {
-    if (!draggingRef.current) return
+    if (!draggingRef.current) {
+      const files = droppedFiles(event)
+      if (!files.length) return
+      event.preventDefault(); event.stopPropagation()
+      setDropHint(null)
+      actions.importFiles(folder, files)
+      return
+    }
     if (!canDrop(folder)) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
     const source = draggingRef.current.path
@@ -83,7 +103,13 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   }
   const overPage = (event: DragEvent, node: WritingTreeNode & { kind: 'page' }) => {
     const dragging = draggingRef.current
-    if (!dragging) return
+    if (!dragging) {
+      if (!droppedFiles(event).length) return
+      event.preventDefault(); event.stopPropagation()
+      event.dataTransfer.dropEffect = 'copy'
+      setDropHint({ kind: 'page', id: node.id })
+      return
+    }
     if (dragging.kind === 'folder' && !canDrop(treeParent(node.path))) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
     event.dataTransfer.dropEffect = 'move'
@@ -91,7 +117,14 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   }
   const dropOnPage = (event: DragEvent, node: WritingTreeNode & { kind: 'page' }) => {
     const dragging = draggingRef.current
-    if (!dragging) return
+    if (!dragging) {
+      const files = droppedFiles(event)
+      if (!files.length) return
+      event.preventDefault(); event.stopPropagation()
+      setDropHint(null)
+      actions.importFiles(treeParent(node.path), files)
+      return
+    }
     const folder = treeParent(node.path)
     if (dragging.kind === 'folder' && !canDrop(folder)) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
@@ -106,7 +139,7 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   const renderNodes = (nodes: WritingTreeNode[], depth: number): JSX.Element[] => nodes.map(node => {
     if (node.kind === 'folder') {
       const open = !collapsed.has(node.path) || draftFolder?.parent === node.path
-      const hint = dropHint?.kind === 'folder' && dropHint.path === node.path && canDrop(node.path)
+      const hint = dropHint?.kind === 'folder' && dropHint.path === node.path && (!draggingRef.current || canDrop(node.path))
       return <div key={node.path} className="writing-tree-branch">
         <div className={`writing-tree-row folder${selectedFolder === node.path ? ' selected' : ''}${hint ? ' drop-target' : ''}`} style={{ paddingLeft: depth * 12 }}
           draggable onDragStart={event => startDrag(event, { path: node.path, kind: 'folder' })} onDragEnd={endDrag}
@@ -151,9 +184,10 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
         ]} />
     </div>
   })
-  return <nav aria-label="Notebook pages" className={`writing-tree${dropHint?.kind === 'folder' && dropHint.path === '' && canDrop('') ? ' drop-root' : ''}`}
+  return <nav aria-label="Notebook pages" className={`writing-tree${dropHint?.kind === 'folder' && dropHint.path === '' && (!draggingRef.current || canDrop('')) ? ' drop-root' : ''}`}
     onClick={event => { if (event.target === event.currentTarget) actions.selectFolder('') }}
-    onDragOver={event => overFolder(event, '')} onDrop={event => dropOnFolder(event, '')}>
+    onDragOver={event => overFolder(event, '')} onDrop={event => dropOnFolder(event, '')}
+    onDragLeave={event => { const to = event.relatedTarget as Node | null; if (!to || !event.currentTarget.contains(to)) setDropHint(null) }}>
     {renderNodes(tree, 0)}
     {draftFolder?.parent === '' && draft(0)}
   </nav>

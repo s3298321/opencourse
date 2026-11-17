@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, lstatSync, watch, type FSWatcher } from 'node:fs'
-import { join } from 'node:path'
-import { MAX_WRITING_PAGE_BYTES, MAX_WRITING_PAGES, type NotebookAssociation, type WritingNotebook, type WritingNotebookHit, type WritingNotebookPage, type WritingNotebookSaveResult } from '../core/writing-notebooks/types'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, lstatSync, watch, type FSWatcher } from 'node:fs'
+import { basename, isAbsolute, join } from 'node:path'
+import { MAX_WRITING_FILE_BYTES, MAX_WRITING_IMPORT_FILES, MAX_WRITING_PAGE_BYTES, MAX_WRITING_PAGES, type NotebookAssociation, type WritingNotebook, type WritingNotebookHit, type WritingNotebookPage, type WritingNotebookSaveResult } from '../core/writing-notebooks/types'
 import { buildWritingTree, folderName, pageFileId, treeDepth, treeJoin, treeName, treePath, MAX_WRITING_FOLDER_DEPTH, WRITING_TREE_DIR } from '../core/writing-notebooks/tree'
 import { isStandaloneNotebook } from '../core/writing-notebooks/standalone'
 import { userWritingNotebooksDir } from './paths'
@@ -295,6 +295,51 @@ export function moveWritingEntry(id: string, source: string, targetFolder: strin
   if (existsSync(moved)) throw new Error('Something with that name already exists in the target folder.')
   renameSync(full, moved)
   return changed(notebook)
+}
+/**
+ * Copy files dragged in from outside (Finder, browser downloads, screenshots)
+ * into a tree folder ('' is the root). The preload resolves each dropped File
+ * to an absolute path with webUtils.getPathForFile; those paths are validated
+ * here, never trusted: regular files only, names the tree would actually show,
+ * and every target checked before the first copy so a refused batch changes
+ * nothing. Symlinks are followed, so the copy is always a real file.
+ */
+export function importWritingFiles(id: string, folder: string, paths: unknown): WritingNotebook {
+  const notebook = getWritingNotebook(id)
+  const to = treePath(typeof folder === 'string' ? folder : '')
+  if (to) {
+    const directory = resolveWritingTreePath(id, to)
+    if (!existsSync(directory) || !lstatSync(directory).isDirectory()) throw new Error('That folder no longer exists.')
+  }
+  if (!Array.isArray(paths) || !paths.length || paths.length > MAX_WRITING_IMPORT_FILES) throw new Error(`Drop between one and ${MAX_WRITING_IMPORT_FILES} files.`)
+  const plan: { source: string; target: string }[] = []
+  const claimed = new Set<string>()
+  for (const value of paths) {
+    if (typeof value !== 'string' || !isAbsolute(value)) throw new Error('Drop files from Finder or another app.')
+    let stat
+    try { stat = statSync(value) } catch { throw new Error('A dropped file no longer exists.') }
+    const name = basename(value)
+    if (!stat.isFile()) throw new Error(`“${name}” is not a file.`)
+    if (stat.size > MAX_WRITING_FILE_BYTES) throw new Error(`“${name}” is larger than ${MAX_WRITING_FILE_BYTES / 1024 / 1024} MiB.`)
+    // The tree never shows dotfiles, transient writes or tombstones; refuse those names up front.
+    if (name.startsWith('.') || name.includes('.tmp') || name.endsWith('.deleted')) throw new Error(`“${name}” cannot be added to a notebook.`)
+    const pageId = pageFileId(name)
+    if (pageId !== null && notebook.pages.some(page => page.id === pageId)) throw new Error(`“${name}” is one of this notebook's pages; move it inside the notebook instead.`)
+    const relative = treePath(treeJoin(to, name))
+    if (claimed.has(relative)) throw new Error(`Two dropped files are both named “${name}".`)
+    claimed.add(relative)
+    const target = resolveWritingTreePath(id, relative)
+    if (existsSync(target)) {
+      // Dragging a notebook's own file onto its own folder is a no-op, not a collision.
+      let same = false
+      try { same = realpathSync(value) === realpathSync(target) } catch { same = false }
+      if (same) continue
+      throw new Error('Something with that name already exists in this folder.')
+    }
+    plan.push({ source: value, target })
+  }
+  for (const item of plan) copyFileSync(item.source, item.target)
+  return plan.length ? changed(notebook) : notebook
 }
 export function deleteWritingNotebook(id: string): void {
   getWritingNotebook(id); writingNotebookEvents.emit('removing', id)

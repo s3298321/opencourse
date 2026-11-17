@@ -32,9 +32,15 @@ const dragEvent = (type: string, init: MouseEventInit = {}) => {
   Object.defineProperty(event, 'dataTransfer', { value: { setData: vi.fn(), getData: () => '', effectAllowed: 'uninitialized', dropEffect: 'none' } })
   return event
 }
+// A drag from outside the app (Finder, downloads, screenshots): the 'Files' type, no internal entry.
+const fileDragEvent = (type: string, files: File[], init: MouseEventInit = {}) => {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...init })
+  Object.defineProperty(event, 'dataTransfer', { value: { setData: vi.fn(), getData: () => '', effectAllowed: 'uninitialized', dropEffect: 'none', types: ['Files'], files } })
+  return event
+}
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  actions = { openPage: vi.fn(), selectFolder: vi.fn(), newPage: vi.fn(), newFolder: vi.fn(), deletePage: vi.fn(), deleteFolder: vi.fn(), deleteFile: vi.fn(), reveal: vi.fn(), move: vi.fn(), dropPage: vi.fn() }
+  actions = { openPage: vi.fn(), selectFolder: vi.fn(), newPage: vi.fn(), newFolder: vi.fn(), deletePage: vi.fn(), deleteFolder: vi.fn(), deleteFile: vi.fn(), reveal: vi.fn(), move: vi.fn(), dropPage: vi.fn(), importFiles: vi.fn() }
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
@@ -158,5 +164,45 @@ describe('notebook page tree', () => {
     await act(async () => { trigger(row('page', 'Alpha')).dispatchEvent(dragEvent('dragstart')) })
     await act(async () => { target.dispatchEvent(dragEvent('drop', { clientY: 12 })) })
     expect(actions.dropPage).toHaveBeenLastCalledWith(pageA, 'Research', { pageId: pageB, after: false })
+  })
+  it('copies foreign files dropped on folders, pages and the empty root pane, highlighting each target', async () => {
+    await render()
+    const file = new File(['hello'], 'hello.txt', { type: 'text/plain' })
+    // Over a folder: the folder row highlights and the drop copies into that folder.
+    const research = row('folder', 'Research')
+    const over = fileDragEvent('dragover', [file])
+    await act(async () => { research.dispatchEvent(over) })
+    expect(over.defaultPrevented).toBe(true)
+    expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe('copy')
+    expect(research.classList.contains('drop-target')).toBe(true)
+    await act(async () => { research.dispatchEvent(fileDragEvent('drop', [file])) })
+    expect(actions.importFiles).toHaveBeenCalledWith('Research', [file])
+    expect(research.classList.contains('drop-target')).toBe(false)
+    // Over a page: the file lands in the page's own folder.
+    const beta = row('page', 'Beta')
+    await act(async () => { beta.dispatchEvent(fileDragEvent('dragover', [file])) })
+    expect(beta.classList.contains('drop-target')).toBe(true)
+    await act(async () => { beta.dispatchEvent(fileDragEvent('drop', [file])) })
+    expect(actions.importFiles).toHaveBeenLastCalledWith('Research', [file])
+    // Over the empty pane below the rows: the whole pane highlights and the file goes to the root.
+    const nav = container.querySelector<HTMLElement>('nav.writing-tree')!
+    await act(async () => { nav.dispatchEvent(fileDragEvent('dragover', [file])) })
+    expect(nav.classList.contains('drop-root')).toBe(true)
+    await act(async () => { nav.dispatchEvent(fileDragEvent('drop', [file])) })
+    expect(actions.importFiles).toHaveBeenLastCalledWith('', [file])
+    expect(nav.classList.contains('drop-root')).toBe(false)
+    // Leaving the pane clears the highlight.
+    await act(async () => { nav.dispatchEvent(fileDragEvent('dragover', [file])) })
+    expect(nav.classList.contains('drop-root')).toBe(true)
+    await act(async () => { nav.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: null })) })
+    expect(nav.classList.contains('drop-root')).toBe(false)
+    // A drag without files still does nothing, and an internal drag still moves instead of importing.
+    await act(async () => { nav.dispatchEvent(fileDragEvent('dragover', [])) })
+    expect(nav.classList.contains('drop-root')).toBe(false)
+    await act(async () => { trigger(row('page', 'Alpha')).dispatchEvent(dragEvent('dragstart')) })
+    await act(async () => { research.dispatchEvent(dragEvent('dragover')) })
+    await act(async () => { research.dispatchEvent(dragEvent('drop')) })
+    expect(actions.move).toHaveBeenCalledWith(`${pageA}.json`, 'Research')
+    expect(actions.importFiles).toHaveBeenCalledTimes(3)
   })
 })

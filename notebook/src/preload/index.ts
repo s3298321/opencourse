@@ -117,6 +117,8 @@ const api = {
     deleteFolder: (id: string, path: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:deleteFolder', id, path),
     deleteFile: (id: string, path: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:deleteFile', id, path),
     move: (id: string, source: string, targetFolder: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:move', id, source, targetFolder),
+    // Dropped files arrive as File objects; main receives their absolute paths and copies them into the folder.
+    importFiles: (id: string, folder: string, files: File[]): Promise<WritingNotebook> => ipcRenderer.invoke('writing:importFiles', id, folder, files.map(file => webUtils.getPathForFile(file))),
     reveal: (id: string, path: string): Promise<void> => ipcRenderer.invoke('writing:reveal', id, path),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('writing:delete', id),
     open: (id: string, pageId?: string): Promise<void> => ipcRenderer.invoke('writing:open', id, pageId),

@@ -167,6 +167,7 @@ function NotebookContent({ id }: { id: string }) {
     },
     reveal: path => { void api().reveal(id, path).catch(e => setError(e.message)) },
     move: (source, targetFolder) => action(async () => { setNotebook(await api().move(id, source, targetFolder)) }),
+    importFiles: (folder, files) => action(async () => { setNotebook(await api().importFiles(id, folder, files)) }),
     dropPage: (pageId, targetFolder, anchor) => action(async () => {
       if (!notebook) return
       const node = findPageNode(notebook.tree ?? [], pageId)

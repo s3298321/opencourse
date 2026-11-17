@@ -24,6 +24,8 @@ export function registerWritingNotebookIpc(): void {
     renamePage: notebooks.renameWritingPage, reorder: notebooks.reorderWritingPages, deletePage: notebooks.deleteWritingPage,
     createFolder: notebooks.createWritingFolder, deleteFolder: notebooks.deleteWritingFolder, deleteFile: notebooks.deleteWritingFile,
     move: notebooks.moveWritingEntry,
+    // Files dropped from outside are copied into the tree folder; the preload sends absolute paths.
+    importFiles: notebooks.importWritingFiles,
     // Reveal resolves the caller's relative path inside the notebook tree in main; '' is the tree root.
     reveal: (id: string, path: string) => shell.showItemInFolder(resolveWritingTreePath(id, path)),
     delete: notebooks.deleteWritingNotebook, open: openWritingNotebook

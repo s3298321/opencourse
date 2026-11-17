@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -91,6 +91,53 @@ describe('notebook page tree storage', () => {
     notes.moveWritingEntry(notebook.id, `Target/${pagePath}`, '')
     write(notebook.id, 'still savable', moved.selectedPageId)
     expect(notes.getWritingPage(notebook.id, moved.selectedPageId).markdown).toBe('still savable')
+  })
+  it('copies files dragged in from outside into a folder or the root, refusing unsafe batches whole', () => {
+    const notebook = notes.createWritingNotebook('Imports')
+    notes.createWritingFolder(notebook.id, '', 'Drop here')
+    const outside = mkdtempSync(join(root, 'outside-'))
+    const report = join(outside, 'report.pdf'), photo = join(outside, 'photo.png')
+    writeFileSync(report, 'pdf bytes'); writeFileSync(photo, 'png bytes')
+    symlinkSync(report, join(outside, 'alias.pdf'))
+    const dir = join(notes.writingNotebookDirectory(notebook.id), 'pages')
+    // Into a folder; a symlinked source is copied as a real file, and the source stays put.
+    const imported = notes.importWritingFiles(notebook.id, 'Drop here', [report, join(outside, 'alias.pdf')])
+    expect(readFileSync(join(dir, 'Drop here', 'report.pdf'), 'utf8')).toBe('pdf bytes')
+    expect(lstatSync(join(dir, 'Drop here', 'alias.pdf')).isSymbolicLink()).toBe(false)
+    expect(readFileSync(join(dir, 'Drop here', 'alias.pdf'), 'utf8')).toBe('pdf bytes')
+    expect(readFileSync(report, 'utf8')).toBe('pdf bytes')
+    expect(folderNode(imported, 'Drop here')?.children.map(node => node.kind === 'file' ? node.name : node.kind)).toEqual(['alias.pdf', 'report.pdf'])
+    // Into the root from the empty pane below the rows.
+    notes.importWritingFiles(notebook.id, '', [photo])
+    expect(existsSync(join(dir, 'photo.png'))).toBe(true)
+    // Dropping the notebook's own copy back onto its folder is a no-op, not a collision.
+    notes.importWritingFiles(notebook.id, 'Drop here', [join(dir, 'Drop here', 'report.pdf')])
+    expect(readFileSync(join(dir, 'Drop here', 'report.pdf'), 'utf8')).toBe('pdf bytes')
+    // Refusals: collision, directory, dotfile, a listed page's file name, relative and missing paths, empty or oversized batches.
+    mkdirSync(join(outside, 'folder')); writeFileSync(join(outside, '.DS_Store'), 'x'); writeFileSync(join(outside, `${notebook.selectedPageId}.json`), '{}')
+    expect(() => notes.importWritingFiles(notebook.id, '', [photo])).toThrow('already exists')
+    expect(() => notes.importWritingFiles(notebook.id, '', [join(outside, 'folder')])).toThrow('not a file')
+    expect(() => notes.importWritingFiles(notebook.id, '', [join(outside, '.DS_Store')])).toThrow('cannot be added')
+    expect(() => notes.importWritingFiles(notebook.id, '', [join(outside, `${notebook.selectedPageId}.json`)] )).toThrow('pages')
+    expect(() => notes.importWritingFiles(notebook.id, '', ['relative/path'])).toThrow('Drop files')
+    expect(() => notes.importWritingFiles(notebook.id, '', [join(outside, 'gone.txt')])).toThrow('no longer exists')
+    expect(() => notes.importWritingFiles(notebook.id, 'Missing', [report])).toThrow('no longer exists')
+    expect(() => notes.importWritingFiles(notebook.id, '', [])).toThrow('between one and')
+    expect(() => notes.importWritingFiles(notebook.id, '', Array.from({ length: 101 }, () => report))).toThrow('between one and')
+    // A batch is all-or-nothing: the good file before a collision is not copied.
+    const other = join(outside, 'other.txt'); writeFileSync(other, 'x')
+    expect(() => notes.importWritingFiles(notebook.id, '', [other, photo])).toThrow('already exists')
+    expect(existsSync(join(dir, 'other.txt'))).toBe(false)
+    // Two dropped files with the same name are refused.
+    mkdirSync(join(outside, 'dup-a')); mkdirSync(join(outside, 'dup-b'))
+    writeFileSync(join(outside, 'dup-a', 'same.txt'), 'a'); writeFileSync(join(outside, 'dup-b', 'same.txt'), 'b')
+    expect(() => notes.importWritingFiles(notebook.id, '', [join(outside, 'dup-a', 'same.txt'), join(outside, 'dup-b', 'same.txt')])).toThrow('both named')
+    expect(existsSync(join(dir, 'same.txt'))).toBe(false)
+    // A stray <uuid>.json that is not a page imports as a foreign file.
+    const strayName = `${crypto.randomUUID()}.json`, stray = join(outside, strayName)
+    writeFileSync(stray, '{"stray":true}')
+    const withStray = notes.importWritingFiles(notebook.id, '', [stray])
+    expect(withStray.tree?.some(node => node.kind === 'file' && node.name === strayName)).toBe(true)
   })
   it('deletes folders with their pages and files, fixing selection and the search index', () => {
     const notebook = notes.createWritingNotebook('Doomed folder')

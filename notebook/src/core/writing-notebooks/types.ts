@@ -25,4 +25,7 @@ export interface WritingNotebookChatThread { chat: WritingNotebookChatSummary; m
 export interface WritingNotebookContext { notebookId: string; pageId: string; revision: number; title: string }
 export const MAX_WRITING_PAGE_BYTES = 1024 * 1024
 export const MAX_WRITING_PAGES = 500
+/* Caps for files dragged in from outside the notebook. */
+export const MAX_WRITING_FILE_BYTES = 200 * 1024 * 1024
+export const MAX_WRITING_IMPORT_FILES = 100
 export const WRITING_ASSET_HOST = 'writing-notebooks'

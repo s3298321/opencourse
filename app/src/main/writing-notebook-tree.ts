@@ -45,6 +45,20 @@ export function resolveWritingTreePath(id: string, path: string): string {
 }
 
 /**
+ * A regular file's absolute path inside the page tree, for the asset protocol
+ * to serve (images and videos of the file viewer). Caller-provided paths are
+ * validated by resolveWritingTreePath, which also refuses symlinked segments;
+ * the id shape matches the asset rule above. Null when anything is off.
+ */
+export function writingNotebookTreeFile(id: string, path: string): string | null {
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return null
+    const file = resolveWritingTreePath(id, path)
+    return lstatSync(file).isFile() ? file : null
+  } catch { return null }
+}
+
+/**
  * Adopt flat pre-tree page files into the tree root. Idempotent and safe to
  * re-run after a crash: each rename is atomic, and a file already present in
  * the tree wins over its flat duplicate.

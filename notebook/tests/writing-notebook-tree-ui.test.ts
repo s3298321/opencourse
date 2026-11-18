@@ -8,19 +8,19 @@ let root: Root, container: HTMLDivElement
 const pageA = crypto.randomUUID(), pageB = crypto.randomUUID()
 const notebook = (): WritingNotebook => ({
   id: crypto.randomUUID(), version: 1, title: 'Tree', createdAt: '', updatedAt: '', lastAccessedAt: '',
-  pages: [{ id: pageA, title: 'Alpha' }, { id: pageB, title: 'Beta' }], selectedPageId: pageA, textScale: 1, chatOpen: false,
+  pages: [{ id: pageA, path: 'Alpha.json' }, { id: pageB, path: 'Research/Beta.json' }], selectedPageId: pageA, textScale: 1, chatOpen: false,
   tree: [
     { kind: 'folder', name: 'Research', path: 'Research', children: [
       { kind: 'folder', name: 'Inner', path: 'Research/Inner', children: [] },
-      { kind: 'page', id: pageB, title: 'Beta', path: `Research/${pageB}.json` },
+      { kind: 'page', id: pageB, path: 'Research/Beta.json' },
       { kind: 'file', name: 'notes.txt', path: 'Research/notes.txt' }
     ] },
-    { kind: 'page', id: pageA, title: 'Alpha', path: `${pageA}.json` }
+    { kind: 'page', id: pageA, path: 'Alpha.json' }
   ]
 })
 let actions: { [K in keyof PageTreeActions]: ReturnType<typeof vi.fn> }
 const render = async (props: Partial<Parameters<typeof PageTree>[0]> = {}) => act(async () => {
-  root.render(h(PageTree, { notebook: notebook(), currentPageId: pageA, selectedFolder: '', busy: false, draftFolder: null, onDraftCommit: vi.fn(), onDraftCancel: vi.fn(), actions, ...props }))
+  root.render(h(PageTree, { notebook: notebook(), currentPageId: pageA, currentFilePath: null, selectedFolder: '', busy: false, draftFolder: null, draftFile: null, onDraftCommit: vi.fn(), onFileDraftCommit: vi.fn(), onDraftCancel: vi.fn(), onFileDraftCancel: vi.fn(), actions, ...props }))
 })
 const row = (kind: 'folder' | 'page' | 'file', name: string) => [...container.querySelectorAll<HTMLElement>(`.writing-tree-row.${kind}`)].find(el => el.textContent?.includes(name))!
 const trigger = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('button.menu-trigger')!
@@ -40,7 +40,7 @@ const fileDragEvent = (type: string, files: File[], init: MouseEventInit = {}) =
 }
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  actions = { openPage: vi.fn(), selectFolder: vi.fn(), newPage: vi.fn(), newFolder: vi.fn(), deletePage: vi.fn(), deleteFolder: vi.fn(), deleteFile: vi.fn(), reveal: vi.fn(), move: vi.fn(), dropPage: vi.fn(), importFiles: vi.fn() }
+  actions = { openPage: vi.fn(), openFile: vi.fn(), selectFolder: vi.fn(), newPage: vi.fn(), newFolder: vi.fn(), newFile: vi.fn(), deletePage: vi.fn(), deleteFolder: vi.fn(), deleteFile: vi.fn(), rename: vi.fn(), renamePage: vi.fn(), reveal: vi.fn(), move: vi.fn(), dropPage: vi.fn(), importFiles: vi.fn() }
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
@@ -60,16 +60,25 @@ describe('notebook page tree', () => {
     await act(async () => row('folder', 'Research').querySelector<HTMLButtonElement>('.writing-tree-toggle')!.click())
     expect(row('folder', 'Inner')).toBeTruthy()
   })
-  it('selects a folder on click and opens pages, while foreign files do nothing on click', async () => {
+  it('selects a folder on click and opens pages and files on click', async () => {
     await render()
     await act(async () => trigger(row('page', 'Alpha')).click())
     expect(actions.openPage).toHaveBeenCalledWith(pageA)
     await act(async () => trigger(row('file', 'notes.txt')).click())
     expect(actions.openPage).toHaveBeenCalledTimes(1)
+    expect(actions.openFile).toHaveBeenCalledWith('Research/notes.txt')
     // Clicking a folder selects it and toggles it wrapped.
     await act(async () => trigger(row('folder', 'Research')).click())
     expect(actions.selectFolder).toHaveBeenCalledWith('Research')
     expect(container.textContent).not.toContain('notes.txt')
+  })
+  it('marks the open file as current in the tree, and the page only while no file is open', async () => {
+    await render({ currentFilePath: 'Research/notes.txt' })
+    expect(row('file', 'notes.txt').classList.contains('current')).toBe(true)
+    expect(row('page', 'Alpha').classList.contains('current')).toBe(false)
+    await render({ currentFilePath: null })
+    expect(row('file', 'notes.txt').classList.contains('current')).toBe(false)
+    expect(row('page', 'Alpha').classList.contains('current')).toBe(true)
   })
   it('clears the folder selection when the empty pane below the rows is clicked', async () => {
     await render({ selectedFolder: 'Research' })
@@ -85,12 +94,15 @@ describe('notebook page tree', () => {
   it('offers creation, reveal and delete on folders, and delete and reveal on pages and files', async () => {
     await render()
     await contextMenu(row('folder', 'Research'))
-    expect(menuItems().map(item => item.textContent)).toEqual(['New page here', 'New folder here', 'Reveal in Finder', 'Delete folder'])
+    expect(menuItems().map(item => item.textContent)).toEqual(['Rename', 'New page here', 'New folder here', 'New file here', 'Reveal in Finder', 'Delete folder'])
     await clickItem('New page here')
     expect(actions.newPage).toHaveBeenCalledWith('Research')
     await contextMenu(row('folder', 'Research'))
     await clickItem('New folder here')
     expect(actions.newFolder).toHaveBeenCalledWith('Research')
+    await contextMenu(row('folder', 'Research'))
+    await clickItem('New file here')
+    expect(actions.newFile).toHaveBeenCalledWith('Research')
     await contextMenu(row('folder', 'Research'))
     await clickItem('Reveal in Finder')
     expect(actions.reveal).toHaveBeenCalledWith('Research')
@@ -98,21 +110,65 @@ describe('notebook page tree', () => {
     await clickItem('Delete folder')
     expect(actions.deleteFolder).toHaveBeenCalledWith('Research', 'Research', 1)
     await contextMenu(row('page', 'Beta'))
-    expect(menuItems().map(item => item.textContent)).toEqual(['Delete page', 'Reveal in Finder'])
+    expect(menuItems().map(item => item.textContent)).toEqual(['Rename', 'Reveal in Finder', 'Delete page'])
     await clickItem('Reveal in Finder')
-    expect(actions.reveal).toHaveBeenCalledWith(`Research/${pageB}.json`)
+    expect(actions.reveal).toHaveBeenCalledWith('Research/Beta.json')
     await contextMenu(row('file', 'notes.txt'))
-    expect(menuItems().map(item => item.textContent)).toEqual(['Delete file', 'Reveal in Finder'])
+    expect(menuItems().map(item => item.textContent)).toEqual(['Rename', 'Reveal in Finder', 'Delete file'])
     await clickItem('Delete file')
     expect(actions.deleteFile).toHaveBeenCalledWith('Research/notes.txt', 'notes.txt')
   })
   it('protects the final page in the delete menu', async () => {
     const single = notebook()
-    single.pages = [{ id: pageA, title: 'Alpha' }]
-    single.tree = [{ kind: 'page', id: pageA, title: 'Alpha', path: `${pageA}.json` }]
+    single.pages = [{ id: pageA, path: 'Alpha.json' }]
+    single.tree = [{ kind: 'page', id: pageA, path: 'Alpha.json' }]
     await render({ notebook: single })
     await contextMenu(row('page', 'Alpha'))
-    expect(menuItems()[0]!.disabled).toBe(true)
+    expect(menuItems().find(item => item.textContent?.includes('Delete page'))!.disabled).toBe(true)
+  })
+  it('renames a row in place: prefilled selected input, Enter or blur applies, Escape or an unchanged name cancels', async () => {
+    await render()
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    const type = async (input: HTMLInputElement, value: string) => act(async () => { setter.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    // A folder: right-click → Rename → the row becomes an input with the current name, fully selected.
+    await contextMenu(row('folder', 'Research'))
+    await clickItem('Rename')
+    const folderInput = container.querySelector<HTMLInputElement>('input[aria-label="Rename Research"]')!
+    expect(folderInput).toBeTruthy()
+    // The folder row itself transformed into the input row (the nested Inner folder stays a row).
+    expect([...container.querySelectorAll('.writing-tree-row.folder')].some(el => el.textContent?.includes('Research'))).toBe(false)
+    expect(container.querySelector('.writing-tree-row.rename input')).toBe(folderInput)
+    expect(folderInput.value).toBe('Research')
+    expect(folderInput.selectionStart).toBe(0)
+    expect(folderInput.selectionEnd).toBe('Research'.length)
+    await type(folderInput, 'Studies')
+    await act(async () => { folderInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) })
+    expect(actions.rename).toHaveBeenCalledWith('Research', 'Studies')
+    // A page renames by title; clicking elsewhere (blur) applies it.
+    await contextMenu(row('page', 'Beta'))
+    await clickItem('Rename')
+    const pageInput = container.querySelector<HTMLInputElement>('input[aria-label="Rename Beta"]')!
+    expect(pageInput.value).toBe('Beta')
+    expect(pageInput.selectionStart).toBe(0)
+    expect(pageInput.selectionEnd).toBe('Beta'.length)
+    await type(pageInput, 'Beta v2')
+    await act(async () => { pageInput.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
+    expect(actions.renamePage).toHaveBeenCalledWith(pageB, 'Beta v2')
+    // A file renames by path; Escape cancels without applying.
+    await contextMenu(row('file', 'notes.txt'))
+    await clickItem('Rename')
+    const fileInput = container.querySelector<HTMLInputElement>('input[aria-label="Rename notes.txt"]')!
+    expect(fileInput.value).toBe('notes.txt')
+    await type(fileInput, 'renamed.txt')
+    await act(async () => { fileInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    expect(actions.rename).toHaveBeenCalledTimes(1)
+    // An unchanged name is a no-op.
+    await contextMenu(row('file', 'notes.txt'))
+    await clickItem('Rename')
+    const sameInput = container.querySelector<HTMLInputElement>('input[aria-label="Rename notes.txt"]')!
+    await act(async () => { sameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) })
+    expect(actions.rename).toHaveBeenCalledTimes(1)
+    expect(actions.renamePage).toHaveBeenCalledTimes(1)
   })
   it('names a new folder inline: Enter commits, Escape cancels', async () => {
     const onDraftCommit = vi.fn(), onDraftCancel = vi.fn()
@@ -128,6 +184,22 @@ describe('notebook page tree', () => {
     await act(async () => { rootInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
     expect(onDraftCancel).toHaveBeenCalled()
   })
+  it('names a new file inline with a file icon: Enter commits the name with its extension, Escape cancels', async () => {
+    const onFileDraftCommit = vi.fn(), onFileDraftCancel = vi.fn()
+    await render({ draftFile: { parent: 'Research' }, onFileDraftCommit, onFileDraftCancel })
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="New file name"]')!
+    expect(input.closest('.writing-tree-branch')?.textContent).toContain('Research')
+    expect(input.closest('.writing-tree-row.draft')?.querySelector('svg.writing-tree-icon')).toBeTruthy()
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => { setter.call(input, 'notes.md'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) })
+    expect(onFileDraftCommit).toHaveBeenCalledWith('notes.md')
+    await render({ draftFile: { parent: '' }, onFileDraftCommit, onFileDraftCancel })
+    const rootInput = container.querySelector<HTMLInputElement>('input[aria-label="New file name"]')!
+    expect(rootInput.closest('nav.writing-tree')).toBeTruthy()
+    await act(async () => { rootInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    expect(onFileDraftCancel).toHaveBeenCalled()
+  })
   it('moves entries by dropping them on folders and refuses a folder into its own subtree', async () => {
     await render()
     const source = trigger(row('page', 'Alpha'))
@@ -137,7 +209,7 @@ describe('notebook page tree', () => {
     await act(async () => { target.dispatchEvent(over) })
     expect(over.defaultPrevented).toBe(true)
     await act(async () => { target.dispatchEvent(dragEvent('drop')) })
-    expect(actions.move).toHaveBeenCalledWith(`${pageA}.json`, 'Research')
+    expect(actions.move).toHaveBeenCalledWith('Alpha.json', 'Research')
     // A folder cannot drop into its own descendant.
     await act(async () => { trigger(row('folder', 'Research')).dispatchEvent(dragEvent('dragstart')) })
     const inner = row('folder', 'Inner')
@@ -170,7 +242,8 @@ describe('notebook page tree', () => {
     const file = new File(['hello'], 'hello.txt', { type: 'text/plain' })
     // Over a folder: the folder row highlights and the drop copies into that folder.
     const research = row('folder', 'Research')
-    const over = fileDragEvent('dragover', [file])
+    // During dragover Chromium reports the 'Files' type but an empty FileList; files arrive on drop.
+    const over = fileDragEvent('dragover', [])
     await act(async () => { research.dispatchEvent(over) })
     expect(over.defaultPrevented).toBe(true)
     expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe('copy')
@@ -196,13 +269,13 @@ describe('notebook page tree', () => {
     expect(nav.classList.contains('drop-root')).toBe(true)
     await act(async () => { nav.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: null })) })
     expect(nav.classList.contains('drop-root')).toBe(false)
-    // A drag without files still does nothing, and an internal drag still moves instead of importing.
-    await act(async () => { nav.dispatchEvent(fileDragEvent('dragover', [])) })
+    // A drag that carries no files (no 'Files' type) does nothing, and an internal drag still moves instead of importing.
+    await act(async () => { nav.dispatchEvent(dragEvent('dragover')) })
     expect(nav.classList.contains('drop-root')).toBe(false)
     await act(async () => { trigger(row('page', 'Alpha')).dispatchEvent(dragEvent('dragstart')) })
     await act(async () => { research.dispatchEvent(dragEvent('dragover')) })
     await act(async () => { research.dispatchEvent(dragEvent('drop')) })
-    expect(actions.move).toHaveBeenCalledWith(`${pageA}.json`, 'Research')
+    expect(actions.move).toHaveBeenCalledWith('Alpha.json', 'Research')
     expect(actions.importFiles).toHaveBeenCalledTimes(3)
   })
 })

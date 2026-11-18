@@ -71,7 +71,7 @@
 .writing-tree.drop-root { background: var(--chip-bg); }
 .writing-tree-row { --tree-tint: transparent; display: flex; align-items: center; gap: 2px; margin-inline: -10px; border-inline: 10px solid var(--tree-tint); background: var(--tree-tint); background-clip: padding-box; transition: background-color 140ms ease, border-color 140ms ease; }
 .writing-tree-row:hover { --tree-tint: color-mix(in srgb, var(--fg) 7%, transparent); }
-.writing-tree-row.page.current { --tree-tint: color-mix(in srgb, var(--fg) 13%, transparent); }
+.writing-tree-row.page.current, .writing-tree-row.file.current { --tree-tint: color-mix(in srgb, var(--fg) 13%, transparent); }
 .writing-tree-row.drop-target { --tree-tint: var(--chip-bg); box-shadow: inset 0 0 0 1px var(--muted); }
 /* The row owns the wash, so the link inside stays plain in every theme and
    accessibility variant - Bond and Panda alike, whose tokens colour the mix. */
@@ -91,9 +91,24 @@
 .writing-tree-label.menu-trigger { flex: 1; min-width: 0; justify-content: flex-start; margin: 0; padding: 0.3rem 0.5rem; color: var(--fg); font-size: 13px; font-weight: 400; text-align: left; }
 .writing-tree-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .writing-file-label span { color: var(--muted); }
-.writing-tree-row.draft input { flex: 1; min-width: 0; height: 26px; padding: 2px 8px; font-size: 13px; border-radius: 6px; }
+.writing-tree-row.file.current .writing-file-label span { color: var(--fg); }
+/* A non-page file open in the main pane: media centered, text in the shared
+   code editor, binary as a plain warning card. */
+.writing-file-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.writing-file-view { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: auto; }
+.writing-file-view img, .writing-file-view video { max-width: 100%; max-height: 100%; border-radius: 8px; background: var(--code-bg); }
+.writing-file-card { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 420px; padding: 28px 32px; border: 1px solid var(--border); border-radius: 12px; background: var(--chip-bg); text-align: center; }
+.writing-file-card-icon { width: 28px; height: 28px; color: var(--muted); }
+.writing-file-card h2 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+.writing-file-card p { margin: 0; font-size: 13px; color: var(--muted); }
+.writing-file-editor { flex: 1; min-width: 0; min-height: 0; }
+.writing-file-editor .cm-editor { height: 100%; }
+.writing-file-editor .cm-scroller { overflow: auto; padding: 12px 20px; }
+.writing-file-editor .cm-content { padding: 4px 0 40vh; }
+.writing-tree-row.draft input, .writing-tree-row.rename input { flex: 1; min-width: 0; height: 26px; padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .writing-new-page { margin-top: 12px; }
 .writing-new-folder { margin-top: 6px; }
+.writing-new-file { margin-top: 6px; }
 .writing-delete-notebook { margin-top: 6px; }
 .writing-association { padding: 0 8px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .writing-page { --writing-text-width: 630px; flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; background: var(--bg); }

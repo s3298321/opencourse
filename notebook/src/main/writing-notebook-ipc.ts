@@ -22,10 +22,13 @@ export function registerWritingNotebookIpc(): void {
     association: notebooks.resolveNotebookAssociation, get: notebooks.getWritingNotebook, page: notebooks.getWritingPage,
     update: notebooks.updateWritingNotebook, save: notebooks.saveWritingPage, addPage: notebooks.addWritingPage,
     renamePage: notebooks.renameWritingPage, reorder: notebooks.reorderWritingPages, deletePage: notebooks.deleteWritingPage,
-    createFolder: notebooks.createWritingFolder, deleteFolder: notebooks.deleteWritingFolder, deleteFile: notebooks.deleteWritingFile,
+    createFolder: notebooks.createWritingFolder, createFile: notebooks.createWritingFile, deleteFolder: notebooks.deleteWritingFolder, deleteFile: notebooks.deleteWritingFile,
     move: notebooks.moveWritingEntry,
     // Files dropped from outside are copied into the tree folder; the preload sends absolute paths.
     importFiles: notebooks.importWritingFiles,
+    rename: notebooks.renameWritingEntry,
+    // The file viewer reads non-page files as text and saves edits back; media goes through the asset protocol.
+    readFile: notebooks.readWritingFile, saveFile: notebooks.saveWritingFile,
     // Reveal resolves the caller's relative path inside the notebook tree in main; '' is the tree root.
     reveal: (id: string, path: string) => shell.showItemInFolder(resolveWritingTreePath(id, path)),
     delete: notebooks.deleteWritingNotebook, open: openWritingNotebook

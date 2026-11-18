@@ -7,6 +7,10 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, Decoration, type 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { python } from '@codemirror/lang-python'
 import { cpp } from '@codemirror/lang-cpp'
+import { javascript } from '@codemirror/lang-javascript'
+import { html } from '@codemirror/lang-html'
+import { css } from '@codemirror/lang-css'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import type { Extension } from '@codemirror/state'
 import { tags } from '@lezer/highlight'
@@ -19,8 +23,20 @@ import { EDITOR_FONT_PX, highlightColors, type WorkbenchTheme } from './theme'
  * Which npm package supplies a mode. This is a renderer concern - it is not the
  * same registry as the Shiki grammar names core uses for prose code fences, and
  * a language with no mode here still edits fine, just without highlighting.
+ * The keys double as toolchain highlight ids ('python', 'c', ...) and as the
+ * file-extension keys core's codeLanguageForFile maps names to, so a notebook
+ * file like main.c or app.ts gets the same highlighting an exercise would.
  */
-const MODES: Record<string, () => Extension> = { python, c: cpp, cpp, 'llvm-ir': llvmIr }
+const MODES: Record<string, () => Extension> = {
+  python, c: cpp, cpp, 'llvm-ir': llvmIr,
+  javascript: () => javascript(),
+  typescript: () => javascript({ typescript: true }),
+  jsx: () => javascript({ jsx: true }),
+  tsx: () => javascript({ typescript: true, jsx: true }),
+  html: () => html(),
+  css: () => css(),
+  markdown: () => markdown({ base: markdownLanguage })
+}
 const quoteMark = StateEffect.define<{ from: number; to: number } | null>()
 const quoteDecoration = StateField.define<DecorationSet>({
   create: () => Decoration.none,

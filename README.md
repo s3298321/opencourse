@@ -130,7 +130,7 @@ because a server course keeps the same IDs from one version to the next.
 | | |
 | --- | --- |
 | [`app/`](app/) | The Electron app: `src/core` (pure), `src/main` (Node/Electron), `src/renderer` (React) |
-| [`notebook/`](notebook/) | OpenCourse Notebook: a Mac app for standalone personal notebooks, sharing this app's local data. Its own version, currently 0.1.1 |
+| [`notebook/`](notebook/) | OpenCourse Notebook: a Mac app for standalone personal notebooks, sharing this app's local data. Its own version, currently 0.1.2 |
 | [`server/`](server/) | The learning server: Fastify, `node:sqlite`, archives on disk, and its React web app in `server/web/` |
 | [`site/`](site/) | [opencourse.dev](https://opencourse.dev): Astro, static, with these `docs/` as its documentation |
 | [`design/`](design/) | Tokens and primitives shared by the site and the server's web app |

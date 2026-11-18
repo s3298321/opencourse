@@ -1,14 +1,15 @@
 /** Isolated Electron smoke: real windows, native typing, and persisted notebook files. */
 import { requireUser } from './users'
 import { BrowserWindow } from 'electron'
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { getWritingNotebook, getWritingPage, listWritingNotebooks, saveWritingPage, createWritingNotebook, updateWritingNotebook, deleteWritingNotebook, writingNotebookDirectory } from './writing-notebooks'
+import { getWritingNotebook, getWritingPage, listWritingNotebooks, saveWritingPage, createWritingNotebook, updateWritingNotebook, deleteWritingNotebook, createWritingFolder, deleteWritingFolder, writingNotebookDirectory } from './writing-notebooks'
 import { openWritingNotebook, closeWritingWindows, notebookWindowIdentity } from './writing-notebook-windows'
 import { join } from 'node:path'
 import { specResourcesDir } from './paths'
 import { readNotebookSketch } from './writing-notebook-sketch'
 import { sketchLine, DEFAULT_SKETCH } from '../core/writing-notebooks/sketch'
+import { pageTitle } from '../core/writing-notebooks/tree'
 import { WHITE_THEME_ID } from '../core/theme/builtin-ids'
 interface Result { name: string; ok: boolean; detail: string }
 const helpers = `const pause=ms=>new Promise(r=>setTimeout(r,ms)); const until=async (condition,message)=>{ for(let i=0;i<400;i++){ if(condition()) return; await pause(25); } throw new Error(message) }; const wait=async selector=>{ for(let i=0;i<400;i++){ const el=document.querySelector(selector); if(el) return el; await pause(25); } throw new Error('Missing '+selector) }; const assert=(v,m)=>{if(!v) throw new Error(m)};`
@@ -77,12 +78,19 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     let notebook = getWritingNotebook(id)
     let research = notebook.tree?.find(node => node.kind === 'folder' && node.name === 'Research')
     if (!research || research.kind !== 'folder' || !research.children.some(node => node.kind === 'page' && node.id === notebook.selectedPageId)) throw new Error('New page was not created in the selected folder')
+    // The New file button creates an empty file with the typed name in the selected folder and opens it in the pane.
+    await js(notebookWindow, `document.querySelector('.writing-new-file').click(); (await wait('input[aria-label="New file name"]')).focus();`)
+    await notebookWindow.webContents.insertText('smoke.txt')
+    await js(notebookWindow, `document.querySelector('input[aria-label="New file name"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      await until(()=>[...document.querySelectorAll('.writing-tree-row.file')].some(el=>el.textContent.includes('smoke.txt')),'New file row missing');
+      await until(()=>document.querySelector('.writing-file-editor .cm-content'),'New file did not open in the editor');`)
+    if (!existsSync(join(dir, 'pages', 'Research', 'smoke.txt')) || readFileSync(join(dir, 'pages', 'Research', 'smoke.txt'), 'utf8') !== '') throw new Error('New file was not created empty on disk')
     // The folder context menu offers creation, reveal and delete.
     await js(notebookWindow, `const folder=document.querySelector('.writing-tree-row.folder');
       folder.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:120}));
       const panel=await wait('.menu-panel');
       const labels=[...panel.querySelectorAll('.menu-item')].map(b=>b.textContent);
-      assert(labels.includes('New page here')&&labels.includes('New folder here')&&labels.includes('Reveal in Finder')&&labels.includes('Delete folder'),'Folder context menu incomplete: '+labels);
+      assert(labels.includes('New page here')&&labels.includes('New folder here')&&labels.includes('New file here')&&labels.includes('Reveal in Finder')&&labels.includes('Delete folder'),'Folder context menu incomplete: '+labels);
       panel.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`)
     // Drag a root page into the folder.
     await js(notebookWindow, `const rows=[...document.querySelectorAll('.writing-tree-row.page')];
@@ -95,13 +103,30 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     notebook = getWritingNotebook(id)
     research = notebook.tree?.find(node => node.kind === 'folder' && node.name === 'Research')
     if (!research || research.kind !== 'folder' || research.children.filter(node => node.kind === 'page').length !== 2) throw new Error('Dragged page did not land in the folder')
-    // A foreign file dropped in by Finder is visible, inert on click, deletable from its menu.
+    // Foreign files dropped in by Finder are visible and open in the main pane:
+    // text in the code editor, images inline, binary as a warning card.
     writeFileSync(join(dir, 'pages', 'Research', 'data.csv'), 'a,b')
-    await js(notebookWindow, `const file=await wait('.writing-tree-row.file');
-      assert(file.textContent.includes('data.csv'),'Foreign file not visible');
-      file.querySelector('.menu-trigger').click(); await pause(200);`)
-    if (getWritingNotebook(id).selectedPageId !== notebook.selectedPageId) throw new Error('Clicking a foreign file opened something')
-    await js(notebookWindow, `const file=document.querySelector('.writing-tree-row.file');
+    writeFileSync(join(dir, 'pages', 'Research', 'shot.png'), 'not really a png')
+    writeFileSync(join(dir, 'pages', 'Research', 'blob.bin'), Buffer.from([0x00, 0x01, 0x02]))
+    await js(notebookWindow, `await until(()=>[...document.querySelectorAll('.writing-tree-row.file')].some(el=>el.textContent.includes('data.csv')),'Foreign file not visible');`)
+    // Clicking a file opens it without changing the selected page, and the row marks current.
+    await js(notebookWindow, `const file=[...document.querySelectorAll('.writing-tree-row.file')].find(el=>el.textContent.includes('data.csv'));
+      file.querySelector('.menu-trigger').click();
+      await until(()=>document.querySelector('.writing-file-editor .cm-content'),'Text file did not open in the editor');
+      assert(document.querySelector('.writing-file-editor .cm-content').textContent.includes('a,b'),'File content missing');
+      assert(file.classList.contains('current'),'Open file row not marked current');
+      assert(!document.querySelector('.writing-tree-row.page.current'),'Page row still marked current while a file is open');`)
+    if (getWritingNotebook(id).selectedPageId !== notebook.selectedPageId) throw new Error('Clicking a foreign file changed the selected page')
+    await js(notebookWindow, `const png=[...document.querySelectorAll('.writing-tree-row.file')].find(el=>el.textContent.includes('shot.png'));
+      png.querySelector('.menu-trigger').click();
+      await until(()=>document.querySelector('.writing-file-view img'),'Image did not open in the viewer');
+      assert(document.querySelector('.writing-file-view img').src.includes('/pages/Research/shot.png'),'Image URL wrong: '+document.querySelector('.writing-file-view img').src);
+      const bin=[...document.querySelectorAll('.writing-tree-row.file')].find(el=>el.textContent.includes('blob.bin'));
+      bin.querySelector('.menu-trigger').click();
+      await until(()=>document.querySelector('.writing-file-card'),'Binary warning card missing');
+      assert(document.querySelector('.writing-file-card').textContent.includes('binary'),'Binary card does not say binary');`)
+    // The file context menu still offers delete and reveal; deleting the open file closes its pane.
+    await js(notebookWindow, `const file=[...document.querySelectorAll('.writing-tree-row.file')].find(el=>el.textContent.includes('blob.bin'));
       file.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:160}));
       const panel=await wait('.menu-panel');
       const labels=[...panel.querySelectorAll('.menu-item')].map(b=>b.textContent);
@@ -109,7 +134,8 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
       [...panel.querySelectorAll('.menu-item')].find(b=>b.textContent.includes('Delete file')).click();
       (await wait('.dialog-confirm')).click();`)
     await new Promise(resolve => setTimeout(resolve, 400))
-    if (existsSync(join(dir, 'pages', 'Research', 'data.csv'))) throw new Error('Foreign file was not deleted')
+    if (existsSync(join(dir, 'pages', 'Research', 'blob.bin'))) throw new Error('Foreign file was not deleted')
+    await js(notebookWindow, `await until(()=>!document.querySelector('.writing-file-card')&&!document.querySelector('.writing-file-view')&&!document.querySelector('.writing-file-editor'),'Open file pane did not close after delete');`)
     // Deleting the folder removes its pages, keeps the last root page and its content.
     await js(notebookWindow, `const folder=document.querySelector('.writing-tree-row.folder');
       folder.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:120}));
@@ -120,7 +146,101 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
       assert(document.querySelector('.cm-content').textContent.includes('Heading'),'Remaining page lost its content');`)
     notebook = getWritingNotebook(id)
     if (notebook.pages.length !== 1 || existsSync(join(dir, 'pages', 'Research'))) throw new Error('Folder deletion left pages or files behind')
-    return 'Inline folder creation, selection-aware buttons, drag move, context menus, foreign file lifecycle, folder delete'
+    return 'Inline folder and file creation, selection-aware buttons, drag move, context menus, foreign file lifecycle, folder delete'
+  })
+  await run('folders, foreign files and pages rename inline from their context menu', async () => {
+    const dir = writingNotebookDirectory(id)
+    try { deleteWritingFolder(id, 'New folder') } catch { /* a preceding failed run may have left it */ }
+    try { deleteWritingFolder(id, 'Old folder') } catch {}
+    // Reset the selection to the root (a previous check may have selected a deleted folder) before creating one.
+    await js(notebookWindow, `document.querySelector('nav.writing-tree').dispatchEvent(new MouseEvent('click',{bubbles:true})); await until(()=>!document.querySelector('.writing-new-folder').disabled,'New folder button stayed busy'); document.querySelector('.writing-new-folder').click(); (await wait('input[aria-label="New folder name"]')).focus();`)
+    await notebookWindow.webContents.insertText('Old folder')
+    await js(notebookWindow, `document.querySelector('input[aria-label="New folder name"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})); await until(()=>document.querySelector('.writing-tree-row.folder'),'Folder row missing')`)
+    // Context menu → Rename → the row becomes an input prefilled with the current name, fully selected.
+    const renameViaMenu = async (rowSelector: string, label: string, newName: string, commit: 'enter' | 'blur'): Promise<void> => {
+      await js(notebookWindow, `const row=await wait(${JSON.stringify(rowSelector)});
+        row.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:120}));
+        const panel=await wait('.menu-panel');
+        [...panel.querySelectorAll('.menu-item')].find(b=>b.textContent.includes('Rename')).click();
+        const input=await wait('input[aria-label^="Rename"]');
+        assert(input.value===${JSON.stringify(label)},'Rename input not prefilled with '+${JSON.stringify(label)}+': '+input.value);
+        assert(input.selectionStart===0 && input.selectionEnd===${JSON.stringify(label)}.length,'Rename input not fully selected');
+        const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+        setter.call(input,${JSON.stringify(newName)}); input.dispatchEvent(new Event('input',{bubbles:true}));
+        ${commit === 'enter' ? `input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));` : `input.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));`}
+        await until(()=>!document.querySelector('input[aria-label^="Rename"]'),'Rename input did not close')`)
+    }
+    const waitFor = async (test: () => boolean, what: string): Promise<void> => { for (let n = 0; n < 80 && !test(); n++) await new Promise(resolve => setTimeout(resolve, 50)); if (!test()) throw new Error(what) }
+    // Folder: Enter applies, and the folder is renamed on disk.
+    await renameViaMenu('.writing-tree-row.folder', 'Old folder', 'New folder', 'enter')
+    await waitFor(() => existsSync(join(dir, 'pages', 'New folder')) && !existsSync(join(dir, 'pages', 'Old folder')), 'Folder rename did not reach the disk')
+    // Foreign file: blur (clicking elsewhere) applies, content intact.
+    writeFileSync(join(dir, 'pages', 'New folder', 'note.txt'), 'x')
+    await js(notebookWindow, `await until(()=>[...document.querySelectorAll('.writing-tree-row.file')].some(el=>el.textContent.includes('note.txt')),'File row missing')`)
+    await renameViaMenu('.writing-tree-row.file', 'note.txt', 'data.csv', 'blur')
+    await waitFor(() => existsSync(join(dir, 'pages', 'New folder', 'data.csv')), 'File rename did not reach the disk')
+    // Page: the rename renames the page file itself, and the open editor follows.
+    const pageId = getWritingNotebook(id).selectedPageId
+    const pagePath = getWritingNotebook(id).pages.find(page => page.id === pageId)!.path
+    const currentTitle = pageTitle(pagePath)
+    await renameViaMenu('.writing-tree-row.page', currentTitle, 'Retitled page', 'enter')
+    await waitFor(() => getWritingNotebook(id).pages.find(page => page.id === pageId)?.path === 'Retitled page.json', 'Page file was not renamed')
+    if (existsSync(join(dir, 'pages', pagePath))) throw new Error('Old page file still on disk after rename')
+    const header = await js(notebookWindow, `return document.querySelector('.writing-page-title')?.value`)
+    if (header !== 'Retitled page') throw new Error('Open editor header did not follow the rename: ' + header)
+    // Escape cancels without touching the disk.
+    await js(notebookWindow, `const row=await wait('.writing-tree-row.folder');
+      row.querySelector('.menu-trigger').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:120}));
+      const panel=await wait('.menu-panel');
+      [...panel.querySelectorAll('.menu-item')].find(b=>b.textContent.includes('Rename')).click();
+      const input=await wait('input[aria-label^="Rename"]');
+      const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+      setter.call(input,'Discarded'); input.dispatchEvent(new Event('input',{bubbles:true}));
+      input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));`)
+    await waitFor(() => existsSync(join(dir, 'pages', 'New folder')) && !existsSync(join(dir, 'pages', 'Discarded')), 'Escape did not cancel the rename')
+    deleteWritingFolder(id, 'New folder')
+    return 'Inline rename prefilled and selected; Enter/blur apply, Escape cancels; folders and files renamed on disk, pages renamed by file name'
+  })
+  await run('files dragged from the OS copy into the hovered folder or the root pane', async () => {
+    const dir = writingNotebookDirectory(id)
+    try { deleteWritingFolder(id, 'Research') } catch { /* a preceding check may have left it */ }
+    createWritingFolder(id, '', 'Research')
+    await js(notebookWindow, `await until(()=>document.querySelector('.writing-tree-row.folder'),'Folder row missing after recreate')`)
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'opencourse-drag-')))
+    const dropped = join(outside, 'dragged.txt'); writeFileSync(dropped, 'drag me into the folder')
+    const rooted = join(outside, 'rooted.txt'); writeFileSync(rooted, 'drag me to the root')
+    // A real file drag, injected at the input layer so the dropped File carries its disk path.
+    const debug = notebookWindow.webContents.debugger
+    const drag = async (file: string, point: { x: number; y: number }, types: string[]): Promise<void> => {
+      debug.attach('1.3')
+      try {
+        const data = { files: [file], items: [], dragOperationsMask: 1 }
+        for (const type of types) { await debug.sendCommand('Input.dispatchDragEvent', { type, x: point.x, y: point.y, data }); await new Promise(resolve => setTimeout(resolve, 150)) }
+      } finally { debug.detach() }
+    }
+    try {
+      const folderPoint = await js(notebookWindow, `const r=document.querySelector('.writing-tree-row.folder').getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}`) as { x: number; y: number }
+      await drag(dropped, folderPoint, ['dragEnter', 'dragOver', 'dragOver'])
+      await js(notebookWindow, `await until(()=>document.querySelector('.writing-tree-row.folder').classList.contains('drop-target'),'Folder row did not highlight during an OS file drag')`)
+      await drag(dropped, folderPoint, ['drop'])
+      for (let n = 0; n < 100 && !existsSync(join(dir, 'pages', 'Research', 'dragged.txt')); n++) await new Promise(resolve => setTimeout(resolve, 50))
+      if (!existsSync(join(dir, 'pages', 'Research', 'dragged.txt'))) throw new Error('Dropped file did not land in the folder')
+      await js(notebookWindow, `await until(()=>[...document.querySelectorAll('.writing-tree-row.file')].some(el=>el.textContent.includes('dragged.txt')),'Dragged file not listed in the folder')`)
+      // Over the empty pane below the rows the whole pane highlights and the drop lands at the root.
+      const panePoint = await js(notebookWindow, `const nav=document.querySelector('nav.writing-tree'); const r=nav.getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height-8)}`) as { x: number; y: number }
+      await drag(rooted, panePoint, ['dragEnter', 'dragOver', 'dragOver'])
+      await js(notebookWindow, `await until(()=>document.querySelector('nav.writing-tree').classList.contains('drop-root'),'The pane did not highlight as root drop target during an OS file drag')`)
+      await drag(rooted, panePoint, ['drop'])
+      for (let n = 0; n < 100 && !existsSync(join(dir, 'pages', 'rooted.txt')); n++) await new Promise(resolve => setTimeout(resolve, 50))
+      if (!existsSync(join(dir, 'pages', 'rooted.txt'))) throw new Error('Dropped file did not land at the notebook root')
+      if (!existsSync(dropped)) throw new Error('The dragged source was moved instead of copied')
+    } finally {
+      // End any dangling drag session and remove the folder with the dragged file.
+      try { debug.attach('1.3'); await debug.sendCommand('Input.dispatchDragEvent', { type: 'dragCancel', x: 5, y: 5, data: { files: [], items: [], dragOperationsMask: 1 } }); debug.detach() } catch {}
+      try { if (existsSync(join(dir, 'pages', 'Research'))) deleteWritingFolder(id, 'Research') } catch {}
+      rmSync(outside, { recursive: true, force: true })
+    }
+    return 'OS file drags highlight the folder or the whole pane, then copy into the folder or the root'
   })
   await run('chat toggle reuses the slide animation and quote survives composer focus', async () => {
     await js(notebookWindow, `const content=await wait('.cm-content'); content.focus();`)
@@ -208,7 +328,8 @@ export async function writingNotebookChecks(main: BrowserWindow): Promise<Result
     await js(custom, `await wait('.cm-content')`)
     const page = getWritingPage(notebook.id, notebook.selectedPageId)
     saveWritingPage(notebook.id, page.id, page.revision, 'Saved in a custom folder')
-    if (!existsSync(join(folder, 'pages', `${page.id}.json`))) throw new Error('Page file missing from the chosen folder')
+    const pagePath = getWritingNotebook(notebook.id).pages.find(p => p.id === page.id)!.path
+    if (!existsSync(join(folder, 'pages', pagePath))) throw new Error('Page file missing from the chosen folder')
     deleteWritingNotebook(notebook.id)
     if (!existsSync(join(folder, 'user-file.txt')) || existsSync(join(folder, 'notebook.json'))) throw new Error('Custom folder deletion touched user files or left notebook files')
     rmSync(folder, { recursive: true, force: true })

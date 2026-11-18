@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { EditorView } from '@codemirror/view'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { WritingNotebook, WritingNotebookPage } from '../src/core/writing-notebooks/types'
+import { pageFileName, pageTitle, treeJoin, treeParent } from '../src/core/writing-notebooks/tree'
 import NotebookWindow from '../src/renderer/writing-notebooks/NotebookWindow'
 
 vi.mock('../src/renderer/markdown-context', () => ({ MarkdownProvider: ({ children }: { children: ReactNode }) => children }))
@@ -16,8 +17,10 @@ let contextRequest: (request: CoachContextRequest) => void
 const contextReply = vi.fn()
 let root: Root, container: HTMLDivElement, notebook: WritingNotebook
 let pages: Record<string, WritingNotebookPage>, flushRequest: (request: string) => void
-const rename = vi.fn(), flushed = vi.fn(), deletePage = vi.fn(), remove = vi.fn()
-const syncTree = () => { notebook.tree = notebook.pages.map(page => ({ kind: 'page' as const, id: page.id, title: page.title, path: `${page.id}.json` })) }
+const rename = vi.fn(), flushed = vi.fn(), deletePage = vi.fn(), remove = vi.fn(), treeRename = vi.fn(), importFiles = vi.fn()
+const syncTree = () => { notebook.tree = notebook.pages.map(page => ({ kind: 'page' as const, id: page.id, path: page.path })) }
+// A page's title is its file name.
+const titleOf = (pageId: string) => pageTitle(notebook.pages.find(page => page.id === pageId)!.path)
 const title = () => container.querySelector<HTMLInputElement>('[aria-label="Page title"]')!
 const bodyEditor = () => EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!
 const changeBody = (text: string) => {
@@ -35,14 +38,15 @@ beforeEach(async () => {
   vi.stubGlobal('requestAnimationFrame', () => 1)
   vi.stubGlobal('cancelAnimationFrame', () => {})
   Element.prototype.getAnimations = () => []
-  rename.mockReset(); flushed.mockReset(); deletePage.mockReset(); remove.mockReset()
-  notebook = { id: 'notebook', version: 1, title: 'Fixed notebook', pages: [{ id: 'one', title: 'First page' }, { id: 'two', title: 'Second page' }], selectedPageId: 'one', textScale: 1, chatOpen: false, createdAt: '', updatedAt: '', lastAccessedAt: '' }
+  rename.mockReset(); flushed.mockReset(); deletePage.mockReset(); remove.mockReset(); treeRename.mockReset(); importFiles.mockReset()
+  treeRename.mockImplementation(async () => structuredClone(notebook))
+  notebook = { id: 'notebook', version: 1, title: 'Fixed notebook', pages: [{ id: 'one', path: 'First page.json' }, { id: 'two', path: 'Second page.json' }], selectedPageId: 'one', textScale: 1, chatOpen: false, createdAt: '', updatedAt: '', lastAccessedAt: '' }
   syncTree()
-  pages = Object.fromEntries(notebook.pages.map(page => [page.id, { ...page, markdown: 'Body', revision: 0, updatedAt: '' }]))
+  pages = Object.fromEntries(notebook.pages.map(page => [page.id, { id: page.id, markdown: 'Body', revision: 0, updatedAt: '' }]))
   pages.two!.markdown = ''
   rename.mockImplementation(async (_id: string, pageId: string, name: string) => {
-    notebook.pages.find(page => page.id === pageId)!.title = name
-    pages[pageId]!.title = name
+    const page = notebook.pages.find(page => page.id === pageId)!
+    page.path = treeJoin(treeParent(page.path), pageFileName(name))
     syncTree()
     return structuredClone(notebook)
   })
@@ -56,7 +60,7 @@ beforeEach(async () => {
   Object.defineProperty(window, 'opencourse', { configurable: true, value: { getPomodoroState: async () => ({ revision: 0, cycle: { phase: 'idle' } }), getPomodoroSettings: async () => ({ studyMinutes: 40, breakMinutes: 5 }), onPomodoroChanged: () => () => {}, onCoachContextRequest: (handler: typeof contextRequest) => { contextRequest = handler; return () => {} }, replyCoachContext: contextReply, writing: {
     get: async () => { syncTree(); return structuredClone(notebook) }, page: async (_id: string, pageId: string) => structuredClone(pages[pageId]),
     update: async (_id: string, patch: Partial<WritingNotebook>) => { Object.assign(notebook, patch); syncTree(); return structuredClone(notebook) },
-    renamePage: rename, deletePage, remove, chat: {}, ready: () => {}, flushed,
+    renamePage: rename, rename: treeRename, importFiles, deletePage, remove, chat: {}, ready: () => {}, flushed,
     onSelectPage: () => () => {}, onFlush: (callback: typeof flushRequest) => { flushRequest = callback; return () => {} }, onSave: () => () => {}, onResume: () => () => {}, onChanged: () => () => {},
   } } })
   container = document.body.appendChild(document.createElement('div')); root = createRoot(container)
@@ -82,7 +86,7 @@ it.each(['one', 'two'])('moves the caret from inside the title to the start of p
   await edit('New page title')
   title().setSelectionRange(3, 3)
   await key('Enter')
-  expect(pages[pageId]!.title).toBe('New page title')
+  expect(titleOf(pageId)).toBe('New page title')
   expect(document.activeElement).toBe(editor.contentDOM)
   expect(editor.state.selection.main).toMatchObject({ anchor: 0, head: 0 })
   expect(editor.state.doc.toString()).toBe(markdown)
@@ -90,16 +94,16 @@ it.each(['one', 'two'])('moves the caret from inside the title to the start of p
 it('restores the starting title on Escape and gives empty titles a fallback on Enter', async () => {
   await act(async () => title().focus()); await edit('Temporary')
   await act(async () => vi.advanceTimersByTimeAsync(500)); await key('Escape')
-  expect(title().value).toBe('First page'); expect(pages.one!.title).toBe('First page')
+  expect(title().value).toBe('First page'); expect(titleOf('one')).toBe('First page')
   await act(async () => title().focus()); await edit('   '); await key('Enter')
-  expect(title().value).toBe('Untitled page'); expect(pages.one!.title).toBe('Untitled page')
+  expect(title().value).toBe('Untitled page'); expect(titleOf('one')).toBe('Untitled page')
 })
 it('flushes a pending title before switching pages or closing the window', async () => {
   await edit('Before switching')
   await act(async () => { (container.querySelectorAll('.writing-page-link')[1] as HTMLButtonElement).click() })
-  expect(pages.one!.title).toBe('Before switching'); expect(title().value).toBe('Second page')
+  expect(titleOf('one')).toBe('Before switching'); expect(title().value).toBe('Second page')
   await edit('Before closing'); await act(async () => flushRequest('request'))
-  expect(pages.two!.title).toBe('Before closing'); expect(flushed).toHaveBeenCalledWith('request', true)
+  expect(titleOf('two')).toBe('Before closing'); expect(flushed).toHaveBeenCalledWith('request', true)
 })
 it('retains a failed title edit for retry instead of reporting it saved', async () => {
   rename.mockRejectedValueOnce(new Error('Disk unavailable'))
@@ -107,30 +111,46 @@ it('retains a failed title edit for retry instead of reporting it saved', async 
   expect(flushed).toHaveBeenCalledWith('request', false); expect(title().value).toBe('Retry this title')
   expect(container.querySelector('.writing-page-heading [role="status"]')!.textContent).toBe('Not saved')
   await act(async () => { (container.querySelector('.writing-error button') as HTMLButtonElement).click() })
-  expect(pages.one!.title).toBe('Retry this title')
+  expect(titleOf('one')).toBe('Retry this title')
   expect(container.querySelector('.writing-page-heading [role="status"]')!.textContent).toBe('Saved')
 })
 it('deletes the right-clicked page only after confirmation and protects the final page', async () => {
+  const menuItem = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes(label))!
   const card = container.querySelectorAll('.writing-page-link')[1]!
   await act(async () => { card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 120 })) })
   expect(title().value).toBe('First page')
-  expect(document.querySelector('[role="menuitem"]')?.textContent).toBe('Delete page')
-  await act(async () => { (document.querySelector('[role="menuitem"]') as HTMLButtonElement).click() })
+  expect(menuItem('Rename').textContent).toBe('Rename')
+  await act(async () => { menuItem('Delete page').click() })
   expect(deletePage).not.toHaveBeenCalled()
   expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('Second page')
   await act(async () => { (container.querySelector('.dialog-confirm') as HTMLButtonElement).click() })
   expect(deletePage).toHaveBeenCalledWith('notebook', 'two')
   expect(title().value).toBe('First page')
   await act(async () => { container.querySelector('.writing-page-link')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 120 })) })
-  const lastPageDelete = document.querySelector('[role="menuitem"]') as HTMLButtonElement
+  const lastPageDelete = menuItem('Delete page')
   expect(lastPageDelete.disabled).toBe(true)
   expect(lastPageDelete.textContent).toContain('Keep at least one page')
+})
+it('renames the open page from the tree and keeps the heading input in sync', async () => {
+  await act(async () => { container.querySelector('.writing-page-link')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 120 })) })
+  await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent === 'Rename')!.click() })
+  const input = container.querySelector<HTMLInputElement>('input[aria-label^="Rename"]')!
+  expect(input.value).toBe('First page')
+  expect(input.selectionStart).toBe(0)
+  expect(input.selectionEnd).toBe('First page'.length)
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Tree rename'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) })
+  await act(async () => { vi.advanceTimersByTimeAsync(600) })
+  expect(rename).toHaveBeenCalledWith('notebook', 'one', 'Tree rename')
+  expect(title().value).toBe('Tree rename')
+  expect(container.querySelector('.writing-page-link')!.textContent).toBe('Tree rename')
 })
 it('puts notebook deletion below the create buttons and dismisses the context menu outside', async () => {
   expect(container.querySelector('[aria-label="Notebook actions"]')).toBeNull()
   const button = container.querySelector('.writing-delete-notebook') as HTMLButtonElement
   expect(button.previousElementSibling?.classList.contains('writing-new-folder')).toBe(true)
-  expect(button.previousElementSibling?.previousElementSibling?.classList.contains('writing-new-page')).toBe(true)
+  expect(button.previousElementSibling?.previousElementSibling?.classList.contains('writing-new-file')).toBe(true)
+  expect(button.previousElementSibling?.previousElementSibling?.previousElementSibling?.classList.contains('writing-new-page')).toBe(true)
   await act(async () => { container.querySelector('.writing-page-link')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 120 })) })
   await act(async () => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
   expect(document.querySelector('[role="menu"]')).toBeNull()

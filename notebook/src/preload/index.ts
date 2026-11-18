@@ -3,7 +3,7 @@ import type { ChatTools, ChatToolScope } from '../core/chat-tools'
 import type { PlanAction, QuestionProgress, QuestionStep } from '../core/authoring/planning'
 import type { ReviewTarget, FlashcardProposal } from '../core/personal-cards'
 import type { Sketch, SketchSettings, SketchColors } from '../core/writing-notebooks/sketch'
-import type { NotebookAssociation, WritingNotebook, WritingNotebookHit, WritingNotebookPage, WritingNotebookSaveResult, WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
+import type { NotebookAssociation, WritingFileRead, WritingNotebook, WritingNotebookHit, WritingNotebookPage, WritingNotebookSaveResult, WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
 import type { ReadingSource } from '../core/documents/types'
 import type { CoachPrompts } from '../core/types'
 import type { CellTarget, CellRunRequest, NotebookDocument, NotebookEvent, NotebookSaveResult, NotebookStatus, CellExecution } from '../core/notebook/types'
@@ -109,14 +109,20 @@ const api = {
     page: (id: string, pageId: string): Promise<WritingNotebookPage> => ipcRenderer.invoke('writing:page', id, pageId),
     update: (id: string, patch: Partial<Pick<WritingNotebook, 'selectedPageId' | 'textScale' | 'chatOpen' | 'showLineNumbers' | 'textLayout'>>): Promise<WritingNotebook> => ipcRenderer.invoke('writing:update', id, patch),
     save: (id: string, pageId: string, revision: number, markdown: string): Promise<WritingNotebookSaveResult> => ipcRenderer.invoke('writing:save', id, pageId, revision, markdown),
-    addPage: (id: string, title?: string, folder?: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:addPage', id, title, folder),
-    renamePage: (id: string, pageId: string, title: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:renamePage', id, pageId, title),
+    addPage: (id: string, name?: string, folder?: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:addPage', id, name, folder),
+    renamePage: (id: string, pageId: string, name: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:renamePage', id, pageId, name),
     reorder: (id: string, ids: string[]): Promise<WritingNotebook> => ipcRenderer.invoke('writing:reorder', id, ids),
     deletePage: (id: string, pageId: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:deletePage', id, pageId),
     createFolder: (id: string, parent: string, name: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:createFolder', id, parent, name),
+    createFile: (id: string, folder: string, name: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:createFile', id, folder, name),
     deleteFolder: (id: string, path: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:deleteFolder', id, path),
     deleteFile: (id: string, path: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:deleteFile', id, path),
     move: (id: string, source: string, targetFolder: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:move', id, source, targetFolder),
+    // Dropped files arrive as File objects; main receives their absolute paths and copies them into the folder.
+    importFiles: (id: string, folder: string, files: File[]): Promise<WritingNotebook> => ipcRenderer.invoke('writing:importFiles', id, folder, files.map(file => webUtils.getPathForFile(file))),
+    rename: (id: string, path: string, name: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:rename', id, path, name),
+    readFile: (id: string, path: string): Promise<WritingFileRead> => ipcRenderer.invoke('writing:readFile', id, path),
+    saveFile: (id: string, path: string, text: string): Promise<WritingNotebook> => ipcRenderer.invoke('writing:saveFile', id, path, text),
     reveal: (id: string, path: string): Promise<void> => ipcRenderer.invoke('writing:reveal', id, path),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('writing:delete', id),
     open: (id: string, pageId?: string): Promise<void> => ipcRenderer.invoke('writing:open', id, pageId),

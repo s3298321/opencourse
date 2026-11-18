@@ -1,25 +1,34 @@
-import { useRef, useState, type DragEvent, type JSX } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type JSX } from 'react'
 import type { WritingNotebook, WritingTreeNode } from '@core/writing-notebooks/types'
-import { pagesUnder, treeParent } from '@core/writing-notebooks/tree'
+import { pageTitle, pagesUnder, treeParent } from '@core/writing-notebooks/tree'
 import Menu from '../components/Menu'
 import { Icon, type ActionIcon } from '../components/ActionButton'
 
 /** Everything the tree can ask the window to do; the window owns flushing and confirms. */
 export interface PageTreeActions {
   openPage: (pageId: string) => void
+  openFile: (path: string) => void
   selectFolder: (path: string) => void
   newPage: (folder: string) => void
   newFolder: (parent: string) => void
+  newFile: (folder: string) => void
   deletePage: (pageId: string, title: string) => void
   deleteFolder: (path: string, name: string, pageCount: number) => void
   deleteFile: (path: string, name: string) => void
+  rename: (path: string, name: string) => void
+  renamePage: (pageId: string, title: string) => void
   reveal: (path: string) => void
   move: (source: string, targetFolder: string) => void
   dropPage: (pageId: string, targetFolder: string, anchor: { pageId: string; after: boolean } | null) => void
+  importFiles: (folder: string, files: File[]) => void
 }
 
 type Dragged = { path: string; kind: 'folder' | 'page' | 'file'; pageId?: string }
 type DropHint = { kind: 'folder'; path: string } | { kind: 'page'; id: string }
+
+/** Files dragged in from outside (Finder, browser downloads, screenshots) carry the 'Files' type and no internal drag. The FileList itself stays empty until the drop. */
+const hasDroppedFiles = (event: DragEvent): boolean => Boolean(event.dataTransfer?.types?.includes('Files'))
+const droppedFiles = (event: DragEvent): File[] => hasDroppedFiles(event) ? [...(event.dataTransfer.files ?? [])] : []
 
 /** A foreign file's icon, guessed from its extension; unknown types get a plain sheet. */
 function fileIcon(name: string): ActionIcon {
@@ -36,19 +45,28 @@ function fileIcon(name: string): ActionIcon {
 
 /**
  * The notebook's left pane: real folders on disk, pages in manual order, and
- * any other file visible but not openable. Folders select (the create buttons
+ * any other file visible and openable (images, videos and text in the main
+ * pane; binary files get a warning card). Folders select (the create buttons
  * below the tree follow the selection), wrap and unwrap, and accept drops;
  * clicking the empty pane below the rows clears the selection back to the
- * root. Pages also reorder by dropping above or below a sibling.
+ * root. Pages also reorder by dropping above or below a sibling. Files dragged
+ * in from outside the app (Finder, downloads, screenshots) are copied into the
+ * folder under the pointer, or into the root when dropped below the rows.
+ * Every row's context menu offers Rename: the row turns into an input prefilled
+ * with the current name, and Enter or clicking elsewhere applies it.
  */
-export default function PageTree({ notebook, currentPageId, selectedFolder, busy, draftFolder, onDraftCommit, onDraftCancel, actions }: {
+export default function PageTree({ notebook, currentPageId, currentFilePath, selectedFolder, busy, draftFolder, draftFile, onDraftCommit, onFileDraftCommit, onDraftCancel, onFileDraftCancel, actions }: {
   notebook: WritingNotebook
   currentPageId: string
+  currentFilePath: string | null
   selectedFolder: string
   busy: boolean
   draftFolder: { parent: string } | null
+  draftFile: { parent: string } | null
   onDraftCommit: (name: string) => void
+  onFileDraftCommit: (name: string) => void
   onDraftCancel: () => void
+  onFileDraftCancel: () => void
   actions: PageTreeActions
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -56,7 +74,16 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   // and a stale closure would silently refuse every drop.
   const draggingRef = useRef<Dragged | null>(null)
   const [dropHint, setDropHint] = useState<DropHint | null>(null)
+  const [renaming, setRenaming] = useState<{ path: string } | null>(null)
   const tree = notebook.tree ?? []
+  // The pane shows one thing at a time: an open file takes the current marker off the page row.
+  const shownPageId = currentFilePath ? null : currentPageId
+  // Folders and files rename on disk by path; a page's title is its file name, so renaming a page renames its file.
+  const commitRename = (node: WritingTreeNode, name: string) => {
+    setRenaming(null)
+    if (node.kind === 'page') actions.renamePage(node.id, name)
+    else actions.rename(node.path, name)
+  }
   const toggle = (path: string) => setCollapsed(value => { const next = new Set(value); if (next.has(path)) next.delete(path); else next.add(path); return next })
   const startDrag = (event: DragEvent, entry: Dragged) => {
     event.dataTransfer.setData('text/x-writing-entry', entry.path)
@@ -67,14 +94,28 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   // A folder never drops into itself or its own subtree.
   const canDrop = (folder: string) => { const dragging = draggingRef.current; return Boolean(dragging) && !(dragging!.kind === 'folder' && (folder === dragging!.path || folder.startsWith(dragging!.path + '/'))) }
   const overFolder = (event: DragEvent, folder: string) => {
-    if (!draggingRef.current) return
+    if (!draggingRef.current) {
+      // A foreign file is copied into the folder, never moved.
+      if (!hasDroppedFiles(event)) return
+      event.preventDefault(); event.stopPropagation()
+      event.dataTransfer.dropEffect = 'copy'
+      setDropHint({ kind: 'folder', path: folder })
+      return
+    }
     if (!canDrop(folder)) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
     event.dataTransfer.dropEffect = 'move'
     setDropHint({ kind: 'folder', path: folder })
   }
   const dropOnFolder = (event: DragEvent, folder: string) => {
-    if (!draggingRef.current) return
+    if (!draggingRef.current) {
+      const files = droppedFiles(event)
+      if (!files.length) return
+      event.preventDefault(); event.stopPropagation()
+      setDropHint(null)
+      actions.importFiles(folder, files)
+      return
+    }
     if (!canDrop(folder)) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
     const source = draggingRef.current.path
@@ -83,7 +124,13 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   }
   const overPage = (event: DragEvent, node: WritingTreeNode & { kind: 'page' }) => {
     const dragging = draggingRef.current
-    if (!dragging) return
+    if (!dragging) {
+      if (!hasDroppedFiles(event)) return
+      event.preventDefault(); event.stopPropagation()
+      event.dataTransfer.dropEffect = 'copy'
+      setDropHint({ kind: 'page', id: node.id })
+      return
+    }
     if (dragging.kind === 'folder' && !canDrop(treeParent(node.path))) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
     event.dataTransfer.dropEffect = 'move'
@@ -91,7 +138,14 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
   }
   const dropOnPage = (event: DragEvent, node: WritingTreeNode & { kind: 'page' }) => {
     const dragging = draggingRef.current
-    if (!dragging) return
+    if (!dragging) {
+      const files = droppedFiles(event)
+      if (!files.length) return
+      event.preventDefault(); event.stopPropagation()
+      setDropHint(null)
+      actions.importFiles(treeParent(node.path), files)
+      return
+    }
     const folder = treeParent(node.path)
     if (dragging.kind === 'folder' && !canDrop(folder)) { event.stopPropagation(); return }
     event.preventDefault(); event.stopPropagation()
@@ -103,60 +157,95 @@ export default function PageTree({ notebook, currentPageId, selectedFolder, busy
     } else actions.move(dragging.path, folder)
   }
   const draft = (depth: number) => <FolderDraft key={`${draftFolder!.parent}:${depth}`} depth={depth} onCommit={onDraftCommit} onCancel={onDraftCancel} />
+  const fileDraftRow = (depth: number) => <FileDraft key={`file:${draftFile!.parent}:${depth}`} depth={depth} onCommit={onFileDraftCommit} onCancel={onFileDraftCancel} />
   const renderNodes = (nodes: WritingTreeNode[], depth: number): JSX.Element[] => nodes.map(node => {
     if (node.kind === 'folder') {
-      const open = !collapsed.has(node.path) || draftFolder?.parent === node.path
-      const hint = dropHint?.kind === 'folder' && dropHint.path === node.path && canDrop(node.path)
+      const open = !collapsed.has(node.path) || draftFolder?.parent === node.path || draftFile?.parent === node.path
+      const hint = dropHint?.kind === 'folder' && dropHint.path === node.path && (!draggingRef.current || canDrop(node.path))
       return <div key={node.path} className="writing-tree-branch">
-        <div className={`writing-tree-row folder${selectedFolder === node.path ? ' selected' : ''}${hint ? ' drop-target' : ''}`} style={{ paddingLeft: depth * 12 }}
-          draggable onDragStart={event => startDrag(event, { path: node.path, kind: 'folder' })} onDragEnd={endDrag}
-          onDragOver={event => overFolder(event, node.path)} onDrop={event => dropOnFolder(event, node.path)}>
-          <button type="button" className="writing-tree-toggle" aria-label={`${open ? 'Collapse' : 'Expand'} ${node.name}`} onClick={() => toggle(node.path)}><Icon name={open ? 'folderOpen' : 'folder'} /></button>
-          <Menu triggerMode="contextmenu" className="writing-tree-label" disabled={busy} label={<span>{node.name}</span>}
-            onClick={() => { actions.selectFolder(node.path); toggle(node.path) }}
-            draggable onDragStart={event => startDrag(event, { path: node.path, kind: 'folder' })}
-            items={[
-              { id: 'new-page', label: 'New page here', onSelect: () => actions.newPage(node.path) },
-              { id: 'new-folder', label: 'New folder here', onSelect: () => actions.newFolder(node.path) },
-              { id: 'reveal', label: 'Reveal in Finder', onSelect: () => actions.reveal(node.path) },
-              { id: 'delete', label: 'Delete folder', danger: true, onSelect: () => actions.deleteFolder(node.path, node.name, pagesUnder(tree, node.path).length) }
-            ]} />
-        </div>
+        {renaming?.path === node.path
+          ? <RenameDraft key={node.path} depth={depth} initial={node.name} onCommit={name => commitRename(node, name)} onCancel={() => setRenaming(null)} />
+          : <div className={`writing-tree-row folder${selectedFolder === node.path ? ' selected' : ''}${hint ? ' drop-target' : ''}`} style={{ paddingLeft: depth * 12 }}
+            draggable onDragStart={event => startDrag(event, { path: node.path, kind: 'folder' })} onDragEnd={endDrag}
+            onDragOver={event => overFolder(event, node.path)} onDrop={event => dropOnFolder(event, node.path)}>
+            <button type="button" className="writing-tree-toggle" aria-label={`${open ? 'Collapse' : 'Expand'} ${node.name}`} onClick={() => toggle(node.path)}><Icon name={open ? 'folderOpen' : 'folder'} /></button>
+            <Menu triggerMode="contextmenu" className="writing-tree-label" disabled={busy} label={<span>{node.name}</span>}
+              onClick={() => { actions.selectFolder(node.path); toggle(node.path) }}
+              draggable onDragStart={event => startDrag(event, { path: node.path, kind: 'folder' })}
+              items={[
+                { id: 'rename', label: 'Rename', onSelect: () => setRenaming({ path: node.path }) },
+                { id: 'new-page', label: 'New page here', onSelect: () => actions.newPage(node.path) },
+                { id: 'new-folder', label: 'New folder here', onSelect: () => actions.newFolder(node.path) },
+                { id: 'new-file', label: 'New file here', onSelect: () => actions.newFile(node.path) },
+                { id: 'reveal', label: 'Reveal in Finder', onSelect: () => actions.reveal(node.path) },
+                { id: 'delete', label: 'Delete folder', danger: true, onSelect: () => actions.deleteFolder(node.path, node.name, pagesUnder(tree, node.path).length) }
+              ]} />
+          </div>}
         {open && renderNodes(node.children, depth + 1)}
         {open && draftFolder?.parent === node.path && draft(depth + 1)}
+        {open && draftFile?.parent === node.path && fileDraftRow(depth + 1)}
       </div>
     }
     if (node.kind === 'page') {
-      const hint = dropHint?.kind === 'page' && dropHint.id === node.id
-      return <div key={node.id} className={`writing-tree-row page${node.id === currentPageId ? ' current' : ''}${hint ? ' drop-target' : ''}`} style={{ paddingLeft: depth * 12 }}
+      const title = pageTitle(node.path), hint = dropHint?.kind === 'page' && dropHint.id === node.id
+      if (renaming?.path === node.path) return <RenameDraft key={node.id} depth={depth} initial={title} onCommit={name => commitRename(node, name)} onCancel={() => setRenaming(null)} />
+      return <div key={node.id} className={`writing-tree-row page${node.id === shownPageId ? ' current' : ''}${hint ? ' drop-target' : ''}`} style={{ paddingLeft: depth * 12 }}
         onDragOver={event => overPage(event, node)} onDrop={event => dropOnPage(event, node)}>
         <Menu triggerMode="contextmenu" disabled={busy} resetKey={currentPageId}
-          className={`sidebar-notebook-link writing-page-link${node.id === currentPageId ? ' current' : ''}`}
-          aria-current={node.id === currentPageId ? 'page' : undefined}
-          label={<><Icon name="page" className="writing-tree-icon" /><span>{node.title}</span></>} onClick={() => actions.openPage(node.id)}
+          className={`sidebar-notebook-link writing-page-link${node.id === shownPageId ? ' current' : ''}`}
+          aria-current={node.id === shownPageId ? 'page' : undefined}
+          label={<><Icon name="page" className="writing-tree-icon" /><span>{title}</span></>} onClick={() => actions.openPage(node.id)}
           draggable onDragStart={event => startDrag(event, { path: node.path, kind: 'page', pageId: node.id })} onDragEnd={endDrag}
           items={[
-            { id: 'delete', label: 'Delete page', danger: true, disabled: notebook.pages.length === 1, hint: notebook.pages.length === 1 ? 'Keep at least one page' : undefined, onSelect: () => actions.deletePage(node.id, node.title) },
-            { id: 'reveal', label: 'Reveal in Finder', onSelect: () => actions.reveal(node.path) }
+            { id: 'rename', label: 'Rename', onSelect: () => setRenaming({ path: node.path }) },
+            { id: 'reveal', label: 'Reveal in Finder', onSelect: () => actions.reveal(node.path) },
+            { id: 'delete', label: 'Delete page', danger: true, disabled: notebook.pages.length === 1, hint: notebook.pages.length === 1 ? 'Keep at least one page' : undefined, onSelect: () => actions.deletePage(node.id, title) }
           ]} />
       </div>
     }
-    return <div key={node.path} className="writing-tree-row file" style={{ paddingLeft: depth * 12 }}
+    if (renaming?.path === node.path) return <RenameDraft key={node.path} depth={depth} initial={node.name} onCommit={name => commitRename(node, name)} onCancel={() => setRenaming(null)} />
+    return <div key={node.path} className={`writing-tree-row file${currentFilePath === node.path ? ' current' : ''}`} style={{ paddingLeft: depth * 12 }}
       draggable onDragStart={event => startDrag(event, { path: node.path, kind: 'file' })} onDragEnd={endDrag}>
       <Menu triggerMode="contextmenu" className="writing-tree-label writing-file-label" disabled={busy} label={<><Icon name={fileIcon(node.name)} className="writing-tree-icon" /><span>{node.name}</span></>}
-        onClick={() => { /* Foreign files are shown, moved and deleted — never opened. */ }}
+        onClick={() => actions.openFile(node.path)}
         items={[
-          { id: 'delete', label: 'Delete file', danger: true, onSelect: () => actions.deleteFile(node.path, node.name) },
-          { id: 'reveal', label: 'Reveal in Finder', onSelect: () => actions.reveal(node.path) }
+          { id: 'rename', label: 'Rename', onSelect: () => setRenaming({ path: node.path }) },
+          { id: 'reveal', label: 'Reveal in Finder', onSelect: () => actions.reveal(node.path) },
+          { id: 'delete', label: 'Delete file', danger: true, onSelect: () => actions.deleteFile(node.path, node.name) }
         ]} />
     </div>
   })
-  return <nav aria-label="Notebook pages" className={`writing-tree${dropHint?.kind === 'folder' && dropHint.path === '' && canDrop('') ? ' drop-root' : ''}`}
+  return <nav aria-label="Notebook pages" className={`writing-tree${dropHint?.kind === 'folder' && dropHint.path === '' && (!draggingRef.current || canDrop('')) ? ' drop-root' : ''}`}
     onClick={event => { if (event.target === event.currentTarget) actions.selectFolder('') }}
-    onDragOver={event => overFolder(event, '')} onDrop={event => dropOnFolder(event, '')}>
+    onDragOver={event => overFolder(event, '')} onDrop={event => dropOnFolder(event, '')}
+    onDragLeave={event => { const to = event.relatedTarget as Node | null; if (!to || !event.currentTarget.contains(to)) setDropHint(null) }}>
     {renderNodes(tree, 0)}
     {draftFolder?.parent === '' && draft(0)}
+    {draftFile?.parent === '' && fileDraftRow(0)}
   </nav>
+}
+
+/** The inline rename input: prefilled with the current name and fully selected; Enter or blur applies, Escape cancels. */
+function RenameDraft({ depth, initial, onCommit, onCancel }: { depth: number; initial: string; onCommit: (name: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(initial)
+  const submitted = useRef(false)
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => { input.current?.focus(); input.current?.select() }, [])
+  const commit = () => {
+    if (submitted.current) return
+    submitted.current = true
+    const name = value.trim()
+    if (name && name !== initial.trim()) onCommit(name); else onCancel()
+  }
+  return <div className="writing-tree-row rename" style={{ paddingLeft: depth * 12 }}>
+    <input ref={input} type="text" aria-label={`Rename ${initial}`} placeholder={initial} maxLength={255}
+      value={value} onChange={event => setValue(event.target.value)}
+      onBlur={() => commit()}
+      onKeyDown={event => {
+        if (event.key === 'Enter') { event.preventDefault(); commit() }
+        if (event.key === 'Escape') { event.preventDefault(); submitted.current = true; onCancel() }
+      }} />
+  </div>
 }
 
 /** The inline name input for a new folder: Enter creates, Escape or blur cancels. */
@@ -170,6 +259,27 @@ function FolderDraft({ depth, onCommit, onCancel }: { depth: number; onCommit: (
   }
   return <div className="writing-tree-row draft" style={{ paddingLeft: depth * 12 }}>
     <input autoFocus type="text" aria-label="New folder name" placeholder="Folder name" maxLength={200}
+      value={value} onChange={event => setValue(event.target.value)}
+      onBlur={() => { if (!submitted.current) onCancel() }}
+      onKeyDown={event => {
+        if (event.key === 'Enter') { event.preventDefault(); commit() }
+        if (event.key === 'Escape') { event.preventDefault(); submitted.current = true; onCancel() }
+      }} />
+  </div>
+}
+
+/** The inline name input for a new file; the name carries its own extension. Enter creates, Escape or blur cancels. */
+function FileDraft({ depth, onCommit, onCancel }: { depth: number; onCommit: (name: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState('')
+  const submitted = useRef(false)
+  const commit = () => {
+    if (submitted.current) return
+    submitted.current = true
+    if (value.trim()) onCommit(value); else onCancel()
+  }
+  return <div className="writing-tree-row draft" style={{ paddingLeft: depth * 12 }}>
+    <Icon name="file" className="writing-tree-icon" />
+    <input autoFocus type="text" aria-label="New file name" placeholder="File name, e.g. notes.md" maxLength={255}
       value={value} onChange={event => setValue(event.target.value)}
       onBlur={() => { if (!submitted.current) onCancel() }}
       onKeyDown={event => {

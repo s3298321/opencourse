@@ -9,6 +9,7 @@ import { runChatAgent } from './text-chat'
 import { scrubSecrets } from '../core/coach/key'
 import type { AIProvider, ChatCitation, ChatQuote, ChatSendResult, ReasoningEffort } from '../core/types'
 import type { WritingNotebookChatSummary, WritingNotebookChatThread } from '../core/writing-notebooks/types'
+import { findPageNode, pageTitle } from '../core/writing-notebooks/tree'
 import type { ReadingSource } from '../core/documents/types'
 import { conversationConfig, conversationModelContext, conversationReasoning, newAIConversation, pinnedConversation, prepareAIRequest, validateConversationModel } from './ai'
 import { appendWritingNotebookMessage, configureWritingNotebookChat, deleteWritingNotebookChatRow, insertWritingNotebookChat, selectWritingNotebookChat, selectWritingNotebookChats, selectWritingNotebookMessages } from './writing-notebook-chatdb'
@@ -97,7 +98,10 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
   const document = getWritingNotebook(chat.notebookId)
   const savedPage = getWritingPage(document.id, page)
   const snapshot = notebookSnapshot(document)
-  const pageContext = { notebookId: document.id, pageId: page, revision: savedPage.revision, title: savedPage.title }
+  // The page's title is its file name in the tree.
+  const node = findPageNode(document.tree ?? [], page)
+  const title = node ? pageTitle(node.path) : ''
+  const pageContext = { notebookId: document.id, pageId: page, revision: savedPage.revision, title }
   const tools = writingReadingTools(document)
   const controller = new AbortController(), entry: Inflight = { controller, provider: chat.provider ?? 'apiKey', notebookId: chat.notebookId }
   inflight.set(id, entry)
@@ -117,7 +121,7 @@ export async function sendWritingNotebookMessage(sender: WebContents, id: string
     configureWritingNotebookChat(id, chat.model, chat.reasoning, chat.provider ?? 'apiKey')
     const messages = selectWritingNotebookMessages(id), previous = [...messages].reverse().find(message => message.role === 'context')
     if (previous?.writingNotebook?.pageId !== page || previous.writingNotebook.revision !== savedPage.revision) appendWritingNotebookMessage(id, {
-      role: 'context', text: `Notebook: ${document.title}\nPage: ${savedPage.title}\nRevision: ${savedPage.revision}\nAssociation: ${document.association?.title ?? 'None'}\n\n${savedPage.markdown.slice(0, 8000)}${savedPage.markdown.length > 8000 ? '\n[Page truncated; use read_notebook_page for remaining text.]' : ''}`,
+      role: 'context', text: `Notebook: ${document.title}\nPage: ${title}\nRevision: ${savedPage.revision}\nAssociation: ${document.association?.title ?? 'None'}\n\n${savedPage.markdown.slice(0, 8000)}${savedPage.markdown.length > 8000 ? '\n[Page truncated; use read_notebook_page for remaining text.]' : ''}`,
       writingNotebook: pageContext, at: new Date().toISOString()
     })
     let attached: ChatQuote | undefined

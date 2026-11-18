@@ -9,6 +9,7 @@ import { getCourse, listCourses } from './courses'
 import { runCourseReadingTool } from './course-reading'
 import { runDocumentReadingTool } from './document-reading'
 import { getWritingNotebook, getWritingPage, listWritingNotebooks } from './writing-notebooks'
+import { pageTitle } from '../core/writing-notebooks/tree'
 import { listDocuments } from './documents'
 import { currentUserId, requireUser } from './users'
 import { notebookDirectory } from './notebooks'
@@ -85,7 +86,7 @@ export async function runCoachReadingTool(projectId: string, name: string, raw: 
   }
   if (name === 'search_notebooks') {
     const words = searchQuery(args.query).toLocaleLowerCase().split(/\s+/), start = nonnegativeInteger(args.cursor)
-    const pages = listWritingNotebooks().flatMap(n => n.pages.map(p => ({ notebookId: n.id, pageId: p.id, source: `${n.title} · ${p.title}` })))
+    const pages = listWritingNotebooks().flatMap(n => n.pages.map(p => ({ notebookId: n.id, pageId: p.id, source: `${n.title} · ${pageTitle(p.path)}` })))
     // Read only the current batch of writing pages. Python notebooks are separate batches (one notebook per cursor).
     const python = pythonNotebooks(), units = pages.length + python.length
     if (start < pages.length) {
@@ -120,15 +121,16 @@ export async function runCoachReadingTool(projectId: string, name: string, raw: 
     const notebook = getWritingNotebook(id(args.notebook_id))
     if (name === 'list_notebook_pages') {
       const start = nonnegativeInteger(args.cursor)
-      return result({ pages: notebook.pages.slice(start, start + 25), nextCursor: start + 25 < notebook.pages.length ? start + 25 : null })
+      return result({ pages: notebook.pages.slice(start, start + 25).map(p => ({ id: p.id, title: pageTitle(p.path) })), nextCursor: start + 25 < notebook.pages.length ? start + 25 : null })
     }
     const pageId = id(args.page_id), offset = nonnegativeInteger(args.offset)
-    if (!notebook.pages.some(p => p.id === pageId)) throw new Error('This page does not belong to the notebook.')
+    const listed = notebook.pages.find(p => p.id === pageId)
+    if (!listed) throw new Error('This page does not belong to the notebook.')
     const { readOpenNotebook } = await import('./coach-context')
     const open = await readOpenNotebook(name, args)
     if (open !== undefined) return result(open)
     const saved = getWritingPage(notebook.id, pageId), text = saved.markdown.slice(offset, offset + 6500)
-    return result({ source: `${notebook.title} · ${saved.title}`, text, revision: saved.revision, state: 'saved text', nextOffset: offset + text.length < saved.markdown.length ? offset + text.length : null })
+    return result({ source: `${notebook.title} · ${pageTitle(listed.path)}`, text, revision: saved.revision, state: 'saved text', nextOffset: offset + text.length < saved.markdown.length ? offset + text.length : null })
   }
   const kind = COURSE_TOOLS.some(t => t.name === name) ? 'course' : DOCUMENT_TOOLS.some(t => t.name === name) ? 'document' : null
   if (!kind) throw new Error('Unknown reading tool.')

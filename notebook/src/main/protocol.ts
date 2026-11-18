@@ -1,4 +1,5 @@
 import { writingNotebookAsset } from './writing-notebook-assets'
+import { writingNotebookTreeFile } from './writing-notebook-tree'
 import { WRITING_ASSET_HOST } from '../core/writing-notebooks/types'
 /**
  * The opencourse:// scheme. Replaces apps/courses/viz.py - same containment check
@@ -28,6 +29,18 @@ const MIME: Record<string, string> = {
   '.gif': 'image/gif', '.webp': 'image/webp',
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg',
   '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf'
+}
+
+/**
+ * Only the media the notebook file viewer displays is served from a tree
+ * file — images and videos. Text goes through IPC instead, so a tree file's
+ * bytes never reach the renderer as a document.
+ */
+const MEDIA_MIME: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.avif': 'image/avif',
+  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo'
 }
 
 /**
@@ -107,6 +120,18 @@ export function registerProtocolHandler(): void {
     const url = new URL(request.url)
     if (url.hostname === WRITING_ASSET_HOST) {
       const parts = url.pathname.split('/')
+      // opencourse://writing-notebooks/<id>/pages/<path>: a media file from the
+      // notebook's tree. Each segment is decoded only after the URL parser has
+      // seen it, and the joined path is validated and symlink-checked in main.
+      if (parts.length >= 4 && parts[2] === 'pages') {
+        let relative: string
+        try { relative = parts.slice(3).map(decodeURIComponent).join('/') } catch { return new Response('not found', { status: 404 }) }
+        const type = MEDIA_MIME[extname(relative).toLowerCase()]
+        const file = type ? writingNotebookTreeFile(parts[1]!, relative) : null
+        if (!file) return new Response('not found', { status: 404 })
+        const response = await net.fetch(pathToFileURL(file).toString())
+        return new Response(response.body, { status: response.status, headers: { 'content-type': type, 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'", 'cache-control': 'no-cache' } })
+      }
       const file = parts.length === 4 && parts[2] === 'assets' ? writingNotebookAsset(parts[1]!, parts[3]!) : null
       if (!file) return new Response('not found', { status: 404 })
       const response = await net.fetch(pathToFileURL(file).toString())

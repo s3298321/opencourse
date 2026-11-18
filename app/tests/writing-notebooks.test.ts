@@ -38,8 +38,16 @@ describe('personal writing notebooks', () => {
     const notebook = notes.createWritingNotebook('Original notebook')
     expect(() => notes.updateWritingNotebook(notebook.id, { title: 'Changed' } as unknown as Parameters<typeof notes.updateWritingNotebook>[1])).toThrow('cannot be changed')
     expect(notes.getWritingNotebook(notebook.id).title).toBe('Original notebook')
+    // A page has no title property: its file name is its title.
+    expect(notes.getWritingNotebook(notebook.id).pages[0]?.path).toBe('Untitled page.json')
     notes.renameWritingPage(notebook.id, notebook.selectedPageId, 'New page title')
-    expect(notes.getWritingPage(notebook.id, notebook.selectedPageId).title).toBe('New page title')
+    const renamed = notes.getWritingNotebook(notebook.id)
+    expect(renamed.pages[0]?.path).toBe('New page title.json')
+    expect(existsSync(join(notes.writingNotebookDirectory(notebook.id), 'pages', 'New page title.json'))).toBe(true)
+    expect(renamed.tree?.[0]).toMatchObject({ kind: 'page', id: notebook.selectedPageId, path: 'New page title.json' })
+    const stored = JSON.parse(readFileSync(join(notes.writingNotebookDirectory(notebook.id), 'pages', 'New page title.json'), 'utf8'))
+    expect(stored).toMatchObject({ id: notebook.selectedPageId, revision: 0 })
+    expect('title' in stored).toBe(false)
   })
   it('creates an independent default page, persists revisions, and rejects stale saves', () => {
     const notebook = notes.createWritingNotebook('  My ideas  ')
@@ -54,7 +62,9 @@ describe('personal writing notebooks', () => {
     const one = notes.createWritingNotebook('Same'), two = notes.createWritingNotebook('Same')
     expect(one.id).not.toBe(two.id)
     const added = notes.addWritingPage(one.id, 'Second'), second = added.selectedPageId
-    expect(notes.renameWritingPage(one.id, second, 'Renamed').pages[1]?.title).toBe('Renamed')
+    expect(notes.renameWritingPage(one.id, second, 'Renamed').pages[1]?.path).toBe('Renamed.json')
+    // The same title in the same folder gets a suffixed file name.
+    expect(notes.renameWritingPage(one.id, second, 'Untitled page').pages[1]?.path).toBe('Untitled page 2.json')
     expect(notes.reorderWritingPages(one.id, [second, one.selectedPageId]).pages[0]?.id).toBe(second)
     expect(() => notes.reorderWritingPages(one.id, [second, second])).toThrow('Invalid page order')
     const remaining = notes.deleteWritingPage(one.id, second)
@@ -74,7 +84,7 @@ describe('personal writing notebooks', () => {
   it('rebuilds stale indexes after an interrupted save and keeps association labels when sources disappear', () => {
     const notebook = notes.createWritingNotebook('Linked', association)
     expect(notebook.association?.title).toBe('Course A')
-    const file = join(notes.writingNotebookDirectory(notebook.id), 'pages', `${notebook.selectedPageId}.json`)
+    const file = join(notes.writingNotebookDirectory(notebook.id), 'pages', notebook.pages[0]!.path)
     const page = JSON.parse(readFileSync(file, 'utf8')); page.markdown = 'unindexed recovery'; page.revision++; writeFileSync(file, JSON.stringify(page))
     expect(notes.searchWritingNotebooks('recovery')[0]?.notebook.id).toBe(notebook.id)
     source.available = false
